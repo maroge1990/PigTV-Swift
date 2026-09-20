@@ -1,0 +1,254 @@
+import Foundation
+#if canImport(PigTV)
+@testable import PigTV
+#endif
+
+private struct CheckFailure: Error, CustomStringConvertible {
+    let description: String
+}
+
+private final class FixtureProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var responseStatus = 200
+    nonisolated(unsafe) static var responseData = Data()
+    nonisolated(unsafe) static var capturedRequest: URLRequest?
+    nonisolated(unsafe) static var capturedBody = Data()
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.capturedRequest = request
+        Self.capturedBody = request.httpBody ?? Data()
+        if let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 1024)
+            while stream.hasBytesAvailable {
+                let length = stream.read(&buffer, maxLength: buffer.count)
+                if length <= 0 { break }
+                Self.capturedBody.append(contentsOf: buffer.prefix(length))
+            }
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: Self.responseStatus,
+            httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Self.responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+@MainActor
+enum ContractChecks {
+    static func run() async throws -> Int {
+        var count = 0
+        func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
+            guard condition() else { throw CheckFailure(description: message) }
+            count += 1
+        }
+        func rejects(_ text: String) throws {
+            do {
+                _ = try ServerAddress(text)
+                throw CheckFailure(description: "Accepted invalid server: \(text)")
+            } catch PigTVError.invalidServerURL { count += 1 }
+        }
+
+        let address = try ServerAddress(" HTTPS://EXAMPLE.invalid:443/ ")
+        try expect(address.url.absoluteString == "https://example.invalid/", "Origin must canonicalize default port and case")
+        for invalid in ["file:///etc/passwd", "https://user:pass@example.invalid", "https://example.invalid/pigtv",
+                        "https://example.invalid?token=x", "https://example.invalid/#fragment", "http://example.invalid:0"] {
+            try rejects(invalid)
+        }
+        let api = APIClient(address: address, token: "secret & value")
+        let query = try api.requestURL("library/channels", query: [URLQueryItem(name: "search", value: "News & Sport + 100%")])
+        try expect(query.path == "/api/library/channels", "Query must not become part of path")
+        try expect(URLComponents(url: query, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "News & Sport + 100%", "Search must preserve reserved characters")
+        try expect(query.absoluteString.contains("%2B"), "Express must receive a literal plus rather than a space")
+        let playback = try api.playbackURL("/api/transcode/session/stream.m3u8?token=old&part=1")
+        let items = URLComponents(url: playback, resolvingAgainstBaseURL: false)!.queryItems!
+        try expect(items.filter { $0.name == "token" }.map(\.value) == ["secret & value"], "Only one correct token should be sent")
+        try expect(items.contains(URLQueryItem(name: "part", value: "1")), "Existing query should survive")
+        for bad in ["https://other.invalid/api/remux", "https://example.invalid:8443/api/remux",
+                    "http://example.invalid/api/remux", "https://user@example.invalid/api/remux", "/api/auth/me"] {
+            do { _ = try api.playbackURL(bad); throw CheckFailure(description: "Unsafe playback URL accepted") }
+            catch PigTVError.message { count += 1 }
+        }
+        _ = try api.playbackURL("https://example.invalid:443/api/remux")
+        count += 1
+
+        let pageData = Data(#"{"total":2,"limit":50,"offset":0,"channels":[{"id":"42","sourceId":3,"name":"News","logo":null,"category":"general","now":null,"next":null},{"id":"42","sourceId":4,"name":"Other News","logo":null,"category":"general","now":{"title":"Bulletin","startTime":1000,"endTime":5000},"next":null}]}"#.utf8)
+        let page = try JSONDecoder().decode(ChannelPage.self, from: pageData)
+        try expect(page.channels.map(\.id) == ["3:42", "4:42"], "Channel identity must include source")
+        try expect(page.channels[0].rawID == "42" && page.channels[0].now == nil, "Resolve needs raw ID; missing EPG is allowed")
+        try expect(page.channels[1].now?.progress(at: Date(timeIntervalSince1970: 3)) == 0.5, "EPG uses milliseconds")
+        let pair = try JSONDecoder().decode(PairPoll.self, from: Data(#"{"status":"approved","token":"fixture","deviceId":"test"}"#.utf8))
+        try expect(pair.token == "fixture", "Pairing does not return a user object")
+        let start = try JSONDecoder().decode(PairStart.self, from: Data(#"{"code":"BCDF23","expiresAt":600000,"expiresInSec":600}"#.utf8))
+        try expect(start.expiry.timeIntervalSince1970 == 600, "Pair expiry uses milliseconds")
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.4.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"devicePairing":true}}"#.utf8))
+        try info.validate()
+        count += 1
+        let old = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"old","apiVersion":1,"features":{"library":true}}"#.utf8))
+        do { try old.validate(); throw CheckFailure(description: "Missing resolver must fail") }
+        catch PigTVError.message { count += 1 }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FixtureProtocol.self]
+        let fixtureAPI = APIClient(address: address, token: "fixture-token", session: URLSession(configuration: configuration))
+        FixtureProtocol.responseStatus = 200
+        FixtureProtocol.responseData = pageData
+        let result: ChannelPage = try await fixtureAPI.request("library/channels", query: [URLQueryItem(name: "search", value: "A&B")])
+        try expect(result.total == 2, "Real request must decode fixture")
+        try expect(FixtureProtocol.capturedRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token", "API must send bearer header")
+        try expect(FixtureProtocol.capturedRequest?.url?.path == "/api/library/channels", "Request must target correct endpoint")
+        FixtureProtocol.responseStatus = 401
+        do { let _: User = try await fixtureAPI.request("auth/me"); throw CheckFailure(description: "401 must fail") }
+        catch PigTVError.unauthorised { count += 1 }
+        FixtureProtocol.responseStatus = 403
+        do { let _: User = try await fixtureAPI.request("auth/me"); throw CheckFailure(description: "403 must fail") }
+        catch PigTVError.forbidden { count += 1 }
+        FixtureProtocol.responseStatus = 200
+        FixtureProtocol.responseData = Data("not-json".utf8)
+        do { let _: User = try await fixtureAPI.request("auth/me"); throw CheckFailure(description: "Bad JSON must fail") }
+        catch PigTVError.decoding { count += 1 }
+        let capable = PlaybackCapabilities.current(supports: { _ in true })
+        try expect(capable["hevc"] == true && capable["ac3"] == true, "Supported native codecs must not be forced off")
+        let baseline = PlaybackCapabilities.current(supports: { _ in false })
+        try expect(baseline["hevc"] == false && baseline["hls"] == true, "Unsupported codecs remain conservative")
+        let main8Only = PlaybackCapabilities.current(supports: { !$0.contains("hvc1.2") })
+        try expect(main8Only["hevc"] == false, "HEVC flag requires both common profiles")
+        let request = ResolveBody(sourceId: 3, channelId: "42", capabilities: capable)
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as! [String: Any]
+        try expect(json["force"] as? Bool == false, "Normal playback must never stop a recording implicitly")
+        FixtureProtocol.responseStatus = 409
+        FixtureProtocol.responseData = Data(#"{"error":"Provider stream is in use","conflict":{"type":"recording-in-progress","scheduleId":7,"title":"News","channelName":"Channel","endsAt":600000}}"#.utf8)
+        do {
+            let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
+            throw CheckFailure(description: "A recording conflict must not be treated as playable")
+        } catch PigTVError.recordingConflict(let conflict) {
+            try expect(conflict.scheduleId == 7 && conflict.title == "News", "Conflict details must reach confirmation UI")
+        }
+        FixtureProtocol.responseStatus = 200
+        FixtureProtocol.responseData = Data("null".utf8)
+        let noPrompt: RecordingPrompt? = try await fixtureAPI.request("playback/conflict")
+        try expect(noPrompt == nil, "No pending prompt is JSON null")
+        FixtureProtocol.responseData = Data(#"{"scheduleId":7,"title":"News","channelName":"Channel","startsAt":1000,"programEnd":600000,"startsInSec":0}"#.utf8)
+        let prompt: RecordingPrompt? = try await fixtureAPI.request("playback/conflict")
+        try expect(prompt?.id == 7, "Polling prompt must decode without relying on server message text")
+        FixtureProtocol.responseStatus = 500
+        FixtureProtocol.responseData = Data(#"{"error":"Transcode failed to produce a playlist in time","info":{"video":"hevc"}}"#.utf8)
+        do {
+            let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
+            throw CheckFailure(description: "Startup timeout must fail")
+        } catch PigTVError.message(let message) {
+            try expect(message.contains("startup deadline"), "Known startup timeout needs an actionable message")
+        }
+        FixtureProtocol.responseData = Data(#"{"error":"Failed https://provider.invalid/private/password/stream"}"#.utf8)
+        do {
+            let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
+            throw CheckFailure(description: "Unknown server failure must fail")
+        } catch PigTVError.http(let status) {
+            try expect(status == 500, "Unknown server error must not expose upstream credentials")
+        }
+
+        let guideFixture = Data(#"""
+        {"total":2,"channels":[{"id":"same","sourceId":1,"name":"One","programmes":[{"title":"Show","description":null,"startTime":1000,"endTime":3000}]},{"id":"same","sourceId":2,"name":"Two","programmes":[]}]}
+        """#.utf8)
+        let guide = try JSONDecoder().decode(GuidePage.self, from: guideFixture)
+        try expect(guide.channels[0].id != guide.channels[1].id, "Guide channels need source-qualified identity")
+        try expect(guide.channels[1].programmes.isEmpty, "An empty EPG must remain empty")
+        let show = guide.channels[0].programmes[0]
+        try expect(show.isLive(at: Date(timeIntervalSince1970: 1)), "Programme starts inclusively")
+        try expect(!show.isLive(at: Date(timeIntervalSince1970: 3)), "Programme ends exclusively")
+        let clipped = GuideGeometry.interval(start: 0, end: 2000, window: 1000, duration: 2000)
+        try expect(clipped?.offset == 0 && clipped?.width == 0.5, "Guide must clip programmes at the window edge")
+        try expect(GuideGeometry.interval(start: 3000, end: 4000, window: 1000, duration: 2000) == nil, "Outside programmes must not occupy the timeline")
+        try expect(GuideGeometry.interval(start: 2000, end: 1000, window: 0, duration: 3000) == nil, "Invalid EPG intervals must be omitted")
+        try expect(GuideGeometry.interval(start: .nan, end: 1000, window: 0, duration: 3000) == nil, "Invalid EPG numbers must not reach layout")
+        let scheduled = try JSONDecoder().decode(ScheduledRecording.self, from: Data(#"{"id":1,"title":"Show","program_start":1000,"program_end":3000,"status":"waiting"}"#.utf8))
+        try expect(scheduled.canCancel, "Waiting schedules must be cancellable")
+        try expect(scheduled.start == Date(timeIntervalSince1970: 1), "Recording dates use milliseconds")
+        let rec = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":1,"title":"Show","status":"completed","is_partial":1}"#.utf8))
+        try expect(rec.is_partial == 1 && rec.ad_detect_status == nil, "Older recording responses must decode without analysis fields")
+        let markers = try JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"done","markers":[{"id":1,"startMs":0,"endMs":1000,"type":"ad"},{"id":2,"startMs":2000,"endMs":1000,"type":"ad"}]}"#.utf8))
+        try expect(markers.markers.filter(\.valid).count == 1, "Malformed ad intervals must not be offered")
+        FixtureProtocol.responseStatus = 201
+        FixtureProtocol.responseData = Data(#"{"id":1,"title":"Show","program_start":1000,"program_end":3000,"status":"scheduled"}"#.utf8)
+        let scheduleBody = ScheduleBody(sourceId: 2, channelItemId: "a+b&c", channelName: "Channel",
+            channelLogo: nil, title: "Show", description: nil, programStart: 1000,
+            programEnd: 3000, preBufferMin: 2, postBufferMin: 5)
+        let _: ScheduledRecording = try await fixtureAPI.request("recordings/schedule", method: "POST", body: scheduleBody)
+        let scheduleJSON = try JSONSerialization.jsonObject(with: FixtureProtocol.capturedBody) as! [String: Any]
+        try expect(scheduleJSON["channelItemId"] as? String == "a+b&c", "Scheduling must preserve raw channel identity")
+        try expect(scheduleJSON["programStart"] as? Int == 1000 && scheduleJSON["postBufferMin"] as? Int == 5, "Schedule timestamps and padding must use server units")
+        FixtureProtocol.responseStatus = 200
+        FixtureProtocol.responseData = Data(#"{"success":true}"#.utf8)
+        let _: ActionResult = try await fixtureAPI.request("favorites", method: "DELETE", body: FavouriteBody(sourceId: 2, itemId: "a+b&c"))
+        let favouriteJSON = try JSONSerialization.jsonObject(with: FixtureProtocol.capturedBody) as! [String: Any]
+        try expect(FixtureProtocol.capturedRequest?.httpMethod == "DELETE" && favouriteJSON["itemType"] as? String == "channel", "Favourite removal must use the verified DELETE body contract")
+        try expect(capable["segmentedDelivery"] == true, "Native playback must request segmented delivery")
+        try expect(PlaybackCapabilities.current(supports: { _ in false })["segmentedDelivery"] == true, "Segmented delivery must not depend on codec support")
+        FixtureProtocol.responseData = Data(#"{"strategy":"transcode","container":"hls","url":"/api/transcode/session123/stream.m3u8","sessionId":"session123","videoMode":"copy","audioMode":"copy"}"#.utf8)
+        let hls: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
+        let resolveJSON = try JSONSerialization.jsonObject(with: FixtureProtocol.capturedBody) as! [String: Any]
+        try expect((resolveJSON["capabilities"] as? [String: Bool])?["segmentedDelivery"] == true, "Resolve request must carry segmentedDelivery inside capabilities")
+        try expect(hls.sessionId == "session123" && hls.container == "hls", "Stream-copy HLS must use the existing session response")
+        let media = try fixtureAPI.playbackURL(hls.url)
+        try expect(URLComponents(url: media, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "token" })?.value == "fixture-token", "HLS playlist must receive the device token")
+        FixtureProtocol.responseData = Data(#"{"success":true}"#.utf8)
+        try await fixtureAPI.release("session123")
+        try expect(FixtureProtocol.capturedRequest?.httpMethod == "DELETE" &&
+            FixtureProtocol.capturedRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token",
+            "HLS cleanup must retain bearer authentication")
+        FixtureProtocol.responseData = Data(#"{"id":7,"title":"Show","program_start":1000,"program_end":3000,"status":"cancelled"}"#.utf8)
+        let cancelled: ScheduledRecording = try await fixtureAPI.request("recordings/scheduled/7", method: "DELETE")
+        try expect(!cancelled.canCancel && cancelled.status == "cancelled", "Cancellation returns a schedule, not a success wrapper")
+        try expect(FixtureProtocol.capturedRequest?.url?.path == "/api/recordings/scheduled/7", "Cancel only the selected schedule")
+        try expect(fixtureAPI.artworkRequest("/logos/channel.png")?.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token", "Relative artwork uses server authentication")
+        try expect(fixtureAPI.artworkRequest("https://images.example.org/logo.png")?.value(forHTTPHeaderField: "Authorization") == nil, "External artwork must never receive bearer credentials")
+        try expect(fixtureAPI.artworkRequest("//images.example.org/logo.png")?.value(forHTTPHeaderField: "Authorization") == nil, "Protocol-relative external artwork must not receive credentials")
+        try expect(fixtureAPI.artworkRequest("file:///tmp/logo.png") == nil, "Artwork must use HTTP or HTTPS")
+        try expect(fixtureAPI.artworkRequest("https://user:password@example.org/logo.png") == nil, "Reject embedded artwork credentials")
+        let guideStart = Date(timeIntervalSince1970: 0)
+        let shortShow = GuideProgramme(title: "Short", description: nil, startTime: 0, endTime: 1_800_000)
+        let longShow = GuideProgramme(title: "Long", description: nil, startTime: 1_800_000, endTime: 7_200_000)
+        try expect(GuideNavigation.programme(in: [shortShow, longShow], at: Date(timeIntervalSince1970: 1800)) == longShow, "Vertical navigation must select the programme covering the time anchor at an exact boundary")
+        try expect(GuideNavigation.programme(in: [shortShow], at: Date(timeIntervalSince1970: 1900)) == nil, "Guide gaps must not select expired programmes")
+        try expect(GuideNavigation.visibleDuration == 7200 && GuideNavigation.step == 1800, "The guide shows two hours in four half-hour columns")
+        let twoHours = guideStart.addingTimeInterval(7200)
+        let later = GuideProgramme(title: "Later", description: nil, startTime: 9_000_000, endTime: 10_800_000)
+        let overlap = GuideProgramme(title: "Overlap", description: nil, startTime: 5_400_000, endTime: 9_000_000)
+        let duplicate = GuideProgramme(title: "Duplicate", description: nil, startTime: 1_800_000, endTime: 3_600_000)
+        let visible = GuideNavigation.visible([later, overlap, longShow, duplicate, shortShow], viewport: guideStart)
+        try expect(visible == [shortShow, longShow, overlap], "Only programmes overlapping the two-hour window are built, in start order, without duplicate starts")
+        try expect(GuideNavigation.visible([shortShow], viewport: twoHours).isEmpty, "Programmes ending before the window are not built")
+        try expect(GuideNavigation.reveal(later, from: guideStart) == guideStart.addingTimeInterval(3600), "Moving right places the next programme start in the last column")
+        let atEdge = GuideProgramme(title: "Edge", description: nil, startTime: 7_200_000, endTime: 9_000_000)
+        try expect(GuideNavigation.reveal(atEdge, from: guideStart) == guideStart.addingTimeInterval(1800), "A programme starting exactly at the right edge advances one column")
+        let farAhead = GuideProgramme(title: "Far", description: nil, startTime: 54_600_000, endTime: 58_200_000)
+        try expect(GuideNavigation.reveal(farAhead, from: guideStart) == Date(timeIntervalSince1970: 54_000 - 5400), "A distant programme lands in the last column")
+        try expect(GuideNavigation.reveal(shortShow, from: twoHours) == guideStart, "Moving left to an earlier programme places its start in the first column")
+        try expect(GuideNavigation.reveal(overlap, from: guideStart) == guideStart, "A visible programme does not move the viewport")
+        try expect(!GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(3600), loadedFrom: guideStart), "Viewports inside the loaded day reuse data")
+        try expect(GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(-1), loadedFrom: guideStart), "Viewports before the loaded day reload")
+        try expect(GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(86400 - 7199), loadedFrom: guideStart), "A viewport that runs past the loaded day reloads")
+        try expect(GuideNavigation.rounded(Date(timeIntervalSince1970: 3599)) == Date(timeIntervalSince1970: 1800), "Viewports snap to half hours")
+
+        let categoryFixture = Data(#"{"total":1,"channels":[{"id":"7","sourceId":2,"name":"Sky News HD","logo":"  ","category":"News","programmes":[],"tvgId":"sky.news"}]}"#.utf8)
+        let categorised = try JSONDecoder().decode(GuidePage.self, from: categoryFixture).channels[0]
+        try expect(categorised.tvgId == "sky.news", "Guide rows carry the EPG channel ID when the server supplies it")
+        try expect(categorised.matches(Category(rawID: "news-id", sourceId: 2, name: "News", channelCount: 1)), "Category filter accepts the display name")
+        try expect(categorised.matches(Category(rawID: "News", sourceId: 2, name: "News & Sport", channelCount: 1)), "Category filter accepts the raw ID")
+        try expect(!categorised.matches(Category(rawID: "News", sourceId: 3, name: "News", channelCount: 1)), "Category filter is source-qualified")
+
+        var index = EPGArtworkIndex()
+        index.append(try JSONDecoder().decode(EPGArtworkPage.self, from: Data(#"{"channels":[{"id":"sky.news","name":"Sky News","icon":"https://cdn.example.org/sky.png"},{"id":"abc","name":"ABC TV (AU)","icon":" "},{"id":"seven","name":"Seven | HD","icon":"/img/seven.png"},{"id":"bad","name":"Bad","icon":"javascript:alert(1)"}]}"#.utf8)).channels)
+        try expect(index.logo(tvgID: "sky.news", name: "Something else") == "https://cdn.example.org/sky.png", "EPG ID lookup wins")
+        try expect(index.logo(tvgID: nil, name: "SKY  NEWS") == "https://cdn.example.org/sky.png", "Name lookup ignores case and spacing")
+        try expect(index.logo(tvgID: nil, name: "Sky News HD") == "https://cdn.example.org/sky.png", "Quality suffixes do not hide an icon")
+        try expect(index.logo(tvgID: nil, name: "Seven") == "/img/seven.png", "Decorated EPG names still match")
+        try expect(index.logo(tvgID: "abc", name: "ABC TV (AU)") == nil, "Blank icons are ignored")
+        try expect(index.logo(tvgID: "bad", name: "Bad") == nil, "Only web URLs are accepted as icons")
+        try expect(fixtureAPI.artworkRequest("javascript:alert(1)") == nil, "Non-HTTP icons never become requests")
+        return count
+    }
+}
