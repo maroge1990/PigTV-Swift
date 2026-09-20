@@ -141,7 +141,14 @@ struct PlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let conflict = playback.recordingConflict {
+            if let message = playback.viewerConflict {
+                VStack(spacing: 24) {
+                    Text("Another device is watching").font(.title2.bold())
+                    Text(message).multilineTextAlignment(.center)
+                    Button("Keep watching there") { dismiss() }.pigPrimaryButton()
+                    Button("Stop the other stream and watch here", role: .destructive) { playback.confirmViewerStop() }
+                }.padding(48).foregroundStyle(.white)
+            } else if let conflict = playback.recordingConflict {
                 VStack(spacing: 24) {
                     Text("A recording is in progress").font(.title2.bold())
                     Text("\(conflict.title) on \(conflict.channelName)")
@@ -153,8 +160,14 @@ struct PlayerScreen: View {
                 VStack(spacing: 24) {
                     Text("Unable to play \(playback.channel.name)").font(.title2)
                     Text(error)
+                    if playback.canRetry { Button("Retry") { playback.retry() } }
                     Button("Back to channels") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
+            } else if playback.reconnecting {
+                VStack(spacing: 24) {
+                    ProgressView("Reconnecting…")
+                    Button("Back to guide") { dismiss() }
+                }.foregroundStyle(.white)
             } else if playback.ready {
                 NativePlayer(playback: playback, app: app).ignoresSafeArea()
                     #if os(iOS)

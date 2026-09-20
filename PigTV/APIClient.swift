@@ -57,6 +57,7 @@ private final class ArtworkRedirects: NSObject, URLSessionTaskDelegate, @uncheck
 
 final class APIClient {
     let address: ServerAddress
+    let info: ServerInfo?
     private let token: String?
     private let session: URLSession
     private let artworkCache: NSCache<NSURL, NSData> = {
@@ -74,8 +75,9 @@ final class APIClient {
         return URLSession(configuration: configuration, delegate: ArtworkRedirects(address: address, token: token), delegateQueue: nil)
     }()
 
-    init(address: ServerAddress, token: String? = nil, session: URLSession? = nil) {
+    init(address: ServerAddress, token: String? = nil, session: URLSession? = nil, info: ServerInfo? = nil) {
         self.address = address
+        self.info = info
         self.token = token
         if let session {
             self.session = session
@@ -110,7 +112,19 @@ final class APIClient {
 
     private func send(_ path: String, method: String, query: [URLQueryItem] = [],
                       body: (any Encodable)? = nil) async throws -> Data {
+        try await response(path, method: method, query: query, body: body).data
+    }
+
+    struct Response {
+        let status: Int
+        let data: Data
+        let retryAfter: Double?
+    }
+
+    func response(_ path: String, method: String = "GET", query: [URLQueryItem] = [],
+                  body: (any Encodable)? = nil, timeout: TimeInterval? = nil) async throws -> Response {
         var request = URLRequest(url: try requestURL(path, query: query))
+        if let timeout { request.timeoutInterval = max(0.1, timeout) }
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -122,22 +136,69 @@ final class APIClient {
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw PigTVError.http(0) }
         switch response.statusCode {
-        case 200..<300: return data
+        case 200..<300: return Response(status: response.statusCode, data: data,
+            retryAfter: response.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init))
         case 401: throw PigTVError.unauthorised
         case 403: throw PigTVError.forbidden
         default:
             // Parse only known, actionable server errors. Never display raw
             // upstream errors, which may contain subscription URLs/passwords.
             let serverError = try? JSONDecoder().decode(ServerErrorResponse.self, from: data)
-            if response.statusCode == 409, let conflict = serverError?.conflict,
-               conflict.type == "recording-in-progress" {
-                throw PigTVError.recordingConflict(conflict)
+            if response.statusCode == 409, let conflict = serverError?.conflict {
+                if conflict.type == "viewer-in-progress" {
+                    throw PigTVError.viewerConflict(message: conflict.message ?? "Another device is watching. Watching here will stop its stream.")
+                }
+                if let recording = conflict.recording { throw PigTVError.recordingConflict(recording) }
+            }
+            if response.statusCode == 429 {
+                let seconds = serverError?.retryAfterSec ?? response.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init) ?? 60
+                throw PigTVError.rateLimited(retryAfterSec: max(1, seconds))
+            }
+            if response.statusCode == 500, path.hasPrefix("recordings/"), path.hasSuffix("/playback") {
+                throw PigTVError.recordingPreparationFailed(reason: serverError?.reason)
             }
             if serverError?.error == "Transcode failed to produce a playlist in time" {
                 throw PigTVError.message("The server could not prepare the stream before its startup deadline. No video was received. Try again after checking the server's playback log.")
             }
             throw PigTVError.http(response.statusCode)
         }
+    }
+
+    // Poll only when advertised. A terminal error must stop: the next request
+    // after a preparation failure starts a fresh remux on the server.
+    @MainActor
+    func recordingPlayback(id: Int, timeout: TimeInterval = 600,
+                           now: () -> Date = Date.init,
+                           sleep: (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
+                           preparing: () -> Void = {}) async throws -> RecordingPlayback {
+        let deadline = now().addingTimeInterval(timeout)
+        let query = info?.features.recordingPlaybackPolling == true ? [URLQueryItem(name: "async", value: "1")] : []
+        while true {
+            try Task.checkCancellation()
+            let remaining = deadline.timeIntervalSince(now())
+            guard remaining > 0 else { throw PigTVError.message("Preparing the recording took too long. Try again when the server is ready.") }
+            let result = try await response("recordings/\(id)/playback", query: query, timeout: min(35, remaining))
+            try Task.checkCancellation()
+            guard now() < deadline else { throw PigTVError.message("Preparing the recording took too long. Try again when the server is ready.") }
+            if result.status == 200 {
+                guard let playback = try? JSONDecoder().decode(RecordingPlayback.self, from: result.data) else { throw PigTVError.decoding }
+                return playback
+            }
+            guard !query.isEmpty, result.status == 202,
+                  let pending = try? JSONDecoder().decode(RecordingPreparing.self, from: result.data),
+                  pending.status == "preparing" else { throw PigTVError.decoding }
+            preparing()
+            let rawDelay = pending.retryAfterSec ?? result.retryAfter ?? 3
+            let delay = rawDelay.isFinite && rawDelay > 0 ? max(1, rawDelay) : 3
+            try await sleep(min(delay, max(0, deadline.timeIntervalSince(now()))))
+        }
+    }
+
+    func reportPlaybackEvent(_ event: PlaybackEvent) async {
+        guard info?.features.clientEvents == true else { return }
+        var event = event
+        if let path = event.path { event.path = (try? playbackURL(path))?.path }
+        _ = try? await response("playback/client-event", method: "POST", body: event, timeout: 3)
     }
 
     // Keep credentials on the configured origin, including for relative logos.

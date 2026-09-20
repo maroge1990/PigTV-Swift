@@ -14,6 +14,22 @@ final class PlaybackModel: ObservableObject, Identifiable {
     @Published private(set) var ready = false
     @Published private(set) var error: String?
     @Published private(set) var recordingConflict: RecordingConflict?
+    @Published private(set) var viewerConflict: String?
+    @Published private(set) var reconnecting = false
+    @Published private(set) var canRetry = false
+    private var eventContext: PlaybackEvent?
+    private var resolveBegan = Date()
+    private var firstPlayReported = false
+    private var playingSince: Date?
+    private var watchedSeconds: Double = 0
+    private var stalls = 0
+    private var hasPlayed = false
+    private var recoveryUsed = false
+    private var handlingFailure = false
+    private var itemGeneration = UUID()
+    private var playbackObservation: NSKeyValueObservation?
+    private var failedNotification: NSObjectProtocol?
+    private var stallNotification: NSObjectProtocol?
     @Published var recordingPrompt: RecordingPrompt?
     @Published private(set) var coordinationWarning: String?
     private var conflictTask: Task<Void, Never>?
@@ -83,7 +99,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             if let next { subtitle += "  •  Next: \(next.title) at \(next.start.formatted(date: .omitted, time: .shortened))" }
             items.append(item(.iTunesMetadataTrackSubTitle, subtitle))
             var description = now.description ?? ""
-            if let next {
+            if next != nil {
                 let upcoming = upcoming(limit: 3).map { "\($0.start.formatted(date: .omitted, time: .shortened)) \($0.title)" }.joined(separator: "\n")
                 description += (description.isEmpty ? "" : "\n\n") + "Coming up on \(channel.name):\n" + upcoming
             }
@@ -106,43 +122,85 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
 
     func start(force: Bool = false) {
-        guard resolveTask == nil, !ended else { return }
-        // Do not cancel the request when the view closes. Its eventual response
-        // contains the session ID that stop() needs to release on the server.
+        guard resolveTask == nil, !ended, !ready, viewerConflict == nil, recordingConflict == nil, error == nil else { return }
+        error = nil
+        canRetry = false
+        handlingFailure = false
+        recordingConflict = nil
+        viewerConflict = nil
+        let generation = UUID()
+        itemGeneration = generation
+        // Never cancel resolve: even a late result may own a session to release.
         resolveTask = Task { [self] in
+            defer { resolveTask = nil }
             await prerequisite?.value
             guard !ended else { return }
             do {
+                // Recovery releases before resolving; stop() waits for this task.
+                if let oldSession = sessionID {
+                    do { try await client.release(oldSession) }
+                    catch PigTVError.http(404) { /* expired session */ }
+                    sessionID = nil
+                }
+                guard !ended else { return }
+                resolveBegan = Date()
                 let decision: PlaybackDecision = try await client.request("playback/resolve", method: "POST",
                     body: ResolveBody(sourceId: channel.sourceId, channelId: channel.rawID,
                         capabilities: PlaybackCapabilities.current(), force: force))
                 sessionID = decision.sessionId
                 guard !ended else { return }
                 let url = try client.playbackURL(decision.url)
-                // Audio session activation blocks; keep it off the main thread.
+                var context = PlaybackEvent(event: "play-start")
+                context.strategy = ["direct", "remux", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
+                context.container = ["hls", "mp4", "fmp4", "mpegts"].contains(decision.container ?? "") ? decision.container : nil
+                context.videoMode = ["copy", "encode"].contains(decision.videoMode ?? "") ? decision.videoMode : nil
+                context.path = url.path // URL query (including token/provider URL) is never sent.
+                context.resolveMs = Date().timeIntervalSince(resolveBegan) * 1000
+                eventContext = context
+                firstPlayReported = false
+                watchedSeconds = 0
+                stalls = 0
                 try await Task.detached(priority: .userInitiated) {
                     try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
                     try AVAudioSession.sharedInstance().setActive(true)
                 }.value
+                guard !ended else { return }
                 let item = AVPlayerItem(url: url)
                 item.externalMetadata = metadata()
                 metadataProgrammeStart = programme()?.startTime
                 observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
-                    let failed = item.status == .failed
-                    // Never include localized errors or media URLs: they can
-                    // contain the provider credentials or the playback token.
-                    let diagnostic = Self.failureCodes(item.error as NSError?)
-                    let mediaCodes = item.errorLog()?.events.suffix(3).map {
-                        String($0.errorStatusCode)
-                    }.joined(separator: ", ")
-                    let route = ["direct", "remux", "transcode"].contains(decision.strategy)
-                        ? decision.strategy : "unknown"
-                    let detail = "Route: \(route). \(diagnostic)" +
-                        (mediaCodes.map { " Media codes: \($0)." } ?? "")
+                    guard item.status == .failed else { return }
+                    let failure = item.error as NSError?
+                    let diagnostic = Self.failureCodes(failure)
+                    let code = failure?.code
+                    let domain = failure?.domain
+                    let safeDomain = ["AVFoundationErrorDomain", "NSURLErrorDomain", "NSOSStatusErrorDomain"].contains(domain ?? "") ? domain : "PlayerError"
+                    let mediaCodes = item.errorLog()?.events.suffix(3).map { String($0.errorStatusCode) }.joined(separator: ", ")
+                    let route = ["direct", "remux", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
+                    let detail = "Route: \(route). \(diagnostic)" + (mediaCodes.map { " Media codes: \($0)." } ?? "")
                     Task { @MainActor [weak self] in
-                        if failed, self?.ended == false {
-                            self?.error = "Playback could not start. \(detail)"
-                        }
+                        guard let self, self.itemGeneration == generation else { return }
+                        self.playbackFailed(detail: detail, codeName: safeDomain, code: code)
+                    }
+                }
+                failedNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.itemGeneration == generation else { return }
+                        self.playbackFailed(detail: "The player could not finish loading the stream.")
+                    }
+                }
+                stallNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.itemGeneration == generation, !self.ended else { return }
+                        self.stalls += 1
+                    }
+                }
+                playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+                    let playing = player.timeControlStatus == .playing
+                    Task { @MainActor [weak self] in
+                        guard let self, self.itemGeneration == generation, !self.ended else { return }
+                        self.updateWatchTime(playing: playing)
+                        if playing { self.playbackStarted() }
                     }
                 }
                 player.replaceCurrentItem(with: item)
@@ -150,14 +208,125 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 player.play()
                 startConflictPolling()
             } catch {
-                if case PigTVError.recordingConflict(let conflict) = error, !ended {
+                guard !ended else { return }
+                reconnecting = false
+                if case PigTVError.recordingConflict(let conflict) = error {
                     recordingConflict = conflict
-                } else if !ended {
-                    self.error = error.localizedDescription
+                } else if case PigTVError.viewerConflict(let message) = error {
+                    viewerConflict = message
+                } else {
+                    self.error = hasPlayed ? "The stream ended. \(error.localizedDescription)" : error.localizedDescription
+                    canRetry = true
                 }
-                if let sessionID { try? await client.release(sessionID); self.sessionID = nil }
+                // Keep the session ID if cleanup fails so Retry/stop can retry release.
+                if let sessionID {
+                    do { try await client.release(sessionID); self.sessionID = nil }
+                    catch PigTVError.http(404) { self.sessionID = nil }
+                    catch { coordinationWarning = "The server did not confirm releasing the previous stream." }
+                }
             }
         }
+    }
+
+    func playbackStarted() {
+        guard !ended, !handlingFailure else { return }
+        hasPlayed = true
+        reconnecting = false
+        if !firstPlayReported, var event = eventContext {
+            firstPlayReported = true
+            event.totalMs = Date().timeIntervalSince(resolveBegan) * 1000
+            report(event)
+        }
+    }
+
+    func playbackFailed(detail: String, codeName: String? = nil, code: Int? = nil) {
+        guard !ended, !handlingFailure else { return }
+        handlingFailure = true
+        if let context = eventContext {
+            var event = PlaybackEvent(event: "media-error")
+            event.strategy = context.strategy
+            event.path = context.path
+            event.codeName = codeName ?? "PlayerError"
+            event.code = code
+            event.message = String(detail.prefix(200))
+            event.currentTime = finite(player.currentTime().seconds)
+            if let range = player.currentItem?.loadedTimeRanges.last?.timeRangeValue {
+                event.bufferedEnd = finite(CMTimeRangeGetEnd(range).seconds)
+            }
+            report(event)
+        }
+        clearItem()
+        if hasPlayed && !recoveryUsed {
+            recoveryUsed = true
+            reconnecting = true
+            // A callback can arrive while start() is finishing. Wait for it,
+            // then check dismissal before issuing exactly one new resolve.
+            let pending = resolveTask
+            Task { [weak self] in
+                await pending?.value
+                guard let self, !self.ended else { return }
+                self.start()
+            }
+        } else {
+            reconnecting = false
+            error = hasPlayed ? "The stream ended. Try again to reconnect." : "Playback could not start. \(detail)"
+            canRetry = true
+        }
+    }
+
+    func retry() {
+        guard canRetry, resolveTask == nil, !ended else { return }
+        recoveryUsed = false
+        hasPlayed = false
+        error = nil
+        clearItem()
+        start()
+    }
+
+    private func clearItem() {
+        finishMeasurement()
+        itemGeneration = UUID()
+        observation = nil
+        playbackObservation = nil
+        if let failedNotification { NotificationCenter.default.removeObserver(failedNotification) }
+        failedNotification = nil
+        if let stallNotification { NotificationCenter.default.removeObserver(stallNotification) }
+        stallNotification = nil
+        conflictTask?.cancel()
+        conflictTask = nil
+        recordingPrompt = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        ready = false
+    }
+
+    private func finite(_ value: Double) -> Double? { value.isFinite ? value : nil }
+
+    private func updateWatchTime(playing: Bool) {
+        let now = Date()
+        if let playingSince { watchedSeconds += max(0, now.timeIntervalSince(playingSince)) }
+        playingSince = playing ? now : nil
+    }
+
+    private func finishMeasurement() {
+        updateWatchTime(playing: false)
+        if firstPlayReported, watchedSeconds >= 10, let context = eventContext {
+            var event = PlaybackEvent(event: "play-end")
+            event.strategy = context.strategy
+            event.container = context.container
+            event.videoMode = context.videoMode
+            event.watchedSec = watchedSeconds
+            event.stalls = stalls
+            report(event)
+        }
+        eventContext = nil
+        firstPlayReported = false
+        watchedSeconds = 0
+    }
+
+    private func report(_ event: PlaybackEvent) {
+        let client = client
+        Task { await client.reportPlaybackEvent(event) }
     }
 
     nonisolated private static func failureCodes(_ error: NSError?) -> String {
@@ -179,11 +348,16 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
 
     func confirmRecordingStop() {
-        guard recordingConflict != nil, !ended else { return }
+        guard recordingConflict != nil, !ended, resolveTask == nil else { return }
         // Only a deliberate button press enters this path. Never automatically
         // repeat a 409 with force, even if the previous recording has ended.
         recordingConflict = nil
-        resolveTask = nil
+        start(force: true)
+    }
+
+    func confirmViewerStop() {
+        guard viewerConflict != nil, !ended, resolveTask == nil else { return }
+        viewerConflict = nil
         start(force: true)
     }
 
@@ -242,13 +416,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     func stop() async -> String? {
         if let stopTask { return await stopTask.value }
         ended = true
-        conflictTask?.cancel()
-        conflictTask = nil
-        recordingPrompt = nil
-        player.pause()
-        player.replaceCurrentItem(with: nil)
-        observation = nil
-        ready = false
+        clearItem()
         let task = Task<String?, Never> {
             await resolveTask?.value
             await Task.detached(priority: .utility) {
@@ -256,6 +424,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             }.value
             if let sessionID {
                 do { try await client.release(sessionID) }
+                catch PigTVError.http(404) { /* session already expired */ }
                 catch { return "Playback stopped on this device, but the server did not confirm releasing its stream. Check PigTV before starting another stream." }
                 self.sessionID = nil
             }

@@ -45,6 +45,7 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Sendable {
     var end: Date { Date(timeIntervalSince1970: program_end / 1000) }
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }
     var isActive: Bool { canCancel }
+    var statusLabel: String { status == "waiting" ? "Waiting — someone is watching" : status.capitalized }
     // Guide cells match schedules by channel name and programme start.
     var guideKey: String { ScheduledRecording.key(channel: channel_name ?? "", start: program_start) }
     static func key(channel: String, start: Double) -> String { "\(channel)|\(Int64(start))" }
@@ -224,4 +225,10 @@ nonisolated struct EPGArtworkIndex: Sendable {
         }
         return result
     }
+}
+
+nonisolated struct RecordingPlayback: Decodable, Sendable {
+    let url: String
+    let container: String?
+    let durationSec: Double?
 }

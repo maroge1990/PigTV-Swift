@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var unreachable: String?
     @Published private(set) var pairing: PairStart?
     @Published private(set) var user: User?
+    @Published private(set) var serverInfo: ServerInfo?
     @Published private(set) var categories: [Category] = []
     @Published private(set) var channels: [Channel] = []
     @Published private(set) var libraryBusy = false
@@ -31,6 +32,7 @@ final class AppModel: ObservableObject {
     // channel list sheet and clears it.
     @Published var channelSheetRequested = false
 
+    private var authRetry: (server: String, until: Date)?
     private var client: APIClient?
     private let keychain = KeychainStore()
     private var pairingTask: Task<Void, Never>?
@@ -52,8 +54,10 @@ final class AppModel: ObservableObject {
             let info: ServerInfo = try await candidate.request("info")
             try info.validate()
             let user: User = try await candidate.request("auth/me")
-            self.client = candidate
-            self.browse = BrowseModel(client: candidate)
+            let authenticated = APIClient(address: address, token: token, info: info)
+            self.client = authenticated
+            self.serverInfo = info
+            self.browse = BrowseModel(client: authenticated)
             self.user = user
             canRestore = false
             unreachable = nil
@@ -84,7 +88,7 @@ final class AppModel: ObservableObject {
     }
 
     func login() async {
-        guard !authBusy else { return }
+        guard allowAuthAttempt(), !authBusy else { return }
         cancelPairing()
         authBusy = true
         defer { authBusy = false }
@@ -95,12 +99,25 @@ final class AppModel: ObservableObject {
             try info.validate()
             let response: LoginResponse = try await candidate.request("auth/login", method: "POST",
                 body: LoginBody(username: username, password: password))
-            try await accept(token: response.token, address: address, user: response.user)
-        } catch { self.error = error.localizedDescription }
+            try await accept(token: response.token, address: address, info: info, user: response.user)
+        } catch { recordAuthFailure(error) }
     }
 
-    private func accept(token: String, address: ServerAddress, user: User? = nil) async throws {
-        let candidate = APIClient(address: address, token: token)
+    private func allowAuthAttempt() -> Bool {
+        guard let authRetry, authRetry.server == serverText, authRetry.until > Date() else { return true }
+        error = PigTVError.rateLimited(retryAfterSec: Int(ceil(authRetry.until.timeIntervalSinceNow))).localizedDescription
+        return false
+    }
+
+    private func recordAuthFailure(_ failure: Error) {
+        if case PigTVError.rateLimited(let seconds) = failure {
+            authRetry = (serverText, Date().addingTimeInterval(Double(seconds)))
+        }
+        error = failure.localizedDescription
+    }
+
+    private func accept(token: String, address: ServerAddress, info: ServerInfo, user: User? = nil) async throws {
+        let candidate = APIClient(address: address, token: token, info: info)
         let resolvedUser: User
         if let user { resolvedUser = user }
         else { resolvedUser = try await candidate.request("auth/me") }
@@ -108,6 +125,7 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(address.url.absoluteString, forKey: "pigtv.server")
         serverText = address.url.absoluteString
         self.client = candidate
+        self.serverInfo = info
         self.browse = BrowseModel(client: candidate)
         self.user = resolvedUser
         password = ""
@@ -119,7 +137,7 @@ final class AppModel: ObservableObject {
     }
 
     func startPairing() {
-        guard !authBusy else { return }
+        guard allowAuthAttempt(), !authBusy else { return }
         cancelPairing()
         let generation = authGeneration
         authBusy = true
@@ -153,7 +171,7 @@ final class AppModel: ObservableObject {
                     case "pending": continue
                     case "approved":
                         guard let token = poll.token, !token.isEmpty else { throw PigTVError.decoding }
-                        try await accept(token: token, address: address)
+                        try await accept(token: token, address: address, info: info)
                         return
                     case "expired", "claimed":
                         throw PigTVError.message("This pairing code is no longer available. Request another code.")
@@ -162,7 +180,7 @@ final class AppModel: ObservableObject {
                 }
                 throw PigTVError.message("The pairing code expired. Request another code.")
             } catch {
-                if generation == authGeneration, !Task.isCancelled { self.error = error.localizedDescription }
+                if generation == authGeneration, !Task.isCancelled { recordAuthFailure(error) }
             }
         }
     }
@@ -188,6 +206,7 @@ final class AppModel: ObservableObject {
         cancelPairing()
         libraryGeneration = UUID()
         client = nil
+        serverInfo = nil
         browse = nil
         user = nil
         password = ""

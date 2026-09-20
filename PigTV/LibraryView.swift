@@ -280,6 +280,10 @@ struct LibrarySettings: View {
                     Button("Sign out", role: .destructive) { confirmSignOut = true }
                         .disabled(model.playbackBusy)
                 }
+                Section("Version") {
+                    LabeledContent("App", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
+                    LabeledContent("Server", value: model.serverInfo?.identity ?? "Unknown")
+                }
                 if !isTab {
                     Section { Button("Done") { dismiss() } }
                 }

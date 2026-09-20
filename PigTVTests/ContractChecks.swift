@@ -9,6 +9,8 @@ private struct CheckFailure: Error, CustomStringConvertible {
 
 private final class FixtureProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var responseStatus = 200
+    nonisolated(unsafe) static var responseHeaders = [String: String]()
+    nonisolated(unsafe) static var requestCount = 0
     nonisolated(unsafe) static var responseData = Data()
     nonisolated(unsafe) static var capturedRequest: URLRequest?
     nonisolated(unsafe) static var capturedBody = Data()
@@ -16,6 +18,7 @@ private final class FixtureProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        Self.requestCount += 1
         Self.capturedRequest = request
         Self.capturedBody = request.httpBody ?? Data()
         if let stream = request.httpBodyStream {
@@ -29,7 +32,7 @@ private final class FixtureProtocol: URLProtocol, @unchecked Sendable {
             }
         }
         let response = HTTPURLResponse(url: request.url!, statusCode: Self.responseStatus,
-            httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+            httpVersion: "HTTP/1.1", headerFields: Self.responseHeaders.merging(["Content-Type": "application/json"]) { current, _ in current })!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Self.responseData)
         client?.urlProtocolDidFinishLoading(self)
@@ -249,6 +252,118 @@ enum ContractChecks {
         try expect(index.logo(tvgID: "abc", name: "ABC TV (AU)") == nil, "Blank icons are ignored")
         try expect(index.logo(tvgID: "bad", name: "Bad") == nil, "Only web URLs are accepted as icons")
         try expect(fixtureAPI.artworkRequest("javascript:alert(1)") == nil, "Non-HTTP icons never become requests")
+        // Server 0086: feature flags are optional; behaviour is capability-gated.
+        let modernInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0086","display":"v3.7.0 · build 0086","apiVersion":1,"features":{"library":true,"playbackResolve":true,"viewerConflict":true,"epgLogoFallback":true,"clientEvents":true,"scheduledWaiting":true,"recordingPlaybackPolling":true}}"#.utf8))
+        try expect(modernInfo.identity == "v3.7.0 · build 0086", "Settings must retain server display/build")
+        try expect(info.features.recordingPlaybackPolling == nil && info.build == nil, "Legacy info must remain compatible")
+        let modern = APIClient(address: address, token: "fixture-token", session: URLSession(configuration: configuration), info: modernInfo)
+        try expect(modern.info?.features.epgLogoFallback == true, "Authenticated client retains capabilities")
+        FixtureProtocol.responseStatus = 409
+        FixtureProtocol.responseData = Data(#"{"error":"Provider stream is in use","conflict":{"type":"viewer-in-progress","streamId":"abc123","lastActiveSec":4,"message":"Another device is watching."}}"#.utf8)
+        do { let _: PlaybackDecision = try await modern.request("playback/resolve", method: "POST", body: request); throw CheckFailure(description: "Viewer conflict must throw") }
+        catch PigTVError.viewerConflict(let message) { try expect(message == "Another device is watching.", "Viewer message must survive decoding") }
+        for payload in [#"{"conflict":{"type":"recording-in-progress","title":"Incomplete"}}"#, #"{"conflict":{"type":"future-type"}}"#] {
+            FixtureProtocol.responseData = Data(payload.utf8)
+            do { let _: PlaybackDecision = try await modern.request("playback/resolve"); throw CheckFailure(description: "Unknown/malformed conflict must fail safely") }
+            catch PigTVError.http(409) { count += 1 }
+        }
+        FixtureProtocol.responseData = Data(#"{"conflict":{"type":"viewer-in-progress"}}"#.utf8)
+        do { let _: PlaybackDecision = try await modern.request("playback/resolve"); throw CheckFailure(description: "Minimal viewer conflict must throw") }
+        catch PigTVError.viewerConflict(let message) { try expect(!message.isEmpty, "Missing message gets a useful fallback") }
+        FixtureProtocol.responseStatus = 429
+        FixtureProtocol.responseData = Data(#"{"error":"Too many attempts","retryAfterSec":840}"#.utf8)
+        do { let _: User = try await modern.request("auth/login"); throw CheckFailure(description: "429 must throw") }
+        catch PigTVError.rateLimited(let seconds) { try expect(seconds == 840, "Read body retry delay") }
+        FixtureProtocol.responseData = Data(#"{"retryAfterSec":"invalid"}"#.utf8)
+        FixtureProtocol.responseHeaders = ["Retry-After": "120"]
+        do { let _: User = try await modern.request("auth/login"); throw CheckFailure(description: "429 must throw") }
+        catch PigTVError.rateLimited(let seconds) { try expect(seconds == 120, "Read header when body delay is malformed") }
+        FixtureProtocol.responseHeaders = [:]
+        do { let _: User = try await modern.request("auth/login"); throw CheckFailure(description: "429 must throw") }
+        catch PigTVError.rateLimited(let seconds) { try expect(seconds == 60, "429 missing delay gets safe fallback") }
+
+        let readyRecording = Data(#"{"url":"/api/recordings/12/media.mp4","container":"mp4","durationSec":3600}"#.utf8)
+        FixtureProtocol.responseStatus = 202
+        FixtureProtocol.responseData = Data(#"{"status":"preparing","retryAfterSec":3}"#.utf8)
+        let beforePoll = FixtureProtocol.requestCount
+        var delays: [Double] = []
+        var preparingCount = 0
+        let prepared = try await modern.recordingPlayback(id: 12, sleep: { seconds in
+            delays.append(seconds)
+            FixtureProtocol.responseStatus = 200
+            FixtureProtocol.responseData = readyRecording
+        }, preparing: { preparingCount += 1 })
+        try expect(prepared.container == "mp4" && delays == [3] && preparingCount == 1, "202 waits then returns ready MP4")
+        try expect(FixtureProtocol.requestCount == beforePoll + 2, "Preparation polls exactly as needed")
+        try expect(FixtureProtocol.capturedRequest?.url?.query == "async=1", "Async query must be encoded separately")
+        let _: RecordingPlayback = try await fixtureAPI.recordingPlayback(id: 12)
+        try expect(FixtureProtocol.capturedRequest?.url?.query == nil, "Older servers retain the blocking request")
+
+        FixtureProtocol.responseStatus = 202
+        FixtureProtocol.responseData = Data(#"{"status":"preparing"}"#.utf8)
+        FixtureProtocol.responseHeaders = ["Retry-After": "7"]
+        let _: RecordingPlayback = try await modern.recordingPlayback(id: 12, sleep: { seconds in
+            try expect(seconds == 7, "Preparation falls back to Retry-After header")
+            FixtureProtocol.responseStatus = 200
+            FixtureProtocol.responseData = readyRecording
+        })
+        FixtureProtocol.responseHeaders = [:]
+        FixtureProtocol.responseStatus = 202
+        FixtureProtocol.responseData = Data(#"{"status":"preparing","retryAfterSec":0}"#.utf8)
+        let _: RecordingPlayback = try await modern.recordingPlayback(id: 12, sleep: { seconds in
+            try expect(seconds == 3, "Invalid delay cannot create a tight polling loop")
+            FixtureProtocol.responseStatus = 200
+            FixtureProtocol.responseData = readyRecording
+        })
+        FixtureProtocol.responseStatus = 202
+        FixtureProtocol.responseData = Data(#"{"status":"preparing","retryAfterSec":3}"#.utf8)
+        var simulatedNow = Date()
+        let beforeTimeout = FixtureProtocol.requestCount
+        do {
+            let _ = try await modern.recordingPlayback(id: 12, timeout: 2, now: { simulatedNow }, sleep: { seconds in simulatedNow += seconds })
+            throw CheckFailure(description: "Preparation must time out")
+        } catch PigTVError.message { try expect(FixtureProtocol.requestCount == beforeTimeout + 1, "Deadline stops polling") }
+        let beforeCancel = FixtureProtocol.requestCount
+        do {
+            let _ = try await modern.recordingPlayback(id: 12, sleep: { _ in throw CancellationError() })
+            throw CheckFailure(description: "Preparation cancellation must propagate")
+        } catch is CancellationError { try expect(FixtureProtocol.requestCount == beforeCancel + 1, "Cancellation stops polling") }
+        FixtureProtocol.responseStatus = 500
+        for reason in ["file-missing", "remux-failed"] {
+            FixtureProtocol.responseData = Data("{\"status\":\"failed\",\"reason\":\"\(reason)\"}".utf8)
+            let beforeFailure = FixtureProtocol.requestCount
+            do { let _ = try await modern.recordingPlayback(id: 12); throw CheckFailure(description: "Preparation failure must stop") }
+            catch PigTVError.recordingPreparationFailed(let actual) {
+                try expect(actual == reason && FixtureProtocol.requestCount == beforeFailure + 1, "Terminal failure cannot restart remux automatically")
+            }
+        }
+        for status in [401, 404, 409] {
+            FixtureProtocol.responseStatus = status
+            FixtureProtocol.responseData = Data(#"{"error":"Unavailable"}"#.utf8)
+            let beforeFailure = FixtureProtocol.requestCount
+            do { let _ = try await modern.recordingPlayback(id: 12); throw CheckFailure(description: "Recording error must stop") }
+            catch is PigTVError { try expect(FixtureProtocol.requestCount == beforeFailure + 1, "Recording auth/not-found/conflict cannot poll") }
+        }
+        let waiting = try JSONDecoder().decode(ScheduledRecording.self, from: Data(#"{"id":7,"title":"Show","program_start":1000,"program_end":3000,"status":"waiting"}"#.utf8))
+        try expect(waiting.canCancel && waiting.statusLabel == "Waiting — someone is watching", "Waiting schedule is explained and cancellable")
+        FixtureProtocol.responseStatus = 204
+        FixtureProtocol.responseData = Data()
+        let beforeEvent = FixtureProtocol.requestCount
+        await fixtureAPI.reportPlaybackEvent(PlaybackEvent(event: "play-start"))
+        try expect(FixtureProtocol.requestCount == beforeEvent, "Missing clientEvents flag disables diagnostics")
+        await modern.reportPlaybackEvent(PlaybackEvent(event: "play-start"))
+        try expect(FixtureProtocol.capturedRequest?.url?.path == "/api/playback/client-event", "Diagnostics use the documented endpoint")
+        try expect(FixtureProtocol.capturedRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token", "Diagnostics retain device authentication")
+        var diagnostic = PlaybackEvent(event: "media-error")
+        diagnostic.path = "/api/transcode/test/stream.m3u8?token=must-not-leak&url=provider-secret"
+        await modern.reportPlaybackEvent(diagnostic)
+        let eventJSON = try JSONSerialization.jsonObject(with: FixtureProtocol.capturedBody) as! [String: Any]
+        try expect(eventJSON["path"] as? String == "/api/transcode/test/stream.m3u8", "Diagnostics strip all query parameters")
+        try expect(!String(decoding: FixtureProtocol.capturedBody, as: UTF8.self).contains("must-not-leak"), "Diagnostic body cannot carry playback token")
+        FixtureProtocol.responseStatus = 500
+        await modern.reportPlaybackEvent(PlaybackEvent(event: "media-error"))
+        count += 1 // best effort: a server failure never throws into playback
+
         return count
     }
 }

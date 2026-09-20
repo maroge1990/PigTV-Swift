@@ -3,6 +3,9 @@ import Foundation
 struct ServerInfo: Decodable {
     let name: String
     let version: String
+    let build: String?
+    let display: String?
+    var identity: String { display ?? "v\(version)" + (build.map { " · build \($0)" } ?? "") }
     let apiVersion: Int
     let features: Features
 
@@ -10,6 +13,11 @@ struct ServerInfo: Decodable {
         let playbackResolve: Bool?
         let library: Bool?
         let devicePairing: Bool?
+        let viewerConflict: Bool?
+        let epgLogoFallback: Bool?
+        let clientEvents: Bool?
+        let scheduledWaiting: Bool?
+        let recordingPlaybackPolling: Bool?
     }
 
     func validate() throws {
@@ -79,6 +87,7 @@ struct PlaybackDecision: Decodable {
     let url: String
     let container: String?
     let sessionId: String?
+    let videoMode: String?
 }
 
 struct PairStart: Decodable {
@@ -117,6 +126,9 @@ enum PigTVError: LocalizedError, Equatable {
     case http(Int)
     case decoding
     case recordingConflict(RecordingConflict)
+    case viewerConflict(message: String)
+    case rateLimited(retryAfterSec: Int)
+    case recordingPreparationFailed(reason: String?)
     case message(String)
 
     var errorDescription: String? {
@@ -125,6 +137,10 @@ enum PigTVError: LocalizedError, Equatable {
         case .unauthorised: return "Please sign in or pair again. Your credentials were rejected or have expired."
         case .forbidden: return "Your account does not have permission for this action."
         case .http(let status): return "The server returned HTTP \(status). Please try again."
+        case .viewerConflict(let message): return message
+        case .rateLimited(let seconds): return "Too many attempts — try again in \(max(1, Int(ceil(Double(seconds) / 60)))) minutes."
+        case .recordingPreparationFailed(let reason):
+            return reason == "file-missing" ? "The recording file is missing from the server's storage." : "The server could not prepare this recording."
         case .recordingConflict: return "A recording is using the provider stream. Confirm before stopping it."
         case .decoding: return "The server returned an unexpected response. Check that PigTV is up to date."
         case .message(let message): return message
@@ -153,7 +169,9 @@ struct RecordingPrompt: Decodable, Equatable, Identifiable {
 
 struct ServerErrorResponse: Decodable {
     let error: String?
-    let conflict: RecordingConflict?
+    let conflict: PlaybackConflict?
+    let retryAfterSec: Int?
+    let reason: String?
 }
 
 struct DeclineBody: Encodable {
@@ -162,4 +180,45 @@ struct DeclineBody: Encodable {
 
 struct ActionResult: Decodable {
     let success: Bool
+}
+
+// Viewer and recording conflicts share an envelope, but not the required fields.
+struct PlaybackConflict: Decodable {
+    let type: String
+    let message: String?
+    let scheduleId: Int?
+    let title: String?
+    let channelName: String?
+    let endsAt: Double?
+    let streamId: String?
+    let lastActiveSec: Double?
+
+    var recording: RecordingConflict? {
+        guard type == "recording-in-progress", let scheduleId, let title, let channelName, let endsAt else { return nil }
+        return RecordingConflict(type: type, scheduleId: scheduleId, title: title, channelName: channelName, endsAt: endsAt)
+    }
+}
+
+struct RecordingPreparing: Decodable {
+    let status: String
+    let retryAfterSec: Double?
+}
+
+// A deliberately narrow diagnostics payload: never include arbitrary error text or URLs.
+struct PlaybackEvent: Encodable {
+    let event: String
+    var strategy: String?
+    var container: String?
+    var videoMode: String?
+    var hlsDelivery = true
+    var codeName: String?
+    var code: Int?
+    var message: String?
+    var path: String?
+    var currentTime: Double?
+    var bufferedEnd: Double?
+    var resolveMs: Double?
+    var totalMs: Double?
+    var watchedSec: Double?
+    var stalls: Int?
 }

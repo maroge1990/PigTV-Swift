@@ -15,7 +15,13 @@ struct PigTVApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" {
+                    Color.clear
+                } else {
+                    ContentView()
+                }
+            }
                 .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
         }
     }

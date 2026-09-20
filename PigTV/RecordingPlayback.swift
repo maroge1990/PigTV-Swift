@@ -2,22 +2,16 @@ import SwiftUI
 import AVKit
 import Combine
 
-// Server contract (proposed, see HANDOVER "Recording playback"): the server
-// answers GET /api/recordings/{id}/playback with an Apple-compatible media
-// URL under /api/recordings/. Older servers return 404 and the UI says so.
-nonisolated struct RecordingPlayback: Decodable, Sendable {
-    let url: String
-    let container: String?
-    let durationSec: Double?
-}
-
+// Server playback contract: authenticated MP4 under /api/recordings/.
+// Capable servers prepare asynchronously; APIClient owns bounded polling.
 @MainActor
 final class RecordingPlayerModel: ObservableObject {
     let recording: Recording
     let player = AVPlayer()
     @Published private(set) var ready = false
     @Published private(set) var error: String?
-    @Published private(set) var unsupported = false
+    @Published private(set) var preparing = false
+    @Published private(set) var canRetry = false
     @Published private(set) var inBreak: CommercialBreak?
     @Published private(set) var breaks: [CommercialBreak] = []
     @Published var autoSkip = UserDefaults.standard.bool(forKey: "pigtv.recordings.autoSkip") {
@@ -27,7 +21,10 @@ final class RecordingPlayerModel: ObservableObject {
     private var observer: Any?
     private var statusObservation: NSKeyValueObservation?
     private var started = false
+    private var stopped = false
+    private var startupTask: Task<Void, Never>?
     private var lastSkipped: Int?
+    private var generation = UUID()
 
     init(recording: Recording, client: APIClient) {
         self.recording = recording
@@ -38,39 +35,70 @@ final class RecordingPlayerModel: ObservableObject {
     private var resumeKey: String { "pigtv.resume.\(recording.id)" }
 
     func start() {
-        guard !started else { return }
+        guard !started, !stopped else { return }
         started = true
-        Task {
+        error = nil
+        canRetry = false
+        let generation = UUID()
+        self.generation = generation
+        startupTask = Task { [self] in
+            defer { preparing = false; startupTask = nil }
             do {
                 let markers: RecordingMarkers? = try? await client.request("recordings/\(recording.id)/markers")
+                try Task.checkCancellation()
+                guard !stopped else { return }
                 breaks = (markers?.markers ?? []).filter { $0.valid && $0.type == "ad" }.sorted { $0.startMs < $1.startMs }
-                let playback: RecordingPlayback
-                do { playback = try await client.request("recordings/\(recording.id)/playback") }
-                catch PigTVError.http(404) { unsupported = true; return }
+                let playback = try await client.recordingPlayback(id: recording.id, preparing: { self.preparing = true })
+                try Task.checkCancellation()
+                guard !stopped else { return }
                 let url = try client.playbackURL(playback.url)
                 try await Task.detached(priority: .userInitiated) {
                     try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
                     try AVAudioSession.sharedInstance().setActive(true)
                 }.value
+                try Task.checkCancellation()
+                guard !stopped else { return }
                 let item = AVPlayerItem(url: url)
                 statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
                     guard item.status == .failed else { return }
-                    Task { @MainActor in self?.error = "Playback could not start. The server's recording stream was refused by the player." }
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.stopped, self.generation == generation else { return }
+                        self.player.pause()
+                        self.error = "Playback could not start. The server's recording stream was refused by the player."
+                        self.canRetry = true
+                    }
                 }
                 player.replaceCurrentItem(with: item)
                 let resume = UserDefaults.standard.double(forKey: resumeKey)
                 if resume > 10, let duration = recording.duration_sec, resume < duration - 30 {
                     await player.seek(to: CMTime(seconds: resume, preferredTimescale: 600))
                 }
+                try Task.checkCancellation()
+                guard !stopped, error == nil else { return }
                 observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1, preferredTimescale: 10), queue: .main) { [weak self] time in
-                    Task { @MainActor in self?.tick(time.seconds) }
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.stopped, self.generation == generation else { return }
+                        self.tick(time.seconds)
+                    }
                 }
                 ready = true
                 player.play()
             } catch {
-                self.error = error.localizedDescription
+                guard !stopped, !Task.isCancelled else { return }
+                self.error = error as? PigTVError == .http(404)
+                    ? "This recording is no longer available, or this server does not support recording playback."
+                    : error.localizedDescription
+                canRetry = true
             }
         }
+    }
+
+    func retry() {
+        guard canRetry, !stopped, startupTask == nil else { return }
+        clearPlayer()
+        started = false
+        lastSkipped = nil
+        start()
     }
 
     private func tick(_ seconds: Double) {
@@ -89,7 +117,10 @@ final class RecordingPlayerModel: ObservableObject {
         inBreak = nil
     }
 
-    func stop() async {
+    private func clearPlayer() {
+        generation = UUID()
+        inBreak = nil
+        ready = false
         if let observer { player.removeTimeObserver(observer) }
         observer = nil
         statusObservation = nil
@@ -98,6 +129,14 @@ final class RecordingPlayerModel: ObservableObject {
         }
         player.pause()
         player.replaceCurrentItem(with: nil)
+    }
+
+    func stop() async {
+        stopped = true
+        let pending = startupTask
+        pending?.cancel()
+        clearPlayer()
+        await pending?.value
         await Task.detached(priority: .utility) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }.value
@@ -115,17 +154,11 @@ struct RecordingPlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if model.unsupported {
-                VStack(spacing: 20) {
-                    Text("Recording playback is not available on this server yet").font(.title2.bold())
-                    Text("The server needs the recording playback endpoint described in the handover. Until then, recordings play in the web app.")
-                        .multilineTextAlignment(.center).foregroundStyle(.secondary).frame(maxWidth: 700)
-                    Button("Back") { dismiss() }
-                }.padding(48).foregroundStyle(.white)
-            } else if let error = model.error {
+            if let error = model.error {
                 VStack(spacing: 20) {
                     Text("Unable to play \(model.recording.title)").font(.title2)
                     Text(error)
+                    if model.canRetry { Button("Retry") { model.retry() } }
                     Button("Back") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
             } else if model.ready {
@@ -144,7 +177,7 @@ struct RecordingPlayerScreen: View {
                     #endif
             } else {
                 VStack(spacing: 24) {
-                    ProgressView("Loading recording…")
+                    ProgressView(model.preparing ? "Preparing recording…" : "Loading recording…")
                     Button("Cancel") { dismiss() }
                 }.foregroundStyle(.white)
             }

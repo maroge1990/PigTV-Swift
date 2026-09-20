@@ -64,7 +64,7 @@ struct RecordingsView: View {
                                 Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
                                 Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
                                     .font(.caption)
-                                Text(item.status.capitalized).font(.caption.bold())
+                                Text(item.statusLabel).font(.caption.bold())
                                 if item.canCancel {
                                     Button(item.status == "recording" ? "Stop recording" : "Cancel schedule", role: .destructive) {
                                         cancellation = item

@@ -154,7 +154,7 @@ final class BrowseModel: ObservableObject {
     var recordingChannels: Set<String> { Set(schedules.filter { $0.status == "recording" }.compactMap(\.channel_name)) }
 
     func loadArtworkIndex() async {
-        guard !artworkBusy, !artworkLoaded else { return }
+        guard client.info?.features.epgLogoFallback != true, !artworkBusy, !artworkLoaded else { return }
         artworkBusy = true
         artworkError = nil
         defer { artworkBusy = false }
