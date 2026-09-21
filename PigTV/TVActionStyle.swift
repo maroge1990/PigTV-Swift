@@ -11,6 +11,26 @@ struct TVActionStyle: PrimitiveButtonStyle {
     }
 }
 
+// Shared by guide cells and recordings: every non-focused action keeps the
+// readable page-surface/text pairing, while the focused action gains the same
+// pink outline instead of inheriting a platform-dependent bordered-button tint.
+struct PigSurfaceButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var focused
+    @Environment(\.colorScheme) private var scheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.primary)
+            .background(focused ? Color.accentColor.opacity(0.22) : Color.guideCell(scheme),
+                        in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(focused ? Color.accentColor : .clear, lineWidth: 3)
+            }
+            .scaleEffect(1)
+    }
+}
+
 extension View {
     @ViewBuilder
     func pigPrimaryButton() -> some View {

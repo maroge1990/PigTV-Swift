@@ -350,7 +350,7 @@ struct GuideView: View {
                         }
                     }
             }
-            .buttonStyle(GuideCellStyle())
+            .buttonStyle(PigSurfaceButtonStyle())
             .focused($focus, equals: GuideFocus(channel: channel.id, start: nil))
             .accessibilityLabel(channel.name)
             .contextMenu {
@@ -517,19 +517,6 @@ struct GuideView: View {
         focus = retainedFocus
         Task { await model.loadFavourites() }
         if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel) }
-    }
-}
-
-private struct GuideCellStyle: ButtonStyle {
-    @Environment(\.isFocused) private var focused
-    @Environment(\.colorScheme) private var scheme
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.primary)
-            .background(focused ? Color.accentColor.opacity(0.22) : Color.guideCell(scheme),
-                        in: RoundedRectangle(cornerRadius: 10))
-            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(focused ? Color.accentColor : .clear, lineWidth: 3) }
-            .scaleEffect(1)
     }
 }
 
@@ -764,7 +751,7 @@ private struct GuideTimelineRow: View {
             Color.clear
             if visible.isEmpty {
                 Button("No programme information — watch live", action: watch)
-                    .font(GuideTypography.body).buttonStyle(GuideCellStyle())
+                    .font(GuideTypography.body).buttonStyle(PigSurfaceButtonStyle())
                     .frame(width: width, height: height)
                     .focused(focus, equals: GuideFocus(channel: channel.id, start: -1))
             }
@@ -804,7 +791,7 @@ private struct GuideTimelineRow: View {
             .frame(width: cellWidth, height: height - 4, alignment: .leading)
             .clipped()
         }
-        .buttonStyle(GuideCellStyle())
+        .buttonStyle(PigSurfaceButtonStyle())
         // Finished programmes cannot be played or recorded: keep them for
         // context, but out of the focus path and visibly in the past.
         .disabled(programme.end <= clock)

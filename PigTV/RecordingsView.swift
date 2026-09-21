@@ -21,6 +21,7 @@ struct RecordingsView: View {
                         Text("Scheduled").tag("scheduled")
                     }.pickerStyle(.segmented)
                     Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.loadRecordings() } }
+                        .buttonStyle(PigSurfaceButtonStyle())
                         .disabled(model.recordingsBusy)
                 }.padding(.horizontal, 32)
                 if let error = model.recordingsError {
@@ -50,6 +51,7 @@ struct RecordingsView: View {
                                     }
                                 }.padding(.vertical, 10)
                             }
+                            .buttonStyle(PigSurfaceButtonStyle())
                         }
                     }
                     if filtered.isEmpty && !model.recordingsBusy {
