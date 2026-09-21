@@ -14,6 +14,17 @@ private struct GuideFocus: Hashable {
     let start: Double?
 }
 
+private struct FilterStripMetrics: Equatable {
+    var offset: CGFloat = 0
+    var viewportWidth: CGFloat = 0
+    var contentWidth: CGFloat = 0
+
+    private var maximumOffset: CGFloat { max(0, contentWidth - viewportWidth) }
+    private var overflows: Bool { maximumOffset > 1 }
+    var fadesLeading: Bool { overflows && offset > 1 }
+    var fadesTrailing: Bool { overflows && offset < maximumOffset - 1 }
+}
+
 struct GuideView: View {
     @ObservedObject var app: AppModel
     @ObservedObject var model: BrowseModel
@@ -35,6 +46,7 @@ struct GuideView: View {
     @State private var schedule: GuideChannel?
     @State private var pendingWatch: Channel?
     @State private var retainedFocus: GuideFocus?
+    @State private var filterStripMetrics = FilterStripMetrics()
     // Filtered rows are cached: filtering hundreds of channels inside `body`
     // on every focus change or clock tick is what made scrolling stutter.
     @State private var rows: [GuideChannel] = []
@@ -64,22 +76,28 @@ struct GuideView: View {
                     header(compact: compact)
                     filters(compact: compact)
                     if !compact {
-                    HStack {
+                    HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(focusedProgramme?.title ?? focusedChannel?.name ?? "Choose a programme to watch")
-                                .font(GuideTypography.body.weight(.semibold)).lineLimit(1)
+                                .font(GuideTypography.body.weight(.semibold)).lineLimit(1, reservesSpace: true)
                             Text(focusedDetail)
-                                .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(2)
+                                .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
                         }
+                        .frame(height: 78, alignment: .top)
                         Spacer()
                         if model.guideHasMore && model.guideError == nil {
                             ProgressView()
                             Text("\(model.guide.count) of \(model.guideTotal) channels")
                                 .font(GuideTypography.small).foregroundStyle(.secondary)
                         }
+                        if let programme = focusedProgramme, let channel = focusedChannel {
+                            Button("Details", systemImage: "text.expand") {
+                                selection = GuideSelection(channel: channel, programme: programme)
+                            }
+                        }
                         Button("Options", systemImage: "ellipsis.circle") { showOptions() }
                             .disabled(focusedChannel == nil)
-                    }.frame(minHeight: 60, alignment: .top).padding(.horizontal, 24)
+                    }.frame(height: 78, alignment: .top).padding(.horizontal, 24)
                     }
                     if let error = model.guideError {
                         RetryBanner(message: error) { reload() }
@@ -300,13 +318,29 @@ struct GuideView: View {
             }
             .scrollIndicators(.hidden)
             .clipped()
-            // Soft edges drawn over the strip; a mask would hide chips from the
-            // focus engine and stop the strip scrolling.
+            // Keep the focusable ScrollView unmasked. Transparent overlays fade
+            // only the edge that conceals additional categories; a mask here
+            // previously stopped tvOS focus from reaching obscured chips.
+            .onScrollGeometryChange(for: FilterStripMetrics.self, of: { geometry in
+                FilterStripMetrics(offset: max(0, geometry.contentOffset.x),
+                                   viewportWidth: geometry.containerSize.width,
+                                   contentWidth: geometry.contentSize.width)
+            }) { _, metrics in
+                filterStripMetrics = metrics
+            }
             .overlay {
                 HStack(spacing: 0) {
-                    LinearGradient(colors: [Color.pageBackground(scheme), .clear], startPoint: .leading, endPoint: .trailing).frame(width: 36)
+                    if filterStripMetrics.fadesLeading {
+                        LinearGradient(colors: [Color.pageBackground(scheme).opacity(0.72), .clear],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 36)
+                    }
                     Spacer()
-                    LinearGradient(colors: [.clear, Color.pageBackground(scheme)], startPoint: .leading, endPoint: .trailing).frame(width: 36)
+                    if filterStripMetrics.fadesTrailing {
+                        LinearGradient(colors: [.clear, Color.pageBackground(scheme).opacity(0.72)],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 36)
+                    }
                 }.allowsHitTesting(false)
             }
             .padding(.horizontal, 12)
@@ -342,7 +376,7 @@ struct GuideView: View {
                 if compact { schedule = channel } else { play(channel) }
             } label: {
                 ChannelTile(name: channel.name, logo: model.logo(for: channel), client: model.client)
-                    .padding(.horizontal, 8).padding(.vertical, 6).frame(width: channelWidth, height: rowHeight)
+                    .frame(width: channelWidth, height: rowHeight)
                     .overlay(alignment: .topTrailing) {
                         if recordingNow {
                             Circle().fill(Color.red).frame(width: 12, height: 12).padding(6)
@@ -526,13 +560,23 @@ private struct ChannelTile: View {
     let name: String
     let logo: String?
     let client: APIClient?
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
-        if logo != nil {
-            ChannelArtwork(logo: logo, client: client)
-        } else {
-            Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(3)
-                .multilineTextAlignment(.center).minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            // This is the only app-provided artwork backing: it fills the
+            // entire channel tile and remains darker than the guide surface in
+            // either appearance. Provider artwork may still contain its own
+            // pixels/background, but never receives a second app-made box.
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(scheme == .dark ? 0.52 : 0.62))
+            if logo != nil {
+                ChannelArtwork(logo: logo, client: client)
+            } else {
+                Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(3)
+                    .multilineTextAlignment(.center).minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 }
