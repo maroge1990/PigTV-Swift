@@ -80,7 +80,7 @@ final class AppModel: ObservableObject {
 
     private static func describe(_ error: URLError) -> String {
         switch error.code {
-        case .timedOut: return "PassyFlix did not answer in time. It may be asleep or busy."
+        case .timedOut: return "PigTV did not answer in time. It may be asleep or busy."
         case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
             return "This device cannot reach the server. Check that you are on the home network or that Tailscale is connected."
         default: return error.localizedDescription

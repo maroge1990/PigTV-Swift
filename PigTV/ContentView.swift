@@ -4,17 +4,24 @@ import AVKit
 struct ContentView: View {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var initialRestoreFinished = false
 
     var body: some View {
         Group {
-            if model.loggedIn { LibraryView(model: model) }
+            if !initialRestoreFinished { LaunchLoadingView() }
+            else if model.loggedIn { LibraryView(model: model) }
             else if let message = model.unreachable { UnreachableView(model: model, message: message).tint(Color("AccentColor")) }
             else { OnboardingView(model: model).tint(Color("AccentColor")) }
         }
         #if os(tvOS)
         .buttonStyle(TVActionStyle())
         #endif
-        .task { await model.restore() }
+        .task {
+            // This is a cold-launch handoff only. It has no arbitrary minimum
+            // duration and is not replayed when the app returns to foreground.
+            await model.restore()
+            initialRestoreFinished = true
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { Task { await model.background() } }
         }
@@ -25,6 +32,20 @@ struct ContentView: View {
         } message: { Text(model.error ?? "") }
         .fullScreenCover(isPresented: $model.playerPresented) {
             PlayerHost(app: model).tint(Color("AccentColor"))
+        }
+    }
+}
+
+private struct LaunchLoadingView: View {
+    var body: some View {
+        ZStack {
+            PigPageBackground()
+            VStack(spacing: 20) {
+                Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
+                Text("PigTV").font(.largeTitle.bold())
+                ProgressView("Starting PigTV…")
+            }
+            .padding(48)
         }
     }
 }
