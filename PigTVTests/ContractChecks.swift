@@ -252,12 +252,29 @@ enum ContractChecks {
         try expect(index.logo(tvgID: "abc", name: "ABC TV (AU)") == nil, "Blank icons are ignored")
         try expect(index.logo(tvgID: "bad", name: "Bad") == nil, "Only web URLs are accepted as icons")
         try expect(fixtureAPI.artworkRequest("javascript:alert(1)") == nil, "Non-HTTP icons never become requests")
-        // Server 0086: feature flags are optional; behaviour is capability-gated.
-        let modernInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0086","display":"v3.7.0 · build 0086","apiVersion":1,"features":{"library":true,"playbackResolve":true,"viewerConflict":true,"epgLogoFallback":true,"clientEvents":true,"scheduledWaiting":true,"recordingPlaybackPolling":true}}"#.utf8))
-        try expect(modernInfo.identity == "v3.7.0 · build 0086", "Settings must retain server display/build")
+        // Server features are optional; behaviour is capability-gated.
+        let modernInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0094","display":"v3.7.0 · build 0094","apiVersion":1,"features":{"library":true,"playbackResolve":true,"viewerConflict":true,"epgLogoFallback":true,"clientEvents":true,"scheduledWaiting":true,"recordingPlaybackPolling":true,"playbackTerminalStatus":true}}"#.utf8))
+        try expect(modernInfo.identity == "v3.7.0 · build 0094", "Settings must retain server display/build")
         try expect(info.features.recordingPlaybackPolling == nil && info.build == nil, "Legacy info must remain compatible")
         let modern = APIClient(address: address, token: "fixture-token", session: URLSession(configuration: configuration), info: modernInfo)
         try expect(modern.info?.features.epgLogoFallback == true, "Authenticated client retains capabilities")
+        FixtureProtocol.responseStatus = 200
+        FixtureProtocol.responseData = Data(#"{"status":"taken-over"}"#.utf8)
+        let takenOver = await modern.sessionWasTakenOver("session123")
+        try expect(takenOver, "Terminal status must identify a displaced session")
+        try expect(FixtureProtocol.capturedRequest?.url?.path == "/api/playback/session123/terminal-status", "Terminal status uses the documented endpoint")
+        try expect(FixtureProtocol.capturedRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token", "Terminal status retains bearer authentication")
+        FixtureProtocol.responseData = Data(#"{"status":"none"}"#.utf8)
+        let ordinaryExpiry = await modern.sessionWasTakenOver("session123")
+        try expect(!ordinaryExpiry, "Ordinary expiry keeps C2 recovery available")
+        FixtureProtocol.responseStatus = 404
+        let missingRoute = await modern.sessionWasTakenOver("session123")
+        try expect(!missingRoute, "A missing terminal-status route keeps legacy recovery available")
+        FixtureProtocol.responseStatus = 200
+        let legacyRequests = FixtureProtocol.requestCount
+        let legacyStatus = await fixtureAPI.sessionWasTakenOver("session123")
+        try expect(!legacyStatus, "A missing feature flag must not call terminal status")
+        try expect(FixtureProtocol.requestCount == legacyRequests, "Legacy terminal status is fully feature-gated")
         FixtureProtocol.responseStatus = 409
         FixtureProtocol.responseData = Data(#"{"error":"Provider stream is in use","conflict":{"type":"viewer-in-progress","streamId":"abc123","lastActiveSec":4,"message":"Another device is watching."}}"#.utf8)
         do { let _: PlaybackDecision = try await modern.request("playback/resolve", method: "POST", body: request); throw CheckFailure(description: "Viewer conflict must throw") }

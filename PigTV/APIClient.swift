@@ -250,10 +250,28 @@ final class APIClient {
     }
 
     func release(_ sessionID: String) async throws {
-        guard !sessionID.isEmpty, sessionID.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else {
+        guard validSessionID(sessionID) else {
             throw PigTVError.message("The server returned an invalid playback session identifier.")
         }
         _ = try await send("playback/\(sessionID)", method: "DELETE")
+    }
+
+    // A displaced HLS player otherwise sees the same 404 as an ordinary
+    // expiry. This check is deliberately best-effort: legacy servers, route
+    // errors and a slow server must retain the existing one-time C2 recovery.
+    func sessionWasTakenOver(_ sessionID: String) async -> Bool {
+        guard info?.features.playbackTerminalStatus == true, validSessionID(sessionID) else { return false }
+        do {
+            let result = try await response("playback/\(sessionID)/terminal-status", timeout: 3)
+            let terminal = try JSONDecoder().decode(PlaybackTerminalStatus.self, from: result.data)
+            return terminal.status == "taken-over"
+        } catch {
+            return false
+        }
+    }
+
+    private func validSessionID(_ sessionID: String) -> Bool {
+        !sessionID.isEmpty && sessionID.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
     }
 
     func playbackURL(_ relative: String) throws -> URL {

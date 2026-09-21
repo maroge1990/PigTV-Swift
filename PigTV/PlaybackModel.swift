@@ -255,6 +255,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             }
             report(event)
         }
+        let failedSession = sessionID
         clearItem()
         if hasPlayed && !recoveryUsed {
             recoveryUsed = true
@@ -265,6 +266,16 @@ final class PlaybackModel: ObservableObject, Identifiable {
             Task { [weak self] in
                 await pending?.value
                 guard let self, !self.ended else { return }
+                if let failedSession, await self.client.sessionWasTakenOver(failedSession) {
+                    // The server has already removed this session to admit
+                    // another viewer. Do not DELETE or re-resolve it: either
+                    // action could displace the viewer who was just chosen.
+                    self.sessionID = nil
+                    self.reconnecting = false
+                    self.error = "Playback moved to another device."
+                    self.canRetry = false
+                    return
+                }
                 self.start()
             }
         } else {

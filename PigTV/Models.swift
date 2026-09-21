@@ -18,6 +18,7 @@ struct ServerInfo: Decodable {
         let clientEvents: Bool?
         let scheduledWaiting: Bool?
         let recordingPlaybackPolling: Bool?
+        let playbackTerminalStatus: Bool?
     }
 
     func validate() throws {
@@ -88,6 +89,10 @@ struct PlaybackDecision: Decodable {
     let container: String?
     let sessionId: String?
     let videoMode: String?
+}
+
+struct PlaybackTerminalStatus: Decodable {
+    let status: String
 }
 
 struct PairStart: Decodable {
