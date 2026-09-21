@@ -61,6 +61,7 @@ struct QuickGuidePanel: View {
     @ObservedObject var app: AppModel
     var browse: BrowseModel?
     var dismiss: (() -> Void)? = nil
+    @FocusState private var focusedChannelID: String?
 
     private var channels: [Channel] {
         if !app.zapList.isEmpty { return app.zapList }
@@ -99,11 +100,17 @@ struct QuickGuidePanel: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .buttonStyle(QuickGuideRowStyle())
+                            .focused($focusedChannelID, equals: channel.id)
                             .id(channel.id)
                         }
                     }.padding(.horizontal, 24).padding(.vertical, 12)
                 }
-                .onAppear { if let id = app.playback?.channel.id { proxy.scrollTo(id, anchor: .center) } }
+                .onAppear {
+                    if let id = app.playback?.channel.id {
+                        proxy.scrollTo(id, anchor: .center)
+                        focusedChannelID = id
+                    }
+                }
             }
         }
     }
@@ -120,9 +127,45 @@ private struct QuickGuideRowStyle: ButtonStyle {
 }
 
 #if os(tvOS)
-// Transport-bar menu for the tvOS player. Programme information is carried
-// in the item metadata (title, subtitle, description), which the system
-// shows on swipe-up and in its own Info panel, so no custom panels are used.
+struct PlayerOverlayView: View {
+    let overlay: PlayerOverlay
+    @ObservedObject var playback: PlaybackModel
+    @ObservedObject var app: AppModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.52).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 20) {
+                HStack {
+                    Label(overlay == .programmeInfo ? "Now playing" : "Channels", systemImage: overlay == .programmeInfo ? "info.circle" : "list.bullet")
+                        .font(.title2.bold())
+                    Spacer()
+                    Button("Close", systemImage: "xmark.circle.fill") { app.playerOverlay = nil }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("Close overlay")
+                }
+                Divider()
+                switch overlay {
+                case .programmeInfo:
+                    NowNextPanel(playback: playback, logo: app.browse?.logo(for: playback.channel), client: app.browse?.client)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                case .channels:
+                    QuickGuidePanel(app: app, browse: app.browse) { app.playerOverlay = nil }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .padding(36)
+            .frame(maxWidth: 1_200, maxHeight: 760, alignment: .topLeading)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
+            .padding(56)
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+// Retain AVKit's transport, captions, audio and seeking controls. PigTV adds
+// its contextual programme/channel panels through the documented custom menu
+// path rather than installing remote swipe gestures over the system player.
 @MainActor
 enum PlayerPanels {
     static func configure(_ controller: AVPlayerViewController, playback: PlaybackModel, app: AppModel) {
@@ -132,7 +175,8 @@ enum PlayerPanels {
 
     static func updateMenu(_ controller: AVPlayerViewController, playback: PlaybackModel, app: AppModel) {
         var actions: [UIMenuElement] = [
-            UIAction(title: "Channels…", image: UIImage(systemName: "list.bullet")) { _ in app.channelSheetRequested = true },
+            UIAction(title: "Programme info", image: UIImage(systemName: "info.circle")) { _ in app.playerOverlay = .programmeInfo },
+            UIAction(title: "Channels…", image: UIImage(systemName: "list.bullet")) { _ in app.playerOverlay = .channels },
             UIAction(title: "Next channel", image: UIImage(systemName: "chevron.up")) { _ in app.zap(1) },
             UIAction(title: "Previous channel", image: UIImage(systemName: "chevron.down")) { _ in app.zap(-1) }
         ]
@@ -142,14 +186,18 @@ enum PlayerPanels {
             })
         }
         controller.transportBarCustomMenuItems = [UIMenu(title: "Channel", image: UIImage(systemName: "tv"), children: actions)]
+        // Keep these actions in the native player chrome; overlay Back closes
+        // only the panel, leaving the player and its controls intact.
+        var contextual = [UIAction(title: "Programme info", image: UIImage(systemName: "info.circle")) { _ in
+            app.playerOverlay = .programmeInfo
+        }]
         // After a pause or rewind, offer a one-press return to the live edge.
         if playback.behindLive {
-            controller.contextualActions = [UIAction(title: "Go to live", image: UIImage(systemName: "dot.radiowaves.left.and.right")) { _ in
+            contextual.append(UIAction(title: "Go to live", image: UIImage(systemName: "dot.radiowaves.left.and.right")) { _ in
                 playback.goToLive()
-            }]
-        } else {
-            controller.contextualActions = []
+            })
         }
+        controller.contextualActions = contextual
     }
 }
 #endif

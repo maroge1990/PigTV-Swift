@@ -52,6 +52,7 @@ struct GuideView: View {
     @State private var rows: [GuideChannel] = []
     @FocusState private var focus: GuideFocus?
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let rowHeight: CGFloat = 76
     private var category: Category? { app.categories.first { $0.id == filter } }
     private var focusedChannel: GuideChannel? {
@@ -432,7 +433,7 @@ struct GuideView: View {
         if direction == .left, next.end <= clock { return }
         if visible.contains(where: { $0.startTime == next.startTime }) { return } // native focus handles it
         anchor = max(next.start, viewport)
-        setViewport(GuideNavigation.reveal(next, from: viewport, duration: duration))
+        setViewport(GuideNavigation.reveal(next, from: viewport, duration: duration), animated: true)
         let target = GuideFocus(channel: channel.id, start: next.startTime)
         focus = target
         // The focus engine performs its own move after this handler (to the
@@ -525,7 +526,7 @@ struct GuideView: View {
     }
     private func goTo(_ date: Date) {
         anchor = date
-        setViewport(GuideNavigation.rounded(date))
+        setViewport(GuideNavigation.rounded(date), animated: true)
         if let channel = focusedChannel {
             let programme = GuideNavigation.programme(in: channel.programmes, at: date)
             let target = GuideFocus(channel: channel.id, start: programme?.startTime)
@@ -535,8 +536,14 @@ struct GuideView: View {
     }
     // Move the visible window and, only when it leaves the loaded day, request
     // a new day of programme data around it.
-    private func setViewport(_ date: Date) {
-        viewport = date
+    private func setViewport(_ date: Date, animated: Bool = false) {
+        if viewport != date {
+            if animated && !reduceMotion {
+                withAnimation(.easeInOut(duration: 0.2)) { viewport = date }
+            } else {
+                viewport = date
+            }
+        }
         if GuideNavigation.needsReload(viewport: viewport, loadedFrom: model.window) {
             model.window = viewport.addingTimeInterval(-GuideNavigation.leadIn)
             reload()

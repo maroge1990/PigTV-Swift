@@ -191,6 +191,13 @@ struct PlayerScreen: View {
                 }.foregroundStyle(.white)
             } else if playback.ready {
                 NativePlayer(playback: playback, app: app).ignoresSafeArea()
+                    #if os(tvOS)
+                    .overlay {
+                        if let overlay = app.playerOverlay {
+                            PlayerOverlayView(overlay: overlay, playback: playback, app: app)
+                        }
+                    }
+                    #endif
                     #if os(iOS)
                     .overlay(alignment: .top) { iOSControls }
                     #endif
@@ -229,12 +236,21 @@ struct PlayerScreen: View {
             .presentationBackground { PigPageBackground() }
         }
         .onChange(of: app.channelSheetRequested) { _, requested in
-            if requested { app.channelSheetRequested = false; showingGuide = true }
+            guard requested else { return }
+            app.channelSheetRequested = false
+            #if os(tvOS)
+            app.playerOverlay = .channels
+            #else
+            showingGuide = true
+            #endif
         }
         .onAppear { playback.start() }
         .onDisappear { Task { await app.endPlayback(playback) } }
         #if os(tvOS)
-        .onExitCommand { dismiss() }
+        .onExitCommand {
+            if app.playerOverlay != nil { app.playerOverlay = nil }
+            else { dismiss() }
+        }
         #endif
     }
 
