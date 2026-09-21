@@ -289,7 +289,15 @@ struct LibrarySettings: View {
                 }
             }
             .navigationTitle("Settings")
-            .presentationBackground { PigPageBackground() }
+            // This view is normally a TabView child on tvOS. Avoid applying a
+            // presentation-only background to that navigation stack while the
+            // window's colour-scheme preference changes; use the form's
+            // ordinary view background, which works both in a tab and in the
+            // iOS sheet used by the compact library.
+            #if os(iOS)
+            .scrollContentBackground(.hidden)
+            #endif
+            .background(PigPageBackground())
             .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
