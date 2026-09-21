@@ -160,6 +160,15 @@ nonisolated enum GuideNavigation {
         if programme.end <= viewport { return rounded(programme.start) }
         return viewport
     }
+    // Left navigation must reveal the beginning of a clipped programme, not
+    // merely notice that its tail is already visible. Live programmes return
+    // to the same half-hour baseline used by Now/initial launch.
+    static func revealMovingLeft(_ programme: GuideProgramme, from viewport: Date, now: Date) -> Date {
+        let baseline = rounded(now)
+        if programme.isLive(at: now) { return baseline }
+        if programme.start < viewport { return max(baseline, rounded(programme.start)) }
+        return viewport
+    }
     static func needsReload(viewport: Date, loadedFrom start: Date) -> Bool {
         viewport < start || viewport.addingTimeInterval(visibleDuration) > start.addingTimeInterval(loadedDuration)
     }

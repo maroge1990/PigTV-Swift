@@ -69,7 +69,7 @@ final class PlaybackLifecycleTests: XCTestCase {
         SyntheticProtocol.server = server
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SyntheticProtocol.self]
-        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0086","apiVersion":1,"features":{"library":true,"playbackResolve":true,"recordingPlaybackPolling":true,"epgLogoFallback":true}}"#.utf8))
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0086","apiVersion":1,"features":{"library":true,"playbackResolve":true,"recordingPlaybackPolling":true,"epgLogoFallback":true,"playbackTerminalStatus":true}}"#.utf8))
         return APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
             session: URLSession(configuration: configuration), info: modern ? info : nil)
     }
@@ -85,6 +85,39 @@ final class PlaybackLifecycleTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTFail("Condition did not become true", file: file, line: line)
+    }
+
+    func testConfirmedTakeoverNeverReleasesOrResolves() async throws {
+        let server = SyntheticServer { _, _, _ in .init(status: 200, json: #"{"status":"taken-over"}"#) }
+        let playback = model(try client(server, modern: true))
+        await playback.recoverAfterFailure(session: "removed")
+        XCTAssertEqual(server.captured.map(\.path), ["/api/playback/removed/terminal-status"])
+        XCTAssertEqual(playback.error, "Playback moved to another device.")
+        XCTAssertFalse(playback.canRetry)
+        _ = await playback.stop()
+        XCTAssertEqual(server.captured.count, 1)
+    }
+
+    func testNormalExpiryStillResolvesOnce() async throws {
+        let server = SyntheticServer { path, _, _ in
+            path.hasSuffix("terminal-status") ? .init(status: 200, json: #"{"status":"none"}"#) : .init(status: 503, json: "{}")
+        }
+        let playback = model(try client(server, modern: true))
+        await playback.recoverAfterFailure(session: "expired")
+        try await eventually { playback.error != nil }
+        XCTAssertEqual(server.captured.map(\.path), ["/api/playback/expired/terminal-status", "/api/playback/resolve"])
+        _ = await playback.stop()
+    }
+
+    func testDismissDuringTerminalCheckCannotChangeStoppedPlayer() async throws {
+        let server = SyntheticServer { _, _, _ in .init(status: 200, json: #"{"status":"taken-over"}"#, delay: 0.1) }
+        let playback = model(try client(server, modern: true))
+        let recovery = Task { await playback.recoverAfterFailure(session: "removed") }
+        try await eventually { server.captured.count == 1 }
+        _ = await playback.stop()
+        await recovery.value
+        XCTAssertNil(playback.error)
+        XCTAssertEqual(server.captured.count, 1)
     }
 
     func testViewerTakeoverRequiresExplicitAction() async throws {

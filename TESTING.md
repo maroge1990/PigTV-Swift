@@ -2,11 +2,11 @@
 
 Current scope/status: [blueprint.md](blueprint.md). Run tests from this repository, not the historical Codex/OneDrive copy. Ask Mark before internet access or deployed-server testing. Choose disposable recordings and obtain agreement before tests that stop another viewer/recording or change server data.
 
-Testing ownership (confirmed 21 September): the client agent runs synthetic tests and local Xcode simulator builds/tests; Mark conducts physical Apple TV and multi-device checks. Target server: build **0086**, confirmed by Mark as matching the local PigTV folder. No network access is implied by this testing assignment.
+Testing ownership (confirmed 21 September): the client agent runs synthetic tests and local Xcode simulator builds/tests; Mark conducts physical Apple TV and multi-device checks. Last user-confirmed deployment: **0086**. Local server is now **0094**; confirm `playbackTerminalStatus` is advertised before takeover acceptance testing. The latest review also permits agent testing on the downstairs Apple TV via Xcode, but no physical-device run has been performed. No network access is implied by this testing assignment.
 
 ## Local baseline and change checks
 
-1. Run `sh Tools/test-contracts.sh` without a server. Baseline was 93; build **1.0 (2)** on 21 September 2026: **123 passed**.
+1. Run `sh Tools/test-contracts.sh` without a server. Baseline was 93; review build **1.0 (3)** on 22 September 2026: **133 passed**.
 2. Build the shared PigTV scheme for tvOS and iOS using installed SDKs. Record destination, configuration and actual build outcome. Do not download SDKs/dependencies without approval.
 3. Add focused fixtures for changed contracts: optional info flags/build, viewer/recording/unknown conflicts, 429, recording 200/202/500 and malformed responses. Fixtures live in `PigTVTests/ContractChecks.swift` and run through the existing script.
 4. For C2/C3 add lifecycle tests: one recovery only, repeated failure callbacks, dismiss during resolve/preparation, late response, server/account change, cancellation and explicit retry. Assert request counts and absence of automatic force.
@@ -46,25 +46,43 @@ Before each run record app version/build and source revision, device/OS, server 
 
 For each check record date, device/OS, client revision/build, server build, steps, expected/actual behaviour and sanitised evidence. Mark **Pass**, **Fail** or **Not run**. Update the matching blueprint item; an unrun device check must not become Verified merely because a build or fixture passed.
 
-## Latest results — 21 September 2026, app 1.0 (2)
+## Review acceptance pass — build 1.0 (3)
 
-- Standalone script: **123 contract checks passed**.
-- Xcode 27.0, Apple TV simulator, tvOS 26.5: **11 XCTest tests passed, zero failures**.
-- Xcode 27.0, iPad Pro 13-inch (M5) simulator, iOS 26.5: **11 XCTest tests passed, zero failures**.
-- Each XCTest run includes the contract suite plus **10 lifecycle tests**: explicit takeover, bounded recovery, recovery conflict, initial failure, late-session release, stopped recovery, preparation cancellation, late recording response, explicit recording retry, and artwork/waiting behaviour.
-- Build warnings: only skipped App Intents metadata extraction. No Swift compiler warnings in final runs. Both repository whitespace checks pass.
-- Physical Apple TV, iPhone layouts, multi-device/provider playback, HEVC recordings and the deployed server: **Not run by the agent**; Mark owns these checks.
-- Server companion change: added client-event to `APPLE_CLIENT_ROUTES`; **server test not run** because Node is not on PATH and dependencies are absent. No server runtime changes or dependency downloads.
+Record each as Pass/Fail/Not run in the blueprint. These remain physical-device checks even when a simulator model or Settings test passes.
 
-Reproduce simulator validation from the client repository using installed destinations:
+| Item | Hands-on steps and expected result |
+|---|---|
+| U01 | Focus empty, short and long programme descriptions: guide rows never shift vertically. Open Details, then Back: full text was available and guide focus/time are retained. |
+| U02 | On a server advertising `playbackTerminalStatus`, start device A; on B cancel takeover, then explicitly take over. A stops with a useful message and never reclaims B. Repeat TV→web and web→TV, paired and password clients, including A paused beyond 60 seconds. Allow buffered media to drain. Separately check ordinary session expiry still recovers once and same-device channel switching remains clean. |
+| U03 | Categories at left boundary: only right fades. Mid-strip: both fade. Right boundary: only left fades. No overflow: neither fades. Scroll using the remote in both appearances; no coloured edge bands or inaccessible categories. |
+| U04 | Recordings and Refresh remain readable focused/unfocused/pressed/disabled in Light and Dark, matching the guide. |
+| U05 | In the actual Settings tab select Light→Dark→System several times. Screen and focus remain usable. Leave/revisit the tab, relaunch, play/back: selected appearance persists. |
+| U06 | Navigate several screens right, then all the way left, including long shows crossing viewport boundaries. Return to the current half-hour/live baseline every time; no stuck focus, double jumps or stale focus after held input. Compare horizontal motion with vertical; repeat with Reduce Motion. |
+| U07 | Inspect Apple TV home-screen icon (and distribution asset preview), plus iOS light/dark/tinted variants. Pig remains sharp and no added pink disc/backplate remains. |
+| U08 | Check transparent, opaque and missing provider logos. One dark translucent full-size tile, no app-added nested box; correct aspect ratio and readable fallback in Light/Dark. |
+| U09 | Cold launch with no credentials, saved login, expired login and unreachable server. Branded loading hands off without a fixed delay or getting stuck. Ordinary foreground return remains guide-only. |
+| U10 | Show native player transport controls: channel, programme, times/progress, description and next show appear directly. First Back hides controls and keeps playing; next Back exits to guide. Repeat from expanded programme panel and channel browser. |
+| U11 | Open Channels mid-list: current channel focused/centred and neighbours show now-playing/progress. Browse long lists and edge channels without opening streams. Select once: old session releases before switch. Back closes the panel only. Check bright/dark footage and Reduce Transparency. |
+
+## Latest results — 22 September 2026, app 1.0 (3)
+
+- Standalone script: **133 API/model checks passed** (including three left-navigation boundary checks).
+- Xcode 27.0, Apple TV simulator **tvOS 26.5** and iPad Pro 13-inch (M5) simulator **iOS 26.5**: **15 tests passed on each** — 14 contract/lifecycle tests plus one UI test, zero failures in the final runs.
+- Settings UI test selects Light → Dark → System → Light → Dark within the actual tab container, asserting each selected value and continued availability of all three controls. Reviewed saved screenshots: [TV Dark](docs/evidence/2026-09-22-settings-tv-dark.png), [TV Light](docs/evidence/2026-09-22-settings-tv-light.png), [iPad Dark](docs/evidence/2026-09-22-settings-ipad-dark.png). No credentials/server are present in this fixture.
+- Early runs exposed a non-tappable row interior on iPad and nested Form/focus issues on TV. The final layout/full-row hit target and deterministic adjacent remote presses resolve the test failures. One earlier iOS runner also timed out loading Accessibility; final bounded runs completed. No unresolved failure in the final selected suites.
+- Compilation warnings: only skipped App Intents metadata extraction; no Swift compiler warnings. Whitespace check passed.
+- Final logs: `/private/tmp/pigtv-review-tv-settings3.log`, `/private/tmp/pigtv-review-ios-settings.log`. Both result bundles are `Logs/Test/Test-PigTV-2026.09.22_08-19-57-+1000.xcresult` under their respective `/private/tmp/pigtv-review-tv` and `/private/tmp/pigtv-review-ios` DerivedData folders.
+- Physical Apple TV, multi-device/provider playback and deployed-server verification: **Not run in this review**. Local server 0094 availability does not establish that it is deployed.
+
+Reproduce the offline simulator suites from this repository using installed destinations:
 
 ```sh
-xcodebuild -project PigTV.xcodeproj -scheme PigTV -configuration Debug -destination 'platform=tvOS Simulator,id=CDF0C871-2FAA-49A6-A586-DC917C67C3F9' -derivedDataPath /private/tmp/pigtv-0086-tv -disableAutomaticPackageResolution test
-xcodebuild -project PigTV.xcodeproj -scheme PigTV -configuration Debug -destination 'platform=iOS Simulator,id=7B0936F6-E5F9-4470-B4B8-D7D045F08CC1' -derivedDataPath /private/tmp/pigtv-0086-ios -disableAutomaticPackageResolution test
+xcodebuild -project PigTV.xcodeproj -scheme PigTV -configuration Debug -destination 'platform=tvOS Simulator,id=CDF0C871-2FAA-49A6-A586-DC917C67C3F9' -derivedDataPath /private/tmp/pigtv-review-tv -disableAutomaticPackageResolution -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -collect-test-diagnostics never -only-testing:PigTVTests -only-testing:PigTVUITests/PigTVUITests test
+xcodebuild -project PigTV.xcodeproj -scheme PigTV -configuration Debug -destination 'platform=iOS Simulator,id=7B0936F6-E5F9-4470-B4B8-D7D045F08CC1' -derivedDataPath /private/tmp/pigtv-review-ios -disableAutomaticPackageResolution -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -collect-test-diagnostics never -only-testing:PigTVTests -only-testing:PigTVUITests/PigTVUITests test
 ```
 
-The shared scheme sets `PIGTV_SYNTHETIC_TESTS=1` for Test only. The app host shows an inert view instead of restoring saved credentials, and fixture URL protocols intercept all API requests. Normal Run still opens the real app. These runs test models/lifecycle and compilation; they do not constitute rendered UI or real-media validation. Simulator service access required approval outside the sandbox.
+The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the unit-test host, avoiding saved-session restoration. Fixture URL protocols intercept API requests. The UI tests set the DEBUG-only `PIGTV_UI_TEST_SCREEN=settings` to render offline Settings inside `LibraryView` and repeatedly select appearances, saving screenshots. Normal Run still opens the real app. The Settings fixture does not establish guide/player rendering or real-media behaviour. Simulator service access requires approval outside the sandbox.
 
-Final logs: `/private/tmp/pigtv-final-tv.log` and `/private/tmp/pigtv-final-ios.log`; Xcode result bundles are under the corresponding DerivedData `Logs/Test` directories.
+The XCTest suite contains one contract runner plus 13 lifecycle tests, including confirmed takeover without release/resolve, normal-expiry recovery and dismissal during terminal-status lookup. The additional UI test checks repeated appearance selection. Build-only success is not equivalent to passing these tests.
 
-Next hands-on pass: install **1.0 (2)**, confirm Settings reports server **0086**, test TV/web takeover in both directions, pause for six minutes and resume, background/return to guide, then play a long and an HEVC recording. Record observations before expanding to the rest of the matrix.
+Next hands-on pass: install **1.0 (3)**, check U05/U06/U10/U11 on Apple TV, confirm server 0094/capability before U02, then run the remaining rows above and the recording regression matrix.

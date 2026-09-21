@@ -2,7 +2,7 @@ import SwiftUI
 import AVKit
 
 // What is on now and next for the channel being watched. Shown in the
-// tvOS swipe-down info panel and in the iOS player overlay.
+// expanded programme panel and in the iOS player overlay.
 struct NowNextPanel: View {
     @ObservedObject var playback: PlaybackModel
     var logo: String?
@@ -105,9 +105,12 @@ struct QuickGuidePanel: View {
                         }
                     }.padding(.horizontal, 24).padding(.vertical, 12)
                 }
-                .onAppear {
+                .task {
                     if let id = app.playback?.channel.id {
                         proxy.scrollTo(id, anchor: .center)
+                        // Let the lazy row mount before assigning remote focus.
+                        await Task.yield()
+                        guard !Task.isCancelled else { return }
                         focusedChannelID = id
                     }
                 }
@@ -127,8 +130,43 @@ private struct QuickGuideRowStyle: ButtonStyle {
 }
 
 #if os(tvOS)
+// Lives in AVKit's contentOverlayView and follows native transport visibility;
+// programme information requires no additional menu or Info-panel selection.
+struct TransportProgrammeSummary: View {
+    @ObservedObject var playback: PlaybackModel
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            VStack(alignment: .leading, spacing: 10) {
+                Text(playback.channel.name).font(.headline).foregroundStyle(.secondary)
+                if let programme = playback.programme(at: context.date) {
+                    Text(programme.title).font(.title2.bold()).lineLimit(2)
+                    HStack {
+                        Text("\(programme.start.formatted(date: .omitted, time: .shortened)) – \(programme.end.formatted(date: .omitted, time: .shortened))")
+                        ProgressView(value: min(1, max(0, context.date.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start))))
+                            .frame(maxWidth: 250)
+                    }
+                    if let description = programme.description { Text(description).lineLimit(2).font(.callout) }
+                } else { Text("No programme information").font(.title2) }
+                if let next = playback.upcoming(after: context.date, limit: 1).first {
+                    Text("Next · \(next.start.formatted(date: .omitted, time: .shortened)) · \(next.title)")
+                        .font(.callout).lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(24)
+            .foregroundStyle(.white)
+            .background {
+                if reduceTransparency { RoundedRectangle(cornerRadius: 18).fill(Color(white: 0.12)) }
+                else { RoundedRectangle(cornerRadius: 18).fill(.regularMaterial) }
+            }
+        }
+        .environment(\.colorScheme, .dark)
+    }
+}
+
 struct PlayerOverlayView: View {
     let overlay: PlayerOverlay
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ObservedObject var playback: PlaybackModel
     @ObservedObject var app: AppModel
 
@@ -156,10 +194,15 @@ struct PlayerOverlayView: View {
             }
             .padding(36)
             .frame(maxWidth: 1_200, maxHeight: 760, alignment: .topLeading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
+            .background {
+                if reduceTransparency { RoundedRectangle(cornerRadius: 28).fill(Color(white: 0.12)) }
+                else { RoundedRectangle(cornerRadius: 28).fill(.ultraThinMaterial) }
+            }
             .padding(56)
         }
+        .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .contain)
+        .onExitCommand { app.playerOverlay = nil }
     }
 }
 

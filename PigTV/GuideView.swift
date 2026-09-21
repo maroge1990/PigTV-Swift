@@ -46,6 +46,7 @@ struct GuideView: View {
     @State private var schedule: GuideChannel?
     @State private var pendingWatch: Channel?
     @State private var retainedFocus: GuideFocus?
+    @State private var navigationGeneration = UUID()
     @State private var filterStripMetrics = FilterStripMetrics()
     // Filtered rows are cached: filtering hundreds of channels inside `body`
     // on every focus change or clock tick is what made scrolling stutter.
@@ -319,30 +320,13 @@ struct GuideView: View {
             }
             .scrollIndicators(.hidden)
             .clipped()
-            // Keep the focusable ScrollView unmasked. Transparent overlays fade
-            // only the edge that conceals additional categories; a mask here
-            // previously stopped tvOS focus from reaching obscured chips.
+            .coordinateSpace(name: "categoryStrip")
             .onScrollGeometryChange(for: FilterStripMetrics.self, of: { geometry in
-                FilterStripMetrics(offset: max(0, geometry.contentOffset.x),
+                FilterStripMetrics(offset: max(0, geometry.contentOffset.x + geometry.contentInsets.leading),
                                    viewportWidth: geometry.containerSize.width,
-                                   contentWidth: geometry.contentSize.width)
+                                   contentWidth: geometry.contentSize.width + geometry.contentInsets.leading + geometry.contentInsets.trailing)
             }) { _, metrics in
                 filterStripMetrics = metrics
-            }
-            .overlay {
-                HStack(spacing: 0) {
-                    if filterStripMetrics.fadesLeading {
-                        LinearGradient(colors: [Color.pageBackground(scheme).opacity(0.72), .clear],
-                                       startPoint: .leading, endPoint: .trailing)
-                            .frame(width: 36)
-                    }
-                    Spacer()
-                    if filterStripMetrics.fadesTrailing {
-                        LinearGradient(colors: [.clear, Color.pageBackground(scheme).opacity(0.72)],
-                                       startPoint: .leading, endPoint: .trailing)
-                            .frame(width: 36)
-                    }
-                }.allowsHitTesting(false)
             }
             .padding(.horizontal, 12)
         }
@@ -364,6 +348,8 @@ struct GuideView: View {
             }.font(GuideTypography.body).fixedSize(horizontal: true, vertical: false)
         }
         .buttonStyle(GuideFilterStyle(selected: filter == id))
+        .modifier(CategoryContentFade(width: filterStripMetrics.viewportWidth,
+            leading: filterStripMetrics.fadesLeading, trailing: filterStripMetrics.fadesTrailing))
         .accessibilityAddTraits(filter == id ? .isSelected : [])
     }
 
@@ -385,7 +371,7 @@ struct GuideView: View {
                         }
                     }
             }
-            .buttonStyle(PigSurfaceButtonStyle())
+            .buttonStyle(PigSurfaceButtonStyle(drawSurface: false))
             .focused($focus, equals: GuideFocus(channel: channel.id, start: nil))
             .accessibilityLabel(channel.name)
             .contextMenu {
@@ -415,6 +401,14 @@ struct GuideView: View {
     private func navigate(_ direction: MoveCommandDirection, channel: GuideChannel, duration: TimeInterval) {
         guard direction == .left || direction == .right,
               let current = focus, current.channel == channel.id, let start = current.start else { return }
+        let generation = UUID()
+        navigationGeneration = generation
+        let baseline = GuideNavigation.rounded(clock)
+        if direction == .left, let live = channel.programmes.first(where: { $0.startTime == start }),
+           live.isLive(at: clock), viewport > baseline {
+            setViewport(baseline, animated: true)
+            return
+        }
         let programmes = channel.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
         let visible = GuideNavigation.visible(programmes, viewport: viewport, duration: duration)
         let next: GuideProgramme?
@@ -431,9 +425,12 @@ struct GuideView: View {
         // Finished programmes cannot be played, so the remote never walks back
         // into them. Earlier/Later remain available for browsing the past.
         if direction == .left, next.end <= clock { return }
-        if visible.contains(where: { $0.startTime == next.startTime }) { return } // native focus handles it
-        anchor = max(next.start, viewport)
-        setViewport(GuideNavigation.reveal(next, from: viewport, duration: duration), animated: true)
+        let destination = direction == .left
+            ? GuideNavigation.revealMovingLeft(next, from: viewport, now: clock)
+            : GuideNavigation.reveal(next, from: viewport, duration: duration)
+        if destination == viewport, visible.contains(where: { $0.startTime == next.startTime }) { return }
+        anchor = max(next.start, destination)
+        setViewport(destination, animated: true)
         let target = GuideFocus(channel: channel.id, start: next.startTime)
         focus = target
         // The focus engine performs its own move after this handler (to the
@@ -441,6 +438,7 @@ struct GuideView: View {
         // once that has happened so the revealed programme keeps focus.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(80))
+            guard navigationGeneration == generation, viewport == destination else { return }
             if focus != target { focus = target }
         }
     }
@@ -581,6 +579,7 @@ private struct ChannelTile: View {
                 ChannelArtwork(logo: logo, client: client)
             } else {
                 Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(3)
+                    .foregroundStyle(.white)
                     .multilineTextAlignment(.center).minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -872,5 +871,31 @@ extension Color {
     }
     static func pageBackground(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.black : Color.white
+    }
+}
+
+// Fade the rendered chips, not the scrolling/focus container. No coloured
+// paint is laid over the page, and clipped chips remain focusable/scrollable.
+private struct CategoryContentFade: ViewModifier {
+    let width: CGFloat
+    let leading: Bool
+    let trailing: Bool
+    @State private var origin: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("categoryStrip")).minX } action: { origin = $0 }
+            .mask(alignment: .leading) {
+                if width > 0 {
+                    let edge = min(0.5, 36 / width)
+                    LinearGradient(stops: [
+                        .init(color: leading ? .clear : .black, location: 0),
+                        .init(color: .black, location: edge),
+                        .init(color: .black, location: 1 - edge),
+                        .init(color: trailing ? .clear : .black, location: 1)
+                    ], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: width).offset(x: -origin)
+                } else { Color.black }
+            }
     }
 }

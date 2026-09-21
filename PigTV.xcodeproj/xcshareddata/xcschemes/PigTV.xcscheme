@@ -42,6 +42,9 @@
                ReferencedContainer = "container:PigTV.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference skipped="NO" parallelizable="NO">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B2FE9A013056B8D20018450A" BuildableName="PigTVUITests.xctest" BlueprintName="PigTVUITests" ReferencedContainer="container:PigTV.xcodeproj"/>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

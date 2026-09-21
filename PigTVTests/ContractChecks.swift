@@ -381,6 +381,13 @@ enum ContractChecks {
         await modern.reportPlaybackEvent(PlaybackEvent(event: "media-error"))
         count += 1 // best effort: a server failure never throws into playback
 
+        let now = Date(timeIntervalSince1970: 3600)
+        let live = GuideProgramme(title: "Live", description: nil, startTime: 1_800_000, endTime: 7_200_000)
+        try expect(GuideNavigation.revealMovingLeft(live, from: Date(timeIntervalSince1970: 5400), now: now) == GuideNavigation.rounded(now), "Partially visible live show returns to initial half-hour baseline")
+        let future = GuideProgramme(title: "Future", description: nil, startTime: 7_200_000, endTime: 10_800_000)
+        try expect(GuideNavigation.revealMovingLeft(future, from: Date(timeIntervalSince1970: 9000), now: now) == future.start, "Left reveals start even when programme tail remains visible")
+        try expect(GuideNavigation.revealMovingLeft(future, from: now, now: now) == now, "Visible future show does not unnecessarily move viewport")
+
         return count
     }
 }

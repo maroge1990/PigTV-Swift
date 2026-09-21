@@ -265,45 +265,79 @@ struct LibrarySettings: View {
     @State private var confirmSignOut = false
 
     var body: some View {
+        #if os(tvOS)
+        // A SwiftUI scroll layout keeps appearance changes and remote focus
+        // in one hierarchy, without nested focusable UITableView cells.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Settings").font(.largeTitle.bold())
+                settingsContent
+            }
+            .padding(64)
+        }
+        .background(PigPageBackground())
+        .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {
+            signOutButton
+        }
+        #else
         NavigationStack {
-            Form {
-                Section("Appearance") {
-                    Picker("Appearance", selection: $appearance) {
-                        Text("System").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
+            Form { settingsContent }
+                .navigationTitle("Settings")
+                .scrollContentBackground(.hidden)
+                .background(PigPageBackground())
+                .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {
+                    signOutButton
+                }
+        }
+        #endif
+    }
+
+    private var settingsContent: some View {
+        Group {
+            Section {
+                ForEach(["system", "light", "dark"], id: \.self) { value in
+                    Button { appearance = value } label: {
+                        HStack {
+                            Text(value.capitalized)
+                            Spacer()
+                            if appearance == value {
+                                Image(systemName: "checkmark").accessibilityHidden(true)
+                            }
+                        }
+                        #if os(tvOS)
+                        .padding(20)
+                        #endif
+                        .contentShape(Rectangle())
                     }
+                    #if os(iOS)
+                    .buttonStyle(.borderless)
+                    #else
+                    .buttonStyle(PigSurfaceButtonStyle())
+                    #endif
+                    .accessibilityIdentifier("appearance.\(value)")
+                    .accessibilityValue(appearance == value ? "Selected" : "Not selected")
                 }
-                Section("Account") {
-                    LabeledContent("Signed in as", value: model.user?.username ?? "")
-                    LabeledContent("Server", value: model.serverText)
-                    Button("Sign out", role: .destructive) { confirmSignOut = true }
-                        .disabled(model.playbackBusy)
-                }
-                Section("Version") {
-                    LabeledContent("App", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
-                    LabeledContent("Server", value: model.serverInfo?.identity ?? "Unknown")
-                }
-                if !isTab {
-                    Section { Button("Done") { dismiss() } }
-                }
+            } header: { Text("Appearance").foregroundStyle(.secondary) }
+            Section {
+                LabeledContent("Signed in as", value: model.user?.username ?? "")
+                LabeledContent("Server", value: model.serverText)
+                Button("Sign out", role: .destructive) { confirmSignOut = true }
+                    .disabled(model.playbackBusy)
+            } header: { Text("Account").foregroundStyle(.secondary) }
+            Section {
+                LabeledContent("App", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
+                LabeledContent("Server", value: model.serverInfo?.identity ?? "Unknown")
+            } header: { Text("Version").foregroundStyle(.secondary) }
+            if !isTab {
+                Section { Button("Done") { dismiss() } }
             }
-            .navigationTitle("Settings")
-            // This view is normally a TabView child on tvOS. Avoid applying a
-            // presentation-only background to that navigation stack while the
-            // window's colour-scheme preference changes; use the form's
-            // ordinary view background, which works both in a tab and in the
-            // iOS sheet used by the compact library.
-            #if os(iOS)
-            .scrollContentBackground(.hidden)
-            #endif
-            .background(PigPageBackground())
-            .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {
-                Button("Sign out", role: .destructive) {
-                    dismiss()
-                    Task { await model.logout() }
-                }
-            }
+        }
+    }
+
+    private var signOutButton: some View {
+        Button("Sign out", role: .destructive) {
+            dismiss()
+            Task { await model.logout() }
         }
     }
 }

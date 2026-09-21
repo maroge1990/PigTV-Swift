@@ -246,12 +246,7 @@ struct PlayerScreen: View {
         }
         .onAppear { playback.start() }
         .onDisappear { Task { await app.endPlayback(playback) } }
-        #if os(tvOS)
-        .onExitCommand {
-            if app.playerOverlay != nil { app.playerOverlay = nil }
-            else { dismiss() }
-        }
-        #endif
+
     }
 
     #if os(iOS)
@@ -279,12 +274,53 @@ struct NativePlayer: UIViewControllerRepresentable {
     @ObservedObject var playback: PlaybackModel
     @ObservedObject var app: AppModel
 
+    func makeCoordinator() -> Coordinator { Coordinator(playback: playback, app: app) }
+
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+        let playback: PlaybackModel
+        let app: AppModel
+        #if os(tvOS)
+        var summary: UIHostingController<TransportProgrammeSummary>?
+        var transportVisible = false
+        #endif
+        init(playback: PlaybackModel, app: AppModel) { self.playback = playback; self.app = app }
+        #if os(tvOS)
+        func playerViewController(_ controller: AVPlayerViewController, willTransitionToVisibilityOfTransportBar visible: Bool,
+                                  with coordinator: AVPlayerViewControllerAnimationCoordinator) {
+            transportVisible = visible
+            summary?.view.isHidden = !visible || app.playerOverlay != nil
+        }
+        func playerViewControllerShouldDismiss(_ controller: AVPlayerViewController) -> Bool {
+            if app.playerOverlay != nil { app.playerOverlay = nil }
+            else { Task { await app.endPlayback(playback) } }
+            return false // SwiftUI owns the full-screen presentation.
+        }
+        #endif
+    }
+
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = playback.player
+        controller.delegate = context.coordinator
         controller.allowsPictureInPicturePlayback = false
         #if os(tvOS)
         PlayerPanels.configure(controller, playback: playback, app: app)
+        if let overlay = controller.contentOverlayView {
+            let host = UIHostingController(rootView: TransportProgrammeSummary(playback: playback))
+            controller.addChild(host)
+            host.view.backgroundColor = .clear
+            host.view.isUserInteractionEnabled = false
+            host.view.isHidden = !context.coordinator.transportVisible
+            host.view.translatesAutoresizingMaskIntoConstraints = false
+            overlay.addSubview(host.view)
+            NSLayoutConstraint.activate([
+                host.view.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 32),
+                host.view.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+                host.view.widthAnchor.constraint(equalTo: overlay.widthAnchor, multiplier: 0.75)
+            ])
+            host.didMove(toParent: controller)
+            context.coordinator.summary = host
+        }
         #endif
         return controller
     }
@@ -292,11 +328,13 @@ struct NativePlayer: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         if controller.player !== playback.player { controller.player = playback.player }
         #if os(tvOS)
+        controller.view.isUserInteractionEnabled = app.playerOverlay == nil
+        context.coordinator.summary?.view.isHidden = !context.coordinator.transportVisible || app.playerOverlay != nil
         PlayerPanels.updateMenu(controller, playback: playback, app: app)
         #endif
     }
 
-    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: ()) {
+    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: Coordinator) {
         controller.player?.pause()
         controller.player = nil
     }

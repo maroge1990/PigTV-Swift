@@ -265,24 +265,27 @@ final class PlaybackModel: ObservableObject, Identifiable {
             let pending = resolveTask
             Task { [weak self] in
                 await pending?.value
-                guard let self, !self.ended else { return }
-                if let failedSession, await self.client.sessionWasTakenOver(failedSession) {
-                    // The server has already removed this session to admit
-                    // another viewer. Do not DELETE or re-resolve it: either
-                    // action could displace the viewer who was just chosen.
-                    self.sessionID = nil
-                    self.reconnecting = false
-                    self.error = "Playback moved to another device."
-                    self.canRetry = false
-                    return
-                }
-                self.start()
+                await self?.recoverAfterFailure(session: failedSession)
             }
         } else {
             reconnecting = false
             error = hasPlayed ? "The stream ended. Try again to reconnect." : "Playback could not start. \(detail)"
             canRetry = true
         }
+    }
+
+    // Kept separate from the AVPlayer callback so takeover/fallback/dismissal
+    // can be verified with synthetic sessions and no media connection.
+    func recoverAfterFailure(session: String?) async {
+        guard !ended else { return }
+        let takenOver = if let session { await client.sessionWasTakenOver(session) } else { false }
+        guard !ended else { return }
+        if takenOver {
+            sessionID = nil
+            reconnecting = false
+            error = "Playback moved to another device."
+            canRetry = false
+        } else { start() }
     }
 
     func retry() {

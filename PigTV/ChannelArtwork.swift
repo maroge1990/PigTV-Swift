@@ -33,7 +33,7 @@ struct ChannelArtwork: View {
         ZStack {
             if let decoded {
                 Image(uiImage: decoded.image).resizable().scaledToFit()
-                    .padding(8)
+
             } else {
                 Image(systemName: "tv.fill").foregroundStyle(Color.accentColor).padding(8)
             }
