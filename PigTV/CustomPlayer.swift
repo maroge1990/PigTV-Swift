@@ -77,7 +77,7 @@ struct CustomPlayerView: View {
                 .animation(.easeInOut(duration: 0.16), value: chrome)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BlankButtonStyle())
         .focusEffectDisabled()
         .environment(\.colorScheme, .dark)
         .focused($focused)
@@ -392,6 +392,12 @@ struct CustomPlayerView: View {
         .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(highlighted ? Color.accentColor : .clear, lineWidth: 3) }
         .scaleEffect(highlighted ? 1.03 : 1, anchor: .leading)
     }
+}
+
+// Draws only the label — no tvOS focus container, lift or border — while still
+// firing its action on the first Select press.
+private struct BlankButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { configuration.label }
 }
 
 // Neutral translucent logo tile shared by the player overlays (matches the

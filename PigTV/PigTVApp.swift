@@ -31,18 +31,13 @@ struct PigTVApp: App {
                 ContentView()
                 #endif
             }
-                // The window's interface style is overridden directly:
-                // `.preferredColorScheme` did not re-apply live on tvOS, so the
-                // choice only took effect after a relaunch.
-                .task(id: appearance) { applyAppearance() }
-        }
-    }
-
-    private func applyAppearance() {
-        let style: UIUserInterfaceStyle = appearance == "dark" ? .dark : appearance == "light" ? .light : .unspecified
-        for scene in UIApplication.shared.connectedScenes {
-            guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows { window.overrideUserInterfaceStyle = style }
+                // A single SwiftUI-owned appearance for the whole hierarchy so
+                // background and text never disagree (the window-level override
+                // left them out of step — black text on a black surface). The
+                // id forces a clean rebuild when the choice changes so it
+                // applies immediately rather than only after a relaunch.
+                .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+                .id(appearance)
         }
     }
 }

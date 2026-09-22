@@ -8,6 +8,40 @@ nonisolated struct GuideProgramme: Codable, Equatable, Sendable {
     var start: Date { Date(timeIntervalSince1970: startTime / 1000) }
     var end: Date { Date(timeIntervalSince1970: endTime / 1000) }
     func isLive(at date: Date) -> Bool { start <= date && date < end }
+
+    init(title: String, description: String?, startTime: Double, endTime: Double) {
+        self.title = title.strippingBadgeSuffix()
+        self.description = description
+        self.startTime = startTime
+        self.endTime = endTime
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Providers append a small-capitals "ᴸɪᴠᴇ" marker to live programmes; it
+        // renders as a tacky superscript, so it is stripped on the way in.
+        title = (try c.decode(String.self, forKey: .title)).strippingBadgeSuffix()
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        startTime = try c.decode(Double.self, forKey: .startTime)
+        endTime = try c.decode(Double.self, forKey: .endTime)
+    }
+}
+
+extension String {
+    // Strips a trailing run of phonetic/modifier-letter glyphs (the small-caps
+    // "ᴸɪᴠᴇ" / "ɴᴇᴡ" style badges some EPGs append). Real English titles never
+    // contain these code points, so nothing legitimate is removed.
+    func strippingBadgeSuffix() -> String {
+        var scalars = unicodeScalars
+        func isBadge(_ s: Unicode.Scalar) -> Bool {
+            switch s.value {
+            case 0x1D00...0x1DBF, 0x02B0...0x02FF, 0x0250...0x02AF: return true // small caps / IPA / modifiers
+            case 0x20, 0xA0: return true                                        // spaces
+            default: return false
+            }
+        }
+        while let last = scalars.last, isBadge(last) { scalars.removeLast() }
+        return String(scalars).trimmingCharacters(in: .whitespaces)
+    }
 }
 
 nonisolated struct GuideChannel: Codable, Identifiable, Sendable {

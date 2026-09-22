@@ -146,18 +146,16 @@ struct GuideView: View {
                             shift(value.translation.width < 0 ? duration / 2 : -duration / 2)
                         })
                         #endif
-                        .onChange(of: focus) { previous, value in
+                        .onChange(of: focus) { _, value in
+                            // Remember where focus is; the anchor tracks the
+                            // focused programme's start so Left/Right and the Now
+                            // button have a stable reference. No focus is
+                            // reassigned here — doing so fought the focus engine
+                            // and made the selection jump on its own.
                             guard let value else { return }
-                            let channel = model.guide.first { $0.id == value.channel }
-                            // Moving between channels: keep the same time, not the nearest box.
-                            if let previous, previous.channel != value.channel, previous.start != nil, value.start != nil,
-                               let channel, let anchored = GuideNavigation.programme(in: channel.programmes, at: anchor),
-                               anchored.end > clock, anchored.startTime != value.start {
-                                focus = GuideFocus(channel: value.channel, start: anchored.startTime)
-                                return
-                            }
-                            if previous?.channel == value.channel,
-                               let programme = channel?.programmes.first(where: { $0.startTime == value.start }) {
+                            if let start = value.start, start > 0,
+                               let channel = model.guide.first(where: { $0.id == value.channel }),
+                               let programme = channel.programmes.first(where: { $0.startTime == start }) {
                                 anchor = max(programme.start, viewport)
                             }
                             retainedFocus = value
@@ -406,37 +404,13 @@ struct GuideView: View {
     }
 
     #if os(tvOS)
-    // The focus engine moves between the boxes that are on screen. This handler
-    // only steps in when the next programme is not drawn yet: it shifts the
-    // viewport and focuses the revealed box. Acting in both cases is what made
-    // the selection jump two programmes at a time.
+    // Only Left/Right are intercepted: they may need to shift the viewport to a
+    // programme that is not drawn yet. Up/Down are left entirely to the focus
+    // engine — every cell frame is on screen (cells are clipped to the window),
+    // so its geometric choice of the row above/below is already correct.
     private func navigate(_ direction: MoveCommandDirection, channel: GuideChannel, duration: TimeInterval) {
-        guard let current = focus, current.channel == channel.id else { return }
-        switch direction {
-        case .up, .down: navigateVertically(direction, from: channel)
-        case .left, .right: navigateHorizontally(direction, channel: channel, duration: duration)
-        @unknown default: break
-        }
-    }
-
-    // Up/Down keep the same time column. The focus engine picks the nearest box
-    // geometrically, which — because a clipped live cell's frame extends off the
-    // left edge — used to land on the channel tile of the row below. Steering
-    // focus explicitly to the programme at the anchor time avoids that.
-    private func navigateVertically(_ direction: MoveCommandDirection, from channel: GuideChannel) {
-        guard let index = rows.firstIndex(where: { $0.id == channel.id }) else { return }
-        let targetIndex = index + (direction == .down ? 1 : -1)
-        guard rows.indices.contains(targetIndex) else { return }
-        let target = rows[targetIndex]
-        let programmes = target.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
-        let when = max(anchor, viewport)
-        let programme = GuideNavigation.programme(in: programmes, at: when)
-            ?? programmes.first { $0.end > when }
-        setFocus(GuideFocus(channel: target.id, start: programme?.startTime ?? -1))
-    }
-
-    private func navigateHorizontally(_ direction: MoveCommandDirection, channel: GuideChannel, duration: TimeInterval) {
-        guard let current = focus else { return }
+        guard direction == .left || direction == .right,
+              let current = focus, current.channel == channel.id else { return }
         let baseline = GuideNavigation.rounded(clock)
         let programmes = channel.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
         // A live programme while the grid is ahead of now brings the grid back
@@ -865,17 +839,11 @@ private struct GuideTimelineRow: View {
 
     var body: some View {
         let visible = GuideNavigation.visible(channel.programmes, viewport: viewport, duration: duration)
-        // Cells are laid out at their true, unclamped time positions and the
-        // row is clipped, so a viewport change is a pure translation of the
-        // whole timeline. A buffer either side means the cells sliding in
-        // already exist; clamping cells to the window made each one resize
-        // independently, which read as many separately moving objects.
-        let buffered = GuideNavigation.visible(channel.programmes, viewport: viewport.addingTimeInterval(-duration),
-                                               duration: duration * 3)
-        let visibleStarts = Set(visible.map(\.startTime))
-        // The channel name rides on the now-playing programme when it is on
-        // screen; the first visible cell is often a finished programme scrolled
-        // half off the left edge, where the name was clipped.
+        // Cells are clipped to the visible window so every focusable frame sits
+        // on screen: that is what keeps the focus engine's Up/Down honest (an
+        // off-screen frame made it drop to the logo of the row below). The
+        // channel name rides the now-playing cell, not the first visible one,
+        // which is often a finished programme scrolled half off the left edge.
         let captionStart = visible.first { $0.isLive(at: clock) }?.startTime ?? visible.first?.startTime
         ZStack(alignment: .leading) {
             Color.clear
@@ -885,15 +853,12 @@ private struct GuideTimelineRow: View {
                     .frame(width: width, height: height)
                     .focused(focus, equals: GuideFocus(channel: channel.id, start: -1))
             }
-            ForEach(buffered, id: \.startTime) { programme in
-                if let span = GuideGeometry.placement(start: programme.startTime, end: programme.endTime,
+            ForEach(visible, id: \.startTime) { programme in
+                if let span = GuideGeometry.interval(start: programme.startTime, end: programme.endTime,
                     window: viewport.timeIntervalSince1970 * 1000, duration: duration * 1000) {
-                    let x = width * span.offset
                     programmeButton(programme, cellWidth: max(1, width * span.width - 4),
-                        hiddenLeading: max(0, -x),
-                        caption: programme.startTime == captionStart ? caption : nil,
-                        onScreen: visibleStarts.contains(programme.startTime))
-                        .offset(x: x + 2)
+                        caption: programme.startTime == captionStart ? caption : nil)
+                        .offset(x: width * span.offset + 2)
                 }
             }
         }
@@ -901,10 +866,7 @@ private struct GuideTimelineRow: View {
         .clipped()
     }
 
-    // hiddenLeading: width of the cell currently left of the window; the text
-    // is pushed right by that much so a long programme stays readable.
-    private func programmeButton(_ programme: GuideProgramme, cellWidth: CGFloat, hiddenLeading: CGFloat,
-                                 caption: String?, onScreen: Bool) -> some View {
+    private func programmeButton(_ programme: GuideProgramme, cellWidth: CGFloat, caption: String?) -> some View {
         Button { select(programme) } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -923,16 +885,14 @@ private struct GuideTimelineRow: View {
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.leading, 12 + min(hiddenLeading, max(0, cellWidth - 160)))
-            .padding(.trailing, 12)
+            .padding(.horizontal, 12)
             .frame(width: cellWidth, height: height - 4, alignment: .leading)
             .clipped()
         }
         .buttonStyle(PigSurfaceButtonStyle())
         // Finished programmes cannot be played or recorded: keep them for
-        // context, but out of the focus path and visibly in the past. Buffered
-        // cells outside the window are drawn only so they can slide in.
-        .disabled(programme.end <= clock || !onScreen)
+        // context, but out of the focus path and visibly in the past.
+        .disabled(programme.end <= clock)
         .opacity(programme.end <= clock ? 0.4 : 1)
         .focused(focus, equals: GuideFocus(channel: channel.id, start: programme.startTime))
         .contextMenu {
