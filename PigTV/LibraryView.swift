@@ -154,9 +154,6 @@ struct ChannelCard: View {
                 ChannelArtwork(logo: logo ?? channel.logo, client: client)
                     .frame(width: 72, height: 42)
                 Spacer()
-                Text("LIVE").font(.caption2.bold())
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.accentColor.opacity(0.12), in: Capsule())
             }
             Text(channel.name).font(.headline).lineLimit(2)
             TimelineView(.periodic(from: .now, by: 30)) { timeline in

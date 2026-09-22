@@ -43,32 +43,43 @@ struct CustomPlayerView: View {
         if !app.zapList.isEmpty { return app.zapList }
         return browse.map { model in model.guide.map(model.asChannel) } ?? []
     }
+    // Channels are reached with Up/Down (the side list), so the action row no
+    // longer carries a Channels button. Go to live only appears when behind.
     private var actions: [PlayerAction] {
-        PlayerAction.allCases.filter { $0 != .live || playback.behindLive || paused }
+        PlayerAction.allCases.filter {
+            switch $0 {
+            case .channels: return false
+            case .live: return playback.behindLive || paused
+            default: return true
+            }
+        }
     }
 
     var body: some View {
-        ZStack {
-            PlayerLayerView(player: playback.player).ignoresSafeArea()
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                ZStack {
-                    if chrome == .info { infoOverlay(now: context.date) }
-                    if chrome == .channels { channelList(now: context.date) }
-                    if let notice {
-                        Text(notice).font(.callout.weight(.semibold))
-                            .padding(.horizontal, 24).padding(.vertical, 12)
-                            .background(panelFill, in: Capsule())
-                            .frame(maxHeight: .infinity, alignment: .top).padding(.top, 60)
+        // A Button owns the primary (Select) action: on tvOS this fires on the
+        // first click, where `.onTapGesture` needed a second press and felt slow.
+        Button(action: select) {
+            ZStack {
+                PlayerLayerView(player: playback.player).ignoresSafeArea()
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    ZStack {
+                        if chrome == .info { infoOverlay(now: context.date) }
+                        if chrome == .channels { channelList(now: context.date) }
+                        if let notice {
+                            Text(notice).font(.callout.weight(.semibold))
+                                .padding(.horizontal, 24).padding(.vertical, 12)
+                                .background(panelFill, in: Capsule())
+                                .frame(maxHeight: .infinity, alignment: .top).padding(.top, 60)
+                        }
                     }
+                    .onChange(of: context.date) { _, now in autoHide(now) }
                 }
-                .onChange(of: context.date) { _, now in autoHide(now) }
+                .animation(.easeInOut(duration: 0.16), value: chrome)
             }
-            .animation(.easeInOut(duration: 0.2), value: chrome)
         }
-        .environment(\.colorScheme, .dark)
-        // One focusable surface owns every remote command.
-        .focusable()
+        .buttonStyle(.plain)
         .focusEffectDisabled()
+        .environment(\.colorScheme, .dark)
         .focused($focused)
         .onAppear {
             focused = true
@@ -78,7 +89,6 @@ struct CustomPlayerView: View {
         .onMoveCommand(perform: move)
         .onPlayPauseCommand(perform: togglePause)
         .onExitCommand(perform: back)
-        .onTapGesture(perform: select)
     }
 
     // MARK: Remote
@@ -234,15 +244,18 @@ struct CustomPlayerView: View {
         .transition(.opacity)
     }
 
+    // Feed resolution, read from the decoded video once playback starts. Empty
+    // until the first frame is sized, so nothing tacky is shown speculatively.
     private var qualityTags: [String] {
-        var tags: [String] = []
         let size = playback.player.currentItem?.presentationSize ?? .zero
-        if size.height >= 2000 { tags.append("4K") }
-        else if size.height >= 1000 { tags.append("FHD") }
-        else if size.height >= 700 { tags.append("HD") }
-        else if size.height > 0 { tags.append("SD") }
-        if paused { tags.append("PAUSED") }
-        return tags
+        let height = max(size.height, 0)
+        if height >= 2000 { return ["4K"] }
+        if height >= 1400 { return ["1440p"] }
+        if height >= 1030 { return ["1080p"] }
+        if height >= 700 { return ["720p"] }
+        if height >= 560 { return ["576p"] }
+        if height > 0 { return ["SD"] }
+        return []
     }
 
     private var actionRow: some View {

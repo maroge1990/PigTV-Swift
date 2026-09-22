@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @main
 struct PigTVApp: App {
@@ -28,7 +31,18 @@ struct PigTVApp: App {
                 ContentView()
                 #endif
             }
-                .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+                // The window's interface style is overridden directly:
+                // `.preferredColorScheme` did not re-apply live on tvOS, so the
+                // choice only took effect after a relaunch.
+                .task(id: appearance) { applyAppearance() }
+        }
+    }
+
+    private func applyAppearance() {
+        let style: UIUserInterfaceStyle = appearance == "dark" ? .dark : appearance == "light" ? .light : .unspecified
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows { window.overrideUserInterfaceStyle = style }
         }
     }
 }

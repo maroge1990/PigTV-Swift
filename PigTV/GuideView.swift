@@ -164,10 +164,22 @@ struct GuideView: View {
                             lastChannel = value.channel
                         }
                         .onChange(of: filter) {
-                            // A new category starts at its first channel; the old
-                            // offset could leave a short list scrolled out of view.
+                            // A new category starts at its first channel, at the
+                            // live baseline, with focus claimed so the remote is
+                            // never left with nothing focusable.
                             refreshRows()
-                            if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
+                            viewport = GuideNavigation.rounded(Date())
+                            anchor = Date()
+                            retainedFocus = nil
+                            if let first = rows.first {
+                                proxy.scrollTo(first.id, anchor: .top)
+                                let live = GuideNavigation.programme(in: first.programmes, at: Date())
+                                let target = GuideFocus(channel: first.id, start: live?.startTime ?? -1)
+                                retainedFocus = target
+                                setFocus(target)
+                            } else {
+                                focus = nil
+                            }
                         }
                         .onChange(of: model.guideBusy) { _, busy in
                             if !busy, focus == nil, let channel = rows.first(where: { $0.id == lastChannel }) {
@@ -399,14 +411,36 @@ struct GuideView: View {
     // viewport and focuses the revealed box. Acting in both cases is what made
     // the selection jump two programmes at a time.
     private func navigate(_ direction: MoveCommandDirection, channel: GuideChannel, duration: TimeInterval) {
-        guard direction == .left || direction == .right,
-              let current = focus, current.channel == channel.id else { return }
+        guard let current = focus, current.channel == channel.id else { return }
+        switch direction {
+        case .up, .down: navigateVertically(direction, from: channel)
+        case .left, .right: navigateHorizontally(direction, channel: channel, duration: duration)
+        @unknown default: break
+        }
+    }
+
+    // Up/Down keep the same time column. The focus engine picks the nearest box
+    // geometrically, which — because a clipped live cell's frame extends off the
+    // left edge — used to land on the channel tile of the row below. Steering
+    // focus explicitly to the programme at the anchor time avoids that.
+    private func navigateVertically(_ direction: MoveCommandDirection, from channel: GuideChannel) {
+        guard let index = rows.firstIndex(where: { $0.id == channel.id }) else { return }
+        let targetIndex = index + (direction == .down ? 1 : -1)
+        guard rows.indices.contains(targetIndex) else { return }
+        let target = rows[targetIndex]
+        let programmes = target.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
+        let when = max(anchor, viewport)
+        let programme = GuideNavigation.programme(in: programmes, at: when)
+            ?? programmes.first { $0.end > when }
+        setFocus(GuideFocus(channel: target.id, start: programme?.startTime ?? -1))
+    }
+
+    private func navigateHorizontally(_ direction: MoveCommandDirection, channel: GuideChannel, duration: TimeInterval) {
+        guard let current = focus else { return }
         let baseline = GuideNavigation.rounded(clock)
         let programmes = channel.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
-        // Channel tile, no-EPG placeholder, or a live programme while the grid
-        // is ahead of now: Left always brings the grid back to the live
-        // baseline. Without this the focus engine parked on the tile and the
-        // viewport stayed hours ahead with no way back.
+        // A live programme while the grid is ahead of now brings the grid back
+        // to the live baseline (Left) before anything else.
         let focusedProgramme = current.start.flatMap { start in programmes.first { $0.startTime == start } }
         if direction == .left, viewport > baseline,
            focusedProgramme == nil || focusedProgramme!.isLive(at: clock) {
@@ -420,14 +454,19 @@ struct GuideView: View {
         let visible = GuideNavigation.visible(programmes, viewport: viewport, duration: duration)
         let nextIndex = index + (direction == .right ? 1 : -1)
         guard programmes.indices.contains(nextIndex) else {
-            if direction == .right { shift(GuideNavigation.step) }
+            // Nothing earlier to reveal: hand focus to the channel tile so the
+            // remote can leave the timeline to the left (and reach favourites).
+            if direction == .left { setFocus(GuideFocus(channel: channel.id, start: nil)) }
+            else { shift(GuideNavigation.step) }
             return
         }
         let next = programmes[nextIndex]
         // Finished programmes cannot be played, so the remote never walks back
-        // into them. Earlier/Later remain available for browsing the past.
+        // into them; Left instead returns to live, or drops to the channel tile
+        // when already at the baseline.
         if direction == .left, next.end <= clock {
             if viewport > baseline { returnToLive(channel: channel, programmes: programmes, baseline: baseline) }
+            else { setFocus(GuideFocus(channel: channel.id, start: nil)) }
             return
         }
         let destination = direction == .left
@@ -460,6 +499,20 @@ struct GuideView: View {
         }
     }
     #endif
+
+    // Re-applies focus after the engine's own post-handler move, without
+    // touching the viewport (used by vertical steps, tile hand-off and category
+    // changes). Shared so the category reset can claim focus on every platform.
+    private func setFocus(_ target: GuideFocus) {
+        let generation = UUID()
+        navigationGeneration = generation
+        focus = target
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard navigationGeneration == generation else { return }
+            if focus != target { focus = target }
+        }
+    }
 
     private var searchSheet: some View {
         NavigationStack {
@@ -820,6 +873,10 @@ private struct GuideTimelineRow: View {
         let buffered = GuideNavigation.visible(channel.programmes, viewport: viewport.addingTimeInterval(-duration),
                                                duration: duration * 3)
         let visibleStarts = Set(visible.map(\.startTime))
+        // The channel name rides on the now-playing programme when it is on
+        // screen; the first visible cell is often a finished programme scrolled
+        // half off the left edge, where the name was clipped.
+        let captionStart = visible.first { $0.isLive(at: clock) }?.startTime ?? visible.first?.startTime
         ZStack(alignment: .leading) {
             Color.clear
             if visible.isEmpty {
@@ -834,7 +891,7 @@ private struct GuideTimelineRow: View {
                     let x = width * span.offset
                     programmeButton(programme, cellWidth: max(1, width * span.width - 4),
                         hiddenLeading: max(0, -x),
-                        caption: programme.startTime == visible.first?.startTime ? caption : nil,
+                        caption: programme.startTime == captionStart ? caption : nil,
                         onScreen: visibleStarts.contains(programme.startTime))
                         .offset(x: x + 2)
                 }
@@ -842,9 +899,6 @@ private struct GuideTimelineRow: View {
         }
         .frame(width: width, height: height, alignment: .leading)
         .clipped()
-        #if os(tvOS)
-        .focusSection()
-        #endif
     }
 
     // hiddenLeading: width of the cell currently left of the window; the text
