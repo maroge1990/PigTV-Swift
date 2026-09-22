@@ -268,14 +268,21 @@ struct LibrarySettings: View {
         #if os(tvOS)
         // A SwiftUI scroll layout keeps appearance changes and remote focus
         // in one hierarchy, without nested focusable UITableView cells.
+        // Same page treatment as Guide and Recordings: no separate backdrop,
+        // the guide's header style and its cell surfaces for every row.
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Settings").font(.largeTitle.bold())
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(spacing: 14) {
+                    Image("PigLogo").resizable().scaledToFit().frame(width: 58, height: 48)
+                        .accessibilityHidden(true)
+                    Text("Settings").font(.system(size: 34, weight: .bold))
+                }
                 settingsContent
             }
-            .padding(64)
+            .frame(maxWidth: 1100, alignment: .leading)
+            .padding(.horizontal, 48).padding(.vertical, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(PigPageBackground())
         .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {
             signOutButton
         }
@@ -305,7 +312,8 @@ struct LibrarySettings: View {
                             }
                         }
                         #if os(tvOS)
-                        .padding(20)
+                        .font(.system(size: 24))
+                        .padding(.horizontal, 24).padding(.vertical, 16)
                         #endif
                         .contentShape(Rectangle())
                     }
@@ -317,21 +325,39 @@ struct LibrarySettings: View {
                     .accessibilityIdentifier("appearance.\(value)")
                     .accessibilityValue(appearance == value ? "Selected" : "Not selected")
                 }
-            } header: { Text("Appearance").foregroundStyle(.secondary) }
+            } header: { sectionHeader("Appearance") }
             Section {
-                LabeledContent("Signed in as", value: model.user?.username ?? "")
-                LabeledContent("Server", value: model.serverText)
-                Button("Sign out", role: .destructive) { confirmSignOut = true }
+                SettingsRow("Signed in as", value: model.user?.username ?? "")
+                SettingsRow("Server", value: model.serverText)
+                Button(role: .destructive) { confirmSignOut = true } label: {
+                    Text("Sign out")
+                        #if os(tvOS)
+                        .font(.system(size: 24))
+                        .padding(.horizontal, 24).padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        #endif
+                }
+                    #if os(tvOS)
+                    .buttonStyle(PigSurfaceButtonStyle())
+                    #endif
                     .disabled(model.playbackBusy)
-            } header: { Text("Account").foregroundStyle(.secondary) }
+            } header: { sectionHeader("Account") }
             Section {
-                LabeledContent("App", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
-                LabeledContent("Server", value: model.serverInfo?.identity ?? "Unknown")
-            } header: { Text("Version").foregroundStyle(.secondary) }
+                SettingsRow("App", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
+                SettingsRow("Server", value: model.serverInfo?.identity ?? "Unknown")
+            } header: { sectionHeader("Version") }
             if !isTab {
                 Section { Button("Done") { dismiss() } }
             }
         }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            #if os(tvOS)
+            .font(.system(size: 24, weight: .semibold)).padding(.top, 8)
+            #endif
+            .foregroundStyle(.secondary)
     }
 
     private var signOutButton: some View {
@@ -339,5 +365,28 @@ struct LibrarySettings: View {
             dismiss()
             Task { await model.logout() }
         }
+    }
+}
+
+// Read-only settings value. On TV it sits on the same cell surface as the
+// guide so the page matches the other tabs; elsewhere it is a Form row.
+private struct SettingsRow: View {
+    let title: String
+    let value: String
+    @Environment(\.colorScheme) private var scheme
+    init(_ title: String, value: String) { self.title = title; self.value = value }
+    var body: some View {
+        #if os(tvOS)
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .font(.system(size: 24))
+        .padding(.horizontal, 24).padding(.vertical, 16)
+        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
+        #else
+        LabeledContent(title, value: value)
+        #endif
     }
 }

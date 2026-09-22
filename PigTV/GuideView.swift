@@ -30,7 +30,6 @@ struct GuideView: View {
     @ObservedObject var model: BrowseModel
     @AppStorage("pigtv.guide.filter") private var filter = "all"
     @AppStorage("pigtv.guide.channel") private var lastChannel = ""
-    @AppStorage("pigtv.guide.viewport") private var savedViewport = 0.0
     @State private var viewport = GuideNavigation.rounded(Date())
     @State private var programmeSearch = ""
     @State private var pendingSelection: GuideSelection?
@@ -164,6 +163,12 @@ struct GuideView: View {
                             retainedFocus = value
                             lastChannel = value.channel
                         }
+                        .onChange(of: filter) {
+                            // A new category starts at its first channel; the old
+                            // offset could leave a short list scrolled out of view.
+                            refreshRows()
+                            if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
+                        }
                         .onChange(of: model.guideBusy) { _, busy in
                             if !busy, focus == nil, let channel = rows.first(where: { $0.id == lastChannel }) {
                                 proxy.scrollTo(channel.id)
@@ -193,13 +198,10 @@ struct GuideView: View {
             }) { searchSheet }
             .sheet(isPresented: $choosingDate) { datePicker }
             .task {
-                // Reopen where you left off, as long as that time is still useful.
-                let remembered = Date(timeIntervalSince1970: savedViewport)
-                if savedViewport > 0, remembered > Date().addingTimeInterval(-1800),
-                   remembered < Date().addingTimeInterval(36 * 3600) {
-                    viewport = GuideNavigation.rounded(remembered)
-                    anchor = max(remembered, Date())
-                }
+                // The guide always opens at the current half-hour; restoring a
+                // later browsing position stranded the grid hours ahead.
+                viewport = GuideNavigation.rounded(Date())
+                anchor = Date()
                 if model.guide.isEmpty {
                     await model.loadCachedGuide()
                     if model.guide.isEmpty || model.fromCache {
@@ -219,11 +221,9 @@ struct GuideView: View {
                     await model.loadRecordings()
                 }
             }
-            .onChange(of: viewport) { _, value in savedViewport = value.timeIntervalSince1970 }
             .onAppear { refreshRows() }
             .onChange(of: model.guide.count) { refreshRows() }
             .onChange(of: model.favourites.count) { refreshRows() }
-            .onChange(of: filter) { refreshRows() }
             .onChange(of: search) { refreshRows() }
             .onChange(of: app.playback == nil) { _, closed in
                 if closed { focus = retainedFocus }
@@ -400,42 +400,59 @@ struct GuideView: View {
     // the selection jump two programmes at a time.
     private func navigate(_ direction: MoveCommandDirection, channel: GuideChannel, duration: TimeInterval) {
         guard direction == .left || direction == .right,
-              let current = focus, current.channel == channel.id, let start = current.start else { return }
-        let generation = UUID()
-        navigationGeneration = generation
+              let current = focus, current.channel == channel.id else { return }
         let baseline = GuideNavigation.rounded(clock)
-        if direction == .left, let live = channel.programmes.first(where: { $0.startTime == start }),
-           live.isLive(at: clock), viewport > baseline {
-            setViewport(baseline, animated: true)
+        let programmes = channel.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
+        // Channel tile, no-EPG placeholder, or a live programme while the grid
+        // is ahead of now: Left always brings the grid back to the live
+        // baseline. Without this the focus engine parked on the tile and the
+        // viewport stayed hours ahead with no way back.
+        let focusedProgramme = current.start.flatMap { start in programmes.first { $0.startTime == start } }
+        if direction == .left, viewport > baseline,
+           focusedProgramme == nil || focusedProgramme!.isLive(at: clock) {
+            returnToLive(channel: channel, programmes: programmes, baseline: baseline)
             return
         }
-        let programmes = channel.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
-        let visible = GuideNavigation.visible(programmes, viewport: viewport, duration: duration)
-        let next: GuideProgramme?
-        if let index = programmes.firstIndex(where: { $0.startTime == start }) {
-            let index = index + (direction == .right ? 1 : -1)
-            next = programmes.indices.contains(index) ? programmes[index] : nil
-        } else {
-            next = nil
+        guard let start = current.start, let index = programmes.firstIndex(where: { $0.startTime == start }) else {
+            if direction == .right, current.start == -1 { shift(GuideNavigation.step) }
+            return
         }
-        guard let next else {
+        let visible = GuideNavigation.visible(programmes, viewport: viewport, duration: duration)
+        let nextIndex = index + (direction == .right ? 1 : -1)
+        guard programmes.indices.contains(nextIndex) else {
             if direction == .right { shift(GuideNavigation.step) }
             return
         }
+        let next = programmes[nextIndex]
         // Finished programmes cannot be played, so the remote never walks back
         // into them. Earlier/Later remain available for browsing the past.
-        if direction == .left, next.end <= clock { return }
+        if direction == .left, next.end <= clock {
+            if viewport > baseline { returnToLive(channel: channel, programmes: programmes, baseline: baseline) }
+            return
+        }
         let destination = direction == .left
             ? GuideNavigation.revealMovingLeft(next, from: viewport, now: clock)
             : GuideNavigation.reveal(next, from: viewport, duration: duration)
         if destination == viewport, visible.contains(where: { $0.startTime == next.startTime }) { return }
         anchor = max(next.start, destination)
+        move(to: destination, focusing: GuideFocus(channel: channel.id, start: next.startTime))
+    }
+
+    private func returnToLive(channel: GuideChannel, programmes: [GuideProgramme], baseline: Date) {
+        let live = GuideNavigation.programme(in: programmes, at: clock)
+        anchor = clock
+        move(to: baseline, focusing: GuideFocus(channel: channel.id, start: live?.startTime ?? -1))
+    }
+
+    // Moves the grid and keeps focus on the chosen cell. The focus engine
+    // performs its own move after the move-command handler (to the channel
+    // tile when nothing is drawn to the left), so ours is re-applied once
+    // that has happened.
+    private func move(to destination: Date, focusing target: GuideFocus) {
+        let generation = UUID()
+        navigationGeneration = generation
         setViewport(destination, animated: true)
-        let target = GuideFocus(channel: channel.id, start: next.startTime)
         focus = target
-        // The focus engine performs its own move after this handler (to the
-        // channel tile when nothing else is drawn to the left). Re-apply ours
-        // once that has happened so the revealed programme keeps focus.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(80))
             guard navigationGeneration == generation, viewport == destination else { return }
@@ -565,18 +582,16 @@ private struct ChannelTile: View {
     let name: String
     let logo: String?
     let client: APIClient?
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
-            // This is the only app-provided artwork backing: it fills the
-            // entire channel tile and remains darker than the guide surface in
-            // either appearance. Provider artwork may still contain its own
-            // pixels/background, but never receives a second app-made box.
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.black.opacity(scheme == .dark ? 0.52 : 0.62))
+            // The only app-provided artwork backing: one neutral translucent
+            // tile, the same for every channel, with the logo inset so it
+            // never touches the tile edge.
+            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile)
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
             } else {
                 Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(3)
                     .foregroundStyle(.white)
@@ -797,6 +812,14 @@ private struct GuideTimelineRow: View {
 
     var body: some View {
         let visible = GuideNavigation.visible(channel.programmes, viewport: viewport, duration: duration)
+        // Cells are laid out at their true, unclamped time positions and the
+        // row is clipped, so a viewport change is a pure translation of the
+        // whole timeline. A buffer either side means the cells sliding in
+        // already exist; clamping cells to the window made each one resize
+        // independently, which read as many separately moving objects.
+        let buffered = GuideNavigation.visible(channel.programmes, viewport: viewport.addingTimeInterval(-duration),
+                                               duration: duration * 3)
+        let visibleStarts = Set(visible.map(\.startTime))
         ZStack(alignment: .leading) {
             Color.clear
             if visible.isEmpty {
@@ -805,20 +828,29 @@ private struct GuideTimelineRow: View {
                     .frame(width: width, height: height)
                     .focused(focus, equals: GuideFocus(channel: channel.id, start: -1))
             }
-            ForEach(visible, id: \.startTime) { programme in
-                if let span = GuideGeometry.interval(start: programme.startTime, end: programme.endTime,
+            ForEach(buffered, id: \.startTime) { programme in
+                if let span = GuideGeometry.placement(start: programme.startTime, end: programme.endTime,
                     window: viewport.timeIntervalSince1970 * 1000, duration: duration * 1000) {
+                    let x = width * span.offset
                     programmeButton(programme, cellWidth: max(1, width * span.width - 4),
-                        caption: programme.startTime == visible.first?.startTime ? caption : nil)
-                        .offset(x: width * span.offset + 2)
+                        hiddenLeading: max(0, -x),
+                        caption: programme.startTime == visible.first?.startTime ? caption : nil,
+                        onScreen: visibleStarts.contains(programme.startTime))
+                        .offset(x: x + 2)
                 }
             }
         }
-        .frame(width: width, height: height)
+        .frame(width: width, height: height, alignment: .leading)
         .clipped()
+        #if os(tvOS)
+        .focusSection()
+        #endif
     }
 
-    private func programmeButton(_ programme: GuideProgramme, cellWidth: CGFloat, caption: String?) -> some View {
+    // hiddenLeading: width of the cell currently left of the window; the text
+    // is pushed right by that much so a long programme stays readable.
+    private func programmeButton(_ programme: GuideProgramme, cellWidth: CGFloat, hiddenLeading: CGFloat,
+                                 caption: String?, onScreen: Bool) -> some View {
         Button { select(programme) } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -837,14 +869,16 @@ private struct GuideTimelineRow: View {
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.leading, 12 + min(hiddenLeading, max(0, cellWidth - 160)))
+            .padding(.trailing, 12)
             .frame(width: cellWidth, height: height - 4, alignment: .leading)
             .clipped()
         }
         .buttonStyle(PigSurfaceButtonStyle())
         // Finished programmes cannot be played or recorded: keep them for
-        // context, but out of the focus path and visibly in the past.
-        .disabled(programme.end <= clock)
+        // context, but out of the focus path and visibly in the past. Buffered
+        // cells outside the window are drawn only so they can slide in.
+        .disabled(programme.end <= clock || !onScreen)
         .opacity(programme.end <= clock ? 0.4 : 1)
         .focused(focus, equals: GuideFocus(channel: channel.id, start: programme.startTime))
         .contextMenu {
@@ -869,6 +903,9 @@ extension Color {
     static func guideCell(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.white.opacity(0.09) : Color.black.opacity(0.11)
     }
+    // Neutral translucent logo backing: mid grey keeps both white and dark
+    // marks legible over light or dark pages and over video.
+    static let logoTile = Color(white: 0.42).opacity(0.38)
     static func pageBackground(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.black : Color.white
     }

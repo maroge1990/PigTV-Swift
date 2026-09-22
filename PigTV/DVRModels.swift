@@ -121,6 +121,14 @@ nonisolated enum GuideGeometry {
         guard upper > lower else { return nil }
         return ((lower - window) / duration, (upper - lower) / duration)
     }
+    // Unclamped position of a programme relative to the window start, in
+    // window widths; the caller clips. Keeps cell widths constant while the
+    // window moves so the grid translates as one piece.
+    static func placement(start: Double, end: Double, window: Double, duration: Double) -> (offset: Double, width: Double)? {
+        guard start.isFinite, end.isFinite, window.isFinite, duration.isFinite,
+              duration > 0, end > start else { return nil }
+        return ((start - window) / duration, (end - start) / duration)
+    }
 }
 
 // The viewport stays short; programme data covers a whole day around it so

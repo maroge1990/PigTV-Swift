@@ -20,7 +20,10 @@ struct RecordingsView: View {
                         Text("Library").tag("library")
                         Text("Scheduled").tag("scheduled")
                     }.pickerStyle(.segmented)
-                    Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.loadRecordings() } }
+                    Button { Task { await model.loadRecordings() } } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                            .padding(.horizontal, 24).padding(.vertical, 12)
+                    }
                         .buttonStyle(PigSurfaceButtonStyle())
                         .disabled(model.recordingsBusy)
                 }.padding(.horizontal, 32)
@@ -49,9 +52,12 @@ struct RecordingsView: View {
                                         Text(item.status.capitalized).font(.caption.bold())
                                         if item.is_partial == 1 { Text("Partial recording").font(.caption) }
                                     }
-                                }.padding(.vertical, 10)
+                                }
+                                .padding(.horizontal, 24).padding(.vertical, 16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .buttonStyle(PigSurfaceButtonStyle())
+                            .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
                         }
                     }
                     if filtered.isEmpty && !model.recordingsBusy {
@@ -72,7 +78,11 @@ struct RecordingsView: View {
                                         cancellation = item
                                     }.disabled(model.mutationBusy)
                                 }
-                            }.padding(.vertical, 12)
+                            }
+                            .padding(.horizontal, 24).padding(.vertical, 16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                            .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
                         }
                     }
                     if model.schedules.isEmpty && !model.recordingsBusy {
