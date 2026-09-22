@@ -21,11 +21,7 @@ struct FavouritesView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 22)], spacing: 22) {
                         ForEach(model.favourites) { channel in
                             Button { selection = channel } label: { ChannelCard(channel: channel, client: model.client, logo: model.logo(for: channel)) }
-                            #if os(tvOS)
-                            .buttonStyle(.card)
-                            #else
-                            .buttonStyle(.plain)
-                            #endif
+                                .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: 22))
                         }
                     }
                     if model.favouritesBusy { ProgressView("Loading favourites…") }

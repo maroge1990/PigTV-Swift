@@ -96,11 +96,7 @@ struct LiveChannelsView: View {
                             Button { details = channel } label: {
                                 ChannelCard(channel: channel, client: model.browse?.client, logo: model.browse?.logo(for: channel))
                             }
-                            #if os(tvOS)
-                            .buttonStyle(.card)
-                            #else
-                            .buttonStyle(.plain)
-                            #endif
+                            .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: 22))
                             .accessibilityHint("Show programme details and watch live")
                         }
                     }

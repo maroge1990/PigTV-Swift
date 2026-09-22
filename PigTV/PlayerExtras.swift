@@ -122,10 +122,12 @@ struct QuickGuidePanel: View {
 private struct QuickGuideRowStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
     func makeBody(configuration: Configuration) -> some View {
+        let active = focused || configuration.isPressed
         configuration.label
             .foregroundStyle(.primary)
-            .background(focused || configuration.isPressed ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.06),
+            .background(active ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.06),
                         in: RoundedRectangle(cornerRadius: 12))
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(active ? Color.accentColor : .clear, lineWidth: 3) }
     }
 }
 

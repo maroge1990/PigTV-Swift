@@ -37,7 +37,6 @@ struct GuideView: View {
     @State private var clock = Date()
     @State private var search = ""
     @State private var searching = false
-    @State private var choosingOptions = false
     @State private var choosingDate = false
     @State private var jumpDate = Date()
     @State private var selection: GuideSelection?
@@ -96,8 +95,6 @@ struct GuideView: View {
                                 selection = GuideSelection(channel: channel, programme: programme)
                             }
                         }
-                        Button("Options", systemImage: "ellipsis.circle") { showOptions() }
-                            .disabled(focusedChannel == nil)
                     }.frame(height: 78, alignment: .top).padding(.horizontal, 24)
                     }
                     if let error = model.guideError {
@@ -128,10 +125,14 @@ struct GuideView: View {
                                 if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
                                     ContentUnavailableView(filter == "favourites" ? "No favourites yet" : "No matching channels",
                                         systemImage: filter == "favourites" ? "heart" : "magnifyingglass",
-                                        description: Text(filter == "favourites" ? "Choose a channel, then Options to add it to favourites." : "Try another category or search."))
+                                        description: Text(filter == "favourites" ? "Choose a channel, then Details to add it to favourites." : "Try another category or search."))
                                 }
                             }.padding(.horizontal, 24).padding(.vertical, 5)
                         }
+                        // Rebuild the scroll view when the category changes so it
+                        // always starts at the top of the new (possibly short)
+                        // list instead of keeping the previous offset.
+                        .id(filter)
                         .overlay(alignment: .topLeading) {
                             if let offset = nowLineOffset(width: timelineWidth, duration: duration) {
                                 Rectangle().fill(Color.accentColor).frame(width: 2)
@@ -162,26 +163,14 @@ struct GuideView: View {
                             lastChannel = value.channel
                         }
                         .onChange(of: filter) {
-                            // A new category starts at its first channel, at the
-                            // live baseline, with focus claimed so the remote is
-                            // never left with nothing focusable. The scroll and
-                            // focus are deferred so the rebuilt rows are laid out
-                            // first — otherwise scrollTo targeted the old list.
+                            // The scroll view is rebuilt via .id(filter) above, so
+                            // it starts at the top; here we only reset the time
+                            // window and drop stale focus for the new list.
                             refreshRows()
                             viewport = GuideNavigation.rounded(Date())
                             anchor = Date()
                             retainedFocus = nil
                             focus = nil
-                            let first = rows.first
-                            Task { @MainActor in
-                                try? await Task.sleep(for: .milliseconds(30))
-                                guard let first, rows.contains(where: { $0.id == first.id }) else { return }
-                                proxy.scrollTo(first.id, anchor: .top)
-                                let live = GuideNavigation.programme(in: first.programmes, at: Date())
-                                let target = GuideFocus(channel: first.id, start: live?.startTime ?? -1)
-                                retainedFocus = target
-                                focus = target
-                            }
                         }
                         .onChange(of: model.guideBusy) { _, busy in
                             if !busy, focus == nil, let channel = rows.first(where: { $0.id == lastChannel }) {
@@ -196,15 +185,6 @@ struct GuideView: View {
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                     clock = Date()
-                }
-            }
-            .confirmationDialog("Options", isPresented: $choosingOptions) {
-                if let channel = focusedChannel {
-                    if let programme = focusedProgramme {
-                        Button("Programme details and recording") { selection = GuideSelection(channel: channel, programme: programme) }
-                    }
-                    Button("All programmes on \(channel.name)") { schedule = channel }
-                    Button("Channel and favourites") { channelDetails = asChannel(channel) }
                 }
             }
             .sheet(isPresented: $searching, onDismiss: {
@@ -597,9 +577,6 @@ struct GuideView: View {
     }
     private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds)) }
     private func reload() { Task { await model.loadGuide() } }
-    private func showOptions() {
-        choosingOptions = true
-    }
     private func finishDetails() {
         focus = retainedFocus
         Task { await model.loadFavourites() }
@@ -679,13 +656,8 @@ struct ChannelScheduleView: View {
                                 }
                             }
                             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
                         }
-                        #if os(tvOS)
-                        .buttonStyle(.card)
-                        #else
-                        .buttonStyle(.plain)
-                        #endif
+                        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 14))
                     }
                     Button("Done") { dismiss() }
                 }.padding(32).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity)
@@ -780,20 +752,25 @@ struct RetryBanner: View {
     }
 }
 
-// Chips read correctly in both appearances: the selected chip inverts the
-// primary colour instead of assuming a dark background.
+// Category chips share the app's pink language: focus is the bright pink
+// outline + translucent pink fill; the current category keeps a quieter pink
+// tint so it stays legible when focus moves elsewhere. Same treatment in both
+// appearances (accent is identical; the neutral rest state adapts).
 private struct GuideFilterStyle: ButtonStyle {
     var selected = false
     @Environment(\.isFocused) private var focused
-    @Environment(\.colorScheme) private var scheme
     func makeBody(configuration: Configuration) -> some View {
-        let inverted = scheme == .dark ? Color.black : Color.white
         configuration.label
             .font(GuideTypography.body)
-            .foregroundStyle(focused ? Color.black : selected ? inverted : Color.primary)
+            .foregroundStyle(selected && !focused ? Color.accentColor : Color.primary)
             .padding(.horizontal, 18).padding(.vertical, 10)
-            .background(focused ? Color.accentColor : selected ? Color.primary : Color.primary.opacity(0.07), in: Capsule())
-            .overlay { Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1) }
+            .background(focused ? Color.accentColor.opacity(0.22)
+                        : selected ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.07), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(focused ? Color.accentColor
+                    : selected ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.12),
+                    lineWidth: focused ? 3 : 1)
+            }
     }
 }
 
@@ -925,7 +902,7 @@ extension Color {
     // Neutral translucent logo backing: darker in light mode so the tile is
     // clearly separated from the page, lighter grey in dark mode and over video.
     static func logoTile(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(white: 0.42).opacity(0.38) : Color(white: 0.30).opacity(0.30)
+        scheme == .dark ? Color(white: 0.42).opacity(0.38) : Color(white: 0.22).opacity(0.42)
     }
     static func pageBackground(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.black : Color.white
