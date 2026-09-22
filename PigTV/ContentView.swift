@@ -158,6 +158,7 @@ struct PlayerScreen: View {
     @ObservedObject var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingGuide = false
+    @AppStorage("pigtv.player.custom") private var customPlayer = true
 
     var body: some View {
         ZStack {
@@ -189,6 +190,10 @@ struct PlayerScreen: View {
                     ProgressView("Reconnecting…")
                     Button("Back to guide") { dismiss() }
                 }.foregroundStyle(.white)
+            } else if playback.ready, customPlayerActive {
+                #if os(tvOS)
+                CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
+                #endif
             } else if playback.ready {
                 NativePlayer(playback: playback, app: app).ignoresSafeArea()
                     #if os(tvOS)
@@ -247,6 +252,14 @@ struct PlayerScreen: View {
         .onAppear { playback.start() }
         .onDisappear { Task { await app.endPlayback(playback) } }
 
+    }
+
+    private var customPlayerActive: Bool {
+        #if os(tvOS)
+        customPlayer
+        #else
+        false
+        #endif
     }
 
     #if os(iOS)

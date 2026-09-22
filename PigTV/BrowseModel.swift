@@ -212,6 +212,20 @@ final class BrowseModel: ObservableObject {
         catch { favouritesError = error.localizedDescription }
     }
 
+    func isFavourite(_ channel: Channel) -> Bool { favourites.contains { $0.id == channel.id } }
+
+    // Used by the player's action row; the favourites list is reloaded so the
+    // guide filter and the heart stay in agreement with the server.
+    func setFavourite(_ channel: Channel, _ value: Bool) async -> Bool {
+        do {
+            let result: ActionResult = try await client.request("favorites", method: value ? "POST" : "DELETE",
+                body: FavouriteBody(sourceId: channel.sourceId, itemId: channel.rawID))
+            guard result.success else { return false }
+            await loadFavourites()
+            return true
+        } catch { return false }
+    }
+
     func schedule(channel: GuideChannel, programme: GuideProgramme, before: Int, after: Int) async -> Bool {
         guard !mutationBusy else { return false }
         guard programme.end > Date(), programme.end > programme.start else {
