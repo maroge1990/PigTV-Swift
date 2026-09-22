@@ -51,7 +51,15 @@ function the stream signals. Tracked as **R13** in the client blueprint.
 
 ---
 
-## SR-2 — Strip the small-caps "ᴸɪᴠᴇ" badge from EPG titles and names (P2)
+## SR-2 — Strip the small-caps "ᴸɪᴠᴇ" badge from EPG titles and names (P2) — ✅ SHIPPED (server 0099)
+
+**Shipped** in server build 0099: the badge is stripped at ingest from titles, sub-titles and
+channel names in every response, using the same code-point ranges as the client stripper. The
+client's `String.strippingBadgeSuffix` (DVRModels.swift) is now redundant but retained — remove it
+once 0099 is confirmed deployed (double-stripping is a harmless no-op until then). Original request
+below for reference.
+
+
 
 **User-visible problem.** Programme titles and channel names arrive with a trailing small-capitals
 badge, e.g. `NFL Football - Giants at Rams ᴸɪᴠᴇ` and `NFL 16 ᴸɪᴠᴇ`. It renders as a tacky
