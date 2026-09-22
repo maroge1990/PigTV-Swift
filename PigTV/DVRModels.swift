@@ -56,6 +56,17 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     enum CodingKeys: String, CodingKey {
         case rawID = "id", sourceId, name, logo, category, programmes, tvgId
     }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rawID = try c.decode(String.self, forKey: .rawID)
+        sourceId = try c.decode(Int.self, forKey: .sourceId)
+        // Channel names carry the same small-caps badge as programmes.
+        name = (try c.decode(String.self, forKey: .name)).strippingBadgeSuffix()
+        logo = try c.decodeIfPresent(String.self, forKey: .logo)
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+        programmes = try c.decode([GuideProgramme].self, forKey: .programmes)
+        tvgId = try c.decodeIfPresent(String.self, forKey: .tvgId)
+    }
     // Library categories are keyed by ID; guide rows carry the category as the
     // server stored it, which may be the ID or the display name.
     func matches(_ item: Category) -> Bool {

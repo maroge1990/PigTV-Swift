@@ -3,21 +3,19 @@ import SwiftUI
 struct LibraryView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        // Tint is applied per tab so the tab bar keeps the system's own
-        // selected-item colouring (pink-on-grey was unreadable).
+        // Accent tint on the TabView so the selected tab reads pink — the
+        // white selection was hard to distinguish from unselected tabs.
         TabView {
             if let browse = model.browse {
                 GuideView(app: model, model: browse)
-                    .tint(Color("AccentColor"))
                     .tabItem { Label("TV Guide", systemImage: "calendar") }
                 RecordingsView(model: browse)
-                    .tint(Color("AccentColor"))
                     .tabItem { Label("Recordings", systemImage: "record.circle") }
             }
             LibrarySettings(model: model, isTab: true)
-                .tint(Color("AccentColor"))
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
+        .tint(Color("AccentColor"))
     }
 }
 

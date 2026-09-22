@@ -5,8 +5,17 @@ struct ContentView: View {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var initialRestoreFinished = false
+    // Appearance is owned here (a View), not in the App/Scene: an @AppStorage
+    // change re-renders a View immediately, where the Scene-level modifier only
+    // took effect after a relaunch.
+    @AppStorage("pigtv.appearance") private var appearance = "system"
 
     var body: some View {
+        content
+            .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+    }
+
+    private var content: some View {
         Group {
             if !initialRestoreFinished { LaunchLoadingView() }
             else if model.loggedIn { LibraryView(model: model) }

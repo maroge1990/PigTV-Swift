@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct ServerAddress: Equatable {
     let url: URL
@@ -216,9 +217,30 @@ final class APIClient {
     }
 
     @MainActor
+    // Logos persist on disk between launches, so the guide does not re-download
+    // every channel's artwork each cold start (only decoding is repeated).
+    private static let artworkDiskCache: URL? = {
+        guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let dir = base.appendingPathComponent("PigTVArtwork", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+    private static func artworkDiskURL(for url: URL) -> URL? {
+        guard let dir = artworkDiskCache else { return nil }
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        return dir.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined())
+    }
+
     func artworkData(_ logo: String) async throws -> Data? {
         guard let request = artworkRequest(logo), let url = request.url else { return nil }
         if let cached = artworkCache.object(forKey: url as NSURL) { return cached as Data }
+        let diskURL = Self.artworkDiskURL(for: url)
+        if let diskURL, let data = await Task.detached(priority: .utility, operation: {
+            try? Data(contentsOf: diskURL)
+        }).value {
+            artworkCache.setObject(data as NSData, forKey: url as NSURL, cost: data.count)
+            return data
+        }
         let (file, response) = try await artworkSession.download(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             try? FileManager.default.removeItem(at: file)
@@ -233,6 +255,7 @@ final class APIClient {
         guard let data else { return nil }
 
         artworkCache.setObject(data as NSData, forKey: url as NSURL, cost: data.count)
+        if let diskURL { try? data.write(to: diskURL, options: .atomic) }
         return data
     }
 

@@ -164,19 +164,23 @@ struct GuideView: View {
                         .onChange(of: filter) {
                             // A new category starts at its first channel, at the
                             // live baseline, with focus claimed so the remote is
-                            // never left with nothing focusable.
+                            // never left with nothing focusable. The scroll and
+                            // focus are deferred so the rebuilt rows are laid out
+                            // first — otherwise scrollTo targeted the old list.
                             refreshRows()
                             viewport = GuideNavigation.rounded(Date())
                             anchor = Date()
                             retainedFocus = nil
-                            if let first = rows.first {
+                            focus = nil
+                            let first = rows.first
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(30))
+                                guard let first, rows.contains(where: { $0.id == first.id }) else { return }
                                 proxy.scrollTo(first.id, anchor: .top)
                                 let live = GuideNavigation.programme(in: first.programmes, at: Date())
                                 let target = GuideFocus(channel: first.id, start: live?.startTime ?? -1)
                                 retainedFocus = target
-                                setFocus(target)
-                            } else {
-                                focus = nil
+                                focus = target
                             }
                         }
                         .onChange(of: model.guideBusy) { _, busy in
@@ -609,19 +613,20 @@ private struct ChannelTile: View {
     let name: String
     let logo: String?
     let client: APIClient?
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
             // The only app-provided artwork backing: one neutral translucent
             // tile, the same for every channel, with the logo inset so it
             // never touches the tile edge.
-            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile)
+            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile(scheme))
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client)
                     .padding(.horizontal, 20).padding(.vertical, 10)
             } else {
                 Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(3)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .multilineTextAlignment(.center).minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -917,9 +922,11 @@ extension Color {
     static func guideCell(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.white.opacity(0.09) : Color.black.opacity(0.11)
     }
-    // Neutral translucent logo backing: mid grey keeps both white and dark
-    // marks legible over light or dark pages and over video.
-    static let logoTile = Color(white: 0.42).opacity(0.38)
+    // Neutral translucent logo backing: darker in light mode so the tile is
+    // clearly separated from the page, lighter grey in dark mode and over video.
+    static func logoTile(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(white: 0.42).opacity(0.38) : Color(white: 0.30).opacity(0.30)
+    }
     static func pageBackground(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.black : Color.white
     }

@@ -234,13 +234,16 @@ struct CustomPlayerView: View {
             timeline(programme: programme, next: next, now: now).padding(.top, 28)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 90).padding(.bottom, 60)
+        .padding(.horizontal, 90).padding(.bottom, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background(alignment: .bottom) {
             LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.95 : 0.8)],
                            startPoint: .top, endPoint: .bottom)
                 .frame(height: 620).ignoresSafeArea()
         }
+        // Sit against the screen bottom rather than the title-safe inset, which
+        // left a visible gap below the overlay.
+        .ignoresSafeArea(edges: .bottom)
         .transition(.opacity)
     }
 
@@ -408,7 +411,7 @@ private struct LogoTile: View {
     let name: String
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile)
+            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile(.dark))
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client).padding(.horizontal, 14).padding(.vertical, 10)
             } else {
