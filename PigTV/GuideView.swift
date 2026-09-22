@@ -425,7 +425,7 @@ struct GuideView: View {
         guard direction == .left || direction == .right,
               let current = focus, current.channel == channel.id else { return }
         let baseline = GuideNavigation.rounded(clock)
-        let programmes = channel.programmes.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
+        let programmes = GuideNavigation.ordered(channel.programmes)
         // A live programme while the grid is ahead of now brings the grid back
         // to the live baseline (Left) before anything else.
         let focusedProgramme = current.start.flatMap { start in programmes.first { $0.startTime == start } }
@@ -434,20 +434,17 @@ struct GuideView: View {
             returnToLive(channel: channel, programmes: programmes, baseline: baseline)
             return
         }
-        guard let start = current.start, let index = programmes.firstIndex(where: { $0.startTime == start }) else {
+        guard let start = current.start, programmes.contains(where: { $0.startTime == start }) else {
             if direction == .right, current.start == -1 { shift(GuideNavigation.step) }
             return
         }
-        let visible = GuideNavigation.visible(programmes, viewport: viewport, duration: duration)
-        let nextIndex = index + (direction == .right ? 1 : -1)
-        guard programmes.indices.contains(nextIndex) else {
+        guard let next = GuideNavigation.neighbour(of: start, in: programmes, forward: direction == .right) else {
             // Nothing earlier to reveal: hand focus to the channel tile so the
             // remote can leave the timeline to the left (and reach favourites).
             if direction == .left { setFocus(GuideFocus(channel: channel.id, start: nil)) }
             else { shift(GuideNavigation.step) }
             return
         }
-        let next = programmes[nextIndex]
         // Finished programmes cannot be played, so the remote never walks back
         // into them; Left instead returns to live, or drops to the channel tile
         // when already at the baseline.
@@ -459,9 +456,13 @@ struct GuideView: View {
         let destination = direction == .left
             ? GuideNavigation.revealMovingLeft(next, from: viewport, now: clock)
             : GuideNavigation.reveal(next, from: viewport, duration: duration)
-        if destination == viewport, visible.contains(where: { $0.startTime == next.startTime }) { return }
+        let target = GuideFocus(channel: channel.id, start: next.startTime)
+        // Already on screen: claim focus explicitly rather than trusting the
+        // focus engine's geometric move, which can miss a very narrow cell
+        // and previously left Right stuck at the screen edge (R19).
+        if destination == viewport { setFocus(target); return }
         anchor = max(next.start, destination)
-        move(to: destination, focusing: GuideFocus(channel: channel.id, start: next.startTime))
+        move(to: destination, focusing: target)
     }
 
     private func returnToLive(channel: GuideChannel, programmes: [GuideProgramme], baseline: Date) {

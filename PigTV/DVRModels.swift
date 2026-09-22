@@ -196,6 +196,24 @@ nonisolated enum GuideNavigation {
         if programme.start < viewport { return max(baseline, rounded(programme.start)) }
         return viewport
     }
+    // A channel's programmes as the grid draws them: valid, one per start
+    // time (the first listed, as `visible` keeps), in start order.
+    static func ordered(_ programmes: [GuideProgramme]) -> [GuideProgramme] {
+        var seen = Set<Double>()
+        return programmes.filter { $0.end > $0.start && seen.insert($0.startTime).inserted }
+            .sorted { $0.startTime < $1.startTime }
+    }
+    // The programme a Left/Right step lands on (R19). Duplicate starts and
+    // programmes wholly inside the current one are skipped, so a step never
+    // "lands" on the cell that is already focused.
+    static func neighbour(of startTime: Double, in programmes: [GuideProgramme], forward: Bool) -> GuideProgramme? {
+        let drawn = ordered(programmes)
+        guard let current = drawn.first(where: { $0.startTime == startTime }) else { return nil }
+        if forward {
+            return drawn.first { $0.startTime > startTime && $0.endTime > current.endTime }
+        }
+        return drawn.last { $0.startTime < startTime }
+    }
     static func needsReload(viewport: Date, loadedFrom start: Date) -> Bool {
         viewport < start || viewport.addingTimeInterval(visibleDuration) > start.addingTimeInterval(loadedDuration)
     }

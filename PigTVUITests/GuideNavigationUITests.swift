@@ -21,9 +21,17 @@ final class GuideNavigationUITests: XCTestCase {
         let start = focusedLabel(app)
         XCTAssertTrue(start.contains(", "), "no grid cell focused: \(start)")
         var labels = [start]
-        for _ in 0..<12 {
+        for step in 0..<12 {
             XCUIRemote.shared.press(.right)
             labels.append(focusedLabel(app))
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_STEP_SHOTS"] != nil || step < 4 {
+                let frame = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true")).frame
+                print("step \(step): \(labels.last!) frame \(frame)")
+                let shot = XCTAttachment(screenshot: app.screenshot())
+                shot.name = "step \(step)"
+                shot.lifetime = .keepAlways
+                add(shot)
+            }
         }
         print("Right-navigation focus sequence: \(labels)")
         let shot = XCTAttachment(screenshot: app.screenshot())

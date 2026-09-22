@@ -46,13 +46,21 @@ Before each run record app version/build and source revision, device/OS, server 
 
 For each check record date, device/OS, client revision/build, server build, steps, expected/actual behaviour and sanitised evidence. Mark **Pass**, **Fail** or **Not run**. Update the matching blueprint item; an unrun device check must not become Verified merely because a build or fixture passed.
 
+## Build 1.0 (15) — R19 fix (23 September 2026)
+
+**Local results:** contract runner **143 passed** (8 new R19 navigation checks). tvOS simulator: 18 unit + 2 UI tests passed; the guide fixture now contains duplicate EPG entries, and `GuideNavigationUITests` **failed on the build 14 navigation code (focus stuck on one cell) and passes on build 15**. iOS simulator: 18 unit + 1 UI test passed. Device: repeat the R19 row below, then R14/R16/R20/HDR.
+
+| Item | Steps and expected result |
+|---|---|
+| R19 | From the live column, hold/press Right past the screen edge on several channels and categories: the grid slides on through the day. Then Left all the way back to live and the channel tile. |
+
 ## Build 1.0 (14) — device checklist and results (23 September 2026)
 
 **Local results:** tvOS simulator: 18 unit tests + 2 UI tests passed (Settings appearance, new guide Right-navigation). iOS simulator: 18 unit tests passed; the Settings appearance UI test **failed once then passed on rerun** (timed out waiting for "light" to read Selected). That screen's code is unchanged in build 14, so this is treated as a pre-existing flaky test, not a regression. Contract runner: 135 passed.
 
 | Item | Steps and expected result |
 |---|---|
-| R19 | Describe exactly where Right stops (focus at screen edge? grid moves but focus lost? after how many presses, which category, guide still loading?). |
+| R19 | Mark: focus stops at the last on-screen cell (11:30 with now 9:30), all categories; Later works and scrolls well. Fixed in build 15. |
 | R20 | Light mode: play a channel, exit; repeat several times, also after channel changes and after an error screen. Guide, tabs, Recordings and Settings stay fully light. Repeat in Dark and System. |
 | HDR (R13) | Settings → Video and Audio → Match Content → Match Dynamic Range on. Sky Sports Main Event: panel switches to HDR, colours normal. Change to an SDR channel: back to SDR. Exit to guide: SDR. |
 

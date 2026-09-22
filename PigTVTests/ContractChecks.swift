@@ -234,6 +234,17 @@ enum ContractChecks {
         try expect(GuideNavigation.reveal(farAhead, from: guideStart) == Date(timeIntervalSince1970: 54_000 - 5400), "A distant programme lands in the last column")
         try expect(GuideNavigation.reveal(shortShow, from: twoHours) == guideStart, "Moving left to an earlier programme places its start in the first column")
         try expect(GuideNavigation.reveal(overlap, from: guideStart) == guideStart, "A visible programme does not move the viewport")
+        // R19: duplicate starts and overlaps must not trap Left/Right.
+        let row = [longShow, duplicate, shortShow, overlap, later]
+        try expect(GuideNavigation.ordered(row).map(\.startTime) == [0, 1_800_000, 5_400_000, 9_000_000], "Navigation uses one programme per start, in order")
+        try expect(GuideNavigation.neighbour(of: 1_800_000, in: row, forward: true) == overlap, "Right skips a duplicate start and reaches an overlapping programme that runs on")
+        let inside = GuideProgramme(title: "Inside", description: nil, startTime: 3_600_000, endTime: 5_400_000)
+        try expect(GuideNavigation.neighbour(of: 1_800_000, in: [longShow, inside, later], forward: true) == later, "Right skips a programme hidden inside the current one")
+        try expect(GuideNavigation.ordered([longShow, duplicate]) == [longShow], "The first listed of duplicate starts is kept, as the grid draws it")
+        try expect(GuideNavigation.neighbour(of: 0, in: row, forward: true)?.startTime == 1_800_000, "Right moves to the following programme")
+        try expect(GuideNavigation.neighbour(of: 9_000_000, in: row, forward: false) == overlap, "Left moves to the adjoining earlier programme")
+        try expect(GuideNavigation.neighbour(of: 1_800_000, in: row, forward: false) == shortShow, "Left moves past a duplicate start")
+        try expect(GuideNavigation.neighbour(of: 9_000_000, in: row, forward: true) == nil, "Right from the last programme has no neighbour")
         try expect(!GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(3600), loadedFrom: guideStart), "Viewports inside the loaded day reuse data")
         try expect(GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(-1), loadedFrom: guideStart), "Viewports before the loaded day reload")
         try expect(GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(86400 - 7199), loadedFrom: guideStart), "A viewport that runs past the loaded day reloads")

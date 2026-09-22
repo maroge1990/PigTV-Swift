@@ -44,6 +44,12 @@ enum GuideFixtures {
                     programmes.append(GuideProgramme(title: "\(titles[k % titles.count]) \(index + 1)",
                         description: "Synthetic programme for layout testing on \(name). It runs for \(Int(length * 60)) minutes.",
                         startTime: t, endTime: end))
+                    // Providers sometimes list a programme twice (merged EPG
+                    // sources); the grid must still navigate past it (R19).
+                    if k % 2 == 0 {
+                        programmes.append(GuideProgramme(title: "\(titles[k % titles.count]) \(index + 1)",
+                            description: nil, startTime: t, endTime: end))
+                    }
                     t = end
                     k += 1
                 }
