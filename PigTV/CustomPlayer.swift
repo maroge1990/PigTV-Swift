@@ -16,11 +16,11 @@ import AVFoundation
 // Overlays hide themselves after a few idle seconds.
 
 enum PlayerChrome: Equatable {
-    case hidden, info, channels
+    case hidden, info, channels, tracks
 }
 
 private enum PlayerAction: CaseIterable {
-    case favourite, record, channels, live
+    case favourite, record, tracks, channels, live
 }
 
 struct CustomPlayerView: View {
@@ -49,11 +49,14 @@ struct CustomPlayerView: View {
         PlayerAction.allCases.filter {
             switch $0 {
             case .channels: return false
+            case .tracks: return playback.hasTrackChoice
             case .live: return playback.behindLive || paused
             default: return true
             }
         }
     }
+    @State private var trackCursor = 0
+    private var allTracks: [PlaybackModel.MediaTrack] { playback.audioTracks + playback.subtitleTracks }
 
     var body: some View {
         // A Button owns the primary (Select) action: on tvOS this fires on the
@@ -65,6 +68,7 @@ struct CustomPlayerView: View {
                     ZStack {
                         if chrome == .info { infoOverlay(now: context.date) }
                         if chrome == .channels { channelList(now: context.date) }
+                        if chrome == .tracks { tracksPanel }
                         if let notice {
                             Text(notice).font(.callout.weight(.semibold))
                                 .padding(.horizontal, 24).padding(.vertical, 12)
@@ -86,6 +90,7 @@ struct CustomPlayerView: View {
             favourite = browse?.isFavourite(playback.channel) ?? false
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
         }
+        .task(id: playback.ready) { if playback.ready { await playback.loadTracks() } }
         .onMoveCommand(perform: move)
         .onPlayPauseCommand(perform: togglePause)
         .onExitCommand(perform: back)
@@ -115,6 +120,12 @@ struct CustomPlayerView: View {
             if !channels.isEmpty { cursor = (cursor + 1) % channels.count }
         case (.channels, _):
             break
+        case (.tracks, .up):
+            if !allTracks.isEmpty { trackCursor = (trackCursor - 1 + allTracks.count) % allTracks.count }
+        case (.tracks, .down):
+            if !allTracks.isEmpty { trackCursor = (trackCursor + 1) % allTracks.count }
+        case (.tracks, _):
+            break
         }
     }
 
@@ -134,6 +145,11 @@ struct CustomPlayerView: View {
             // Browsing never resolved media; only this choice switches, via
             // the existing release-before-switch path.
             if target.id != playback.channel.id { app.switchPlayback(to: target) }
+        case .tracks:
+            // Apply the track but keep the panel open so audio and subtitles
+            // can both be set; Back closes it.
+            guard allTracks.indices.contains(trackCursor) else { return }
+            playback.selectTrack(allTracks[trackCursor].id)
         }
     }
 
@@ -150,7 +166,7 @@ struct CustomPlayerView: View {
     }
 
     private func autoHide(_ now: Date) {
-        let limit: TimeInterval = chrome == .channels ? 8 : 6
+        let limit: TimeInterval = chrome == .channels || chrome == .tracks ? 8 : 6
         if chrome != .hidden, !paused, now.timeIntervalSince(lastInput) > limit { chrome = .hidden }
         if notice != nil, now.timeIntervalSince(lastInput) > 3 { notice = nil }
     }
@@ -160,6 +176,9 @@ struct CustomPlayerView: View {
         case .channels:
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
             chrome = .channels
+        case .tracks:
+            trackCursor = max(0, allTracks.firstIndex { $0.selected } ?? 0)
+            chrome = .tracks
         case .live:
             playback.goToLive(); paused = false
             notice = "Back to live"
@@ -284,6 +303,7 @@ struct CustomPlayerView: View {
         switch item {
         case .favourite: return favourite ? "heart.fill" : "heart"
         case .record: return "record.circle"
+        case .tracks: return "captions.bubble"
         case .channels: return "list.bullet"
         case .live: return "dot.radiowaves.left.and.right"
         }
@@ -292,9 +312,49 @@ struct CustomPlayerView: View {
     private func label(_ item: PlayerAction) -> String {
         switch item {
         case .favourite: return favourite ? "Unfavourite" : "Favourite"
+        case .tracks: return "Audio & subtitles"
         case .record: return "Record"
         case .channels: return "Channels"
         case .live: return "Go to live"
+        }
+    }
+
+    // MARK: Audio & subtitles panel
+
+    private var tracksPanel: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Text("Audio & subtitles").font(.system(size: 34, weight: .bold))
+            if !playback.audioTracks.isEmpty {
+                trackSection("Audio", tracks: playback.audioTracks)
+            }
+            if !playback.subtitleTracks.isEmpty {
+                trackSection("Subtitles", tracks: playback.subtitleTracks)
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: 620, alignment: .leading)
+        .padding(40)
+        .background(RoundedRectangle(cornerRadius: 24).fill(panelFill))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(.leading, 80)
+        .transition(.opacity)
+    }
+
+    private func trackSection(_ title: String, tracks: [PlaybackModel.MediaTrack]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.system(size: 18, weight: .bold)).foregroundStyle(Color.accentColor)
+            ForEach(tracks) { track in
+                let highlighted = allTracks.indices.contains(trackCursor) && allTracks[trackCursor].id == track.id
+                HStack(spacing: 16) {
+                    Image(systemName: track.selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(track.selected ? Color.accentColor : Color.white.opacity(0.5))
+                    Text(track.name).font(.system(size: 24, weight: .medium))
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 12)
+                .background(highlighted ? Color.accentColor.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).stroke(highlighted ? Color.accentColor : .clear, lineWidth: 3) }
+            }
         }
     }
 

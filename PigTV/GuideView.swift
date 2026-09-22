@@ -53,6 +53,7 @@ struct GuideView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let rowHeight: CGFloat = 76
+    private static let topAnchor = "guide.top"
     private var category: Category? { app.categories.first { $0.id == filter } }
     private var focusedChannel: GuideChannel? {
         guard let key = (focus ?? retainedFocus) else { return nil }
@@ -116,6 +117,11 @@ struct GuideView: View {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical) {
                             LazyVStack(spacing: 4) {
+                                // Stable top anchor: scrolling to it on a category
+                                // change reliably returns to the top without
+                                // rebuilding the list (the .id(filter) rebuild hung
+                                // the focus engine).
+                                Color.clear.frame(height: 1).id(Self.topAnchor)
                                 ForEach(rows) { channel in
                                     guideRow(channel, channelWidth: channelWidth, width: timelineWidth,
                                              duration: duration, compact: compact)
@@ -129,10 +135,6 @@ struct GuideView: View {
                                 }
                             }.padding(.horizontal, 24).padding(.vertical, 5)
                         }
-                        // Rebuild the scroll view when the category changes so it
-                        // always starts at the top of the new (possibly short)
-                        // list instead of keeping the previous offset.
-                        .id(filter)
                         .overlay(alignment: .topLeading) {
                             if let offset = nowLineOffset(width: timelineWidth, duration: duration) {
                                 Rectangle().fill(Color.accentColor).frame(width: 2)
@@ -163,14 +165,14 @@ struct GuideView: View {
                             lastChannel = value.channel
                         }
                         .onChange(of: filter) {
-                            // The scroll view is rebuilt via .id(filter) above, so
-                            // it starts at the top; here we only reset the time
-                            // window and drop stale focus for the new list.
+                            // Reset the time window, drop stale focus, and scroll
+                            // back to the top anchor so a short category is visible.
                             refreshRows()
                             viewport = GuideNavigation.rounded(Date())
                             anchor = Date()
                             retainedFocus = nil
                             focus = nil
+                            proxy.scrollTo(Self.topAnchor, anchor: .top)
                         }
                         .onChange(of: model.guideBusy) { _, busy in
                             if !busy, focus == nil, let channel = rows.first(where: { $0.id == lastChannel }) {

@@ -79,6 +79,65 @@ final class PlaybackModel: ObservableObject, Identifiable {
         behindLive = false
     }
 
+    // MARK: Audio and subtitle tracks (R09)
+
+    struct MediaTrack: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let selected: Bool
+    }
+
+    @Published private(set) var audioTracks: [MediaTrack] = []
+    @Published private(set) var subtitleTracks: [MediaTrack] = []
+    private var audioGroup: AVMediaSelectionGroup?
+    private var subtitleGroup: AVMediaSelectionGroup?
+    private var trackOptions: [String: AVMediaSelectionOption] = [:]
+    // A choice worth showing exists only when there is more than one audio
+    // option or any subtitles; otherwise the button stays hidden (no dead UI).
+    var hasTrackChoice: Bool { audioTracks.count > 1 || !subtitleTracks.isEmpty }
+    static let subtitleOffID = "subtitles.off"
+
+    func loadTracks() async {
+        guard let item = player.currentItem else { return }
+        let asset = item.asset
+        audioGroup = try? await asset.loadMediaSelectionGroup(for: .audible)
+        subtitleGroup = try? await asset.loadMediaSelectionGroup(for: .legible)
+        rebuildTracks(item: item)
+    }
+
+    private func rebuildTracks(item: AVPlayerItem) {
+        let selection = item.currentMediaSelection
+        trackOptions.removeAll()
+        audioTracks = (audioGroup?.options ?? []).map { option in
+            let key = "audio." + (option.displayName)
+            trackOptions[key] = option
+            return MediaTrack(id: key, name: option.displayName,
+                              selected: selection.selectedMediaOption(in: audioGroup!) == option)
+        }
+        var subs: [MediaTrack] = []
+        if let group = subtitleGroup, !group.options.isEmpty {
+            let current = selection.selectedMediaOption(in: group)
+            subs.append(MediaTrack(id: Self.subtitleOffID, name: "Off", selected: current == nil))
+            for option in group.options {
+                let key = "sub." + option.displayName
+                trackOptions[key] = option
+                subs.append(MediaTrack(id: key, name: option.displayName, selected: current == option))
+            }
+        }
+        subtitleTracks = subs
+    }
+
+    func selectTrack(_ id: String) {
+        guard let item = player.currentItem else { return }
+        if id == Self.subtitleOffID {
+            if let group = subtitleGroup { item.select(nil, in: group) }
+        } else if let option = trackOptions[id] {
+            if let group = audioGroup, group.options.contains(option) { item.select(option, in: group) }
+            else if let group = subtitleGroup { item.select(option, in: group) }
+        }
+        rebuildTracks(item: item)
+    }
+
     // Title metadata shown by the system player UI and Now Playing.
     private func metadata() -> [AVMetadataItem] {
         func item(_ identifier: AVMetadataIdentifier, _ value: String) -> AVMetadataItem {
