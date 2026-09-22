@@ -79,6 +79,31 @@ final class PlaybackModel: ObservableObject, Identifiable {
         behindLive = false
     }
 
+    // Rewind / fast-forward within the seekable buffer (a live HLS window is
+    // typically a few minutes). Clamped to the buffer; seeking to the end
+    // returns to the live edge.
+    func skip(_ seconds: Double) {
+        guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return }
+        let start = CMTimeGetSeconds(range.start)
+        let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
+        let current = CMTimeGetSeconds(item.currentTime())
+        guard start.isFinite, end.isFinite, current.isFinite, end > start else { return }
+        let target = min(max(current + seconds, start), end)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        behindLive = (end - target) > 20
+    }
+
+    // Fraction through the seekable buffer, for the scrub indicator (nil when
+    // there is no meaningful buffer to scrub).
+    func bufferPosition() -> Double? {
+        guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return nil }
+        let start = CMTimeGetSeconds(range.start)
+        let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
+        let current = CMTimeGetSeconds(item.currentTime())
+        guard start.isFinite, end.isFinite, current.isFinite, end - start > 5 else { return nil }
+        return min(1, max(0, (current - start) / (end - start)))
+    }
+
     // MARK: Audio and subtitle tracks (R09)
 
     struct MediaTrack: Identifiable, Equatable {

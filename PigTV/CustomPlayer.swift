@@ -106,6 +106,10 @@ struct CustomPlayerView: View {
         case (.hidden, .up), (.hidden, .down):
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
             chrome = .channels
+        case (.hidden, .left):
+            playback.skip(-15); chrome = .info
+        case (.hidden, .right):
+            playback.skip(15); chrome = .info
         case (.hidden, _):
             chrome = .info
         case (.info, .left):
@@ -361,13 +365,21 @@ struct CustomPlayerView: View {
     // Programme bar (about three quarters) plus the next programme's slot,
     // as in the reference layout.
     private func timeline(programme: GuideProgramme?, next: GuideProgramme?, now: Date) -> some View {
-        let progress = programme.map { min(1, max(0, now.timeIntervalSince($0.start) / $0.end.timeIntervalSince($0.start))) } ?? 0
+        let programmeProgress = programme.map { min(1, max(0, now.timeIntervalSince($0.start) / $0.end.timeIntervalSince($0.start))) } ?? 0
+        // At the live edge the bar tracks programme progress; once rewound it
+        // becomes a buffer scrubber (pink) with a draggable-looking knob.
+        let scrubbing = playback.behindLive
+        let progress = scrubbing ? (playback.bufferPosition() ?? programmeProgress) : programmeProgress
         return HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.3))
-                        Capsule().fill(Color.white).frame(width: geometry.size.width * progress)
+                        Capsule().fill(scrubbing ? Color.accentColor : Color.white).frame(width: geometry.size.width * progress)
+                        if scrubbing {
+                            Circle().fill(Color.white).frame(width: 22, height: 22)
+                                .offset(x: min(geometry.size.width - 22, max(0, geometry.size.width * progress - 11)))
+                        }
                     }
                 }.frame(height: 10)
                 HStack {
