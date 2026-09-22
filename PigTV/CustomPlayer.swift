@@ -1,6 +1,7 @@
 #if os(tvOS)
 import SwiftUI
 import AVFoundation
+import AVKit
 
 // PigTV-owned live player (roadmap R07/R08). AVKit's controls are replaced
 // by an overlay modelled on the reference IPTV layout, and every Siri Remote
@@ -68,7 +69,7 @@ struct CustomPlayerView: View {
         // first click, where `.onTapGesture` needed a second press and felt slow.
         Button(action: select) {
             ZStack {
-                PlayerLayerView(player: playback.player).ignoresSafeArea()
+                PlayerLayerView(player: playback.player, criteria: playback.displayCriteria).ignoresSafeArea()
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     ZStack {
                         if chrome == .info { infoOverlay(now: context.date) }
@@ -564,25 +565,58 @@ private struct LogoTile: View {
 }
 
 // Plain video surface: no AVKit controls, so no competing remote handling.
+// It also owns the TV's display mode: a bare AVPlayerLayer never asks tvOS to
+// switch to HDR / the stream's frame rate (AVPlayerViewController did that
+// itself), so the stream's criteria are applied to the hosting window here.
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
+    let criteria: AVDisplayCriteria?
     final class LayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
         var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+        // The view that last applied criteria. Only it may reset them, so an
+        // outgoing channel's view cannot clear the incoming channel's mode.
+        private static weak var owner: LayerView?
+        var criteria: AVDisplayCriteria? {
+            didSet { if criteria !== oldValue { apply() } }
+        }
+        private func apply() {
+            guard let window else { return }
+            window.avDisplayManager.preferredDisplayCriteria = criteria
+            Self.owner = self
+        }
+        func reset() {
+            guard Self.owner === self else { return }
+            window?.avDisplayManager.preferredDisplayCriteria = nil
+            Self.owner = nil
+        }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            apply()
+        }
+        override func willMove(toWindow newWindow: UIWindow?) {
+            // Leaving the screen (exit to the guide, an error, or the next
+            // channel's view taking over): return the TV to its default mode.
+            if newWindow == nil { reset() }
+            super.willMove(toWindow: newWindow)
+        }
     }
     func makeUIView(context: Context) -> LayerView {
         let view = LayerView()
         view.backgroundColor = .black
         view.playerLayer.videoGravity = .resizeAspect
         view.playerLayer.player = player
+        view.criteria = criteria
         return view
     }
     func updateUIView(_ view: LayerView, context: Context) {
         if view.playerLayer.player !== player { view.playerLayer.player = player }
+        view.criteria = criteria
     }
     static func dismantleUIView(_ view: LayerView, coordinator: ()) {
         view.playerLayer.player?.pause()
         view.playerLayer.player = nil
+        view.reset()
     }
 }
 #endif

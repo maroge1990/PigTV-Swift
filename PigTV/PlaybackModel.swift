@@ -17,6 +17,13 @@ final class PlaybackModel: ObservableObject, Identifiable {
     @Published private(set) var viewerConflict: String?
     @Published private(set) var reconnecting = false
     @Published private(set) var canRetry = false
+    #if os(tvOS)
+    // Display mode the stream asks for (server 0100: VIDEO-RANGE PQ/HLG and
+    // FRAME-RATE in the master playlist). nil for SDR. Applied to the window by
+    // PlayerLayerView, which clears it when the video leaves the screen, so a
+    // channel change or exit to the guide drops back to SDR.
+    @Published private(set) var displayCriteria: AVDisplayCriteria?
+    #endif
     private var eventContext: PlaybackEvent?
     private var resolveBegan = Date()
     private var firstPlayReported = false
@@ -259,6 +266,11 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 }.value
                 guard !ended else { return }
                 let item = AVPlayerItem(url: url)
+                #if os(tvOS)
+                let criteria = await Self.loadDisplayCriteria(item.asset)
+                guard !ended, itemGeneration == generation else { return }
+                displayCriteria = criteria
+                #endif
                 item.externalMetadata = metadata()
                 metadataProgrammeStart = programme()?.startTime
                 observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
@@ -408,6 +420,20 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
 
     private func finite(_ value: Double) -> Double? { value.isFinite ? value : nil }
+
+    #if os(tvOS)
+    // Bounded so a slow or failing playlist fetch never holds up playback;
+    // without criteria the stream simply plays in the current (SDR) mode.
+    private static func loadDisplayCriteria(_ asset: AVAsset) async -> AVDisplayCriteria? {
+        await withTaskGroup(of: AVDisplayCriteria?.self) { group in
+            group.addTask { try? await asset.load(.preferredDisplayCriteria) }
+            group.addTask { try? await Task.sleep(for: .seconds(3)); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+    #endif
 
     private func updateWatchTime(playing: Bool) {
         let now = Date()

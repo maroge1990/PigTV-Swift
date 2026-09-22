@@ -13,6 +13,29 @@ struct ContentView: View {
     var body: some View {
         content
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+            // Keep UIKit's trait in step with SwiftUI's. Dismissing the full-
+            // screen player could drop the root preferredColorScheme override on
+            // the UIKit side only, leaving system-dark backgrounds under
+            // light-mode text; setting the window style directly survives that.
+            .onChange(of: appearance, initial: true) { syncWindowStyle() }
+            .onChange(of: model.playerPresented) { _, presented in
+                guard !presented else { return }
+                syncWindowStyle()
+                // Presentation teardown finishes after this change; apply again.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    syncWindowStyle()
+                }
+            }
+    }
+
+    private func syncWindowStyle() {
+        let style: UIUserInterfaceStyle = appearance == "dark" ? .dark : appearance == "light" ? .light : .unspecified
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            for window in scene.windows where window.overrideUserInterfaceStyle != style {
+                window.overrideUserInterfaceStyle = style
+            }
+        }
     }
 
     private var content: some View {

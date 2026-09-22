@@ -39,7 +39,8 @@ enum GuideFixtures {
                     let longLive = (index == 2 && t <= now && t + 3 * hour > now)
                     let lengths = [0.5, 1.0, 1.5, 2.0]
                     let length = longLive ? 3.0 : lengths[k % lengths.count]
-                    let end = t + length * hour
+                    // Real EPGs often start a minute or two off the half hour.
+                    let end = t + length * hour - (k % 3 == 0 ? 90 * step : 0)
                     programmes.append(GuideProgramme(title: "\(titles[k % titles.count]) \(index + 1)",
                         description: "Synthetic programme for layout testing on \(name). It runs for \(Int(length * 60)) minutes.",
                         startTime: t, endTime: end))
