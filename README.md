@@ -23,7 +23,7 @@ Implementation does not imply device verification. The blueprint distinguishes c
 
 After server testing is approved, enter the server origin, such as `http://192.168.1.20:3000`, without a path, query or embedded credentials. Use password login or **Pair with browser** and approve the code in the server web app's Settings → Devices. Credentials are stored in Keychain for the selected origin.
 
-The server must advertise API version 1, library and playbackResolve support. Stream preparation remains on the server; the client requests segmented delivery and uses AVPlayer. Build **1.0 (3)** includes viewer takeover confirmation, one automatic live recovery attempt, cancellable recording-preparation polling, server logo fallback, waiting explanations, auth rate-limit handling and optional diagnostics. Returning from the background still shows the guide.
+The server must advertise API version 1, library and playbackResolve support. Stream preparation remains on the server; the client requests segmented delivery and uses AVPlayer. Build **1.0 (13)** (see blueprint.md for the full history) includes viewer takeover confirmation, one automatic live recovery attempt, cancellable recording-preparation polling, server logo fallback, waiting explanations, auth rate-limit handling and optional diagnostics. Returning from the background still shows the guide.
 
 ## Local validation
 

@@ -5,18 +5,21 @@ import AVFoundation
 // PigTV-owned live player (roadmap R07/R08). AVKit's controls are replaced
 // by an overlay modelled on the reference IPTV layout, and every Siri Remote
 // press is handled here so Up/Down can open the side channel list.
-// Gated by `pigtv.player.custom`; the AVKit player remains the fallback.
+// The only live player on Apple TV; the AVKit fallback was retired in build 13.
 //
 // Remote map
-//   Controls hidden:  Up/Down → channel list · Select/Left/Right → info
+//   Controls hidden:  Up/Down → channel list · Select → info
+//                     Left/Right → rewind/forward 15 s (scrub bar)
 //                     Play/Pause → pause/resume (shows info) · Back → guide
+//   Scrub bar:        Left/Right → keep seeking · Select → info
+//                     Up/Down/Back → hide
 //   Info shown:       Left/Right → choose action · Select → run action
 //                     Up/Down → hide · Back → hide
 //   Channel list:     Up/Down → move · Select → switch · Back → close
 // Overlays hide themselves after a few idle seconds.
 
 enum PlayerChrome: Equatable {
-    case hidden, info, channels, tracks
+    case hidden, info, channels, tracks, scrub
 }
 
 private enum PlayerAction: CaseIterable {
@@ -35,6 +38,8 @@ struct CustomPlayerView: View {
     @State private var notice: String?
     @State private var favourite = false
     @State private var busy = false
+    // Direction of the latest seek, for the scrub bar's ⏪/⏩ indicator.
+    @State private var seekForward = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -69,6 +74,7 @@ struct CustomPlayerView: View {
                         if chrome == .info { infoOverlay(now: context.date) }
                         if chrome == .channels { channelList(now: context.date) }
                         if chrome == .tracks { tracksPanel }
+                        if chrome == .scrub { scrubBar(now: context.date) }
                         if let notice {
                             Text(notice).font(.callout.weight(.semibold))
                                 .padding(.horizontal, 24).padding(.vertical, 12)
@@ -106,10 +112,12 @@ struct CustomPlayerView: View {
         case (.hidden, .up), (.hidden, .down):
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
             chrome = .channels
-        case (.hidden, .left):
-            playback.skip(-15); chrome = .info
-        case (.hidden, .right):
-            playback.skip(15); chrome = .info
+        case (.hidden, .left), (.scrub, .left):
+            seek(-15)
+        case (.hidden, .right), (.scrub, .right):
+            seek(15)
+        case (.scrub, _):
+            chrome = .hidden
         case (.hidden, _):
             chrome = .info
         case (.info, .left):
@@ -133,10 +141,18 @@ struct CustomPlayerView: View {
         }
     }
 
+    // Seeking gets its own minimal chrome rather than the full info overlay,
+    // so it is obvious that Left/Right are rewinding or fast-forwarding (R17).
+    private func seek(_ seconds: Double) {
+        seekForward = seconds > 0
+        playback.skip(seconds)
+        chrome = .scrub
+    }
+
     private func select() {
         touch()
         switch chrome {
-        case .hidden:
+        case .hidden, .scrub:
             action = 0
             chrome = .info
         case .info:
@@ -170,7 +186,7 @@ struct CustomPlayerView: View {
     }
 
     private func autoHide(_ now: Date) {
-        let limit: TimeInterval = chrome == .channels || chrome == .tracks ? 8 : 6
+        let limit: TimeInterval = chrome == .channels || chrome == .tracks ? 8 : chrome == .scrub ? 4 : 6
         if chrome != .hidden, !paused, now.timeIntervalSince(lastInput) > limit { chrome = .hidden }
         if notice != nil, now.timeIntervalSince(lastInput) > 3 { notice = nil }
     }
@@ -199,7 +215,7 @@ struct CustomPlayerView: View {
             }
         case .record:
             guard let browse, !busy,
-                  let channel = browse.guide.first(where: { $0.id == playback.channel.id }),
+                  let channel = browse.guideChannel(id: playback.channel.id),
                   let programme = playback.programme() else {
                 notice = "No programme information to record"; return
             }
@@ -400,6 +416,59 @@ struct CustomPlayerView: View {
             }
             .frame(width: 420)
         }
+    }
+
+    // MARK: Scrub bar (R17)
+
+    // Channel, direction and the buffer position only — nothing that competes
+    // with the picture while seeking.
+    private func scrubBar(now: Date) -> some View {
+        let position = playback.bufferPosition()
+        let behind = playback.secondsBehindLive() ?? 0
+        let live = behind <= 20
+        return VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 18) {
+                Image(systemName: seekForward ? "goforward.15" : "gobackward.15")
+                    .font(.system(size: 40, weight: .semibold))
+                Text(playback.channel.name).font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                Spacer()
+                if live {
+                    HStack(spacing: 8) {
+                        Circle().fill(Color.red).frame(width: 12, height: 12)
+                        Text("LIVE").foregroundStyle(.red)
+                    }
+                } else {
+                    Text("\(Self.clock(behind)) behind live")
+                }
+                Text(now.formatted(date: .omitted, time: .shortened))
+            }
+            .font(.system(size: 24, weight: .semibold))
+            GeometryReader { geometry in
+                let fraction = position ?? 1
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.3))
+                    Capsule().fill(Color.accentColor).frame(width: geometry.size.width * fraction)
+                    Circle().fill(Color.white).frame(width: 26, height: 26)
+                        .offset(x: min(geometry.size.width - 26, max(0, geometry.size.width * fraction - 13)))
+                }
+            }.frame(height: 26)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 90).padding(.bottom, 50)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .background(alignment: .bottom) {
+            LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.95 : 0.75)],
+                           startPoint: .top, endPoint: .bottom)
+                .frame(height: 260).ignoresSafeArea()
+        }
+        .ignoresSafeArea(edges: .bottom)
+        .transition(.opacity)
+    }
+
+    private static func clock(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     // MARK: Channel list

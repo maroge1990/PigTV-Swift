@@ -46,6 +46,21 @@ Before each run record app version/build and source revision, device/OS, server 
 
 For each check record date, device/OS, client revision/build, server build, steps, expected/actual behaviour and sanitised evidence. Mark **Pass**, **Fail** or **Not run**. Update the matching blueprint item; an unrun device check must not become Verified merely because a build or fixture passed.
 
+## Build 1.0 (13) — device checklist and results (23 September 2026)
+
+**Local results:** Xcode 27.0; Apple TV simulator (tvOS 26.5) and iPad Pro 13-inch (M5) simulator (iOS 26.5): **19 tests passed on each** (contract runner + 13 lifecycle + 4 new `GuideModelTests` + the Settings UI test). `sh Tools/test-contracts.sh`: **135 passed**. tvOS and iOS Debug builds succeed with no Swift warnings. The first test run failed two `GuideModelTests` assertions because the test expected the wrong fixture names (a test error, not an app error); corrected and rerun green. `testProgrammeLookupUsesIndexOnLargeGuide` measures 500 lookups on an 18 000-channel guide at ~0.7 ms (after the one-off index build). No simulator UI driving, physical-device or deployed-server test was performed.
+
+Hands-on checks for Mark on the Apple TV (confirm Settings → Version shows **1.0 (13)**):
+
+| Item | Steps and expected result |
+|---|---|
+| R18 | With the full guide loaded (and once while it is still paging in), flick quickly back and forth across several categories, then stop. The strip stays responsive; the grid settles on the last category about a quarter-second later, back at the top and at the current half-hour. No hang. Also check Favourites and All. |
+| R16 | Logo tile → first cell, cell ↔ cell and row ↔ row gaps look identical; logo tile top/bottom line up with the cells; time labels line up with cell edges; now-line still sits at the current time. Light and Dark. |
+| R14 | Step Right/Left several times and use Earlier/Later: cells and time labels slide in from off screen as one wide sheet, nothing pops in. Return to live from several windows ahead. Watch for frame drops on a busy category. |
+| R17 | In the player with controls hidden, press Left/Right: a slim bottom bar shows ⏪15/⏩15, channel, "m:ss behind live" (or LIVE) and the buffer scrubber — not the full info overlay. Repeated presses keep seeking; Select opens full info; Up/Down/Back hide it; it hides itself after ~4 s. |
+| Fallback removal | Settings has no "Live player" section; every channel plays in the PigTV player; Up/Down side list, Back order and takeover prompts unchanged. |
+| stableId | Favourite a channel listed in two categories: the heart shows as favourite from either listing; the Favourites filter shows it once. Relaunch: the guide still scrolls to the last focused channel. |
+
 ## Review acceptance pass — build 1.0 (3)
 
 Record each as Pass/Fail/Not run in the blueprint. These remain physical-device checks even when a simulator model or Settings test passes.

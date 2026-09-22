@@ -3,7 +3,11 @@ import Combine
 
 @MainActor
 final class BrowseModel: ObservableObject {
-    @Published var guide: [GuideChannel] = []
+    @Published var guide: [GuideChannel] = [] { didSet { guideIndex = nil } }
+    // Channel id → position in `guide`, built lazily after each change. The
+    // full guide is ~18 000 channels, so per-render `first(where:)` scans in
+    // the guide header and player channel list were measurable work.
+    private var guideIndex: [String: Int]?
     @Published var guideBusy = false
     @Published var guideError: String?
     @Published var guideHasMore = false
@@ -171,8 +175,14 @@ final class BrowseModel: ObservableObject {
             if failed { artworkError = "Some EPG channel artwork could not be loaded." }
         } catch { artworkError = "Channel artwork is temporarily unavailable." }
     }
+    func guideChannel(id: String) -> GuideChannel? {
+        if guideIndex == nil {
+            guideIndex = Dictionary(guide.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+        return guideIndex?[id].map { guide[$0] }
+    }
     func programmes(for channel: Channel) -> [GuideProgramme] {
-        guide.first { $0.id == channel.id }?.programmes ?? []
+        guideChannel(id: channel.id)?.programmes ?? []
     }
     func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
@@ -212,7 +222,11 @@ final class BrowseModel: ObservableObject {
         catch { favouritesError = error.localizedDescription }
     }
 
-    func isFavourite(_ channel: Channel) -> Bool { favourites.contains { $0.id == channel.id } }
+    // Matched on the stable identity (server 0097): one favourite covers every
+    // listing of a cross-listed channel, as it does on the server.
+    func isFavourite(_ channel: Channel) -> Bool {
+        favourites.contains { $0.identityKey == channel.identityKey || $0.id == channel.id }
+    }
 
     // Used by the player's action row; the favourites list is reloaded so the
     // guide filter and the heart stay in agreement with the server.

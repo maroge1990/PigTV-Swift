@@ -167,7 +167,6 @@ struct PlayerScreen: View {
     @ObservedObject var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingGuide = false
-    @AppStorage("pigtv.player.custom") private var customPlayer = true
 
     var body: some View {
         ZStack {
@@ -199,22 +198,13 @@ struct PlayerScreen: View {
                     ProgressView("Reconnecting…")
                     Button("Back to guide") { dismiss() }
                 }.foregroundStyle(.white)
-            } else if playback.ready, customPlayerActive {
+            } else if playback.ready {
                 #if os(tvOS)
                 CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
-                #endif
-            } else if playback.ready {
-                NativePlayer(playback: playback, app: app).ignoresSafeArea()
-                    #if os(tvOS)
-                    .overlay {
-                        if let overlay = app.playerOverlay {
-                            PlayerOverlayView(overlay: overlay, playback: playback, app: app)
-                        }
-                    }
-                    #endif
-                    #if os(iOS)
+                #else
+                NativePlayer(playback: playback).ignoresSafeArea()
                     .overlay(alignment: .top) { iOSControls }
-                    #endif
+                #endif
             } else {
                 VStack(spacing: 24) {
                     ProgressView("Preparing \(playback.channel.name)…")
@@ -239,36 +229,19 @@ struct PlayerScreen: View {
                     .background(.black.opacity(0.8)).foregroundStyle(.white)
             }
         }
+        #if os(iOS)
         .sheet(isPresented: $showingGuide) {
             NavigationStack {
                 QuickGuidePanel(app: app, browse: app.browse) { showingGuide = false }
                     .navigationTitle("Channels")
-                    #if os(iOS)
                     .toolbar { Button("Done") { showingGuide = false } }
-                    #endif
             }
             .presentationBackground { PigPageBackground() }
         }
-        .onChange(of: app.channelSheetRequested) { _, requested in
-            guard requested else { return }
-            app.channelSheetRequested = false
-            #if os(tvOS)
-            app.playerOverlay = .channels
-            #else
-            showingGuide = true
-            #endif
-        }
+        #endif
         .onAppear { playback.start() }
         .onDisappear { Task { await app.endPlayback(playback) } }
 
-    }
-
-    private var customPlayerActive: Bool {
-        #if os(tvOS)
-        customPlayer
-        #else
-        false
-        #endif
     }
 
     #if os(iOS)
@@ -292,72 +265,26 @@ struct PlayerScreen: View {
     #endif
 }
 
+#if os(iOS)
+// iPhone/iPad player: AVKit with its standard controls. Apple TV uses the
+// PigTV-owned CustomPlayerView instead.
 struct NativePlayer: UIViewControllerRepresentable {
     @ObservedObject var playback: PlaybackModel
-    @ObservedObject var app: AppModel
-
-    func makeCoordinator() -> Coordinator { Coordinator(playback: playback, app: app) }
-
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
-        let playback: PlaybackModel
-        let app: AppModel
-        #if os(tvOS)
-        var summary: UIHostingController<TransportProgrammeSummary>?
-        var transportVisible = false
-        #endif
-        init(playback: PlaybackModel, app: AppModel) { self.playback = playback; self.app = app }
-        #if os(tvOS)
-        func playerViewController(_ controller: AVPlayerViewController, willTransitionToVisibilityOfTransportBar visible: Bool,
-                                  with coordinator: AVPlayerViewControllerAnimationCoordinator) {
-            transportVisible = visible
-            summary?.view.isHidden = !visible || app.playerOverlay != nil
-        }
-        func playerViewControllerShouldDismiss(_ controller: AVPlayerViewController) -> Bool {
-            if app.playerOverlay != nil { app.playerOverlay = nil }
-            else { Task { await app.endPlayback(playback) } }
-            return false // SwiftUI owns the full-screen presentation.
-        }
-        #endif
-    }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = playback.player
-        controller.delegate = context.coordinator
         controller.allowsPictureInPicturePlayback = false
-        #if os(tvOS)
-        PlayerPanels.configure(controller, playback: playback, app: app)
-        if let overlay = controller.contentOverlayView {
-            let host = UIHostingController(rootView: TransportProgrammeSummary(playback: playback))
-            controller.addChild(host)
-            host.view.backgroundColor = .clear
-            host.view.isUserInteractionEnabled = false
-            host.view.isHidden = !context.coordinator.transportVisible
-            host.view.translatesAutoresizingMaskIntoConstraints = false
-            overlay.addSubview(host.view)
-            NSLayoutConstraint.activate([
-                host.view.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 32),
-                host.view.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-                host.view.widthAnchor.constraint(equalTo: overlay.widthAnchor, multiplier: 0.75)
-            ])
-            host.didMove(toParent: controller)
-            context.coordinator.summary = host
-        }
-        #endif
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         if controller.player !== playback.player { controller.player = playback.player }
-        #if os(tvOS)
-        controller.view.isUserInteractionEnabled = app.playerOverlay == nil
-        context.coordinator.summary?.view.isHidden = !context.coordinator.transportVisible || app.playerOverlay != nil
-        PlayerPanels.updateMenu(controller, playback: playback, app: app)
-        #endif
     }
 
-    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: Coordinator) {
+    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: ()) {
         controller.player?.pause()
         controller.player = nil
     }
 }
+#endif

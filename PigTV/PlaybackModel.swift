@@ -104,6 +104,15 @@ final class PlaybackModel: ObservableObject, Identifiable {
         return min(1, max(0, (current - start) / (end - start)))
     }
 
+    // Distance from the live edge, for the scrub readout (R17).
+    func secondsBehindLive() -> Double? {
+        guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return nil }
+        let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
+        let current = CMTimeGetSeconds(item.currentTime())
+        guard end.isFinite, current.isFinite else { return nil }
+        return max(0, end - current)
+    }
+
     // MARK: Audio and subtitle tracks (R09)
 
     struct MediaTrack: Identifiable, Equatable {

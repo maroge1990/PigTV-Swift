@@ -30,6 +30,7 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     // Server 0097: reorder-stable identity (see Channel.stableId). Additive.
     var stableId: String? = nil
     var id: String { "\(sourceId):\(rawID)" }
+    var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
         case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId
     }

@@ -85,6 +85,10 @@ struct Channel: Decodable, Identifiable, Equatable {
     // servers. Prefer it as a durable local key across launches.
     var stableId: String? = nil
     var id: String { "\(sourceId):\(rawID)" }
+    // Durable local key: the reorder-stable identity when the server sends
+    // one, else the position-based id. Also equal for every listing of a
+    // channel that appears in several categories.
+    var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
         case rawID = "id", sourceId, name, logo, category, now, next, stableId
     }

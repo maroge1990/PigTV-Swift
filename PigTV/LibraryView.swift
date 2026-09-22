@@ -253,7 +253,6 @@ struct LibrarySettings: View {
     var isTab: Bool = false
     @Environment(\.dismiss) private var dismiss
     @AppStorage("pigtv.appearance") private var appearance = "system"
-    @AppStorage("pigtv.player.custom") private var customPlayer = true
     @State private var confirmSignOut = false
 
     var body: some View {
@@ -318,24 +317,6 @@ struct LibrarySettings: View {
                     .accessibilityValue(appearance == value ? "Selected" : "Not selected")
                 }
             } header: { sectionHeader("Appearance") }
-            #if os(tvOS)
-            Section {
-                ForEach([true, false], id: \.self) { value in
-                    Button { customPlayer = value } label: {
-                        HStack {
-                            Text(value ? "PigTV player (new)" : "Apple player (classic)")
-                            Spacer()
-                            if customPlayer == value { Image(systemName: "checkmark").accessibilityHidden(true) }
-                        }
-                        .font(.system(size: 24))
-                        .padding(.horizontal, 24).padding(.vertical, 16)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PigSurfaceButtonStyle())
-                    .accessibilityValue(customPlayer == value ? "Selected" : "Not selected")
-                }
-            } header: { sectionHeader("Live player") }
-            #endif
             Section {
                 SettingsRow("Signed in as", value: model.user?.username ?? "")
                 SettingsRow("Server", value: model.serverText)

@@ -1,11 +1,6 @@
 import Foundation
 import Combine
 
-enum PlayerOverlay: Equatable {
-    case programmeInfo
-    case channels
-}
-
 @MainActor
 final class AppModel: ObservableObject {
     @Published var serverText = UserDefaults.standard.string(forKey: "pigtv.server") ?? ""
@@ -29,7 +24,6 @@ final class AppModel: ObservableObject {
     @Published var playerPresented = false
     // The tvOS player presents these over native AVKit controls. Keeping the
     // state here lets transport-bar actions open them without resolving media.
-    @Published var playerOverlay: PlayerOverlay?
     @Published private(set) var browse: BrowseModel?
     @Published private(set) var playbackBusy = false
     // Channels the guide was showing when playback started: the order used
@@ -38,7 +32,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var previousChannel: Channel?
     // Set by the player's transport-bar menu; the player screen presents the
     // channel list sheet and clears it.
-    @Published var channelSheetRequested = false
 
     private var authRetry: (server: String, until: Date)?
     private var client: APIClient?
@@ -271,7 +264,6 @@ final class AppModel: ObservableObject {
 
     func beginPlayback(_ channel: Channel) {
         guard !playbackBusy, currentPlayback == nil, let client else { return }
-        playerOverlay = nil
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         currentPlayback = model
         playback = model
@@ -311,7 +303,6 @@ final class AppModel: ObservableObject {
             playback = nil
             playbackBusy = false
             playerPresented = false
-            playerOverlay = nil
             if let message { error = message }
         }
     }
