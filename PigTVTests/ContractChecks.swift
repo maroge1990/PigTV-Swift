@@ -162,9 +162,6 @@ enum ContractChecks {
         let show = guide.channels[0].programmes[0]
         try expect(show.isLive(at: Date(timeIntervalSince1970: 1)), "Programme starts inclusively")
         try expect(!show.isLive(at: Date(timeIntervalSince1970: 3)), "Programme ends exclusively")
-        let badged = try JSONDecoder().decode(GuideProgramme.self, from: Data(#"{"title":"NFL Football - Giants at Rams \#u{1D38}\#u{026A}\#u{1D20}\#u{1D07}","startTime":0,"endTime":1000}"#.utf8))
-        try expect(badged.title == "NFL Football - Giants at Rams", "Small-caps live badge is stripped from titles")
-        try expect("Peppa Pig".strippingBadgeSuffix() == "Peppa Pig", "Ordinary titles are left untouched")
         let clipped = GuideGeometry.interval(start: 0, end: 2000, window: 1000, duration: 2000)
         try expect(clipped?.offset == 0 && clipped?.width == 0.5, "Guide must clip programmes at the window edge")
         try expect(GuideGeometry.interval(start: 3000, end: 4000, window: 1000, duration: 2000) == nil, "Outside programmes must not occupy the timeline")

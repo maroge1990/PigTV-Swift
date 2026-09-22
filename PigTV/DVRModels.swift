@@ -10,38 +10,13 @@ nonisolated struct GuideProgramme: Codable, Equatable, Sendable {
     func isLive(at date: Date) -> Bool { start <= date && date < end }
 
     init(title: String, description: String?, startTime: Double, endTime: Double) {
-        self.title = title.strippingBadgeSuffix()
+        self.title = title
         self.description = description
         self.startTime = startTime
         self.endTime = endTime
     }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        // Providers append a small-capitals "ᴸɪᴠᴇ" marker to live programmes; it
-        // renders as a tacky superscript, so it is stripped on the way in.
-        title = (try c.decode(String.self, forKey: .title)).strippingBadgeSuffix()
-        description = try c.decodeIfPresent(String.self, forKey: .description)
-        startTime = try c.decode(Double.self, forKey: .startTime)
-        endTime = try c.decode(Double.self, forKey: .endTime)
-    }
-}
-
-extension String {
-    // Strips a trailing run of phonetic/modifier-letter glyphs (the small-caps
-    // "ᴸɪᴠᴇ" / "ɴᴇᴡ" style badges some EPGs append). Real English titles never
-    // contain these code points, so nothing legitimate is removed.
-    func strippingBadgeSuffix() -> String {
-        var scalars = unicodeScalars
-        func isBadge(_ s: Unicode.Scalar) -> Bool {
-            switch s.value {
-            case 0x1D00...0x1DBF, 0x02B0...0x02FF, 0x0250...0x02AF: return true // small caps / IPA / modifiers
-            case 0x20, 0xA0: return true                                        // spaces
-            default: return false
-            }
-        }
-        while let last = scalars.last, isBadge(last) { scalars.removeLast() }
-        return String(scalars).trimmingCharacters(in: .whitespaces)
-    }
+    // Decoding is synthesised: the small-caps "ᴸɪᴠᴇ" badge is now stripped by
+    // the server at ingest (build 0099), so no client cleanup is needed.
 }
 
 nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
@@ -63,18 +38,8 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
         self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.logo = logo
         self.category = category; self.programmes = programmes; self.tvgId = tvgId; self.stableId = stableId
     }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        rawID = try c.decode(String.self, forKey: .rawID)
-        sourceId = try c.decode(Int.self, forKey: .sourceId)
-        // Channel names carry the same small-caps badge as programmes.
-        name = (try c.decode(String.self, forKey: .name)).strippingBadgeSuffix()
-        logo = try c.decodeIfPresent(String.self, forKey: .logo)
-        category = try c.decodeIfPresent(String.self, forKey: .category)
-        programmes = try c.decode([GuideProgramme].self, forKey: .programmes)
-        tvgId = try c.decodeIfPresent(String.self, forKey: .tvgId)
-        stableId = try c.decodeIfPresent(String.self, forKey: .stableId)
-    }
+    // Decoding is synthesised from CodingKeys; the server strips the small-caps
+    // badge from names at ingest (0099).
     // Library categories are keyed by ID; guide rows carry the category as the
     // server stored it, which may be the ID or the display name.
     func matches(_ item: Category) -> Bool {
