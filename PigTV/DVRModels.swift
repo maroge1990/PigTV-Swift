@@ -52,14 +52,16 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     let category: String?
     let programmes: [GuideProgramme]
     var tvgId: String? = nil
+    // Server 0097: reorder-stable identity (see Channel.stableId). Additive.
+    var stableId: String? = nil
     var id: String { "\(sourceId):\(rawID)" }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, programmes, tvgId
+        case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId
     }
     init(rawID: String, sourceId: Int, name: String, logo: String?, category: String?,
-         programmes: [GuideProgramme], tvgId: String? = nil) {
+         programmes: [GuideProgramme], tvgId: String? = nil, stableId: String? = nil) {
         self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.logo = logo
-        self.category = category; self.programmes = programmes; self.tvgId = tvgId
+        self.category = category; self.programmes = programmes; self.tvgId = tvgId; self.stableId = stableId
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -71,6 +73,7 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
         category = try c.decodeIfPresent(String.self, forKey: .category)
         programmes = try c.decode([GuideProgramme].self, forKey: .programmes)
         tvgId = try c.decodeIfPresent(String.self, forKey: .tvgId)
+        stableId = try c.decodeIfPresent(String.self, forKey: .stableId)
     }
     // Library categories are keyed by ID; guide rows carry the category as the
     // server stored it, which may be the ID or the display name.

@@ -176,7 +176,7 @@ final class BrowseModel: ObservableObject {
     }
     func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
-            logo: logo(for: channel), category: channel.category, now: nil, next: nil)
+            logo: logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId)
     }
     // Prefer the playlist logo; fall back to the EPG icon like the web guide.
     func logo(for channel: GuideChannel) -> String? {

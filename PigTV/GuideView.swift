@@ -534,7 +534,7 @@ struct GuideView: View {
     }
     private func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
-            logo: model.logo(for: channel), category: channel.category, now: nil, next: nil)
+            logo: model.logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId)
     }
     private func nowLineOffset(width: CGFloat, duration: TimeInterval) -> CGFloat? {
         let elapsed = clock.timeIntervalSince(viewport)

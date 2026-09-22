@@ -80,9 +80,13 @@ struct Channel: Decodable, Identifiable, Equatable {
     let category: String?
     let now: Programme?
     let next: Programme?
+    // Server 0097: identity that survives a provider M3U reorder (the plain
+    // `id` is position-based and does not). Additive; may be nil on older
+    // servers. Prefer it as a durable local key across launches.
+    var stableId: String? = nil
     var id: String { "\(sourceId):\(rawID)" }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, now, next
+        case rawID = "id", sourceId, name, logo, category, now, next, stableId
     }
 }
 
