@@ -16,6 +16,8 @@ struct PigTVApp: App {
             #if DEBUG
             if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "settings" {
                 SettingsTestScreen()
+            } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "guide" {
+                GuideTestScreen()
             } else if ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" {
                 Color.clear
             } else {
@@ -37,6 +39,15 @@ private struct SettingsTestScreen: View {
             #if os(tvOS)
             .buttonStyle(TVActionStyle())
             #endif
+    }
+}
+
+// Offline guide with synthetic data, for iterating the grid layout/scroll.
+private struct GuideTestScreen: View {
+    @StateObject private var model = AppModel()
+    var body: some View {
+        LibraryView(model: model)
+            .task { model.injectGuideFixture() }
     }
 }
 #endif

@@ -48,6 +48,16 @@ struct Category: Decodable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case rawID = "id", sourceId, name, channelCount
     }
+    init(rawID: String, sourceId: Int, name: String, channelCount: Int) {
+        self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.channelCount = channelCount
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rawID = try c.decode(String.self, forKey: .rawID)
+        sourceId = try c.decode(Int.self, forKey: .sourceId)
+        name = try c.decode(String.self, forKey: .name)
+        channelCount = (try? c.decode(Int.self, forKey: .channelCount)) ?? 0
+    }
 }
 
 struct Programme: Decodable, Equatable {

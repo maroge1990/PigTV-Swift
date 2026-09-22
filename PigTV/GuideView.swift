@@ -820,15 +820,24 @@ private struct GuideTimelineRow: View {
     let watch: () -> Void
     let details: (GuideProgramme) -> Void
     let channelOptions: () -> Void
+    @Environment(\.colorScheme) private var scheme
+
+    // Points per second of the timeline.
+    private var scale: CGFloat { width / CGFloat(duration) }
+    // Absolute x of a time relative to the current viewport (can be negative /
+    // beyond width; the row is clipped).
+    private func x(_ time: Date) -> CGFloat { CGFloat(time.timeIntervalSince(viewport)) * scale }
 
     var body: some View {
         let visible = GuideNavigation.visible(channel.programmes, viewport: viewport, duration: duration)
-        // Cells are clipped to the visible window so every focusable frame sits
-        // on screen: that is what keeps the focus engine's Up/Down honest (an
-        // off-screen frame made it drop to the logo of the row below). The
-        // channel name rides the now-playing cell, not the first visible one,
-        // which is often a finished programme scrolled half off the left edge.
+        // The channel name rides the now-playing cell, not the first visible
+        // one (which is often a finished programme half off the left edge).
         let captionStart = visible.first { $0.isLive(at: clock) }?.startTime ?? visible.first?.startTime
+        // Visual buffer: programmes overlapping one window either side, so cells
+        // sliding in already exist and the whole row translates as one block
+        // when the viewport animates.
+        let buffered = GuideNavigation.visible(channel.programmes,
+            viewport: viewport.addingTimeInterval(-duration), duration: duration * 3)
         ZStack(alignment: .leading) {
             Color.clear
             if visible.isEmpty {
@@ -837,11 +846,27 @@ private struct GuideTimelineRow: View {
                     .frame(width: width, height: height)
                     .focused(focus, equals: GuideFocus(channel: channel.id, start: -1))
             }
+            // Visual layer — slides as one block; never focusable, so its
+            // off-screen geometry cannot mislead the focus engine.
+            ForEach(buffered, id: \.startTime) { programme in
+                let cellWidth = max(1, CGFloat(programme.end.timeIntervalSince(programme.start)) * scale - 4)
+                let start = x(programme.start)
+                cellVisual(programme, caption: programme.startTime == captionStart ? caption : nil,
+                           // Keep the title on screen when the cell starts to the
+                           // left of the window, without pushing it off the right.
+                           hiddenLeading: min(max(0, -start), max(0, cellWidth - 160)))
+                    .frame(width: cellWidth, height: height - 4)
+                    .offset(x: start + 2)
+            }
+            .allowsHitTesting(false)
+            // Focus layer — transparent buttons clamped to the visible window,
+            // so every focus target's frame is on screen and Up/Down/Left/Right
+            // stay geometrically correct while the visuals slide underneath.
             ForEach(visible, id: \.startTime) { programme in
                 if let span = GuideGeometry.interval(start: programme.startTime, end: programme.endTime,
                     window: viewport.timeIntervalSince1970 * 1000, duration: duration * 1000) {
-                    programmeButton(programme, cellWidth: max(1, width * span.width - 4),
-                        caption: programme.startTime == captionStart ? caption : nil)
+                    focusCell(programme)
+                        .frame(width: max(1, width * span.width - 4), height: height - 4)
                         .offset(x: width * span.offset + 2)
                 }
             }
@@ -850,41 +875,54 @@ private struct GuideTimelineRow: View {
         .clipped()
     }
 
-    private func programmeButton(_ programme: GuideProgramme, cellWidth: CGFloat, caption: String?) -> some View {
-        Button { select(programme) } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    if let caption { Text(caption).lineLimit(1).layoutPriority(1) }
-                    Text(programme.start, style: .time)
-                    if scheduled.contains(ScheduledRecording.key(channel: channel.name, start: programme.startTime)) {
-                        Image(systemName: "record.circle.fill").foregroundStyle(Color.red)
-                            .accessibilityLabel("Recording scheduled")
-                    }
-                }
-                .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(1)
-                Text(programme.title).font(GuideTypography.body).lineLimit(caption == nil ? 2 : 1)
-                if programme.isLive(at: clock) {
-                    ProgressView(value: min(1, max(0, clock.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start))))
-                        .tint(.accentColor).scaleEffect(x: 1, y: 0.4).frame(height: 4)
-                        .accessibilityHidden(true)
+    // Drawn cell. Highlight is driven by the focus binding (not @Environment
+    // isFocused) because this view is not the focusable element.
+    private func cellVisual(_ programme: GuideProgramme, caption: String?, hiddenLeading: CGFloat) -> some View {
+        let focused = focus.wrappedValue == GuideFocus(channel: channel.id, start: programme.startTime)
+        let finished = programme.end <= clock
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                if let caption { Text(caption).lineLimit(1).layoutPriority(1) }
+                Text(programme.start, style: .time)
+                if scheduled.contains(ScheduledRecording.key(channel: channel.name, start: programme.startTime)) {
+                    Image(systemName: "record.circle.fill").foregroundStyle(Color.red)
                 }
             }
-            .padding(.horizontal, 12)
-            .frame(width: cellWidth, height: height - 4, alignment: .leading)
-            .clipped()
+            .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(1)
+            Text(programme.title).font(GuideTypography.body).lineLimit(caption == nil ? 2 : 1)
+            if programme.isLive(at: clock) {
+                ProgressView(value: min(1, max(0, clock.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start))))
+                    .tint(.accentColor).scaleEffect(x: 1, y: 0.4).frame(height: 4)
+                    .accessibilityHidden(true)
+            }
         }
-        .buttonStyle(PigSurfaceButtonStyle())
-        // Finished programmes cannot be played or recorded: keep them for
-        // context, but out of the focus path and visibly in the past.
-        .disabled(programme.end <= clock)
-        .opacity(programme.end <= clock ? 0.4 : 1)
-        .focused(focus, equals: GuideFocus(channel: channel.id, start: programme.startTime))
-        .contextMenu {
-            Button("Programme details") { details(programme) }
-            Button("Channel and favourites", action: channelOptions)
-        }
-        .accessibilityLabel("\(channel.name), \(programme.title)")
+        .foregroundStyle(.primary)
+        .padding(.leading, 12 + hiddenLeading).padding(.trailing, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(focused ? Color.accentColor.opacity(0.22) : Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.accentColor : .clear, lineWidth: 3) }
+        .opacity(finished ? 0.4 : 1)
+        .clipped()
     }
+
+    // Transparent focus/hit target for one programme.
+    private func focusCell(_ programme: GuideProgramme) -> some View {
+        Button { select(programme) } label: { Color.clear.contentShape(Rectangle()) }
+            .buttonStyle(GuideFocusCellStyle())
+            .disabled(programme.end <= clock)
+            .focused(focus, equals: GuideFocus(channel: channel.id, start: programme.startTime))
+            .contextMenu {
+                Button("Programme details") { details(programme) }
+                Button("Channel and favourites", action: channelOptions)
+            }
+            .accessibilityLabel("\(channel.name), \(programme.title)")
+    }
+}
+
+// The focus layer must be invisible (the visual layer draws the highlight), so
+// this style renders nothing but the clear label.
+private struct GuideFocusCellStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { configuration.label }
 }
 
 

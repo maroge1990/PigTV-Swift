@@ -320,4 +320,17 @@ final class AppModel: ObservableObject {
         cancelPairing()
         if let currentPlayback { await endPlayback(currentPlayback) }
     }
+
+    #if DEBUG
+    // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).
+    func injectGuideFixture() {
+        guard let address = try? ServerAddress("http://127.0.0.1:3000") else { return }
+        let client = APIClient(address: address, token: "fixture")
+        let model = BrowseModel(client: client)
+        model.guide = GuideFixtures.channels()
+        browse = model
+        categories = GuideFixtures.categories()
+        user = GuideFixtures.user()
+    }
+    #endif
 }
