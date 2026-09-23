@@ -2,7 +2,7 @@
 
 Native SwiftUI and AVKit client for Apple TV, iPad and iPhone.
 
-Start with [blueprint.md](blueprint.md): current implementation, planned work, decisions, verification evidence and developer transition instructions. [TESTING.md](TESTING.md) contains the regression checklist. Previous handovers are frozen in [docs/archive](docs/archive).
+Start with [blueprint.md](blueprint.md) (client facts and rules) and the joint roadmap in `../PigTV/blueprint.md` §6. [TESTING.md](TESTING.md) contains the regression checklist. Previous handovers are frozen in [docs/archive](docs/archive).
 
 ## Open and run
 
