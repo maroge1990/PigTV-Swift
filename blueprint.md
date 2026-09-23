@@ -1,17 +1,17 @@
 # PigTV Swift client — blueprint
 
-**Last updated: 23 September 2026 (build 16).** Single source of truth for client plans, current implementation, verification and developer transition. Read this first; update it with each change and at session end. Condense superseded facts rather than appending chat narratives.
+**Last updated: 23 September 2026 (build 16; push-to-main workflow, §1).** Single source of truth for client plans, current implementation, verification and developer transition. Read this first; update it with each change and at session end. Condense superseded facts rather than appending chat narratives.
 
 ## 1. Direction and working rules
 
 Develop the native SwiftUI/AVKit client for Apple TV, iPad and iPhone alongside the PigTV server. Prioritise playback stability and quality, then everyday guide/navigation usability. The server owns stream preparation and provider arbitration; the client owns native presentation and recovery.
 
-- Mark requires approval before **any internet usage**, including fetch/pull, remote GitHub access, browsing or dependency downloads. No internet or deployed-server access has been used in this integration session. Obtain approval before contacting the deployed server for integration tests as well.
-- **Main-only workflow (Mark, 21 September):** make future changes directly in this repository’s `main` working folder. Mark authorises local commits to `main` for testing; do not create feature branches/worktrees for routine work. Confirm the folder contains the latest local work before editing; preserve unrelated user changes. Internet access, pushes, deployment and publication still require approval. The subsequent review request authorises reviewing and adjusting the implemented work, including simulator or downstairs-TV testing. The earlier scoping-only restriction is superseded. Network access still requires approval.
+- **Push-to-main workflow (Mark, 23 September; supersedes the 21 September local-commits-only rule).** Work directly on `main` in this folder (no feature branches or worktrees for routine work). Claude may `git pull --rebase` from and **`git push` to `origin/main`** without asking each time. Before every push: the tvOS build and tests pass (`xcodebuild test -scheme PigTV` on an Apple TV simulator, plus iOS build when shared code changed), the build number is bumped if app code changed, and this blueprint is updated. Never force-push. Preserve unrelated user changes (Finder/Xcode user-state files stay out of commits).
+- Other internet use still needs Mark's approval: browsing, dependency or SDK downloads, and **contacting the deployed server** for integration tests. Installing onto the Apple TV via Xcode is fine when Mark asks for a device build.
 - **Simulator use requires explicit per-request confirmation (Mark, 22 September).** `xcode-select` is now pointed at the full Xcode, so the tvOS/iOS simulator control tools work, but driving the simulator (attach/launch/screenshot/input) burns tokens — only do it when Mark asks in that message (e.g. for R14). Routine verification stays `xcodebuild` build + tests + contract runner.
 - Never send `force: true` automatically. Viewer/recording takeover requires an explicit user choice.
 - Preserve same-origin authentication, media URL allow-listing, capability negotiation and release-before-switch behaviour. Browsing/focus must not acquire a provider stream.
-- Keep server work coordinated and separately scoped. Do not copy the server's Windows patch-delivery workflow into this client repository.
+- Keep server work coordinated and separately scoped: server changes are made and pushed in the server repo under its own blueprint §2 (both repos now use the same push-to-main workflow; the Windows patch files are retired).
 
 ## 2. Orientation and source of truth
 
@@ -133,7 +133,7 @@ Mark has begun app testing and reported the issues/features in §4a. Those repor
 | R14-old | superseded | **Guide grid architecture (original).** Mark reports the guide moving up/down "of its own accord" after layered fixes and asked to start fresh. This build reverts to on-screen clipped cells with native Up/Down focus (removing the explicit vertical steering and the focus-reassigning `onChange`), which should stop the erratic movement but does not deliver R03's single-block horizontal slide. A clean redesign (absolute-positioned cells in a scroll-offset content coordinate, or a fully manual single-focusable grid) is the durable answer; do it against a device, not blind. | Stable Up/Down/Left/Right on hardware first; then a device-verified smooth horizontal slide. |
 | R12 | P1-3 resolved additively; P1-4 still watched | **Stable channel IDs landed without a break** — server 0097/0098 add an optional **`stableId`** to `library/channels`/`favourites`/`guide` (and back favourites, scheduled recordings and history) while keeping the bare-id write API. Client now decodes `stableId` on `Channel`/`GuideChannel` (additive; propagated through `asChannel`). **Adopted in build 13 (Mark: "use best judgement"):** `identityKey` (`sourceId:s:stableId`, else the plain id) keys the remembered channel (`pigtv.guide.channel`; old plain-id values still match) and favourite matching — one favourite covers every listing of a cross-listed channel (`isFavourite`), and the Favourites filter shows such a channel once. Focus, zap lists and write APIs still use the plain id. The guide disk cache is replaced wholesale by each network load, so it needs no identity change. P1-4 (opaque resolve handle replacing the credentialed `?url=`) would still break the media URL allow-list and needs a coordinated patch before it ships. | Recorded in §6. |
 
-**Server blueprint staleness noted (not edited from this repo):** Windows paths, "shipped through 0090" (local is 0094), §4b flag list missing `playbackTerminalStatus`, §6 frozen contract missing `terminal-status` and `client-event`. Raise through the server's patch workflow.
+**Server blueprint staleness (22 Sept) resolved:** the server blueprint was refreshed at 0104/0105 (MacBook paths, push-to-main, `terminal-status` in its §7).
 
 ## 4c. Client architecture for handover
 
@@ -184,7 +184,7 @@ C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A t
 
 ## 8. Session transition protocol
 
-At the start: read this file, inspect local branch/status, read server handoff §5 for changes since last review, and confirm `main` is checked out and contains the latest local work, then choose the next authorised item. Never apply historical stashes merely because they exist. Do not fetch or contact the server without approval.
+At the start: read this file, inspect local branch/status, read server handoff §5 for changes since last review, and confirm `main` is checked out and contains the latest local work, then choose the next authorised item. Never apply historical stashes merely because they exist. `git pull`/`push` to origin is approved; contacting the deployed server is not, without asking.
 
 At the end: update roadmap status, record exact checks and failures, distinguish historical reports from current evidence, retain only durable decisions, and leave one concrete next action. **Bump the app build number (both app targets' `CURRENT_PROJECT_VERSION`) in any session that changed app code, and record the new build here, so Mark can confirm the installed copy from Settings → Version.** Keep detailed test procedures in TESTING.md and old narratives in the archive. Do not create new dated handover files.
 

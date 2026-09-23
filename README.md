@@ -8,7 +8,7 @@ Start with [blueprint.md](blueprint.md): current implementation, planned work, d
 
 Open `PigTV.xcodeproj` from this repository and select the shared **PigTV** scheme. Choose an Apple TV destination for tvOS or an iPad/iPhone destination for iOS. The project currently targets iOS/tvOS 26.5; physical devices require the configured development signing. Final minimum OS support is not yet decided.
 
-Use this Git checkout; the old OneDrive/Codex working-copy locations in archived notes are obsolete. Work directly on `main`; local commits for testing are authorised. Obtain Mark’s approval before internet access, deployed-server integration testing, pushing or publication.
+Use this Git checkout; the old OneDrive/Codex working-copy locations in archived notes are obsolete. Work directly on `main`; commits and pushes to `origin/main` are authorised once the build and tests pass (see blueprint §1). Obtain Mark’s approval before other internet access or deployed-server integration testing.
 
 ## Current functionality
 

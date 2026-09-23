@@ -1,13 +1,13 @@
 # PigTV client → server requests
 
 Requests raised by the Apple client that must be actioned in the **server/webapp** repo
-(`/Users/markrogers/Documents/GitHub/PigTV`), through its numbered-patch workflow. Each is
+(`/Users/markrogers/Documents/GitHub/PigTV`), under its blueprint §2 (push-to-main with a build number). Each is
 described by required user-visible behaviour, not an implementation. The client keeps any
 interim workaround noted below until the server change ships; remove the workaround then.
 
 Server disciplines still apply: **diagnose a playback fault from a capture of the real channel
 before changing anything** (`scripts/stream-doctor.js`), gate ffmpeg/timestamp behaviour on the
-probe (not a build number), and pair every functional patch with a `verify-build.sh` check and a
+probe (not a build number), and pair every functional change with a `verify-build.sh` check and a
 test that fails on the old code. Log the change in `docs/SWIFT-CLIENT-HANDOFF.md` §5.
 
 ---

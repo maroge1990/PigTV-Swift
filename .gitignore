@@ -1,0 +1,6 @@
+# macOS and Xcode per-user state: never part of a commit
+.DS_Store
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
