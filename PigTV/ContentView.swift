@@ -217,10 +217,19 @@ struct PlayerScreen: View {
                     Button("Back to channels") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
             } else if playback.reconnecting {
+                #if os(tvOS)
+                VStack(spacing: 24) {
+                    TuningCard(playback: playback, browse: app.browse, message: "Reconnecting…")
+                    Button("Back to guide") { dismiss() }
+                }
+                .environment(\.colorScheme, .dark)
+                .onExitCommand { dismiss() }
+                #else
                 VStack(spacing: 24) {
                     ProgressView("Reconnecting…")
                     Button("Back to guide") { dismiss() }
                 }.foregroundStyle(.white)
+                #endif
             } else if playback.ready {
                 #if os(tvOS)
                 CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
@@ -229,10 +238,19 @@ struct PlayerScreen: View {
                     .overlay(alignment: .top) { iOSControls }
                 #endif
             } else {
+                #if os(tvOS)
+                VStack(spacing: 24) {
+                    TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
+                    Button("Cancel") { dismiss() }
+                }
+                .environment(\.colorScheme, .dark)
+                .onExitCommand { dismiss() }
+                #else
                 VStack(spacing: 24) {
                     ProgressView("Preparing \(playback.channel.name)…")
                     Button("Cancel") { dismiss() }
                 }.foregroundStyle(.white)
+                #endif
             }
         }
         .alert("A recording needs the stream", isPresented: Binding(
@@ -287,6 +305,58 @@ struct PlayerScreen: View {
     }
     #endif
 }
+
+#if os(tvOS)
+// A1.2: shown centred over black while resolving media or reconnecting, so a
+// channel change reads as "tuning to something" rather than a blank wait.
+// Built entirely from cached guide data (`playback.programme()`/
+// `nextProgramme()`), so there is no network wait to show it.
+private struct TuningCard: View {
+    @ObservedObject var playback: PlaybackModel
+    let browse: BrowseModel?
+    let message: String
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let programme = playback.programme(at: context.date)
+            let next = playback.nextProgramme(after: context.date)
+            VStack(spacing: 18) {
+                LogoTile(logo: browse?.logo(for: playback.channel) ?? playback.channel.logo,
+                         client: browse?.client, name: playback.channel.name)
+                    .frame(width: 200, height: 110)
+                Text(playback.channel.name).font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                Text(programme?.title ?? "No programme information")
+                    .font(.system(size: 32, weight: .bold)).multilineTextAlignment(.center).lineLimit(2)
+                if let programme {
+                    Text("\(programme.start.formatted(date: .omitted, time: .shortened)) – \(programme.end.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 18, weight: .medium)).foregroundStyle(.white.opacity(0.75))
+                    GeometryReader { geometry in
+                        let progress = min(1, max(0, context.date.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start)))
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.white.opacity(0.25))
+                            Capsule().fill(Color.white).frame(width: geometry.size.width * progress)
+                        }
+                    }.frame(width: 360, height: 6)
+                }
+                if let next {
+                    Text("Next: \(next.title) at \(next.start.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 16)).foregroundStyle(.white.opacity(0.65))
+                }
+                HStack(spacing: 10) {
+                    ProgressView().tint(.white)
+                    Text(message).font(.system(size: 16, weight: .medium)).foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(.top, 6)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(48)
+        .frame(maxWidth: 640)
+        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 24))
+    }
+}
+#endif
 
 #if os(iOS)
 // iPhone/iPad player: AVKit with its standard controls. Apple TV uses the

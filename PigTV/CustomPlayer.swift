@@ -546,8 +546,9 @@ private struct BlankButtonStyle: ButtonStyle {
 }
 
 // Neutral translucent logo tile shared by the player overlays (matches the
-// guide's tile treatment, R04).
-private struct LogoTile: View {
+// guide's tile treatment, R04). Internal (not file-private) so ContentView's
+// tvOS "Preparing…"/reconnecting card (A1.2) can reuse it.
+struct LogoTile: View {
     let logo: String?
     let client: APIClient?
     let name: String
