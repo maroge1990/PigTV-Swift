@@ -395,6 +395,7 @@ struct GuideView: View {
     private func guideRow(_ channel: GuideChannel, channelWidth: CGFloat, width: CGFloat,
                           duration: TimeInterval, compact: Bool) -> some View {
         let recordingNow = model.recordingChannels.contains(channel.name)
+        let flaky = model.isFlaky(channel)
         return HStack(spacing: 0) {
             Button {
                 // On a phone the tile opens the channel's programme list (the grid
@@ -405,16 +406,29 @@ struct GuideView: View {
                             logo: model.logo(for: channel), client: model.client)
                     .frame(width: channelWidth - GuideMetrics.gap, height: rowHeight - GuideMetrics.gap)
                     .overlay(alignment: .topTrailing) {
-                        if recordingNow {
-                            Circle().fill(Color.red).frame(width: 12, height: 12).padding(6)
-                                .accessibilityLabel("Recording now")
+                        // C-G: an amber dot for an unreliable channel, beside
+                        // the recording dot when both apply.
+                        HStack(spacing: 4) {
+                            if flaky {
+                                Circle().fill(Color.orange).frame(width: 12, height: 12)
+                                    .accessibilityLabel("Unreliable channel")
+                            }
+                            if recordingNow {
+                                Circle().fill(Color.red).frame(width: 12, height: 12)
+                                    .accessibilityLabel("Recording now")
+                            }
                         }
+                        .padding(6)
                     }
             }
             .buttonStyle(PigSurfaceButtonStyle(drawSurface: false))
             .padding(GuideMetrics.inset)
             .focused($focus, equals: GuideFocus(channel: channel.id, start: nil))
             .accessibilityLabel(model.number(for: channel).map { "\($0) \(channel.name)" } ?? channel.name)
+            // The button's own label hides its children's, so the dots'
+            // meanings are also spoken as its value.
+            .accessibilityValue([flaky ? "Unreliable channel" : nil, recordingNow ? "Recording now" : nil]
+                .compactMap { $0 }.joined(separator: ", "))
             .contextMenu {
                 Button("All programmes on this channel") { schedule = channel }
                 Button("Channel and favourites") { channelDetails = asChannel(channel) }

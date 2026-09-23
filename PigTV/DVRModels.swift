@@ -31,18 +31,20 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     var stableId: String? = nil
     // C-A (server flag `channelNumbers`): persistent channel number, or nil.
     var number: Int? = nil
+    // C-G (server flag `channelHealth`): "ok", "flaky" or nil.
+    var health: String? = nil
     var id: String { "\(sourceId):\(rawID)" }
     var numberText: String? { number.map { String($0) } }
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId, number
+        case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId, number, health
     }
     init(rawID: String, sourceId: Int, name: String, logo: String?, category: String?,
          programmes: [GuideProgramme], tvgId: String? = nil, stableId: String? = nil,
-         number: Int? = nil) {
+         number: Int? = nil, health: String? = nil) {
         self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.logo = logo
         self.category = category; self.programmes = programmes; self.tvgId = tvgId; self.stableId = stableId
-        self.number = number
+        self.number = number; self.health = health
     }
     // Decoding is synthesised from CodingKeys; the server strips the small-caps
     // badge from names at ingest (0099).

@@ -77,3 +77,31 @@ final class ChannelNumberTests: XCTestCase {
         XCTAssertFalse(app.goToChannel(numberText: "504"))
     }
 }
+
+// C-G: `health` decodes when present; a channel is marked unreliable only
+// when it is "flaky" and the server advertises `channelHealth`.
+@MainActor
+final class ChannelHealthTests: XCTestCase {
+    private func browse(health: Bool) throws -> BrowseModel {
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true\#(health ? #","channelHealth":true"# : "")}}"#.utf8))
+        return BrowseModel(client: APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", info: info))
+    }
+
+    func testHealthDecodesAndOnlyFlakyIsMarkedWithTheFlag() throws {
+        let page = try JSONDecoder().decode(GuidePage.self, from: Data(#"{"total":4,"channels":[{"id":"a","sourceId":1,"name":"A","programmes":[],"health":"flaky"},{"id":"b","sourceId":1,"name":"B","programmes":[],"health":"ok"},{"id":"c","sourceId":1,"name":"C","programmes":[],"health":null},{"id":"d","sourceId":1,"name":"D","programmes":[]}]}"#.utf8))
+        XCTAssertEqual(page.channels.map(\.health), ["flaky", "ok", nil, nil])
+        let on = try browse(health: true)
+        XCTAssertEqual(page.channels.map(on.isFlaky), [true, false, false, false])
+        let off = try browse(health: false)
+        XCTAssertFalse(off.isFlaky(page.channels[0]), "An older server's (or a stale cache's) health is ignored")
+    }
+
+    func testCachedGuideRoundTripsHealth() throws {
+        let cache = GuideCache(savedAt: Date(timeIntervalSince1970: 0), window: Date(timeIntervalSince1970: 0), channels: [
+            GuideChannel(rawID: "a", sourceId: 1, name: "A", logo: nil, category: nil, programmes: [], number: 7, health: "flaky")
+        ])
+        let decoded = try JSONDecoder().decode(GuideCache.self, from: JSONEncoder().encode(cache))
+        XCTAssertEqual(decoded.channels[0].health, "flaky")
+        XCTAssertEqual(decoded.channels[0].number, 7)
+    }
+}

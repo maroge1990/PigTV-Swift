@@ -253,6 +253,10 @@ final class BrowseModel: ObservableObject {
     func number(for channel: GuideChannel) -> Int? {
         showsChannelNumbers ? channel.number : nil
     }
+    // C-G: the guide marks a channel unreliable only with `channelHealth`.
+    func isFlaky(_ channel: GuideChannel) -> Bool {
+        client.info?.features.channelHealth == true && channel.health == "flaky"
+    }
     // Prefer the playlist logo; fall back to the EPG icon like the web guide.
     func logo(for channel: GuideChannel) -> String? {
         logo(current: channel.logo, tvgID: channel.tvgId, name: channel.name)
