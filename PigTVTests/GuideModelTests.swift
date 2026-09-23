@@ -1,12 +1,60 @@
 import XCTest
 @testable import PigTV
 
+// A1.1: a cursor-paged guide response, served page by page as `loadGuide`
+// pages through it.
+private final class PagedGuideProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var pages: [String] = []
+    nonisolated(unsafe) static var callCount = 0
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let index = min(Self.callCount, Self.pages.count - 1)
+        Self.callCount += 1
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(Self.pages[index].utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
 // Guide model behaviour that the large (~18 000 channel) real guide depends
 // on: indexed channel lookup (R18) and reorder-stable identity (R12).
 @MainActor
 final class GuideModelTests: XCTestCase {
     private func model() throws -> BrowseModel {
         BrowseModel(client: APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture"))
+    }
+
+    private func eventually(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Condition did not become true", file: file, line: line)
+    }
+
+    // A1.1: cursor pages are appended with a single mutation of `guide` against
+    // a persistent id set (not a per-page `Set(guide.map(\.id))` rebuild), and
+    // a channel repeated across pages must not be duplicated.
+    func testGuidePagesMergeAndDedupeAcrossPages() async throws {
+        PagedGuideProtocol.callCount = 0
+        PagedGuideProtocol.pages = [
+            #"{"total":3,"channels":[{"id":"a","sourceId":1,"name":"A","programmes":[]},{"id":"b","sourceId":1,"name":"B","programmes":[]}],"nextCursor":"p2"}"#,
+            #"{"total":3,"channels":[{"id":"a","sourceId":1,"name":"A","programmes":[]},{"id":"c","sourceId":1,"name":"C","programmes":[]}]}"#
+        ]
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PagedGuideProtocol.self]
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"1","apiVersion":1,"features":{"library":true,"playbackResolve":true,"guideCursor":true}}"#.utf8))
+        let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
+            session: URLSession(configuration: configuration), info: info)
+        let browse = BrowseModel(client: client)
+        await browse.loadGuide()
+        try await eventually { !browse.guideHasMore }
+        XCTAssertEqual(browse.guide.map(\.id).sorted(), ["1:a", "1:b", "1:c"], "Each channel must appear exactly once, in spite of the repeat on page 2")
+        XCTAssertEqual(browse.guideTotal, 3)
     }
 
     private func guideChannel(_ raw: String, stable: String? = nil, category: String = "News") -> GuideChannel {

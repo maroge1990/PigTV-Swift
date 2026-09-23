@@ -19,6 +19,11 @@ struct ServerInfo: Decodable {
         let scheduledWaiting: Bool?
         let recordingPlaybackPolling: Bool?
         let playbackTerminalStatus: Bool?
+        // A1.1: additive guide-refresh contract. Older servers lack these and
+        // the client keeps today's offset-paged, always-download behaviour.
+        let guideCursor: Bool?
+        let guideVersion: Bool?
+        let logoCache: Bool?
     }
 
     func validate() throws {

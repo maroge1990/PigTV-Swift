@@ -265,6 +265,13 @@ final class APIClient {
             try JSONDecoder().decode(GuidePage.self, from: data)
         }.value
     }
+    // A1.1: server flag `guideVersion`. Changes when channel data, visibility,
+    // order, logos or EPG change — never merely because time passed.
+    private struct GuideVersionResponse: Decodable { let version: String }
+    func guideVersion() async throws -> String {
+        let result: GuideVersionResponse = try await request("library/guide/version")
+        return result.version
+    }
     func epgArtwork(sourceID: Int) async throws -> EPGArtworkPage {
         let data = try await send("proxy/epg/\(sourceID)", method: "GET")
         return try await Task.detached(priority: .utility) {

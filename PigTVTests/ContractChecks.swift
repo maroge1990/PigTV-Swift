@@ -258,6 +258,30 @@ enum ContractChecks {
         try expect(categorised.matches(Category(rawID: "News", sourceId: 2, name: "News & Sport", channelCount: 1)), "Category filter accepts the raw ID")
         try expect(!categorised.matches(Category(rawID: "News", sourceId: 3, name: "News", channelCount: 1)), "Category filter is source-qualified")
 
+        // A1.1: additive guide-refresh flags, and their absence on an older server.
+        let a11Info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"guideCursor":true,"guideVersion":true,"logoCache":true}}"#.utf8))
+        try expect(a11Info.features.guideCursor == true && a11Info.features.guideVersion == true && a11Info.features.logoCache == true, "A1.1 flags must decode when present")
+        try expect(old.features.guideCursor == nil && old.features.guideVersion == nil && old.features.logoCache == nil, "An older server without these flags must decode as absent, not false")
+
+        let cursoredPage = try JSONDecoder().decode(GuidePage.self, from: Data(#"{"total":1,"channels":[],"nextCursor":"page-2"}"#.utf8))
+        try expect(cursoredPage.nextCursor == "page-2", "A cursor page must decode nextCursor")
+        let lastPage = try JSONDecoder().decode(GuidePage.self, from: Data(#"{"total":1,"channels":[]}"#.utf8))
+        try expect(lastPage.nextCursor == nil, "A page without nextCursor (older server, or the last page) must decode as nil")
+
+        let versionedCache = try JSONDecoder().decode(GuideCache.self, from: Data(#"{"savedAt":0,"window":0,"channels":[],"version":"v7"}"#.utf8))
+        try expect(versionedCache.version == "v7", "A cache snapshot must decode its saved guide version")
+        let oldCache = try JSONDecoder().decode(GuideCache.self, from: Data(#"{"savedAt":0,"window":0,"channels":[]}"#.utf8))
+        try expect(oldCache.version == nil, "A cache file saved before A1.1 must still decode, without a version")
+
+        // A1.1: the pure should-skip-reload decision (version equal/different/nil × coverage enough/not enough).
+        let refDate = Date(timeIntervalSince1970: 1_000_000)
+        let coveredWindow = refDate.addingTimeInterval(-1000) // window + loadedDuration (86400) comfortably clears now + 12h
+        let barelyShortWindow = refDate.addingTimeInterval(12 * 3600 - 86400 - 1) // window + loadedDuration == now + 12h - 1s
+        try expect(GuideNavigation.guideStillCovers(cachedVersion: "v1", serverVersion: "v1", window: coveredWindow, now: refDate), "Matching version with ample coverage must skip the download")
+        try expect(!GuideNavigation.guideStillCovers(cachedVersion: "v1", serverVersion: "v2", window: coveredWindow, now: refDate), "A changed version must always reload")
+        try expect(!GuideNavigation.guideStillCovers(cachedVersion: nil, serverVersion: "v1", window: coveredWindow, now: refDate), "No cached version must always reload")
+        try expect(!GuideNavigation.guideStillCovers(cachedVersion: "v1", serverVersion: "v1", window: barelyShortWindow, now: refDate), "A matching version with insufficient coverage must still reload")
+
         var index = EPGArtworkIndex()
         index.append(try JSONDecoder().decode(EPGArtworkPage.self, from: Data(#"{"channels":[{"id":"sky.news","name":"Sky News","icon":"https://cdn.example.org/sky.png"},{"id":"abc","name":"ABC TV (AU)","icon":" "},{"id":"seven","name":"Seven | HD","icon":"/img/seven.png"},{"id":"bad","name":"Bad","icon":"javascript:alert(1)"}]}"#.utf8)).channels)
         try expect(index.logo(tvgID: "sky.news", name: "Something else") == "https://cdn.example.org/sky.png", "EPG ID lookup wins")

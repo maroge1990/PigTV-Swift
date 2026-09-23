@@ -51,6 +51,9 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
 nonisolated struct GuidePage: Decodable, Sendable {
     let total: Int
     let channels: [GuideChannel]
+    // A1.1: cursor paging (server flag `guideCursor`). Absent/null on the last
+    // page, and always absent from an older server, which keeps limit/offset.
+    var nextCursor: String? = nil
 }
 
 nonisolated struct ScheduledRecording: Decodable, Identifiable, Sendable {
@@ -76,6 +79,10 @@ nonisolated struct GuideCache: Codable, Sendable {
     let savedAt: Date
     let window: Date
     let channels: [GuideChannel]
+    // A1.1: the server's guide version at the time this snapshot completed
+    // (server flag `guideVersion`). Decoded tolerantly so a cache file written
+    // before this field existed still loads, just without a fast-path check.
+    var version: String? = nil
 }
 
 nonisolated struct Recording: Decodable, Identifiable, Sendable {
@@ -222,6 +229,13 @@ nonisolated enum GuideNavigation {
     }
     static func needsReload(viewport: Date, loadedFrom start: Date) -> Bool {
         viewport < start || viewport.addingTimeInterval(visibleDuration) > start.addingTimeInterval(loadedDuration)
+    }
+    // A1.1: true when a cheap version check (server flag `guideVersion`) shows
+    // the already-loaded guide is still current and its loaded window still
+    // covers at least the next 12 hours, so a full re-download can be skipped.
+    static func guideStillCovers(cachedVersion: String?, serverVersion: String, window: Date, now: Date) -> Bool {
+        guard let cachedVersion, cachedVersion == serverVersion else { return false }
+        return window.addingTimeInterval(loadedDuration) > now.addingTimeInterval(12 * 3600)
     }
 }
 
