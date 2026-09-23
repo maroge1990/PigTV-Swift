@@ -224,6 +224,9 @@ struct LibrarySettings: View {
                     .disabled(model.playbackBusy)
             } header: { sectionHeader("Account") }
             Section {
+                ForEach(Labs.toggles) { LabsToggleRow(toggle: $0) }
+            } header: { sectionHeader("Labs") }
+            Section {
                 SettingsRow("App", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
                 SettingsRow("Server", value: model.serverInfo?.identity ?? "Unknown")
             } header: { sectionHeader("Version") }
@@ -246,6 +249,46 @@ struct LibrarySettings: View {
             dismiss()
             Task { await model.logout() }
         }
+    }
+}
+
+// C-F: one persistent Labs switch (default off) with its one-line
+// explanation. On TV it is a surface button showing On/Off, like the
+// appearance rows; elsewhere a Form toggle.
+private struct LabsToggleRow: View {
+    let toggle: Labs.Toggle
+    @AppStorage private var isOn: Bool
+    init(toggle: Labs.Toggle) {
+        self.toggle = toggle
+        _isOn = AppStorage(wrappedValue: false, toggle.key)
+    }
+    var body: some View {
+        #if os(tvOS)
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(toggle.title)
+                    Text(toggle.detail).font(.system(size: 20)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(isOn ? "On" : "Off").foregroundStyle(.secondary)
+            }
+            .font(.system(size: 24))
+            .padding(.horizontal, 24).padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PigSurfaceButtonStyle())
+        .accessibilityIdentifier(toggle.key)
+        .accessibilityValue(isOn ? "On" : "Off")
+        #else
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(toggle.title)
+                Text(toggle.detail).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityIdentifier(toggle.key)
+        #endif
     }
 }
 

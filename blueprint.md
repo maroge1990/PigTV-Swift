@@ -1,6 +1,6 @@
 # PigTV Apple client: blueprint
 
-**Last updated:** 23 September 2026 · app **1.0 (16)** · server build 0104
+**Last updated:** 24 September 2026 · app **1.0 (19)** · server build 0104 (roadmap contracts C-A…C-G in `../PigTV/docs/ROADMAP-CONTRACTS.md`)
 
 Read this at the start of every session, **together with the joint roadmap in
 [`../PigTV/blueprint.md`](../PigTV/blueprint.md) §6**, which is where A-items (Apple) and X-items (both products) are
@@ -55,6 +55,7 @@ R14/R16/R19 are superseded by roadmap A2.1 (the UIKit guide) once that's accepte
 - **Screens:** `ContentView` → launch/onboarding/unreachable → `LibraryView` tab container (Guide, Recordings, Settings; `ChannelDetails`/`FavouriteControl` in `LibraryView.swift`). Player is presented full screen via `PlayerHost` → `PlayerScreen` → `CustomPlayerView` (tvOS) or `NativePlayer` (iOS).
 - **Guide focus model:** `GuideFocus(channel, start)`; `start == nil` is the channel tile, `-1` the no-EPG placeholder. tvOS focus engine moves between drawn cells; `navigate()` intervenes only when the target is off-screen. `viewport` (half-hour aligned) drives rendering; `model.window` drives 24-hour data loads.
 - **Player layering:** conflict/error/reconnecting states replace the player. **tvOS:** `CustomPlayerView` (`CustomPlayer.swift`) is the only player — `PlayerLayerView` video + one overlay switching between hidden / info / scrub / channels / tracks chrome, driven by in-view remote handlers, no AVKit. **iOS/iPadOS:** `NativePlayer` (plain AVKit) + top controls, with `QuickGuidePanel` as the channel sheet. A1.2: on tvOS, the "Preparing…"/reconnecting states in `ContentView.swift`'s `PlayerScreen` show a `TuningCard` (channel `LogoTile` — moved from file-private to internal so both files can use it — name, current/next programme from cached guide data, a "Tuning…"/"Reconnecting…" spinner), not a bare `ProgressView`.
+- **Labs (C-F, build 19):** Settings has a "Labs" section (`LabsToggleRow` in `LibraryView.swift`) of persistent `@AppStorage` switches, all off by default. Keys and wording live only in the `Labs` enum (`Labs.swift`): `pigtv.labs.newGuide` (A2.1 UIKit guide), `pigtv.labs.heaac` (C-C: `PlaybackCapabilities.current()` adds `"heaac": true` only when on; the key is otherwise absent), `pigtv.labs.streamInfo` (A4.2 stream info overlay). Later work reads `Labs.isOn(Labs.newGuide)` etc.; add new switches to `Labs.toggles`.
 - **Design rules:** page background `PigPageBackground`; surfaces `Color.guideCell` + `PigSurfaceButtonStyle` (pink accent outline on focus); tvOS type scale in `GuideTypography`; player overlays force dark scheme and provide an opaque fallback for Reduce Transparency. New screens reuse these rather than defining new styles.
 
 ## 5. Implementation map and constraints

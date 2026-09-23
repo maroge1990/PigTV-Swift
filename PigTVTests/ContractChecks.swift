@@ -118,6 +118,16 @@ enum ContractChecks {
         try expect(baseline["hevc"] == false && baseline["hls"] == true, "Unsupported codecs remain conservative")
         let main8Only = PlaybackCapabilities.current(supports: { !$0.contains("hvc1.2") })
         try expect(main8Only["hevc"] == false, "HEVC flag requires both common profiles")
+        // C-C: `heaac` is sent only when Labs → "HE-AAC passthrough" is on; otherwise absent.
+        try expect(PlaybackCapabilities.current(supports: { _ in true }, heaacPassthrough: false)["heaac"] == nil, "HE-AAC must not be advertised while the Labs switch is off")
+        try expect(PlaybackCapabilities.current(supports: { _ in false }, heaacPassthrough: true)["heaac"] == true, "HE-AAC must be advertised when the Labs switch is on")
+        let labsDefaults = UserDefaults(suiteName: "pigtv.contract.labs")!
+        labsDefaults.removePersistentDomain(forName: "pigtv.contract.labs")
+        try expect(Labs.toggles.allSatisfy { !Labs.isOn($0.key, in: labsDefaults) }, "Every Labs switch defaults to off")
+        labsDefaults.set(true, forKey: Labs.heaac)
+        try expect(Labs.isOn(Labs.heaac, in: labsDefaults) && !Labs.isOn(Labs.streamInfo, in: labsDefaults), "Labs switches persist independently")
+        labsDefaults.removePersistentDomain(forName: "pigtv.contract.labs")
+        try expect(Labs.toggles.map(\.key) == ["pigtv.labs.newGuide", "pigtv.labs.heaac", "pigtv.labs.streamInfo"], "Labs keys match contract C-F")
         let request = ResolveBody(sourceId: 3, channelId: "42", capabilities: capable)
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as! [String: Any]
         try expect(json["force"] as? Bool == false, "Normal playback must never stop a recording implicitly")

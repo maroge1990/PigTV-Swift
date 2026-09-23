@@ -2,12 +2,13 @@ import AVFoundation
 
 @MainActor
 enum PlaybackCapabilities {
-    static func current(supports: (String) -> Bool = AVURLAsset.isPlayableExtendedMIMEType) -> [String: Bool] {
+    static func current(supports: (String) -> Bool = AVURLAsset.isPlayableExtendedMIMEType,
+                        heaacPassthrough: Bool = Labs.isOn(Labs.heaac)) -> [String: Bool] {
         // Ask the native playback stack rather than treating every Apple client
         // as a browser without HEVC. Both common HEVC profiles must be supported.
         let hevc = supports("video/mp4; codecs=\"hvc1.1.6.L123.B0\"") &&
                    supports("video/mp4; codecs=\"hvc1.2.4.L123.B0\"")
-        return [
+        var capabilities = [
             "hls": true,
             // AVPlayer needs segmented live delivery, independently of codec support.
             "segmentedDelivery": true,
@@ -18,5 +19,9 @@ enum PlaybackCapabilities {
             "eac3": supports("audio/mp4; codecs=\"ec-3\""),
             "flac": false
         ]
+        // Contract C-C: sent only when Settings → Labs → "HE-AAC passthrough"
+        // is on; otherwise the key is absent, exactly as before.
+        if heaacPassthrough { capabilities["heaac"] = true }
+        return capabilities
     }
 }
