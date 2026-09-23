@@ -20,168 +20,6 @@ struct LibraryView: View {
 }
 
 
-struct LiveChannelsView: View {
-    @ObservedObject var model: AppModel
-    @State private var details: Channel?
-    @State private var settings = false
-    @State private var pendingPlayback: Channel?
-
-    private var columns: [GridItem] {
-        #if os(tvOS)
-        [GridItem(.adaptive(minimum: 270), spacing: 22)]
-        #else
-        [GridItem(.adaptive(minimum: 240), spacing: 16)]
-        #endif
-    }
-
-    var body: some View {
-        NavigationSplitView {
-            List {
-                Section {
-                    Button { select(nil) } label: {
-                        Label("All channels", systemImage: model.selectedCategory == nil ? "checkmark.circle.fill" : "tv")
-                    }
-                }
-                Section("Categories") {
-                    ForEach(model.categories) { category in
-                        Button { select(category) } label: {
-                            HStack {
-                                Text(category.name)
-                                Spacer()
-                                if model.selectedCategory == category {
-                                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
-                                }
-                            }
-                        }
-                    }
-                }
-                Section {
-                    Button("Settings", systemImage: "gearshape") { settings = true }
-                }
-            }
-            .navigationTitle("PigTV")
-        } detail: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("LIVE TV", systemImage: "dot.radiowaves.left.and.right")
-                                .font(.caption.weight(.bold)).foregroundStyle(Color.accentColor)
-                            Text(model.selectedCategory?.name ?? "On now")
-                                .font(.title2.bold())
-                            Text("\(model.channels.count) channels loaded")
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        TimelineView(.periodic(from: .now, by: 60)) { time in
-                            Text(time.date, style: .time)
-                                .font(.headline.monospacedDigit()).foregroundStyle(.secondary)
-                        }.accessibilityHidden(true)
-                    }
-                    HStack {
-                        TextField("Search channels", text: $model.search)
-                            .autocorrectionDisabled()
-                            .onSubmit { reload() }
-                        Button("Search", systemImage: "magnifyingglass") { reload() }
-                        Button("Refresh", systemImage: "arrow.clockwise") { reload() }
-                    }
-                    if model.channels.isEmpty && !model.libraryBusy {
-                        ContentUnavailableView("No channels here", systemImage: "tv",
-                            description: Text(model.hasMore
-                                ? "Load more to find channels in this source."
-                                : "Try another category or search, or check your server’s source sync."))
-                    }
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 22) {
-                        ForEach(model.channels) { channel in
-                            Button { details = channel } label: {
-                                ChannelCard(channel: channel, client: model.browse?.client, logo: model.browse?.logo(for: channel))
-                            }
-                            .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: 22))
-                            .accessibilityHint("Show programme details and watch live")
-                        }
-                    }
-                    if model.libraryBusy { ProgressView("Loading channels…") }
-                    if model.hasMore {
-                        Button("Load more channels") {
-                            Task { await model.loadLibrary(reset: false) }
-                        }.disabled(model.libraryBusy)
-                    }
-                    if model.playbackBusy && model.playback == nil {
-                        ProgressView("Releasing the previous stream…")
-                    }
-                }
-                .padding(32)
-            }
-            .navigationTitle("Live TV")
-        }
-        .fullScreenCover(item: $details, onDismiss: {
-            // Wait for the detail sheet to finish closing before presenting
-            // the full-screen player.
-            if let channel = pendingPlayback {
-                pendingPlayback = nil
-                model.beginPlayback(channel)
-            }
-        }) { channel in
-            ChannelDetails(channel: channel, browse: model.browse) {
-                pendingPlayback = channel
-                details = nil
-            }
-        }
-        .sheet(isPresented: $settings) { LibrarySettings(model: model) }
-    }
-
-    private func reload() { Task { await model.loadLibrary() } }
-    private func select(_ category: Category?) {
-        model.selectedCategory = category
-        reload()
-    }
-}
-
-struct ChannelCard: View {
-    let channel: Channel
-    var client: APIClient? = nil
-    var logo: String? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                ChannelArtwork(logo: logo ?? channel.logo, client: client)
-                    .frame(width: 72, height: 42)
-                Spacer()
-            }
-            Text(channel.name).font(.headline).lineLimit(2)
-            TimelineView(.periodic(from: .now, by: 30)) { timeline in
-                let current = currentProgramme(channel, at: timeline.date)
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(current?.title ?? "Programme information unavailable")
-                        .font(.subheadline).lineLimit(2)
-                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
-                    ProgressView(value: current?.progress(at: timeline.date) ?? 0)
-                        .accessibilityLabel("Programme progress")
-                    if let current {
-                        HStack {
-                            Text(current.start, style: .time)
-                            Spacer()
-                            Text(current.end, style: .time)
-                        }.font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text("Watch channel for live content")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
-        .overlay(alignment: .top) {
-            Capsule().fill(Color.accentColor).frame(width: 44, height: 3)
-                .accessibilityHidden(true)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 22))
-    }
-}
-
 // EPG responses can outlive their current programme. Never present expired
 // metadata as live; the supplied next programme can take over when it starts.
 private func currentProgramme(_ channel: Channel, at date: Date) -> Programme? {
@@ -245,6 +83,58 @@ struct ChannelDetails: View {
                 Text(item.end, style: .time)
             }.foregroundStyle(.secondary)
         }
+    }
+}
+
+struct FavouriteControl: View {
+    let channel: Channel
+    let client: APIClient
+    @State private var saved: Bool?
+    @State private var busy = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let saved {
+                Button(saved ? "Remove from favourites" : "Add to favourites",
+                       systemImage: saved ? "heart.fill" : "heart") {
+                    Task { await change(!saved) }
+                }.disabled(busy)
+            } else if busy {
+                ProgressView("Checking favourite…")
+            } else {
+                Button("Check favourite status") { Task { await check() } }
+            }
+            if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
+        }.task { await check() }
+    }
+
+    private func check() async {
+        guard !busy else { return }
+        busy = true
+        error = nil
+        defer { busy = false }
+        do {
+            let result: FavouriteCheck = try await client.request("favorites/check", query: [
+                URLQueryItem(name: "sourceId", value: String(channel.sourceId)),
+                URLQueryItem(name: "itemId", value: channel.rawID),
+                URLQueryItem(name: "itemType", value: "channel")
+            ])
+            saved = result.isFavorite
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func change(_ value: Bool) async {
+        guard !busy else { return }
+        busy = true
+        error = nil
+        defer { busy = false }
+        do {
+            let result: ActionResult = try await client.request("favorites", method: value ? "POST" : "DELETE",
+                body: FavouriteBody(sourceId: channel.sourceId, itemId: channel.rawID))
+            guard result.success else { throw PigTVError.message("The server did not confirm the favourite change.") }
+            saved = value
+        } catch { self.error = error.localizedDescription }
     }
 }
 

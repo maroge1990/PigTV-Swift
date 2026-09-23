@@ -48,7 +48,7 @@ R14/R16/R19 are superseded by roadmap A2.1 (the UIKit guide) once that's accepte
 
 ## 4. Architecture
 
-- **Screens:** `ContentView` → launch/onboarding/unreachable → `LibraryView` tab container (Guide, Recordings, Settings; favourites/channel views in `LibraryView.swift`). Player is presented full screen via `PlayerHost` → `PlayerScreen` → `CustomPlayerView` (tvOS) or `NativePlayer` (iOS).
+- **Screens:** `ContentView` → launch/onboarding/unreachable → `LibraryView` tab container (Guide, Recordings, Settings; `ChannelDetails`/`FavouriteControl` in `LibraryView.swift`). Player is presented full screen via `PlayerHost` → `PlayerScreen` → `CustomPlayerView` (tvOS) or `NativePlayer` (iOS).
 - **Guide focus model:** `GuideFocus(channel, start)`; `start == nil` is the channel tile, `-1` the no-EPG placeholder. tvOS focus engine moves between drawn cells; `navigate()` intervenes only when the target is off-screen. `viewport` (half-hour aligned) drives rendering; `model.window` drives 24-hour data loads.
 - **Player layering:** conflict/error/reconnecting states replace the player. **tvOS:** `CustomPlayerView` (`CustomPlayer.swift`) is the only player — `PlayerLayerView` video + one overlay switching between hidden / info / scrub / channels / tracks chrome, driven by in-view remote handlers, no AVKit. **iOS/iPadOS:** `NativePlayer` (plain AVKit) + top controls, with `QuickGuidePanel` as the channel sheet.
 - **Design rules:** page background `PigPageBackground`; surfaces `Color.guideCell` + `PigSurfaceButtonStyle` (pink accent outline on focus); tvOS type scale in `GuideTypography`; player overlays force dark scheme and provide an opaque fallback for Reduce Transparency. New screens reuse these rather than defining new styles.
@@ -67,14 +67,14 @@ R14/R16/R19 are superseded by roadmap A2.1 (the UIKit guide) once that's accepte
 
 C2 recovery uses actual playing evidence, allows one automatic attempt per user-initiated playback attempt, and coalesces failure callbacks. A second failure or failed resolve requires Retry; a 409 still requires explicit takeover. Mark confirmed return-to-guide behaviour on 21 September: background cleanup ends playback; foreground return must not automatically resume or reconnect the last channel. Automatic recovery applies only while the player remains active. A stream idle ≥60 seconds can be reclaimed on demand; the idle sweep is five minutes. Confirm AVPlayer paused-fetch behaviour on a real device.
 
-C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A terminal 500 must stop polling because another request starts a new remux attempt. Continue using the recording list's duration for resume bounds; playback `durationSec` is wall-clock length.
+C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A terminal 500 must stop polling because another request starts a new transcode attempt. Continue using the recording list's duration for resume bounds; playback `durationSec` is wall-clock length.
 
 ## 6. Shared contracts and coordination
 
 - Guide rows use `id/sourceId/name/logo/category/tvgId/programmes`, with programme `startTime/endTime` in **milliseconds**. Marker `startMs/endMs` also use milliseconds.
 - Favourites writes use bare channel IDs; source-qualified IDs remain useful for local UI identity. Read favourites from `library/favourites`.
 - Resolve sends `capabilities.segmentedDelivery = true`. “transcode” strategy can mean video/audio copy into HLS, not re-encoding.
-- Approved media paths: `/api/proxy/stream`, `/api/transcode/…`, `/api/recordings/…` (`/api/remux` was retired by server 0103; A0.1 removes it from the client); tokens on approved media URLs, bearer on session DELETE. Do not broaden URL acceptance to fix playback.
+- Approved media paths: `/api/proxy/stream`, `/api/transcode/…`, `/api/recordings/…` (`/api/remux` was retired by server 0103 and removed from the client's allow-list and strategy lists in A0.1); tokens on approved media URLs, bearer on session DELETE. Do not broaden URL acceptance to fix playback.
 - Recording playback: bearer-authenticated `/api/recordings/{id}/playback`; MP4 response with same-server `media.mp4`, token query and byte-range seeking. Async preparation is additive and opt-in.
 - Optional flags: `viewerConflict`, `epgLogoFallback`, `clientEvents`, `scheduledWaiting`, `recordingPlaybackPolling`, `playbackTerminalStatus`. C1/C2 must also handle servers whose behaviour predates the flags.
 - Adding a client endpoint requires a coordinated addition to server `test/api-404.test.js` → `APPLE_CLIENT_ROUTES`; C7 now calls `POST /api/playback/client-event`; the guard addition is now on local server `main` at `6f8148b`, fast-forwarded from `swift/client-0086-contract-docs` on 21 September without changing runtime code. This server test has not run: Node is not on PATH and server node_modules are absent; no dependencies were downloaded.

@@ -15,11 +15,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var user: User?
     @Published private(set) var serverInfo: ServerInfo?
     @Published private(set) var categories: [Category] = []
-    @Published private(set) var channels: [Channel] = []
-    @Published private(set) var libraryBusy = false
-    @Published private(set) var hasMore = false
-    @Published var search = ""
-    @Published var selectedCategory: Category?
     @Published var playback: PlaybackModel?
     @Published var playerPresented = false
     // The tvOS player presents these over native AVKit controls. Keeping the
@@ -29,7 +24,6 @@ final class AppModel: ObservableObject {
     // Channels the guide was showing when playback started: the order used
     // for channel up/down inside the player. Falls back to the whole guide.
     @Published var zapList: [Channel] = []
-    @Published private(set) var previousChannel: Channel?
     // Set by the player's transport-bar menu; the player screen presents the
     // channel list sheet and clears it.
 
@@ -38,8 +32,6 @@ final class AppModel: ObservableObject {
     private let keychain = KeychainStore()
     private var pairingTask: Task<Void, Never>?
     private var authGeneration = UUID()
-    private var libraryGeneration = UUID()
-    private var offset = 0
     private var currentPlayback: PlaybackModel?
     var loggedIn: Bool { user != nil }
 
@@ -63,7 +55,6 @@ final class AppModel: ObservableObject {
             canRestore = false
             unreachable = nil
             await loadCategories()
-            await loadLibrary()
         } catch {
             if error as? PigTVError == .unauthorised {
                 if let address = try? ServerAddress(serverText) { try? keychain.remove(for: address) }
@@ -134,7 +125,6 @@ final class AppModel: ObservableObject {
         canRestore = false
         error = nil
         await loadCategories()
-        await loadLibrary()
     }
 
     func startPairing() {
@@ -205,18 +195,12 @@ final class AppModel: ObservableObject {
 
     private func clearSession() {
         cancelPairing()
-        libraryGeneration = UUID()
         client = nil
         serverInfo = nil
         browse = nil
         user = nil
         password = ""
-        channels = []
         categories = []
-        selectedCategory = nil
-        search = ""
-        libraryBusy = false
-        hasMore = false
         canRestore = false
     }
 
@@ -224,42 +208,6 @@ final class AppModel: ObservableObject {
         guard let client else { return }
         do { categories = try await client.request("library/categories") }
         catch { self.error = error.localizedDescription }
-    }
-
-    func loadLibrary(reset: Bool = true) async {
-        guard let client else { return }
-        if !reset && (libraryBusy || !hasMore) { return }
-        if reset {
-            libraryGeneration = UUID()
-            offset = 0
-            channels = []
-            hasMore = false
-        }
-        let generation = libraryGeneration
-        let pageOffset = offset
-        let category = selectedCategory
-        libraryBusy = true
-        defer { if generation == libraryGeneration { libraryBusy = false } }
-        var query = [URLQueryItem(name: "limit", value: "50"), URLQueryItem(name: "offset", value: String(pageOffset))]
-        if let category { query.append(URLQueryItem(name: "category", value: category.rawID)) }
-        if !search.isEmpty { query.append(URLQueryItem(name: "search", value: search)) }
-        do {
-            let page: ChannelPage = try await client.request("library/channels", query: query)
-            guard generation == libraryGeneration else { return }
-            // Server filters category ID but not source ID. Offset tracks all received rows.
-            let visible = page.channels.filter { category == nil || $0.sourceId == category?.sourceId }
-            var seen = Set(channels.map(\.id))
-            channels.append(contentsOf: visible.filter { seen.insert($0.id).inserted })
-            offset = pageOffset + page.channels.count
-            hasMore = !page.channels.isEmpty && offset < page.total
-        } catch {
-            guard generation == libraryGeneration else { return }
-            if error as? PigTVError == .unauthorised {
-                try? keychain.remove(for: client.address)
-                clearSession()
-            }
-            self.error = error.localizedDescription
-        }
     }
 
     func beginPlayback(_ channel: Channel) {
@@ -275,7 +223,6 @@ final class AppModel: ObservableObject {
     // first (the provider allows one stream), then the new one resolves.
     func switchPlayback(to channel: Channel) {
         guard let old = currentPlayback, let client, old.channel.id != channel.id else { return }
-        previousChannel = old.channel
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         model.prerequisite = Task { _ = await old.stop() }
         currentPlayback = model
@@ -289,11 +236,6 @@ final class AppModel: ObservableObject {
         let index = list.firstIndex { $0.id == current.id } ?? -1
         let next = list[((index + step) % list.count + list.count) % list.count]
         switchPlayback(to: next)
-    }
-
-    func returnToPreviousChannel() {
-        guard let previousChannel else { return }
-        switchPlayback(to: previousChannel)
     }
 
     func endPlayback(_ model: PlaybackModel) async {

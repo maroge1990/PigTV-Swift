@@ -300,7 +300,7 @@ final class APIClient {
     func playbackURL(_ relative: String) throws -> URL {
         guard let url = URL(string: relative, relativeTo: address.url)?.absoluteURL,
               address.contains(url), url.fragment == nil,
-              ["/api/proxy/stream", "/api/remux"].contains(url.path) || url.path.hasPrefix("/api/transcode/")
+              ["/api/proxy/stream"].contains(url.path) || url.path.hasPrefix("/api/transcode/")
                 || url.path.hasPrefix("/api/recordings/"),
               var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw PigTVError.message("The server returned a playback URL outside its media endpoints.")

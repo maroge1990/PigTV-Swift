@@ -71,12 +71,11 @@ enum ContractChecks {
         try expect(items.filter { $0.name == "token" }.map(\.value) == ["secret & value"], "Only one correct token should be sent")
         try expect(items.contains(URLQueryItem(name: "part", value: "1")), "Existing query should survive")
         for bad in ["https://other.invalid/api/remux", "https://example.invalid:8443/api/remux",
-                    "http://example.invalid/api/remux", "https://user@example.invalid/api/remux", "/api/auth/me"] {
+                    "http://example.invalid/api/remux", "https://user@example.invalid/api/remux", "/api/auth/me",
+                    "https://example.invalid:443/api/remux", "/api/remux?token=x"] {
             do { _ = try api.playbackURL(bad); throw CheckFailure(description: "Unsafe playback URL accepted") }
             catch PigTVError.message { count += 1 }
         }
-        _ = try api.playbackURL("https://example.invalid:443/api/remux")
-        count += 1
 
         let pageData = Data(#"{"total":2,"limit":50,"offset":0,"channels":[{"id":"42","sourceId":3,"name":"News","logo":null,"category":"general","now":null,"next":null},{"id":"42","sourceId":4,"name":"Other News","logo":null,"category":"general","now":{"title":"Bulletin","startTime":1000,"endTime":5000},"next":null}]}"#.utf8)
         let page = try JSONDecoder().decode(ChannelPage.self, from: pageData)

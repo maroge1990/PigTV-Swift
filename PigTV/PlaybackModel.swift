@@ -251,7 +251,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 guard !ended else { return }
                 let url = try client.playbackURL(decision.url)
                 var context = PlaybackEvent(event: "play-start")
-                context.strategy = ["direct", "remux", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
+                context.strategy = ["direct", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
                 context.container = ["hls", "mp4", "fmp4", "mpegts"].contains(decision.container ?? "") ? decision.container : nil
                 context.videoMode = ["copy", "encode"].contains(decision.videoMode ?? "") ? decision.videoMode : nil
                 context.path = url.path // URL query (including token/provider URL) is never sent.
@@ -281,7 +281,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                     let domain = failure?.domain
                     let safeDomain = ["AVFoundationErrorDomain", "NSURLErrorDomain", "NSOSStatusErrorDomain"].contains(domain ?? "") ? domain : "PlayerError"
                     let mediaCodes = item.errorLog()?.events.suffix(3).map { String($0.errorStatusCode) }.joined(separator: ", ")
-                    let route = ["direct", "remux", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
+                    let route = ["direct", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
                     let detail = "Route: \(route). \(diagnostic)" + (mediaCodes.map { " Media codes: \($0)." } ?? "")
                     Task { @MainActor [weak self] in
                         guard let self, self.itemGeneration == generation else { return }
