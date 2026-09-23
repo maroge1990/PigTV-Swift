@@ -264,6 +264,27 @@ final class PlaybackLifecycleTests: XCTestCase {
         await playback.stop()
     }
 
+    // A1.2: "Last channel" memory. switchPlayback only ever builds
+    // PlaybackModels and stops the outgoing one (never-started, so no
+    // network call), so a plain client with no synthetic server is enough.
+    func testAppModelRemembersPreviousChannelAndCanReturnToIt() throws {
+        let app = AppModel()
+        app.configureClientForTesting(try client(SyntheticServer { _, _, _ in .init(status: 200, json: "{}") }))
+        let a = Channel(rawID: "a", sourceId: 1, name: "A", logo: nil, category: nil, now: nil, next: nil)
+        let b = Channel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, now: nil, next: nil)
+        let c = Channel(rawID: "c", sourceId: 1, name: "C", logo: nil, category: nil, now: nil, next: nil)
+        app.beginPlayback(a)
+        XCTAssertNil(app.previousChannel, "No previous channel until a switch happens")
+        app.switchPlayback(to: b)
+        XCTAssertEqual(app.previousChannel?.id, a.id)
+        XCTAssertEqual(app.playback?.channel.id, b.id)
+        app.switchPlayback(to: c)
+        XCTAssertEqual(app.previousChannel?.id, b.id, "The memory tracks the most recent switch, not the original channel")
+        app.returnToPreviousChannel()
+        XCTAssertEqual(app.playback?.channel.id, b.id, "Returning swaps back to the remembered channel")
+        XCTAssertEqual(app.previousChannel?.id, c.id, "Returning is itself a switch, so it updates the memory in turn")
+    }
+
     func testServerLogoFallbackSkipsArtworkIndexRequestsAndWaitingIsNotRecording() async throws {
         let server = SyntheticServer { _, _, _ in .init(status: 500, json: "{}") }
         let browse = BrowseModel(client: try client(server, modern: true))

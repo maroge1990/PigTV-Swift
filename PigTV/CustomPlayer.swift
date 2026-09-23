@@ -16,15 +16,19 @@ import AVKit
 //                     Up/Down/Back → hide
 //   Info shown:       Left/Right → choose action · Select → run action
 //                     Up/Down → hide · Back → hide
+//                     Actions include "Last channel" (A1.2) when a previous
+//                     channel is remembered and differs from the current one.
 //   Channel list:     Up/Down → move · Select → switch · Back → close
 // Overlays hide themselves after a few idle seconds.
+// A1.2: a long-press-Select shortcut for "last channel" while hidden was
+// considered and rejected — see the note above `select()`.
 
 enum PlayerChrome: Equatable {
     case hidden, info, channels, tracks, scrub
 }
 
 private enum PlayerAction: CaseIterable {
-    case favourite, record, tracks, channels, live
+    case favourite, record, tracks, channels, live, lastChannel
 }
 
 struct CustomPlayerView: View {
@@ -57,6 +61,7 @@ struct CustomPlayerView: View {
             case .channels: return false
             case .tracks: return playback.hasTrackChoice
             case .live: return playback.behindLive || paused
+            case .lastChannel: return app.previousChannel.map { $0.id != playback.channel.id } ?? false
             default: return true
             }
         }
@@ -67,6 +72,14 @@ struct CustomPlayerView: View {
     var body: some View {
         // A Button owns the primary (Select) action: on tvOS this fires on the
         // first click, where `.onTapGesture` needed a second press and felt slow.
+        // A1.2 considered a long-press-Select shortcut ("hold Select while
+        // chrome is hidden to jump to the last channel") via
+        // `.simultaneousGesture(LongPressGesture(...))` on this same Button,
+        // but a second gesture recogniser competing with the Button's own
+        // click handling is exactly the fragility the comment above already
+        // called out for `.onTapGesture`, and it cannot be verified without
+        // driving the simulator interactively. Skipped: "Last channel" is
+        // reachable only via the info overlay's action row.
         Button(action: select) {
             ZStack {
                 PlayerLayerView(player: playback.player, criteria: playback.displayCriteria).ignoresSafeArea()
@@ -203,6 +216,8 @@ struct CustomPlayerView: View {
         case .live:
             playback.goToLive(); paused = false
             notice = "Back to live"
+        case .lastChannel:
+            app.returnToPreviousChannel()
         case .favourite:
             guard let browse, !busy else { return }
             let value = !favourite
@@ -327,6 +342,7 @@ struct CustomPlayerView: View {
         case .tracks: return "captions.bubble"
         case .channels: return "list.bullet"
         case .live: return "dot.radiowaves.left.and.right"
+        case .lastChannel: return "arrow.uturn.backward"
         }
     }
 
@@ -337,6 +353,7 @@ struct CustomPlayerView: View {
         case .record: return "Record"
         case .channels: return "Channels"
         case .live: return "Go to live"
+        case .lastChannel: return "Last channel"
         }
     }
 

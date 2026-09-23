@@ -26,6 +26,11 @@ final class AppModel: ObservableObject {
     @Published var zapList: [Channel] = []
     // Set by the player's transport-bar menu; the player screen presents the
     // channel list sheet and clears it.
+    // A1.2: the channel switchPlayback(to:) most recently switched away from,
+    // for "Last channel". Cleared implicitly by never being set to the current
+    // channel; not touched by beginPlayback, so leaving and reopening the
+    // player on the same channel keeps the previous memory.
+    @Published private(set) var previousChannel: Channel?
 
     private var authRetry: (server: String, until: Date)?
     private var client: APIClient?
@@ -223,10 +228,18 @@ final class AppModel: ObservableObject {
     // first (the provider allows one stream), then the new one resolves.
     func switchPlayback(to channel: Channel) {
         guard let old = currentPlayback, let client, old.channel.id != channel.id else { return }
+        previousChannel = old.channel
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         model.prerequisite = Task { _ = await old.stop() }
         currentPlayback = model
         playback = model
+    }
+
+    // A1.2: swap back to the channel switchPlayback(to:) last switched away
+    // from (the player's "Last channel" action / Select long-press).
+    func returnToPreviousChannel() {
+        guard let previousChannel else { return }
+        switchPlayback(to: previousChannel)
     }
 
     func zap(_ step: Int) {
@@ -255,6 +268,13 @@ final class AppModel: ObservableObject {
     }
 
     #if DEBUG
+    // Test-only seam (A1.2): production code reaches `client` only through
+    // login/restore/pairing, which also validate the server and touch the
+    // keychain. Channel-switching tests need a client but not a real server.
+    func configureClientForTesting(_ client: APIClient) {
+        self.client = client
+    }
+
     // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).
     func injectGuideFixture() {
         guard let address = try? ServerAddress("http://127.0.0.1:3000") else { return }
