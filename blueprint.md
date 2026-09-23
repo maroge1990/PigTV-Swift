@@ -78,6 +78,7 @@ C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A t
 
 - Guide rows use `id/sourceId/name/logo/category/tvgId/programmes`, with programme `startTime/endTime` in **milliseconds**. Marker `startMs/endMs` also use milliseconds.
 - Favourites writes use bare channel IDs; source-qualified IDs remain useful for local UI identity. Read favourites from `library/favourites`.
+- **Resolve errors (C-B, A1.3):** a non-2xx `playback/resolve` whose `error` starts with `The provider refused this channel`, `The provider did not respond` or `This channel is not available` becomes `PigTVError.message` (trimmed to 300 characters; shown by the player's error screen). Any other text, any text containing `://`, and any non-resolve path keep the generic mapping (`APIClient.displayableResolveError`). No flag: a text match.
 - Resolve sends `capabilities.segmentedDelivery = true`. “transcode” strategy can mean video/audio copy into HLS, not re-encoding.
 - Approved media paths: `/api/proxy/stream`, `/api/transcode/…`, `/api/recordings/…` (`/api/remux` was retired by server 0103 and removed from the client's allow-list and strategy lists in A0.1); tokens on approved media URLs, bearer on session DELETE. Do not broaden URL acceptance to fix playback.
 - Recording playback: bearer-authenticated `/api/recordings/{id}/playback`; MP4 response with same-server `media.mp4`, token query and byte-range seeking. Async preparation is additive and opt-in.

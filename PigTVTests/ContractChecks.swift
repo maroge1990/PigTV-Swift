@@ -161,6 +161,43 @@ enum ContractChecks {
         } catch PigTVError.http(let status) {
             try expect(status == 500, "Unknown server error must not expose upstream credentials")
         }
+        // C-B: allow-listed resolve failures are shown verbatim (trimmed to 300 characters).
+        let refused = "The provider refused this channel (HTTP 403). It may be offline, or still releasing the previous stream; try again in a few seconds."
+        FixtureProtocol.responseData = try JSONSerialization.data(withJSONObject: ["error": refused, "info": [String: String]()])
+        do {
+            let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
+            throw CheckFailure(description: "An allow-listed resolve failure must fail")
+        } catch PigTVError.message(let message) {
+            try expect(message == refused, "An allow-listed resolve error (including its HTTP status text) must be shown as sent")
+        }
+        let long = "This channel is not available " + String(repeating: "x", count: 400)
+        FixtureProtocol.responseData = try JSONSerialization.data(withJSONObject: ["error": long])
+        do {
+            let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
+            throw CheckFailure(description: "A long allow-listed resolve failure must fail")
+        } catch PigTVError.message(let message) {
+            try expect(message.count == 300 && long.hasPrefix(message), "An allow-listed resolve error is trimmed to 300 characters")
+        }
+        for disallowed in ["The provider could not find this channel (HTTP 404). A playlist sync may help.",
+                           "The provider did not respond at https://provider.invalid/user/password/1.ts",
+                           "Failed: The provider refused this channel"] {
+            FixtureProtocol.responseData = try JSONSerialization.data(withJSONObject: ["error": disallowed])
+            do {
+                let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
+                throw CheckFailure(description: "A disallowed resolve failure must fail")
+            } catch PigTVError.http(let status) {
+                try expect(status == 500, "A resolve error outside the allow-list (or carrying a URL) keeps the generic mapping")
+            }
+        }
+        try expect(APIClient.displayableResolveError("The provider did not respond in time.") == "The provider did not respond in time.", "Every allow-listed prefix is shown")
+        try expect(APIClient.displayableResolveError(nil) == nil, "A missing error keeps the generic mapping")
+        FixtureProtocol.responseData = try JSONSerialization.data(withJSONObject: ["error": refused])
+        do {
+            let _: ActionResult = try await fixtureAPI.request("favorites", method: "POST", body: FavouriteBody(sourceId: 2, itemId: "x"))
+            throw CheckFailure(description: "A non-resolve failure must fail")
+        } catch PigTVError.http(let status) {
+            try expect(status == 500, "Only resolve responses may surface server error text")
+        }
 
         let guideFixture = Data(#"""
         {"total":2,"channels":[{"id":"same","sourceId":1,"name":"One","programmes":[{"title":"Show","description":null,"startTime":1000,"endTime":3000}]},{"id":"same","sourceId":2,"name":"Two","programmes":[]}]}

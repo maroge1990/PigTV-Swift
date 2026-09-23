@@ -158,11 +158,34 @@ final class APIClient {
             if response.statusCode == 500, path.hasPrefix("recordings/"), path.hasSuffix("/playback") {
                 throw PigTVError.recordingPreparationFailed(reason: serverError?.reason)
             }
+            // C-B: a failed resolve may carry a sentence written to be shown.
+            // Only an allow-listed prefix is displayed; all else stays generic.
+            if path == "playback/resolve", let shown = Self.displayableResolveError(serverError?.error) {
+                throw PigTVError.message(shown)
+            }
             if serverError?.error == "Transcode failed to produce a playlist in time" {
                 throw PigTVError.message("The server could not prepare the stream before its startup deadline. No video was received. Try again after checking the server's playback log.")
             }
             throw PigTVError.http(response.statusCode)
         }
+    }
+
+    // Contract C-B: the resolve `error` texts the client may show verbatim.
+    static let displayableResolveErrorPrefixes = [
+        "The provider refused this channel",
+        "The provider did not respond",
+        "This channel is not available"
+    ]
+
+    /// The text to show for a failed resolve's `error`, or nil to keep the
+    /// generic mapping. The server promises these never contain a URL; one
+    /// that does (defence in depth) is still treated as unknown. "HTTP 403"
+    /// style status text is part of the approved wording and is kept.
+    static func displayableResolveError(_ error: String?) -> String? {
+        guard let text = error?.trimmingCharacters(in: .whitespacesAndNewlines),
+              displayableResolveErrorPrefixes.contains(where: { text.hasPrefix($0) }),
+              !text.contains("://") else { return nil }
+        return String(text.prefix(300))
     }
 
     // Poll only when advertised. A terminal error must stop: the next request
