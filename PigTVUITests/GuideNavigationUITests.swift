@@ -13,6 +13,9 @@ final class GuideNavigationUITests: XCTestCase {
     func testRightNavigationAdvancesThroughTheDay() throws {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "guide"
+        // The SwiftUI grid (Labs → New guide off); GuideGridNavigationUITests
+        // covers the UIKit grid.
+        app.launchArguments += ["-pigtv.labs.newGuide", "NO"]
         app.launch()
         // Reach a programme cell (labels read "<channel>, <title>").
         for _ in 0..<10 where !focusedLabel(app).contains(", ") {

@@ -66,6 +66,13 @@ struct GuideView: View {
     @State private var filterResetPending = false
     @State private var scrollToTop = 0
     @FocusState private var focus: GuideFocus?
+    // A2.1: Labs → "New guide" swaps the grid below for the UIKit grid
+    // (GuideGridView) on tvOS; everything around it stays.
+    @AppStorage(Labs.newGuide) private var newGuide = false
+    // The UIKit grid's focus (it reports it; nothing here assigns it).
+    @State private var gridFocus: GuideFocus?
+    @State private var gridRequest: GuideGridRequest?
+    @State private var rowsVersion = 0
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Row pitch. Every tile (logo and programme) is inset by half a gap on
@@ -76,6 +83,7 @@ struct GuideView: View {
     private var category: Category? { app.categories.first { $0.id == filter } }
     // The focused grid element, ignoring the momentary edge targets.
     private var currentFocus: GuideFocus? {
+        if usesGridView { return gridFocus }
         if let focus, !focus.isEdge { return focus }
         return retainedFocus
     }
@@ -125,6 +133,9 @@ struct GuideView: View {
                     if let error = model.guideError {
                         RetryBanner(message: error) { reload() }
                     }
+                    if usesGridView && !compact {
+                        gridView(channelWidth: channelWidth)
+                    } else {
                     HStack(spacing: 0) {
                         Button("Now", systemImage: "location.fill") { goTo(Date()) }
                             .labelStyle(compact ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleAndIcon))
@@ -216,6 +227,7 @@ struct GuideView: View {
                             }
                         }
                     }
+                    }
                 }.padding(.vertical, 12)
             }
             .buttonStyle(GuideFilterStyle())
@@ -286,6 +298,64 @@ struct GuideView: View {
                 }
             }
         }
+    }
+
+    // A2.1: the UIKit grid is tvOS only; iOS always uses the SwiftUI grid.
+    private var usesGridView: Bool {
+        #if os(tvOS)
+        newGuide
+        #else
+        false
+        #endif
+    }
+
+    // A2.1: the UIKit grid in place of the SwiftUI time header and rows. It
+    // draws its own pinned time header; the Now button sits in its top-left
+    // corner, above the channel column.
+    @ViewBuilder
+    private func gridView(channelWidth: CGFloat) -> some View {
+        #if os(tvOS)
+        ZStack(alignment: .topLeading) {
+            GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window, clock: clock,
+                scheduled: model.scheduledKeys, recording: model.recordingChannels,
+                request: gridRequest, resetToken: scrollToTop,
+                actions: GuideGridActions(
+                    select: { channel, programme in
+                        if programme.isLive(at: Date()) { play(channel) }
+                        else { selection = GuideSelection(channel: channel, programme: programme) }
+                    },
+                    play: { play($0) },
+                    details: { selection = GuideSelection(channel: $0, programme: $1) },
+                    channelOptions: { channelDetails = asChannel($0) },
+                    schedule: { schedule = $0 },
+                    focusChanged: { channel, start in
+                        let value = GuideFocus(channel: channel, start: start)
+                        gridFocus = value
+                        retainedFocus = value
+                        lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
+                    },
+                    viewportChanged: { setViewport($0) }))
+            Button("Now", systemImage: "location.fill") { goTo(Date()) }
+                .frame(width: channelWidth, alignment: .leading)
+            if model.guideBusy && model.guide.isEmpty {
+                ProgressView("Loading guide…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
+                ContentUnavailableView(filter == "favourites" ? "No favourites yet" : "No matching channels",
+                    systemImage: filter == "favourites" ? "heart" : "magnifyingglass",
+                    description: Text(filter == "favourites" ? "Choose a channel, then Details to add it to favourites." : "Try another category or search."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .padding(.horizontal, 24)
+        .onChange(of: filter) {
+            // As the SwiftUI grid (R18): coalesced; the grid returns to the
+            // top row and the live baseline once taps settle.
+            retainedFocus = nil
+            gridFocus = nil
+            filterResetPending = true
+            scheduleRowsRefresh(after: .milliseconds(250))
+        }
+        #endif
     }
 
     private var focusedDetail: String {
@@ -666,21 +736,19 @@ struct GuideView: View {
         }
         // Favourites match on the stable identity, and a cross-listed channel
         // is shown once in the Favourites filter (server 0097 semantics).
-        let favourites = Set(model.favourites.map(\.identityKey) + model.favourites.map(\.id))
-        var shownFavourites = Set<String>()
-        let category = self.category
-        let search = self.search
-        let onlyFavourites = filter == "favourites"
-        rows = model.guide.filter { channel in
-            (category.map { channel.matches($0) } ?? true) &&
-            (search.isEmpty || channel.name.localizedStandardContains(search)) &&
-            // Last, so a listing is only counted as shown once it passes.
-            (!onlyFavourites || ((favourites.contains(channel.identityKey) || favourites.contains(channel.id))
-                                 && shownFavourites.insert(channel.identityKey).inserted))
-        }
+        rows = GuideRowFilter.rows(from: model.guide, category: category, search: search,
+            onlyFavourites: filter == "favourites",
+            favouriteKeys: Set(model.favourites.map(\.identityKey) + model.favourites.map(\.id)))
+        rowsVersion += 1
     }
     private func goTo(_ date: Date) {
         anchor = date
+        if usesGridView {
+            // The UIKit grid owns its focus; it only needs the time.
+            gridRequest = GuideGridRequest(viewport: GuideNavigation.rounded(date))
+            setViewport(GuideNavigation.rounded(date))
+            return
+        }
         setViewport(GuideNavigation.rounded(date), animated: true)
         if let channel = focusedChannel {
             let programme = GuideNavigation.programme(in: channel.programmes, at: date)
@@ -715,7 +783,7 @@ struct GuideView: View {
 
 // Logo tile for the channel column. The logo replaces the channel name; the
 // name is only drawn here when no artwork is available.
-private struct ChannelTile: View {
+struct ChannelTile: View {
     let name: String
     // C-A: the channel number ("504"), shown small in the top-leading corner.
     var number: String? = nil
@@ -914,7 +982,7 @@ private struct GuideFilterStyle: ButtonStyle {
     }
 }
 
-private enum GuideMetrics {
+enum GuideMetrics {
     // The single guide spacing: between the logo tile and the first cell,
     // between cells in a row, and between rows.
     static let gap: CGFloat = 8
@@ -928,7 +996,7 @@ private enum GuideMetrics {
     static let visualBuffer: TimeInterval = 6 * 3600
 }
 
-private enum GuideTypography {
+enum GuideTypography {
     static var body: Font {
         #if os(tvOS)
         .system(size: 24)
