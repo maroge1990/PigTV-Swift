@@ -46,6 +46,14 @@ Before each run record app version/build and source revision, device/OS, server 
 
 For each check record date, device/OS, client revision/build, server build, steps, expected/actual behaviour and sanitised evidence. Mark **Pass**, **Fail** or **Not run**. Update the matching blueprint item; an unrun device check must not become Verified merely because a build or fixture passed.
 
+## Build 1.0 (16) — R19 for swipes (23 September 2026)
+
+**Device result, build 15 (Mark):** still could not move right — Mark **swipes** on the black Siri Remote's touch surface; swipes never produce the move command build 15 relied on. **Local results, build 16:** contract runner **144 passed**; tvOS 26.5 and tvOS 27.0 simulators: 18 unit + 2 UI tests passed (guide Right ×12 then Left back to the channel tile; XCUIRemote sends clicks, which now take the same focus-engine path as swipes); iOS: 18 unit + 1 UI passed. A left-navigation hang found on the way (AttributeGraph cycle from a focused accessibility-hidden edge target, diagnosed with `sample`) is fixed.
+
+| Item | Steps and expected result |
+|---|---|
+| R19 | **Swipe** right past the screen edge on several rows: the grid slides on and the next programme is fully in view. Swipe left back: grid returns to live, then the channel logo. Repeat with clicks. Up/Down near either edge lands on a programme, never on nothing. |
+
 ## Build 1.0 (15) — R19 fix (23 September 2026)
 
 **Local results:** contract runner **143 passed** (8 new R19 navigation checks). tvOS simulator: 18 unit + 2 UI tests passed; the guide fixture now contains duplicate EPG entries, and `GuideNavigationUITests` **failed on the build 14 navigation code (focus stuck on one cell) and passes on build 15**. iOS simulator: 18 unit + 1 UI test passed. Device: repeat the R19 row below, then R14/R16/R20/HDR.

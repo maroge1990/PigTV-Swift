@@ -8,10 +8,14 @@ private struct GuideSelection: Identifiable {
 
 // Focus identity for every focusable element on the guide screen. Grid cells
 // use the channel identity plus a programme start; -1 marks the placeholder
-// cell of a channel without EPG data; nil marks the channel tile.
+// cell of a channel without EPG data; nil marks the channel tile; -2/-3 mark
+// the invisible edge targets at the right/left end of a row (tvOS, R19).
 private struct GuideFocus: Hashable {
     let channel: String
     let start: Double?
+    static let rightEdge: Double = -2
+    static let leftEdge: Double = -3
+    var isEdge: Bool { start == Self.rightEdge || start == Self.leftEdge }
 }
 
 private struct FilterStripMetrics: Equatable {
@@ -45,6 +49,10 @@ struct GuideView: View {
     @State private var pendingWatch: Channel?
     @State private var retainedFocus: GuideFocus?
     @State private var navigationGeneration = UUID()
+    // Set while an edge-target move is settling. Until the new target cell is
+    // rendered, focus can fall back onto the edge target; without this guard
+    // that re-triggered the move in a loop.
+    @State private var edgeMoveUntil = Date.distantPast
     @State private var filterStripMetrics = FilterStripMetrics()
     // Filtered rows are cached: filtering hundreds of channels inside `body`
     // on every focus change or clock tick is what made scrolling stutter.
@@ -66,12 +74,17 @@ struct GuideView: View {
     private let rowHeight: CGFloat = 80
     private static let topAnchor = "guide.top"
     private var category: Category? { app.categories.first { $0.id == filter } }
+    // The focused grid element, ignoring the momentary edge targets.
+    private var currentFocus: GuideFocus? {
+        if let focus, !focus.isEdge { return focus }
+        return retainedFocus
+    }
     private var focusedChannel: GuideChannel? {
-        guard let key = (focus ?? retainedFocus) else { return nil }
+        guard let key = currentFocus else { return nil }
         return model.guideChannel(id: key.channel)
     }
     private var focusedProgramme: GuideProgramme? {
-        guard let start = (focus ?? retainedFocus)?.start else { return nil }
+        guard let start = currentFocus?.start else { return nil }
         return focusedChannel?.programmes.first { $0.startTime == start }
     }
 
@@ -175,6 +188,10 @@ struct GuideView: View {
                             // reassigned here — doing so fought the focus engine
                             // and made the selection jump on its own.
                             guard let value else { return }
+                            #if os(tvOS)
+                            if value.isEdge { reachedEdge(value, duration: duration); return }
+                            revealIfClipped(value, duration: duration)
+                            #endif
                             if let start = value.start, start > 0,
                                let channel = model.guideChannel(id: value.channel),
                                let programme = channel.programmes.first(where: { $0.startTime == start }) {
@@ -411,58 +428,91 @@ struct GuideView: View {
                 details: { selection = GuideSelection(channel: channel, programme: $0) },
                 channelOptions: { channelDetails = asChannel(channel) })
         }
-        #if os(tvOS)
-        .onMoveCommand { direction in navigate(direction, channel: channel, duration: duration) }
-        #endif
     }
 
     #if os(tvOS)
-    // Only Left/Right are intercepted: they may need to shift the viewport to a
-    // programme that is not drawn yet. Up/Down are left entirely to the focus
-    // engine — every cell frame is on screen (cells are clipped to the window),
-    // so its geometric choice of the row above/below is already correct.
-    private func navigate(_ direction: MoveCommandDirection, channel: GuideChannel, duration: TimeInterval) {
-        guard direction == .left || direction == .right,
-              let current = focus, current.channel == channel.id else { return }
-        let baseline = GuideNavigation.rounded(clock)
+    // Horizontal moves past the drawn window (R19). Each row ends in invisible
+    // focusable edge targets; the focus engine lands on one when there is no
+    // cell further left/right on screen — for a remote *swipe* as well as a
+    // click, which is why this no longer relies on onMoveCommand (swipes on
+    // the touch surface only move focus and never send a move command).
+    // Landing on an edge moves the grid and hands focus to the next programme.
+    private func reachedEdge(_ edge: GuideFocus, duration: TimeInterval) {
+        guard Date() >= edgeMoveUntil, let channel = model.guideChannel(id: edge.channel) else { return }
+        edgeMoveUntil = Date().addingTimeInterval(0.6)
         let programmes = GuideNavigation.ordered(channel.programmes)
-        // A live programme while the grid is ahead of now brings the grid back
-        // to the live baseline (Left) before anything else.
-        let focusedProgramme = current.start.flatMap { start in programmes.first { $0.startTime == start } }
-        if direction == .left, viewport > baseline,
-           focusedProgramme == nil || focusedProgramme!.isLive(at: clock) {
+        let baseline = GuideNavigation.rounded(clock)
+        let step = GuideNavigation.step
+        // Arrived from another row (Up/Down) or from the tile moving right:
+        // settle on a real cell in this row instead.
+        guard let from = retainedFocus, from.channel == edge.channel, from.start != nil else {
+            setFocus(landing(in: channel, programmes: programmes, duration: duration))
+            return
+        }
+        if edge.start == GuideFocus.rightEdge {
+            guard let start = from.start, start >= 0,
+                  let next = GuideNavigation.neighbour(of: start, in: programmes, forward: true) else {
+                // No-EPG placeholder or the end of the data: just move on.
+                move(to: viewport.addingTimeInterval(step), focusing: from)
+                return
+            }
+            // Always advance at least one column: the engine only reaches the
+            // edge when nothing further right is focusable on screen.
+            let destination = max(viewport.addingTimeInterval(step),
+                                  GuideNavigation.reveal(next, from: viewport, duration: duration))
+            anchor = max(next.start, destination)
+            move(to: destination, focusing: GuideFocus(channel: channel.id, start: next.startTime))
+            return
+        }
+        // Left edge. At the live baseline it leads to the channel tile (and on
+        // to favourites); ahead of it, it steps back, never into finished
+        // programmes, which instead return the grid to live.
+        guard viewport > baseline else {
+            setFocus(GuideFocus(channel: channel.id, start: nil))
+            return
+        }
+        if let start = from.start, start >= 0,
+           let previous = GuideNavigation.neighbour(of: start, in: programmes, forward: false),
+           previous.end > clock, !previous.isLive(at: clock) {
+            let destination = max(baseline, min(viewport.addingTimeInterval(-step),
+                GuideNavigation.revealMovingLeft(previous, from: viewport, now: clock)))
+            anchor = max(previous.start, destination)
+            move(to: destination, focusing: GuideFocus(channel: channel.id, start: previous.startTime))
+        } else {
             returnToLive(channel: channel, programmes: programmes, baseline: baseline)
-            return
         }
-        guard let start = current.start, programmes.contains(where: { $0.startTime == start }) else {
-            if direction == .right, current.start == -1 { shift(GuideNavigation.step) }
-            return
+    }
+
+    // A sideways move within a row onto a programme that is mostly off screen
+    // (a sliver at the right edge, or a future programme clipped on the left)
+    // slides the grid to show it. Up/Down never move the grid.
+    private func revealIfClipped(_ value: GuideFocus, duration: TimeInterval) {
+        guard Date() >= edgeMoveUntil, let previous = retainedFocus, previous.channel == value.channel,
+              previous.start != value.start, let start = value.start, start >= 0,
+              let programme = model.guideChannel(id: value.channel)?.programmes.first(where: { $0.startTime == start })
+        else { return }
+        var destination = viewport
+        if programme.start > viewport.addingTimeInterval(duration - GuideNavigation.step / 2) {
+            destination = GuideNavigation.revealAhead(programme, from: viewport, duration: duration)
+        } else if programme.start < viewport, !programme.isLive(at: clock) {
+            destination = GuideNavigation.revealMovingLeft(programme, from: viewport, now: clock)
         }
-        guard let next = GuideNavigation.neighbour(of: start, in: programmes, forward: direction == .right) else {
-            // Nothing earlier to reveal: hand focus to the channel tile so the
-            // remote can leave the timeline to the left (and reach favourites).
-            if direction == .left { setFocus(GuideFocus(channel: channel.id, start: nil)) }
-            else { shift(GuideNavigation.step) }
-            return
+        guard destination != viewport else { return }
+        edgeMoveUntil = Date().addingTimeInterval(0.6)
+        anchor = max(programme.start, destination)
+        move(to: destination, focusing: value)
+    }
+
+    // A focusable cell in this row near the current time anchor.
+    private func landing(in channel: GuideChannel, programmes: [GuideProgramme], duration: TimeInterval) -> GuideFocus {
+        let visible = GuideNavigation.visible(programmes, viewport: viewport, duration: duration)
+        if visible.isEmpty { return GuideFocus(channel: channel.id, start: -1) }
+        let open = visible.filter { $0.end > clock }
+        let at = max(anchor, viewport)
+        guard let target = open.first(where: { $0.isLive(at: at) }) ?? open.first else {
+            return GuideFocus(channel: channel.id, start: nil)
         }
-        // Finished programmes cannot be played, so the remote never walks back
-        // into them; Left instead returns to live, or drops to the channel tile
-        // when already at the baseline.
-        if direction == .left, next.end <= clock {
-            if viewport > baseline { returnToLive(channel: channel, programmes: programmes, baseline: baseline) }
-            else { setFocus(GuideFocus(channel: channel.id, start: nil)) }
-            return
-        }
-        let destination = direction == .left
-            ? GuideNavigation.revealMovingLeft(next, from: viewport, now: clock)
-            : GuideNavigation.reveal(next, from: viewport, duration: duration)
-        let target = GuideFocus(channel: channel.id, start: next.startTime)
-        // Already on screen: claim focus explicitly rather than trusting the
-        // focus engine's geometric move, which can miss a very narrow cell
-        // and previously left Right stuck at the screen edge (R19).
-        if destination == viewport { setFocus(target); return }
-        anchor = max(next.start, destination)
-        move(to: destination, focusing: target)
+        return GuideFocus(channel: channel.id, start: target.startTime)
     }
 
     private func returnToLive(channel: GuideChannel, programmes: [GuideProgramme], baseline: Date) {
@@ -480,11 +530,7 @@ struct GuideView: View {
         navigationGeneration = generation
         setViewport(destination, animated: true)
         focus = target
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(80))
-            guard navigationGeneration == generation, viewport == destination else { return }
-            if focus != target { focus = target }
-        }
+        reapply(target, generation: generation) { viewport == destination }
     }
     #endif
 
@@ -495,10 +541,21 @@ struct GuideView: View {
         let generation = UUID()
         navigationGeneration = generation
         focus = target
+        reapply(target, generation: generation) { true }
+    }
+
+    // Focus can only land once the target cell has been rendered, which on
+    // Apple TV hardware may take longer than one frame after a grid move, so
+    // retry a few times until it sticks (or a newer move supersedes it).
+    private func reapply(_ target: GuideFocus, generation: UUID, while valid: @escaping () -> Bool) {
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(80))
-            guard navigationGeneration == generation else { return }
-            if focus != target { focus = target }
+            for delay in [80, 200, 450] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard navigationGeneration == generation, valid() else { return }
+                if focus == target { edgeMoveUntil = .distantPast; return }
+                focus = target
+            }
+            if navigationGeneration == generation { edgeMoveUntil = .distantPast }
         }
     }
 
@@ -835,6 +892,9 @@ private enum GuideMetrics {
     // between cells in a row, and between rows.
     static let gap: CGFloat = 8
     static var inset: CGFloat { gap / 2 }
+    // Focusable strip at each end of a row that carries horizontal moves past
+    // the window (R19). Invisible; the cell visuals still start at `inset`.
+    static let edgeTarget: CGFloat = 12
     // How far either side of the window cells (and header labels) are drawn
     // off screen. Wider than any single navigation step, including a return
     // to live from a few windows ahead.
@@ -910,9 +970,9 @@ private struct GuideTimelineRow: View {
             if visible.isEmpty {
                 Button("No programme information — watch live", action: watch)
                     .font(GuideTypography.body).buttonStyle(PigSurfaceButtonStyle())
-                    .frame(width: width - GuideMetrics.gap, height: height - GuideMetrics.gap)
+                    .frame(width: width - 2 * edge, height: height - GuideMetrics.gap)
                     .focused(focus, equals: GuideFocus(channel: channel.id, start: -1))
-                    .offset(x: GuideMetrics.inset)
+                    .offset(x: edge)
             }
             // Visual layer — slides as one block; never focusable, so its
             // off-screen geometry cannot mislead the focus engine.
@@ -930,14 +990,25 @@ private struct GuideTimelineRow: View {
             // Focus layer — transparent buttons clamped to the visible window,
             // so every focus target's frame is on screen and Up/Down/Left/Right
             // stay geometrically correct while the visuals slide underneath.
+            // Kept inside the edge targets; a sliver too thin to focus is
+            // left to the edge target, which then moves the grid.
             ForEach(visible, id: \.startTime) { programme in
                 if let span = GuideGeometry.interval(start: programme.startTime, end: programme.endTime,
                     window: viewport.timeIntervalSince1970 * 1000, duration: duration * 1000) {
-                    focusCell(programme)
-                        .frame(width: max(1, width * span.width - GuideMetrics.gap), height: height - GuideMetrics.gap)
-                        .offset(x: width * span.offset + GuideMetrics.inset)
+                    let lower = max(edge, width * span.offset + GuideMetrics.inset)
+                    let upper = min(width - edge, width * (span.offset + span.width) - GuideMetrics.inset)
+                    if upper - lower >= 8 {
+                        focusCell(programme)
+                            .frame(width: upper - lower, height: height - GuideMetrics.gap)
+                            .offset(x: lower)
+                    }
                 }
             }
+            #if os(tvOS)
+            edgeTarget(GuideFocus.leftEdge).frame(width: edge, height: height - GuideMetrics.gap)
+            edgeTarget(GuideFocus.rightEdge).frame(width: edge, height: height - GuideMetrics.gap)
+                .offset(x: width - edge)
+            #endif
         }
         .frame(width: width, height: height, alignment: .leading)
         .clipped()
@@ -971,6 +1042,26 @@ private struct GuideTimelineRow: View {
         .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.accentColor : .clear, lineWidth: 3) }
         .opacity(finished ? 0.4 : 1)
         .clipped()
+    }
+
+    // Width reserved at each end of the row for the edge targets.
+    private var edge: CGFloat {
+        #if os(tvOS)
+        GuideMetrics.edgeTarget
+        #else
+        GuideMetrics.inset
+        #endif
+    }
+
+    // Invisible focus target at a row end; GuideView moves the grid when the
+    // focus engine lands here.
+    private func edgeTarget(_ start: Double) -> some View {
+        Button {} label: { Color.clear.contentShape(Rectangle()) }
+            .buttonStyle(GuideFocusCellStyle())
+            .focused(focus, equals: GuideFocus(channel: channel.id, start: start))
+            // Labelled rather than hidden: a focused accessibility-hidden
+            // element sent SwiftUI's accessibility graph into a cycle.
+            .accessibilityLabel(start == GuideFocus.rightEdge ? "Later on \(channel.name)" : "Earlier on \(channel.name)")
     }
 
     // Transparent focus/hit target for one programme.

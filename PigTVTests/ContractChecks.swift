@@ -231,7 +231,9 @@ enum ContractChecks {
         let atEdge = GuideProgramme(title: "Edge", description: nil, startTime: 7_200_000, endTime: 9_000_000)
         try expect(GuideNavigation.reveal(atEdge, from: guideStart) == guideStart.addingTimeInterval(1800), "A programme starting exactly at the right edge advances one column")
         let farAhead = GuideProgramme(title: "Far", description: nil, startTime: 54_600_000, endTime: 58_200_000)
-        try expect(GuideNavigation.reveal(farAhead, from: guideStart) == Date(timeIntervalSince1970: 54_000 - 5400), "A distant programme lands in the last column")
+        try expect(GuideNavigation.reveal(farAhead, from: guideStart) == Date(timeIntervalSince1970: 55_800 - 5400), "A distant programme starts at least one column inside the right edge")
+        let nearlyHalf = GuideProgramme(title: "Nearly", description: nil, startTime: 7_110_000, endTime: 9_000_000)
+        try expect(GuideNavigation.reveal(nearlyHalf, from: Date(timeIntervalSince1970: -1800)) == guideStart.addingTimeInterval(1800), "A start just before a half hour is not left as a sliver at the edge")
         try expect(GuideNavigation.reveal(shortShow, from: twoHours) == guideStart, "Moving left to an earlier programme places its start in the first column")
         try expect(GuideNavigation.reveal(overlap, from: guideStart) == guideStart, "A visible programme does not move the viewport")
         // R19: duplicate starts and overlaps must not trap Left/Right.

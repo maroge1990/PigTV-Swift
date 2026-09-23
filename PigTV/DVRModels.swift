@@ -176,16 +176,22 @@ nonisolated enum GuideNavigation {
             .sorted { $0.start < $1.start }
     }
     // Viewport that shows the programme after a horizontal move. Moving right
-    // advances by whole columns until the programme start is on screen; moving
-    // left puts the programme start in the first column.
+    // advances by whole columns until the programme start is at least a column
+    // inside the right edge (a start just before a half hour is not left as a
+    // sliver); moving left puts the programme start in the first column.
     static func reveal(_ programme: GuideProgramme, from viewport: Date,
                        duration: TimeInterval = visibleDuration) -> Date {
         let right = viewport.addingTimeInterval(duration)
-        if programme.start >= right {
-            return max(viewport.addingTimeInterval(step), rounded(programme.start).addingTimeInterval(step - duration))
-        }
+        if programme.start >= right { return revealAhead(programme, from: viewport, duration: duration) }
         if programme.end <= viewport { return rounded(programme.start) }
         return viewport
+    }
+    // Brings a programme starting at or near the right edge at least one column
+    // inside it.
+    static func revealAhead(_ programme: GuideProgramme, from viewport: Date,
+                            duration: TimeInterval = visibleDuration) -> Date {
+        let columnEnd = Date(timeIntervalSince1970: ceil(programme.start.timeIntervalSince1970 / step) * step)
+        return max(viewport.addingTimeInterval(step), columnEnd.addingTimeInterval(step - duration))
     }
     // Left navigation must reveal the beginning of a clipped programme, not
     // merely notice that its tail is already visible. Live programmes return

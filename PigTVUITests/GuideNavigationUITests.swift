@@ -40,6 +40,17 @@ final class GuideNavigationUITests: XCTestCase {
         add(shot)
         // 12 presses should visit well beyond the first two-hour window.
         XCTAssertGreaterThanOrEqual(Set(labels).count, 8, "focus stalled: \(labels)")
+        // Left must come all the way back (through live) to the channel tile.
+        var back: [String] = []
+        for _ in 0..<16 {
+            XCUIRemote.shared.press(.left)
+            print("left press \(back.count) sent")
+            back.append(focusedLabel(app))
+            print("left press \(back.count - 1): \(back.last!)")
+            if !back.last!.contains(", ") { break }
+        }
+        print("Left-navigation focus sequence: \(back)")
+        XCTAssertEqual(back.last, "Sky Sports Main Event", "Left did not reach the channel tile: \(back)")
     }
 }
 #endif
