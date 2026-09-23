@@ -16,6 +16,10 @@ independent review; the full U01–U11 and R01–R20 history is frozen in `docs/
   xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'
   ```
   Never force-push. `.gitignore` keeps Xcode and Finder user state out of commits.
+- **CI (A0.3).** `.github/workflows/ci.yml` runs on every push to `main` and on pull requests: it selects the runner's
+  newest Xcode (failing with a clear message if it is older than the client's minimum), builds for the iOS Simulator, and
+  runs the tvOS tests on an Apple TV simulator it finds or creates. It cannot be exercised locally; treat a red run on
+  GitHub as equivalent to a local test failure.
 - **Bump the build number** (`CURRENT_PROJECT_VERSION`, both app targets in `project.pbxproj`) once per session that changes
   app code, so Settings → Version identifies the installed copy.
 - **Organisation:** the lead Claude session delegates implementation to sub-agents and reviews every diff before it's pushed.

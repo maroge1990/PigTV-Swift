@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # The project targets iOS/tvOS 26.5 and was made with Xcode 27. A
+  # GitHub-hosted runner with an older Xcode cannot build it; the
+  # "Check Xcode version" step below fails fast with a clear message
+  # instead of letting the build fail obscurely later on.
+  PIGTV_MIN_XCODE_MAJOR: 26
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest available Xcode
+        run: |
+          LATEST_XCODE="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Selecting $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE"
+          xcodebuild -version
+
+      - name: Check Xcode version
+        run: |
+          XCODE_MAJOR="$(xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1)"
+          echo "Detected Xcode major version: $XCODE_MAJOR"
+          if [ "$XCODE_MAJOR" -lt "$PIGTV_MIN_XCODE_MAJOR" ]; then
+            echo "::error::This runner's newest Xcode is major version $XCODE_MAJOR, but PigTV targets iOS/tvOS 26.5 and needs Xcode $PIGTV_MIN_XCODE_MAJOR or newer (built with Xcode 27). Update the GitHub-hosted runner image (macos-latest) or the min-Xcode check in this workflow once a suitable runner is available."
+            exit 1
+          fi
+
+      - name: Build for iOS Simulator
+        run: |
+          xcodebuild build \
+            -project PigTV.xcodeproj \
+            -scheme PigTV \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Newest tvOS runtime first: the app targets tvOS 26.5.
+      - name: Find or create an Apple TV simulator
+        id: tvos_sim
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available --json \
+            | jq -r '[.devices | to_entries[] | select(.key | contains("tvOS"))] | sort_by(.key | [scan("[0-9]+") | tonumber]) | reverse | .[] | .value[] | select(.name | contains("Apple TV")) | .udid' \
+            | head -1)"
+          if [ -z "$DEVICE_ID" ]; then
+            echo "No existing Apple TV simulator found; creating one."
+            RUNTIME_ID="$(xcrun simctl list runtimes available --json \
+              | jq -r '.runtimes[] | select(.name | contains("tvOS")) | .identifier' \
+              | tail -1)"
+            DEVICE_TYPE_ID="$(xcrun simctl list devicetypes --json \
+              | jq -r '.devicetypes[] | select(.name == "Apple TV") | .identifier' \
+              | head -1)"
+            if [ -z "$RUNTIME_ID" ] || [ -z "$DEVICE_TYPE_ID" ]; then
+              echo "::error::No tvOS runtime or Apple TV device type available on this runner to create a simulator."
+              exit 1
+            fi
+            DEVICE_ID="$(xcrun simctl create "PigTV CI Apple TV" "$DEVICE_TYPE_ID" "$RUNTIME_ID")"
+          fi
+          if [ -z "$DEVICE_ID" ]; then
+            echo "::error::Could not find or create an Apple TV simulator on this runner."
+            exit 1
+          fi
+          echo "Using Apple TV simulator $DEVICE_ID"
+          echo "device_id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Run tvOS tests
+        run: |
+          xcodebuild test \
+            -project PigTV.xcodeproj \
+            -scheme PigTV \
+            -destination "id=${{ steps.tvos_sim.outputs.device_id }}" \
+            CODE_SIGNING_ALLOWED=NO
