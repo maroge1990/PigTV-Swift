@@ -242,6 +242,25 @@ final class AppModel: ObservableObject {
         switchPlayback(to: previousChannel)
     }
 
+    // C-A (iOS "Go to number"): the channel with this number, looked up in the
+    // zap list first, then the whole guide. Only with `channelNumbers`.
+    func channel(number: Int) -> Channel? {
+        if let hit = zapList.first(where: { $0.number == number }) { return hit }
+        guard let browse, browse.showsChannelNumbers,
+              let row = browse.guide.first(where: { $0.number == number }) else { return nil }
+        return browse.asChannel(row)
+    }
+
+    /// Parses typed digits and switches to that channel. False when the text
+    /// is not a positive number or no channel has it.
+    @discardableResult
+    func goToChannel(numberText: String) -> Bool {
+        guard let number = Int(numberText.trimmingCharacters(in: .whitespacesAndNewlines)), number > 0,
+              let channel = channel(number: number) else { return false }
+        if channel.id != currentPlayback?.channel.id { switchPlayback(to: channel) }
+        return true
+    }
+
     func zap(_ step: Int) {
         guard let current = currentPlayback?.channel else { return }
         let list = zapList.isEmpty ? (browse.map { model in model.guide.map(model.asChannel) } ?? []) : zapList
@@ -271,8 +290,9 @@ final class AppModel: ObservableObject {
     // Test-only seam (A1.2): production code reaches `client` only through
     // login/restore/pairing, which also validate the server and touch the
     // keychain. Channel-switching tests need a client but not a real server.
-    func configureClientForTesting(_ client: APIClient) {
+    func configureClientForTesting(_ client: APIClient, browse: BrowseModel? = nil) {
         self.client = client
+        if let browse { self.browse = browse }
     }
 
     // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).

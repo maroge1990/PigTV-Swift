@@ -401,7 +401,8 @@ struct GuideView: View {
                 // is too narrow to browse); on TV/iPad it starts the channel.
                 if compact { schedule = channel } else { play(channel) }
             } label: {
-                ChannelTile(name: channel.name, logo: model.logo(for: channel), client: model.client)
+                ChannelTile(name: channel.name, number: model.number(for: channel).map { String($0) },
+                            logo: model.logo(for: channel), client: model.client)
                     .frame(width: channelWidth - GuideMetrics.gap, height: rowHeight - GuideMetrics.gap)
                     .overlay(alignment: .topTrailing) {
                         if recordingNow {
@@ -413,7 +414,7 @@ struct GuideView: View {
             .buttonStyle(PigSurfaceButtonStyle(drawSurface: false))
             .padding(GuideMetrics.inset)
             .focused($focus, equals: GuideFocus(channel: channel.id, start: nil))
-            .accessibilityLabel(channel.name)
+            .accessibilityLabel(model.number(for: channel).map { "\($0) \(channel.name)" } ?? channel.name)
             .contextMenu {
                 Button("All programmes on this channel") { schedule = channel }
                 Button("Channel and favourites") { channelDetails = asChannel(channel) }
@@ -619,7 +620,8 @@ struct GuideView: View {
     }
     private func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
-            logo: model.logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId)
+            logo: model.logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId,
+            number: model.number(for: channel))
     }
     // Half-hour marks across the same pre-rendered extent as the grid cells.
     private func headerTimes(duration: TimeInterval) -> [Date] {
@@ -701,6 +703,8 @@ struct GuideView: View {
 // name is only drawn here when no artwork is available.
 private struct ChannelTile: View {
     let name: String
+    // C-A: the channel number ("504"), shown small in the top-leading corner.
+    var number: String? = nil
     let logo: String?
     let client: APIClient?
     @Environment(\.colorScheme) private var scheme
@@ -719,6 +723,15 @@ private struct ChannelTile: View {
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.center).minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let number {
+                Text(verbatim: number)
+                    .font(GuideTypography.small.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .accessibilityHidden(true)
             }
         }
     }

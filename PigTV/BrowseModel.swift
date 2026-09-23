@@ -244,7 +244,14 @@ final class BrowseModel: ObservableObject {
     }
     func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
-            logo: logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId)
+            logo: logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId,
+            number: number(for: channel))
+    }
+    // C-A: a channel number is shown only when the server advertises
+    // `channelNumbers` (an older server, or a stale cache, shows none).
+    var showsChannelNumbers: Bool { client.info?.features.channelNumbers == true }
+    func number(for channel: GuideChannel) -> Int? {
+        showsChannelNumbers ? channel.number : nil
     }
     // Prefer the playlist logo; fall back to the EPG icon like the web guide.
     func logo(for channel: GuideChannel) -> String? {

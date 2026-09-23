@@ -190,6 +190,12 @@ struct PlayerScreen: View {
     @ObservedObject var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingGuide = false
+    #if os(iOS)
+    // C-A: iOS "Go to number" (tvOS has no digit entry).
+    @State private var enteringNumber = false
+    @State private var typedNumber = ""
+    @State private var numberNotFound: String?
+    #endif
 
     var body: some View {
         ZStack {
@@ -279,6 +285,26 @@ struct PlayerScreen: View {
             }
             .presentationBackground { PigPageBackground() }
         }
+        .alert("Go to channel", isPresented: $enteringNumber) {
+            TextField("Channel number", text: $typedNumber)
+                .keyboardType(.numberPad)
+            Button("Go") {
+                let text = typedNumber
+                typedNumber = ""
+                if !app.goToChannel(numberText: text) {
+                    numberNotFound = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            Button("Cancel", role: .cancel) { typedNumber = "" }
+        } message: {
+            Text("Enter a channel number.")
+        }
+        .alert("No channel \(numberNotFound ?? "")", isPresented: Binding(
+            get: { numberNotFound != nil }, set: { if !$0 { numberNotFound = nil } })) {
+            Button("OK", role: .cancel) { numberNotFound = nil }
+        } message: {
+            Text("No channel in the guide has that number.")
+        }
         #endif
         .onAppear { playback.start() }
         .onDisappear { Task { await app.endPlayback(playback) } }
@@ -297,6 +323,10 @@ struct PlayerScreen: View {
                 .accessibilityLabel("Previous channel")
             Button { app.zap(1) } label: { Image(systemName: "chevron.up.circle.fill") }
                 .accessibilityLabel("Next channel")
+            if app.browse?.showsChannelNumbers == true {
+                Button { enteringNumber = true } label: { Image(systemName: "number.circle.fill") }
+                    .accessibilityLabel("Go to number")
+            }
             Button { showingGuide = true } label: { Image(systemName: "list.bullet.circle.fill") }
                 .accessibilityLabel("Channels")
         }

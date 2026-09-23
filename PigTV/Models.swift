@@ -24,6 +24,10 @@ struct ServerInfo: Decodable {
         let guideCursor: Bool?
         let guideVersion: Bool?
         let logoCache: Bool?
+        // C-A: rows carry a persistent channel `number`; guide and channel
+        // lists are ordered by it. C-G: guide/channel rows carry `health`.
+        let channelNumbers: Bool?
+        let channelHealth: Bool?
     }
 
     func validate() throws {
@@ -89,13 +93,18 @@ struct Channel: Decodable, Identifiable, Equatable {
     // `id` is position-based and does not). Additive; may be nil on older
     // servers. Prefer it as a durable local key across launches.
     var stableId: String? = nil
+    // C-A (server flag `channelNumbers`): the channel's persistent number.
+    // Absent/null on older servers and for an unnumbered channel.
+    var number: Int? = nil
     var id: String { "\(sourceId):\(rawID)" }
+    /// The number as shown ("504"), never locale-grouped.
+    var numberText: String? { number.map { String($0) } }
     // Durable local key: the reorder-stable identity when the server sends
     // one, else the position-based id. Also equal for every listing of a
     // channel that appears in several categories.
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, now, next, stableId
+        case rawID = "id", sourceId, name, logo, category, now, next, stableId, number
     }
 }
 
