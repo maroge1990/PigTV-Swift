@@ -132,7 +132,7 @@ struct GuideView: View {
                                 .font(GuideTypography.small).foregroundStyle(.secondary)
                         }
                         if let programme = focusedProgramme, let channel = focusedChannel {
-                            Button("Details", systemImage: "text.expand") {
+                            Button("Details", systemImage: "info.circle") {
                                 selection = GuideSelection(channel: channel, programme: programme)
                             }
                         }
