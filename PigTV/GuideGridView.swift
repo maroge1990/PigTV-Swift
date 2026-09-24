@@ -14,7 +14,7 @@ struct GuideGridRequest: Equatable {
 #if os(tvOS)
 import UIKit
 
-// A2.1: the UIKit TV-guide grid (Labs → "New guide"). One continuous, very
+// A2.1: the UIKit TV-guide grid (the only tvOS grid since build 27). One continuous, very
 // wide collection view: rows are channels, programmes sit at their times,
 // horizontal movement is real contentOffset scrolling, and the collection
 // view's own focus engine moves between cells. The navigation rules (column

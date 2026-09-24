@@ -4,8 +4,6 @@ import Foundation
 // behaviour, all off by default, so Mark can turn them on during testing.
 // Keys live here only; the settings screen and feature code both read them.
 nonisolated enum Labs {
-    /// Roadmap A2.1: the UIKit guide.
-    static let newGuide = "pigtv.labs.newGuide"
     /// Roadmap A4.2: codec/resolution/fps/bitrate/dropped frames in the info overlay.
     static let streamInfo = "pigtv.labs.streamInfo"
 
@@ -18,8 +16,6 @@ nonisolated enum Labs {
 
     /// Settings order and wording.
     static let toggles: [Toggle] = [
-        Toggle(key: newGuide, title: "New guide (UIKit)",
-               detail: "Uses the rebuilt, faster TV guide while it is being tested."),
         Toggle(key: streamInfo, title: "Stream info overlay",
                detail: "Shows codec, resolution, frame rate, bitrate and dropped frames in the player's info overlay.")
     ]

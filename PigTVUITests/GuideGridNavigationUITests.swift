@@ -1,9 +1,9 @@
 import XCTest
 
 #if os(tvOS)
-// A2.1: remote navigation across the UIKit guide grid (Labs → New guide on),
+// A2.1: remote navigation across the UIKit guide grid (the only tvOS grid since build 27),
 // on the offline guide fixture (PIGTV_UI_TEST_SCREEN=guide; no server).
-// Mirrors GuideNavigationUITests and adds the Up/Down time-column check.
+// Covers Left/Right through the day and the Up/Down time-column check.
 final class GuideGridNavigationUITests: XCTestCase {
     private let tile = "Sky Sports Main Event"
 
@@ -25,7 +25,6 @@ final class GuideGridNavigationUITests: XCTestCase {
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "guide"
-        app.launchArguments += ["-pigtv.labs.newGuide", "YES"]
         app.launch()
         XCTAssertTrue(app.collectionViews["guide.grid"].waitForExistence(timeout: 10), "new guide grid not shown")
         return app

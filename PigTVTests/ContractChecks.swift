@@ -124,9 +124,9 @@ enum ContractChecks {
         labsDefaults.removePersistentDomain(forName: "pigtv.contract.labs")
         try expect(Labs.toggles.allSatisfy { !Labs.isOn($0.key, in: labsDefaults) }, "Every Labs switch defaults to off")
         labsDefaults.set(true, forKey: Labs.streamInfo)
-        try expect(Labs.isOn(Labs.streamInfo, in: labsDefaults) && !Labs.isOn(Labs.newGuide, in: labsDefaults), "Labs switches persist independently")
+        try expect(Labs.isOn(Labs.streamInfo, in: labsDefaults), "Labs switches persist")
         labsDefaults.removePersistentDomain(forName: "pigtv.contract.labs")
-        try expect(Labs.toggles.map(\.key) == ["pigtv.labs.newGuide", "pigtv.labs.streamInfo"], "Labs keys match contract C-F")
+        try expect(Labs.toggles.map(\.key) == ["pigtv.labs.streamInfo"], "Labs keys match contract C-F")
         let request = ResolveBody(sourceId: 3, channelId: "42", capabilities: capable)
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as! [String: Any]
         try expect(json["force"] as? Bool == false, "Normal playback must never stop a recording implicitly")
@@ -272,15 +272,6 @@ enum ContractChecks {
         let visible = GuideNavigation.visible([later, overlap, longShow, duplicate, shortShow], viewport: guideStart)
         try expect(visible == [shortShow, longShow, overlap], "Only programmes overlapping the two-hour window are built, in start order, without duplicate starts")
         try expect(GuideNavigation.visible([shortShow], viewport: twoHours).isEmpty, "Programmes ending before the window are not built")
-        try expect(GuideNavigation.reveal(later, from: guideStart) == guideStart.addingTimeInterval(3600), "Moving right places the next programme start in the last column")
-        let atEdge = GuideProgramme(title: "Edge", description: nil, startTime: 7_200_000, endTime: 9_000_000)
-        try expect(GuideNavigation.reveal(atEdge, from: guideStart) == guideStart.addingTimeInterval(1800), "A programme starting exactly at the right edge advances one column")
-        let farAhead = GuideProgramme(title: "Far", description: nil, startTime: 54_600_000, endTime: 58_200_000)
-        try expect(GuideNavigation.reveal(farAhead, from: guideStart) == Date(timeIntervalSince1970: 55_800 - 5400), "A distant programme starts at least one column inside the right edge")
-        let nearlyHalf = GuideProgramme(title: "Nearly", description: nil, startTime: 7_110_000, endTime: 9_000_000)
-        try expect(GuideNavigation.reveal(nearlyHalf, from: Date(timeIntervalSince1970: -1800)) == guideStart.addingTimeInterval(1800), "A start just before a half hour is not left as a sliver at the edge")
-        try expect(GuideNavigation.reveal(shortShow, from: twoHours) == guideStart, "Moving left to an earlier programme places its start in the first column")
-        try expect(GuideNavigation.reveal(overlap, from: guideStart) == guideStart, "A visible programme does not move the viewport")
         // R19: duplicate starts and overlaps must not trap Left/Right.
         let row = [longShow, duplicate, shortShow, overlap, later]
         try expect(GuideNavigation.ordered(row).map(\.startTime) == [0, 1_800_000, 5_400_000, 9_000_000], "Navigation uses one programme per start, in order")
