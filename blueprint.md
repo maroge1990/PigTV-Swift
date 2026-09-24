@@ -113,5 +113,13 @@ C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A t
 - AirPlay, PiP and background playback remain outside current scope; preserve existing restrictions until session ownership supports them.
 - Avoid speculative VOD/series work. Guide/player changes are now explicitly scoped in §4a; the implemented channel browser still needs device UX acceptance.
 
-**Swift 6 reverted (build 23, 24 Sept):** build 22 crashed to the home screen as soon as a channel loaded (Mark, test 1.9). Swift 6 mode adds runtime isolation checks, and the KVO callbacks in `PlaybackModel` (`item.observe(\.status)`, `player.observe(\.timeControlStatus)`) are inferred main-actor-isolated but fired on AVFoundation's threads. The app target is back on Swift 5; the other Swift 6 code changes stay (they're valid in 5). To retry: make every KVO/AVFoundation callback explicitly `@Sendable`/nonisolated and hop to the main actor, then verify **on a device with real playback**, because the simulator tests don't play media.
+**Crash on channel start (builds 21–23), fixed in build 24.** The real cause, from the device console (Mark, test 1.9):
+`-[AVPlayerItem setExternalMetadata:]: unrecognized selector`. `externalMetadata` is an AVKit category on AVPlayerItem.
+Once build 21 retired the last AVKit player on tvOS, AVKit was no longer loaded, and setting it crashed the moment a
+channel started. `PlaybackModel.setExternalMetadata` now sets it only when the selector exists, and a test reproduces the
+crash on the old code. **Lesson:** never call AVKit-only API on tvOS without checking it exists; the simulator tests
+missed this because no test started a real player item.
 
+Build 23 also moved the app target back to Swift 5 on a wrong diagnosis (the KVO-isolation theory). It stays on Swift 5
+for now. Retrying Swift 6 is still reasonable, but make the KVO/AVFoundation callbacks explicitly `@Sendable`/nonisolated
+and verify with real playback on the TV.

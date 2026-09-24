@@ -228,6 +228,17 @@ final class PlaybackModel: ObservableObject, Identifiable {
         rebuildTracks(item: item)
     }
 
+    // `externalMetadata` is added to AVPlayerItem by AVKit (a category), not by
+    // AVFoundation. Once the tvOS app stopped using any AVKit player (build 21
+    // retired the AVPlayerViewController recording player), AVKit was no longer
+    // loaded and setting it crashed with "unrecognized selector" as soon as a
+    // channel started (Mark, test block 1.9). It only feeds AVKit's own UI,
+    // which the custom player does not use, so set it only where it exists.
+    static func setExternalMetadata(_ items: [AVMetadataItem], on item: AVPlayerItem) {
+        guard item.responds(to: NSSelectorFromString("setExternalMetadata:")) else { return }
+        item.setValue(items, forKey: "externalMetadata")
+    }
+
     // Title metadata shown by the system player UI and Now Playing.
     private func metadata() -> [AVMetadataItem] {
         func item(_ identifier: AVMetadataIdentifier, _ value: String) -> AVMetadataItem {
@@ -267,7 +278,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
         let start = programme()?.startTime
         guard start != metadataProgrammeStart, let item = player.currentItem else { return }
         metadataProgrammeStart = start
-        item.externalMetadata = metadata()
+        Self.setExternalMetadata(metadata(), on: item)
     }
 
     func start(force: Bool = false) {
@@ -322,7 +333,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 guard !ended, itemGeneration == generation else { return }
                 displayCriteria = criteria
                 #endif
-                item.externalMetadata = metadata()
+                Self.setExternalMetadata(metadata(), on: item)
                 metadataProgrammeStart = programme()?.startTime
                 observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
                     guard item.status == .failed else { return }

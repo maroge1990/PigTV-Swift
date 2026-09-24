@@ -294,4 +294,16 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertTrue(browse.recordingChannels.isEmpty)
         XCTAssertEqual(browse.scheduledKeys.count, 1)
     }
+
+    // Test block 1.9: starting a channel crashed with -[AVPlayerItem
+    // setExternalMetadata:] unrecognized selector once AVKit was no longer
+    // loaded on tvOS. Setting metadata must never crash, whether or not AVKit
+    // provides the property.
+    func testSettingExternalMetadataNeverCrashes() {
+        let item = AVPlayerItem(url: URL(string: "http://127.0.0.1:1/master.m3u8")!)
+        let title = AVMutableMetadataItem()
+        title.identifier = .commonIdentifierTitle
+        title.value = "Test" as NSString
+        PlaybackModel.setExternalMetadata([title], on: item)
+    }
 }
