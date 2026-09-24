@@ -79,6 +79,13 @@ enum TopShelfExport {
             if let url = TopShelfSnapshot.fileURL { try? FileManager.default.removeItem(at: url) }
             // A4.5: and the Siri channel directory.
             if let url = ChannelDirectory.fileURL { try? FileManager.default.removeItem(at: url) }
+            // Build 29: files an earlier build left in the container's root
+            // (possible on iOS only; tvOS never allowed writing there).
+            if let root = AppGroupStorage.containerURL {
+                for name in [TopShelfSnapshot.fileName, ChannelDirectory.fileName] {
+                    try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
+                }
+            }
             contentChanged()
         }
     }

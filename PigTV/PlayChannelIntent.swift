@@ -1,6 +1,7 @@
 import Foundation
 import AppIntents
 import Combine
+import os
 
 // A4.5: Siri / Shortcuts "Play channel". The channel parameter is an
 // AppEntity whose query searches a small channel directory the app keeps in
@@ -24,20 +25,31 @@ nonisolated struct ChannelDirectory: Codable, Equatable, Sendable {
 
     var channels: [Entry]
 
-    static var fileURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: TopShelfSnapshot.appGroup)?
-            .appendingPathComponent(fileName)
-    }
+    /// `<App Group>/Library/Caches/channel-directory.json` (build 29: the
+    /// container's root is not writable on tvOS; see `AppGroupStorage`).
+    static func fileURL(in container: URL?) -> URL? { AppGroupStorage.fileURL(fileName, in: container) }
 
-    static func read() -> ChannelDirectory? {
-        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return nil }
+    static var fileURL: URL? { fileURL(in: AppGroupStorage.containerURL) }
+
+    static func read(container: URL? = AppGroupStorage.containerURL) -> ChannelDirectory? {
+        guard let url = fileURL(in: container), let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(ChannelDirectory.self, from: data)
     }
 
     @discardableResult
-    func write() -> Bool {
-        guard let url = Self.fileURL, let data = try? JSONEncoder().encode(self) else { return false }
-        return (try? data.write(to: url, options: .atomic)) != nil
+    func write(container: URL? = AppGroupStorage.containerURL) -> Bool {
+        guard let url = Self.fileURL(in: container) else {
+            TopShelfLog.logger.error("directory: no App Group container for \(AppGroupStorage.appGroup, privacy: .public)")
+            return false
+        }
+        do {
+            try AppGroupStorage.createDirectory(for: url)
+            try JSONEncoder().encode(self).write(to: url, options: .atomic)
+            return true
+        } catch {
+            TopShelfLog.logger.error("directory: write failed at \(url.path, privacy: .public): \(String(describing: error), privacy: .public)")
+            return false
+        }
     }
 
     /// Channels matching what was said or typed, best first: a number

@@ -85,13 +85,21 @@ final class TopShelfTests: XCTestCase {
         let container = FileManager.default.temporaryDirectory.appendingPathComponent("topshelf-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: container) }
-        XCTAssertEqual(TopShelfSnapshot.fileURL(in: container)?.lastPathComponent, "topshelf-snapshot.json")
+        // Build 29: under Library/Caches, not the container's root (tvOS
+        // refuses writes there with Cocoa 513 / POSIX 1).
+        let file = try XCTUnwrap(TopShelfSnapshot.fileURL(in: container))
+        XCTAssertEqual(file.lastPathComponent, "topshelf-snapshot.json")
+        XCTAssertEqual(file.deletingLastPathComponent().path, container.appendingPathComponent("Library/Caches").path)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: container.appendingPathComponent("Library").path),
+                       "the writer creates Library/Caches itself")
         XCTAssertNil(TopShelfSnapshot.read(container: container), "nothing written yet")
         let entry = TopShelfSnapshot.Entry(id: "c1", sourceId: 1, name: "Fox Footy", number: 503,
                                            logo: URL(string: "http://192.168.1.20:3000/api/logo/abc"),
                                            programmes: [.init(title: "AFL Live", start: now, end: now.addingTimeInterval(3600))])
         let snapshot = TopShelfSnapshot(kind: "favourites", channels: [entry], savedAt: now)
         XCTAssertTrue(snapshot.write(container: container))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: container.appendingPathComponent("topshelf-snapshot.json").path))
         XCTAssertEqual(TopShelfSnapshot.read(container: container), snapshot)
         // No container (an unentitled process): nothing written, nothing read.
         XCTAssertFalse(snapshot.write(container: nil))
@@ -99,6 +107,32 @@ final class TopShelfTests: XCTestCase {
         // A corrupt file reads as no snapshot rather than crashing.
         try Data("not json".utf8).write(to: XCTUnwrap(TopShelfSnapshot.fileURL(in: container)))
         XCTAssertNil(TopShelfSnapshot.read(container: container))
+    }
+
+    // Build 29: the shared path helper and the Siri channel directory use
+    // the same writable place.
+    func testAppGroupPathsEndInLibraryCaches() throws {
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent("group-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: container) }
+        XCTAssertNil(AppGroupStorage.directory(in: nil))
+        XCTAssertEqual(Array(try XCTUnwrap(AppGroupStorage.directory(in: container)).pathComponents.suffix(2)), ["Library", "Caches"])
+        let directoryFile = try XCTUnwrap(ChannelDirectory.fileURL(in: container))
+        XCTAssertEqual(Array(directoryFile.pathComponents.suffix(3)), ["Library", "Caches", "channel-directory.json"])
+        XCTAssertNil(ChannelDirectory.read(container: container))
+        let directory = ChannelDirectory(channels: [.init(id: "c1", sourceId: 1, name: "Fox Footy", number: 503)])
+        XCTAssertTrue(directory.write(container: container))
+        XCTAssertEqual(ChannelDirectory.read(container: container), directory)
+        XCTAssertFalse(directory.write(container: nil))
+        #if os(tvOS)
+        // The real App Group: its Library/Caches accepts a write (the root
+        // is what a device refuses).
+        let real = try XCTUnwrap(AppGroupStorage.containerURL)
+        let probe = try XCTUnwrap(AppGroupStorage.fileURL("write-probe-\(UUID().uuidString)", in: real))
+        try AppGroupStorage.createDirectory(for: probe)
+        try Data("ok".utf8).write(to: probe, options: .atomic)
+        try FileManager.default.removeItem(at: probe)
+        #endif
     }
 
     #if os(tvOS)

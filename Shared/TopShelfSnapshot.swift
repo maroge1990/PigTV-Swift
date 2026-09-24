@@ -10,7 +10,7 @@ import os
 // titles and times.
 
 nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
-    static let appGroup = "group.au.markrogers.PigTV"
+    static let appGroup = AppGroupStorage.appGroup
     static let fileName = "topshelf-snapshot.json"
     static let limit = 12
 
@@ -57,14 +57,12 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
 
     /// The App Group container, or nil when this process is not entitled to
     /// it (a device build whose provisioning lacks the group).
-    static var containerURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
-    }
+    static var containerURL: URL? { AppGroupStorage.containerURL }
 
     /// The snapshot's path inside a container directory (the App Group's by
-    /// default; tests pass a temporary one).
+    /// default; tests pass a temporary one): `<container>/Library/Caches/`.
     static func fileURL(in container: URL?) -> URL? {
-        container?.appendingPathComponent(fileName)
+        AppGroupStorage.fileURL(fileName, in: container)
     }
 
     static var fileURL: URL? { fileURL(in: containerURL) }
@@ -117,6 +115,7 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
             return false
         }
         do {
+            try AppGroupStorage.createDirectory(for: url)
             try encoded().write(to: url, options: .atomic)
             TopShelfLog.logger.notice("write: \(channels.count) \(kind, privacy: .public) channels to \(url.path, privacy: .public)")
             return true
@@ -124,6 +123,40 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
             TopShelfLog.logger.error("write: failed at \(url.path, privacy: .public): \(String(describing: error), privacy: .public)")
             return false
         }
+    }
+}
+
+/// Where the app and its extensions keep shared files. Build 29: on tvOS
+/// the root of an App Group container is not writable (the device refused
+/// the snapshot with NSCocoaErrorDomain 513 / POSIX 1 "Operation not
+/// permitted"); an app may only write under `Library/Caches` inside it (tvOS
+/// has no persistent Documents). Caches can be purged by the system, which
+/// is fine: the snapshot and the channel directory are rewritten whenever
+/// the guide or favourites load. iOS uses the same place so both platforms
+/// share one path.
+nonisolated enum AppGroupStorage {
+    static let appGroup = "group.au.markrogers.PigTV"
+
+    /// The App Group container, or nil when this process is not entitled to it.
+    static var containerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
+    }
+
+    /// `<container>/Library/Caches`, the writable directory inside a container.
+    static func directory(in container: URL?) -> URL? {
+        container?.appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Caches", isDirectory: true)
+    }
+
+    /// A shared file's path: `<container>/Library/Caches/<name>`.
+    static func fileURL(_ name: String, in container: URL?) -> URL? {
+        directory(in: container)?.appendingPathComponent(name, isDirectory: false)
+    }
+
+    /// Creates the file's directory if needed (writers call this; a reader
+    /// only looks, so a missing directory reads as "nothing written").
+    static func createDirectory(for file: URL) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
     }
 }
 
