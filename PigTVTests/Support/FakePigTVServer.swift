@@ -48,7 +48,10 @@ enum HLSFixture {
 ///   a session whose name contains `pq` serves a VIDEO-RANGE=PQ master);
 /// - `GET /api/playback/conflict` → `null`;
 /// - `POST /api/playback/client-event`, `POST /api/playback/conflict/decline`,
-///   `DELETE /api/playback/<session>` → `{"success":true}`.
+///   `DELETE /api/playback/<session>` → `{"success":true}`;
+/// - recordings (C-E `recordingHls`): `GET /api/recordings/<id>/playback` →
+///   `{url: …/<id>/stream.m3u8, container: "hls"}`, `…/markers` → one ad
+///   break 1–2 s, and `/api/recordings/<id>/<file>` → the fixture.
 /// Anything else is a 404, and every request is recorded.
 final class FakePigTVServer: @unchecked Sendable {
     let http: LocalHTTPServer
@@ -77,12 +80,12 @@ final class FakePigTVServer: @unchecked Sendable {
     }
 
     /// Server info advertising client events, so play-start/-end are posted.
-    static func info() throws -> ServerInfo {
+    @MainActor static func info() throws -> ServerInfo {
         try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"clientEvents":true,"viewerConflict":true}}"#.utf8))
     }
 
     /// An APIClient for this server (token "fixture").
-    func client() throws -> APIClient {
+    @MainActor func client() throws -> APIClient {
         APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: try Self.info())
     }
 
@@ -112,6 +115,19 @@ final class FakePigTVServer: @unchecked Sendable {
         let parts = path.split(separator: "/").map(String.init)
         if request.method == "DELETE", parts.count == 3, parts[0] == "api", parts[1] == "playback" {
             return .json(#"{"success":true}"#)
+        }
+        if request.method == "GET", parts.count == 4, parts[0] == "api", parts[1] == "recordings" {
+            let id = parts[2]
+            switch parts[3] {
+            case "playback":
+                return .json(#"{"url":"/api/recordings/\#(id)/stream.m3u8","container":"hls","durationSec":6,"inProgress":false}"#)
+            case "markers":
+                return .json(#"{"status":"completed","markers":[{"id":1,"startMs":1000,"endMs":2000,"type":"ad"}]}"#)
+            default:
+                if let data = HLSFixture.contents[parts[3]] {
+                    return .init(status: 200, contentType: HLSFixture.contentType(parts[3]), body: data)
+                }
+            }
         }
         if ["GET", "HEAD"].contains(request.method), parts.count == 4, parts[0] == "api", parts[1] == "transcode" {
             let session = parts[2]

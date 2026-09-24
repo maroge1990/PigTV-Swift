@@ -41,10 +41,14 @@ enum TabBarStyle {
         UITabBar.appearance().standardAppearance = appearance(focusInBar: false)
         guard observer == nil else { return }
         observer = NotificationCenter.default.addObserver(forName: UIFocusSystem.didUpdateNotification,
-                                                          object: nil, queue: .main) { note in
-            let context = note.userInfo?[UIFocusSystem.focusUpdateContextUserInfoKey] as? UIFocusUpdateContext
-            let next = context?.nextFocusedView
-            MainActor.assumeIsolated { focusMoved(to: next) }
+                                                          object: nil, queue: .main) { @Sendable note in
+            // queue: .main, and focus updates are main-thread only, so the
+            // notification never leaves the main thread.
+            nonisolated(unsafe) let note = note
+            MainActor.assumeIsolated {
+                let context = note.userInfo?[UIFocusSystem.focusUpdateContextUserInfoKey] as? UIFocusUpdateContext
+                focusMoved(to: context?.nextFocusedView)
+            }
         }
     }
 

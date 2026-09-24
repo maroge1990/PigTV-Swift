@@ -113,7 +113,10 @@ final class PlayLinkInbox: ObservableObject {
 
 // MARK: Entity and query
 
-struct ChannelEntity: AppEntity {
+// Swift 6: App Intents reads entities, queries and shortcuts from its own
+// queues, so these types are nonisolated (not the app's default main actor);
+// only perform() runs on the main actor.
+nonisolated struct ChannelEntity: AppEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Channel"
     static let defaultQuery = ChannelQuery()
 
@@ -135,7 +138,7 @@ struct ChannelEntity: AppEntity {
     var playURL: URL { PigTVLink.playURL(sourceId: sourceId, id: rawID, name: name, number: number) }
 }
 
-struct ChannelQuery: EntityStringQuery {
+nonisolated struct ChannelQuery: EntityStringQuery {
     /// The directory, else the Top Shelf snapshot's channels.
     private static func entries() -> [ChannelDirectory.Entry] {
         if let directory = ChannelDirectory.read(), !directory.channels.isEmpty { return directory.channels }
@@ -164,15 +167,17 @@ struct ChannelQuery: EntityStringQuery {
 
 // MARK: Intent and shortcut
 
+// The intent keeps the default isolation (its @Parameter storage cannot be
+// nonisolated); its static metadata is nonisolated, perform() hops to main.
 struct PlayChannelIntent: AppIntent {
-    static let title: LocalizedStringResource = "Play channel"
-    static let description = IntentDescription("Opens PigTV and plays a live channel.")
-    static let openAppWhenRun = true
+    nonisolated static let title: LocalizedStringResource = "Play channel"
+    nonisolated static let description = IntentDescription("Opens PigTV and plays a live channel.")
+    nonisolated static let openAppWhenRun = true
 
     @Parameter(title: "Channel")
     var channel: ChannelEntity
 
-    static var parameterSummary: some ParameterSummary {
+    nonisolated static var parameterSummary: some ParameterSummary {
         Summary("Play \(\.$channel)")
     }
 
@@ -183,7 +188,7 @@ struct PlayChannelIntent: AppIntent {
     }
 }
 
-struct PigTVShortcuts: AppShortcutsProvider {
+nonisolated struct PigTVShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: PlayChannelIntent(),
                     phrases: ["Play \(\.$channel) on \(.applicationName)"],

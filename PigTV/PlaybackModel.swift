@@ -164,7 +164,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
     func startOver() {
         guard let item = player.currentItem, let programme = startOverProgramme() else { return }
         let generation = itemGeneration
-        _ = item.seek(to: programme.start) { [weak self] finished in
+        // AVFoundation calls completion handlers on its own queue: the
+        // closure is nonisolated (@Sendable) and hops to the main actor.
+        _ = item.seek(to: programme.start) { @Sendable [weak self] finished in
             Task { @MainActor [weak self] in
                 guard let self, finished, self.itemGeneration == generation, !self.ended else { return }
                 self.player.rate = 1
@@ -381,7 +383,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
         #endif
         Self.setExternalMetadata(metadata(), on: item)
         metadataProgrammeStart = programme()?.startTime
-        observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+        // Swift 6: every AVFoundation/KVO/notification callback below is
+        // explicitly @Sendable (nonisolated), reads only what it was handed,
+        // and hops to the main actor with a Task. A closure left to inherit
+        // this method's main-actor isolation would trap if AVFoundation ever
+        // delivered the change on another queue (dynamic isolation check).
+        observation = item.observe(\.status, options: [.initial, .new]) { @Sendable [weak self] item, _ in
             guard item.status == .failed else { return }
             let failure = item.error as NSError?
             let diagnostic = Self.failureCodes(failure)
@@ -397,20 +404,20 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 self.playbackFailed(detail: detail, codeName: safeDomain, code: code, errorCodes: chain)
             }
         }
-        failedNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] notification in
+        failedNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { @Sendable [weak self] notification in
             let chain = Self.errorChain(notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError)
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation else { return }
                 self.playbackFailed(detail: "The player could not finish loading the stream.", errorCodes: chain)
             }
         }
-        stallNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main) { [weak self] _ in
+        stallNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main) { @Sendable [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation, !self.ended else { return }
                 self.stalls += 1
             }
         }
-        playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+        playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] player, _ in
             let playing = player.timeControlStatus == .playing
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation, !self.ended else { return }

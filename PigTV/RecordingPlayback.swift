@@ -80,7 +80,9 @@ final class RecordingPlayerModel: ObservableObject {
                     self.displayCriteria = criteria
                 }
                 #endif
-                statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+                // Swift 6: KVO may arrive on any queue; the handler is
+                // nonisolated (@Sendable) and hops to the main actor.
+                statusObservation = item.observe(\.status, options: [.new]) { @Sendable [weak self] item, _ in
                     guard item.status == .failed else { return }
                     Task { @MainActor [weak self] in
                         guard let self, !self.stopped, self.generation == generation else { return }
@@ -97,8 +99,10 @@ final class RecordingPlayerModel: ObservableObject {
                 }
                 try Task.checkCancellation()
                 guard !stopped, error == nil else { return }
-                observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1, preferredTimescale: 10), queue: .main) { [weak self] time in
-                    Task { @MainActor [weak self] in
+                // Delivered on the main queue (queue: .main), so the main
+                // actor can be assumed rather than hopped to.
+                observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1, preferredTimescale: 10), queue: .main) { @Sendable [weak self] time in
+                    MainActor.assumeIsolated {
                         guard let self, !self.stopped, self.generation == generation else { return }
                         self.tick(time.seconds)
                     }

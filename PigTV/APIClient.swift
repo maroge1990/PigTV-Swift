@@ -30,7 +30,9 @@ nonisolated struct ServerAddress: Equatable, Sendable {
 }
 
 // API requests never follow redirects: credentials must stay on the chosen server.
-private final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+// Swift 6: URLSession calls delegates on its own queue, so the delegates are
+// nonisolated (the app's default isolation is the main actor).
+private nonisolated final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,
@@ -40,7 +42,7 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Se
 }
 
 // Artwork alone may follow redirects. Re-evaluate origin at every hop.
-private final class ArtworkRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+private nonisolated final class ArtworkRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let address: ServerAddress
     let token: String?
     init(address: ServerAddress, token: String?) { self.address = address; self.token = token }

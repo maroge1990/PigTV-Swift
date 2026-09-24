@@ -178,6 +178,36 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// A recording (C-E HLS answer) through RecordingPlayerModel: the item
+    /// status KVO observer and the periodic time observer (main queue,
+    /// MainActor.assumeIsolated) both run; the time observer notices the
+    /// fixture's 1–2 s ad break.
+    func testRecordingReallyPlaysAndTheTimeObserverTicks() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4242,"title":"Harness","status":"completed","duration_sec":6}"#.utf8))
+        let autoSkip = UserDefaults.standard.object(forKey: "pigtv.recordings.autoSkip")
+        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+            UserDefaults.standard.set(autoSkip, forKey: "pigtv.recordings.autoSkip")
+        }
+        let playback = RecordingPlayerModel(recording: recording, client: try server.client())
+        playback.autoSkip = false
+        playback.start()
+        try await waitFor("recording ready") { playback.ready }
+        try await waitFor("recording playing") {
+            playback.player.timeControlStatus == .playing && playback.player.currentItem?.status == .readyToPlay
+        }
+        XCTAssertEqual(playback.breaks.count, 1)
+        try await waitFor("the periodic observer to see the break") { playback.inBreak != nil }
+        XCTAssertNotNil(playback.timeline())
+        XCTAssertNil(playback.error)
+        await playback.stop()
+        XCTAssertNil(playback.player.currentItem)
+        server.http.stop()
+    }
+
     /// Channel switching as the app does it: the old model is stopped (and
     /// its session released) before the new one resolves, and the new one
     /// really plays.
