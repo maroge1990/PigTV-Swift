@@ -120,6 +120,49 @@ final class PlaybackModel: ObservableObject, Identifiable {
         return max(0, end - current)
     }
 
+    // MARK: Timeshift (C-E)
+
+    /// The server keeps an hours-long window with program dates. Without
+    /// the flag none of the date-based UI appears.
+    var timeshift: Bool { client.info?.features.timeshift == true }
+
+    /// Wall-clock dates at the ends of the seekable window (nil without
+    /// timeshift or program dates).
+    func seekableDates() -> ClosedRange<Date>? {
+        guard timeshift, let item = player.currentItem, let date = item.currentDate(),
+              let range = item.seekableTimeRanges.last?.timeRangeValue else { return nil }
+        return TimeshiftMath.rangeDates(currentDate: date, currentTime: CMTimeGetSeconds(item.currentTime()),
+                                        rangeStart: CMTimeGetSeconds(range.start),
+                                        rangeEnd: CMTimeGetSeconds(CMTimeRangeGetEnd(range)))
+    }
+
+    /// Wall-clock time of the picture on screen (nil without timeshift).
+    func playbackDate() -> Date? {
+        guard timeshift else { return nil }
+        return player.currentItem?.currentDate()
+    }
+
+    /// The programme Start over would restart: the one being watched, when
+    /// its start is still inside the window.
+    func startOverProgramme(now: Date = Date()) -> GuideProgramme? {
+        guard let window = seekableDates(), let programme = programme(at: playbackDate() ?? now),
+              TimeshiftMath.canStartOver(programmeStart: programme.start, window: window) else { return nil }
+        return programme
+    }
+
+    func startOver() {
+        guard let item = player.currentItem, let programme = startOverProgramme() else { return }
+        let generation = itemGeneration
+        _ = item.seek(to: programme.start) { [weak self] finished in
+            Task { @MainActor [weak self] in
+                guard let self, finished, self.itemGeneration == generation, !self.ended else { return }
+                self.player.rate = 1
+                self.updateLiveEdge()
+            }
+        }
+        behindLive = true
+    }
+
     // MARK: Audio and subtitle tracks (R09)
 
     struct MediaTrack: Identifiable, Equatable {

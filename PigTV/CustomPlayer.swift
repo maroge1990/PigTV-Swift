@@ -28,7 +28,7 @@ enum PlayerChrome: Equatable {
 }
 
 private enum PlayerAction: CaseIterable {
-    case favourite, record, tracks, channels, live, lastChannel
+    case favourite, record, tracks, channels, startOver, live, lastChannel
 }
 
 struct CustomPlayerView: View {
@@ -61,6 +61,9 @@ struct CustomPlayerView: View {
             case .channels: return false
             case .tracks: return playback.hasTrackChoice
             case .live: return playback.behindLive || paused
+            // C-E: only with timeshift, and while the programme being
+            // watched began inside the window.
+            case .startOver: return playback.startOverProgramme() != nil
             case .lastChannel: return app.previousChannel.map { $0.id != playback.channel.id } ?? false
             default: return true
             }
@@ -216,6 +219,10 @@ struct CustomPlayerView: View {
         case .live:
             playback.goToLive(); paused = false
             notice = "Back to live"
+        case .startOver:
+            guard let programme = playback.startOverProgramme() else { return }
+            playback.startOver(); paused = false
+            notice = "From the start of \(programme.title)"
         case .lastChannel:
             app.returnToPreviousChannel()
         case .favourite:
@@ -255,8 +262,10 @@ struct CustomPlayerView: View {
     }
 
     private func infoOverlay(now: Date) -> some View {
-        let programme = playback.programme(at: now)
-        let next = playback.nextProgramme(after: now)
+        // C-E: once rewound, describe what is on screen, not what is live.
+        let watching = watchedDate(now: now)
+        let programme = playback.programme(at: watching)
+        let next = playback.nextProgramme(after: watching)
         return VStack(alignment: .leading, spacing: 0) {
             Spacer()
             HStack(alignment: .bottom) {
@@ -293,7 +302,7 @@ struct CustomPlayerView: View {
                 Spacer()
                 actionRow
             }
-            timeline(programme: programme, next: next, now: now).padding(.top, 28)
+            timeline(programme: programme, next: next, now: now, watching: watching).padding(.top, 28)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 90).padding(.bottom, 40)
@@ -349,6 +358,7 @@ struct CustomPlayerView: View {
         case .tracks: return "captions.bubble"
         case .channels: return "list.bullet"
         case .live: return "dot.radiowaves.left.and.right"
+        case .startOver: return "backward.end.fill"
         case .lastChannel: return "arrow.uturn.backward"
         }
     }
@@ -360,6 +370,7 @@ struct CustomPlayerView: View {
         case .record: return "Record"
         case .channels: return "Channels"
         case .live: return "Go to live"
+        case .startOver: return "Start over"
         case .lastChannel: return "Last channel"
         }
     }
@@ -405,17 +416,26 @@ struct CustomPlayerView: View {
 
     // Programme bar (about three quarters) plus the next programme's slot,
     // as in the reference layout.
-    private func timeline(programme: GuideProgramme?, next: GuideProgramme?, now: Date) -> some View {
-        let programmeProgress = programme.map { min(1, max(0, now.timeIntervalSince($0.start) / $0.end.timeIntervalSince($0.start))) } ?? 0
+    private func timeline(programme: GuideProgramme?, next: GuideProgramme?, now: Date, watching: Date) -> some View {
+        let programmeProgress = programme.map { TimeshiftMath.fraction(of: now, from: $0.start, to: $0.end) } ?? 0
         // At the live edge the bar tracks programme progress; once rewound it
-        // becomes a buffer scrubber (pink) with a draggable-looking knob.
+        // becomes a scrubber (pink) with a draggable-looking knob. With
+        // timeshift (C-E) the knob is the picture's time within the
+        // programme and the pale fill is where live is; otherwise it is the
+        // position in the buffer.
         let scrubbing = playback.behindLive
-        let progress = scrubbing ? (playback.bufferPosition() ?? programmeProgress) : programmeProgress
+        let dated = scrubbing && watching != now
+        let progress = !scrubbing ? programmeProgress
+            : dated ? (programme.map { TimeshiftMath.fraction(of: watching, from: $0.start, to: $0.end) } ?? 0)
+            : (playback.bufferPosition() ?? programmeProgress)
         return HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.3))
+                        if dated {
+                            Capsule().fill(Color.white.opacity(0.35)).frame(width: geometry.size.width * programmeProgress)
+                        }
                         Capsule().fill(scrubbing ? Color.accentColor : Color.white).frame(width: geometry.size.width * progress)
                         if scrubbing {
                             Circle().fill(Color.white).frame(width: 22, height: 22)
@@ -429,6 +449,11 @@ struct CustomPlayerView: View {
                     HStack(spacing: 8) {
                         if !paused && !playback.behindLive { Circle().fill(Color.red).frame(width: 12, height: 12) }
                         Text(paused || playback.behindLive ? "BEHIND LIVE" : "LIVE").foregroundStyle(paused || playback.behindLive ? .white : .red)
+                        if dated {
+                            // The picture's own clock time, then now.
+                            Text(watching.formatted(date: .omitted, time: .shortened)).foregroundStyle(Color.accentColor)
+                            Text("·")
+                        }
                         Text(now.formatted(date: .omitted, time: .shortened))
                     }
                 }.font(.system(size: 22, weight: .semibold))
@@ -464,7 +489,7 @@ struct CustomPlayerView: View {
                         Text("LIVE").foregroundStyle(.red)
                     }
                 } else {
-                    Text("\(Self.clock(behind)) behind live")
+                    Text("\(TimeshiftMath.behindText(behind)) behind live")
                 }
                 Text(now.formatted(date: .omitted, time: .shortened))
             }
@@ -491,9 +516,11 @@ struct CustomPlayerView: View {
         .transition(.opacity)
     }
 
-    private static func clock(_ seconds: Double) -> String {
-        let total = Int(seconds.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
+    /// The picture's wall-clock time when timeshift is on and playback is
+    /// behind live; otherwise now.
+    private func watchedDate(now: Date) -> Date {
+        guard playback.behindLive, let date = playback.playbackDate(), date < now else { return now }
+        return date
     }
 
     // MARK: Channel list

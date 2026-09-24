@@ -28,6 +28,11 @@ struct ServerInfo: Decodable {
         // lists are ordered by it. C-G: guide/channel rows carry `health`.
         let channelNumbers: Bool?
         let channelHealth: Bool?
+        // C-E (server env PIGTV_TUNER=1): an hours-long live window with
+        // program dates (Start over), and HLS recordings that can be watched
+        // while still recording.
+        let timeshift: Bool?
+        let recordingHls: Bool?
     }
 
     func validate() throws {

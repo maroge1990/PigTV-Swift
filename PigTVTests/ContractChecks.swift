@@ -342,6 +342,10 @@ enum ContractChecks {
         let modernInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0094","display":"v3.7.0 · build 0094","apiVersion":1,"features":{"library":true,"playbackResolve":true,"viewerConflict":true,"epgLogoFallback":true,"clientEvents":true,"scheduledWaiting":true,"recordingPlaybackPolling":true,"playbackTerminalStatus":true}}"#.utf8))
         try expect(modernInfo.identity == "v3.7.0 · build 0094", "Settings must retain server display/build")
         try expect(info.features.recordingPlaybackPolling == nil && info.build == nil, "Legacy info must remain compatible")
+        // C-E: tuner flags are optional; absent means today's behaviour.
+        try expect(modernInfo.features.timeshift == nil && modernInfo.features.recordingHls == nil, "Tuner flags are absent without PIGTV_TUNER")
+        let tunerInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.8.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"timeshift":true,"recordingHls":true}}"#.utf8))
+        try expect(tunerInfo.features.timeshift == true && tunerInfo.features.recordingHls == true, "Tuner flags decode")
         let modern = APIClient(address: address, token: "fixture-token", session: URLSession(configuration: configuration), info: modernInfo)
         try expect(modern.info?.features.epgLogoFallback == true, "Authenticated client retains capabilities")
         FixtureProtocol.responseStatus = 200
