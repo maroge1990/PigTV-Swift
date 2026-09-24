@@ -82,6 +82,7 @@ struct GuideView: View {
     @FocusState private var headerNowFocused: Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var sizeClass
     // Row pitch. Every tile (logo and programme) is inset by half a gap on
     // each side, so logo→first cell, cell↔cell and row↔row all read as one
     // `GuideMetrics.gap` (R16).
@@ -142,6 +143,8 @@ struct GuideView: View {
                     }
                     if usesGridView && !compact {
                         gridView(channelWidth: channelWidth)
+                    } else if usesOnNowList {
+                        onNowList
                     } else {
                     HStack(spacing: 0) {
                         Button("Now", systemImage: "location.fill") { goTo(Date()) }
@@ -307,6 +310,32 @@ struct GuideView: View {
         }
     }
 
+    // A4.4: iPhone (compact width) shows the "On now" list instead of the
+    // one-hour grid; iPad (regular width) keeps the grid.
+    private var usesOnNowList: Bool {
+        #if os(iOS)
+        sizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private var onNowList: some View {
+        #if os(iOS)
+        if model.guideBusy && model.guide.isEmpty {
+            ProgressView("Loading guide…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
+            ContentUnavailableView(filter == "favourites" ? "No favourites yet" : "No matching channels",
+                systemImage: filter == "favourites" ? "heart" : "magnifyingglass",
+                description: Text(filter == "favourites" ? "Open a channel's schedule, then add it to favourites." : "Try another category or search."))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { schedule = $0 })
+        }
+        #endif
+    }
+
     // A2.1: the UIKit grid is tvOS only; iOS always uses the SwiftUI grid.
     private var usesGridView: Bool {
         #if os(tvOS)
@@ -387,10 +416,14 @@ struct GuideView: View {
                 Button("Now", systemImage: "location.fill") { goTo(Date()) }
                     .focused($headerNowFocused)
             }
-            Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
-            Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
+            if !usesOnNowList {
+                Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
+                Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
+            }
             Button("Search", systemImage: "magnifyingglass") { searching = true }
-            Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
+            if !usesOnNowList {
+                Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
+            }
         }
         // Phone layout: icon-only controls so nothing wraps.
         VStack(alignment: .leading, spacing: 8) {
@@ -400,10 +433,15 @@ struct GuideView: View {
                 Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
-                Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
+                // The On now list (A4.4) has no time axis to move.
+                if !usesOnNowList {
+                    Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
+                    Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
+                }
                 Button("Search", systemImage: "magnifyingglass") { searching = true }
-                Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
+                if !usesOnNowList {
+                    Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
+                }
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.bordered)

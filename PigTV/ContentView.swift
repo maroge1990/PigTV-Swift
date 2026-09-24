@@ -315,24 +315,41 @@ struct PlayerScreen: View {
 
     #if os(iOS)
     private var iOSControls: some View {
-        HStack(spacing: 12) {
-            Button { dismiss() } label: { Image(systemName: "xmark.circle.fill") }
-                .accessibilityLabel("Close playback")
-            Spacer()
-            Text(playback.channel.name).font(.subheadline.bold()).lineLimit(1)
-            Spacer()
-            Button { app.zap(-1) } label: { Image(systemName: "chevron.down.circle.fill") }
-                .accessibilityLabel("Previous channel")
-            Button { app.zap(1) } label: { Image(systemName: "chevron.up.circle.fill") }
-                .accessibilityLabel("Next channel")
-            if app.browse?.showsChannelNumbers == true {
-                Button { enteringNumber = true } label: { Image(systemName: "number.circle.fill") }
-                    .accessibilityLabel("Go to number")
+        // A4.4: controls on one row (close left; channel actions right), the
+        // channel's number and name on a line below so a long name never
+        // squeezes the buttons on a phone.
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 14) {
+                Button { dismiss() } label: { Image(systemName: "xmark.circle.fill") }
+                    .accessibilityLabel("Close playback")
+                Spacer()
+                if let previous = app.previousChannel, previous.id != playback.channel.id {
+                    Button { app.returnToPreviousChannel() } label: { Image(systemName: "arrow.uturn.backward.circle.fill") }
+                        .accessibilityLabel("Last channel, \(previous.name)")
+                }
+                Button { app.zap(-1) } label: { Image(systemName: "chevron.down.circle.fill") }
+                    .accessibilityLabel("Previous channel")
+                Button { app.zap(1) } label: { Image(systemName: "chevron.up.circle.fill") }
+                    .accessibilityLabel("Next channel")
+                if app.browse?.showsChannelNumbers == true {
+                    Button { enteringNumber = true } label: { Image(systemName: "number.circle.fill") }
+                        .accessibilityLabel("Go to number")
+                }
+                Button { showingGuide = true } label: { Image(systemName: "list.bullet.circle.fill") }
+                    .accessibilityLabel("Channels")
             }
-            Button { showingGuide = true } label: { Image(systemName: "list.bullet.circle.fill") }
-                .accessibilityLabel("Channels")
+            .font(.title2)
+            HStack(spacing: 6) {
+                if let number = playback.channel.numberText {
+                    Text(verbatim: number).monospacedDigit()
+                }
+                Text(playback.channel.name).lineLimit(1)
+            }
+            .font(.subheadline.bold())
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(.black.opacity(0.5), in: Capsule())
         }
-        .font(.title2).foregroundStyle(.white, .black.opacity(0.6))
+        .foregroundStyle(.white, .black.opacity(0.6))
         .padding(.horizontal, 16).padding(.top, 8)
     }
     #endif
