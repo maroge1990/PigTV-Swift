@@ -21,7 +21,10 @@ struct PigTVApp: App {
     // (test block 1.9). The app target links AVKit explicitly for tvOS
     // (OTHER_LDFLAGS[sdk=appletv*] = -framework AVKit); a class reference alone
     // was stripped. A test asserts the categories exist.
-    init() { _ = AVPlayerViewController.self }
+    init() {
+        _ = AVPlayerViewController.self
+        TabBarStyle.apply()
+    }
     #endif
 
     // Appearance is owned by ContentView (a View), where an @AppStorage change
@@ -63,6 +66,16 @@ private struct GuideTestScreen: View {
     var body: some View {
         LibraryView(model: model)
             .task { model.injectGuideFixture() }
+            // PIGTV_UI_TEST_APPEARANCE=light|dark: the tvOS simulator cannot
+            // switch its own appearance (simctl ui appearance is unsupported).
+            .preferredColorScheme(Self.scheme)
+    }
+    private static var scheme: ColorScheme? {
+        switch ProcessInfo.processInfo.environment["PIGTV_UI_TEST_APPEARANCE"] {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
     }
 }
 #endif
