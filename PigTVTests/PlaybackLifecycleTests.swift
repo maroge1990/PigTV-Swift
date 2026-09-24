@@ -67,12 +67,12 @@ private final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
 final class PlaybackLifecycleTests: XCTestCase {
     private let viewer = #"{"conflict":{"type":"viewer-in-progress","message":"Another device is watching."}}"#
 
-    private func client(_ server: SyntheticServer, modern: Bool = false) throws -> APIClient {
+    private func client(_ server: SyntheticServer, modern: Bool = false, address: String = "https://fixture.invalid") throws -> APIClient {
         SyntheticProtocol.server = server
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SyntheticProtocol.self]
         let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0086","apiVersion":1,"features":{"library":true,"playbackResolve":true,"recordingPlaybackPolling":true,"epgLogoFallback":true,"playbackTerminalStatus":true}}"#.utf8))
-        return APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
+        return APIClient(address: try ServerAddress(address), token: "fixture",
             session: URLSession(configuration: configuration), info: modern ? info : nil)
     }
 
@@ -230,6 +230,105 @@ final class PlaybackLifecycleTests: XCTestCase {
         #endif
         watch.cancel()
         _ = await playback.stop()
+    }
+
+    // Build 27 fallbacks. The media host is an unanswered documentation
+    // address (TEST-NET-1), so the real player item stays loading and only
+    // the synthetic failures below drive the model.
+    private let quietHost = "https://192.0.2.1"
+
+    private func itemPath(_ playback: PlaybackModel) -> String? {
+        (playback.player.currentItem?.asset as? AVURLAsset)?.url.path
+    }
+    private func itemQuery(_ playback: PlaybackModel) -> String? {
+        (playback.player.currentItem?.asset as? AVURLAsset)?.url.query
+    }
+
+    func testNoCompatibleAlternatesPlaysTheStreamPlaylistOnce() async throws {
+        let server = SyntheticServer { path, _, _ in
+            if path == "/api/playback/resolve" {
+                return .init(status: 200, json: #"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","container":"hls","videoMode":"copy","info":{"fps":"50/1","videoRange":"PQ"}}"#)
+            }
+            return .init(status: 200, json: #"{"success":true}"#)
+        }
+        let playback = model(try client(server, address: quietHost))
+        playback.start()
+        try await eventually { playback.player.currentItem != nil }
+        XCTAssertEqual(itemPath(playback), "/api/transcode/s1/master.m3u8")
+        let noAlternates = [PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11868)]
+        playback.playbackFailed(detail: "Synthetic", codeName: AVFoundationErrorDomain, code: -11868, errorCodes: noAlternates)
+        XCTAssertEqual(itemPath(playback), "/api/transcode/s1/stream.m3u8", "the same session's media playlist")
+        XCTAssertEqual(itemQuery(playback), "token=fixture")
+        XCTAssertTrue(playback.ready)
+        XCTAssertNil(playback.error)
+        #if os(tvOS)
+        XCTAssertNil(playback.displayCriteria, "no display criteria for the fallback")
+        #endif
+        // A second failure is not retried again and resolves nothing.
+        playback.playbackFailed(detail: "Synthetic", codeName: AVFoundationErrorDomain, code: -11868, errorCodes: noAlternates)
+        XCTAssertNotNil(playback.error)
+        XCTAssertTrue(playback.canRetry)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(server.captured.map(\.path), ["/api/playback/resolve"])
+        _ = await playback.stop()
+    }
+
+    func testUnsupportedAudioFormatResolvesOnceWithAudioEncodeAndRemembers() async throws {
+        let channelKey = "1:42"
+        var remembered = UserDefaults.standard.stringArray(forKey: AudioEncodeMemory.key) ?? []
+        remembered.removeAll { $0 == channelKey }
+        UserDefaults.standard.set(remembered, forKey: AudioEncodeMemory.key)
+        defer {
+            let left = (UserDefaults.standard.stringArray(forKey: AudioEncodeMemory.key) ?? []).filter { $0 != channelKey }
+            UserDefaults.standard.set(left, forKey: AudioEncodeMemory.key)
+        }
+        let server = SyntheticServer { path, _, count in
+            if path == "/api/playback/resolve" {
+                return .init(status: 200, json: #"{"strategy":"transcode","url":"/api/transcode/s\#(count)/stream.m3u8","sessionId":"s\#(count)","container":"hls","videoMode":"copy"}"#)
+            }
+            return .init(status: 200, json: #"{"success":true}"#)
+        }
+        let playback = model(try client(server, address: quietHost))
+        playback.start()
+        try await eventually { playback.player.currentItem != nil }
+        let fmt = [PlayerErrorCode(domain: "CoreMediaErrorDomain", code: 1718449215)]
+        playback.playbackFailed(detail: "Synthetic", codeName: "PlayerError", code: 1718449215, errorCodes: fmt)
+        try await eventually { itemPath(playback) == "/api/transcode/s2/stream.m3u8" }
+        let resolves = server.captured.filter { $0.path == "/api/playback/resolve" }
+        XCTAssertEqual(resolves.count, 2)
+        let first = try JSONSerialization.jsonObject(with: resolves[0].body) as! [String: Any]
+        let second = try JSONSerialization.jsonObject(with: resolves[1].body) as! [String: Any]
+        XCTAssertNil(first["audioEncode"])
+        XCTAssertEqual(second["audioEncode"] as? Bool, true)
+        XCTAssertEqual(second["force"] as? Bool, false, "a fallback never forces")
+        XCTAssertTrue(server.captured.contains { $0.path == "/api/playback/s1" && $0.method == "DELETE" }, "the failed session is released first")
+        XCTAssertTrue(AudioEncodeMemory.contains(channelKey))
+        // The same error again: no third resolve.
+        playback.playbackFailed(detail: "Synthetic", codeName: "PlayerError", code: 1718449215, errorCodes: fmt)
+        XCTAssertNotNil(playback.error)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(server.captured.filter { $0.path == "/api/playback/resolve" }.count, 2)
+        _ = await playback.stop()
+
+        // A later play of the channel asks for audioEncode straight away.
+        let later = model(try client(server, address: quietHost))
+        later.start()
+        try await eventually { server.captured.filter { $0.path == "/api/playback/resolve" }.count == 3 }
+        let third = try JSONSerialization.jsonObject(with: server.captured.filter { $0.path == "/api/playback/resolve" }[2].body) as! [String: Any]
+        XCTAssertEqual(third["audioEncode"] as? Bool, true)
+        _ = await later.stop()
+    }
+
+    func testFallbackClassificationAndStreamURL() {
+        XCTAssertEqual(PlaybackFallback.for([PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11868)]), .streamPlaylist)
+        XCTAssertEqual(PlaybackFallback.for([PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11800),
+                                             PlayerErrorCode(domain: NSOSStatusErrorDomain, code: 1718449215)]), .audioEncode)
+        XCTAssertNil(PlaybackFallback.for([PlayerErrorCode(domain: NSURLErrorDomain, code: -11868)]))
+        XCTAssertNil(PlaybackFallback.for([PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11800)]))
+        XCTAssertNil(PlaybackFallback.for([]))
+        let master = URL(string: "http://tv.lan:3000/api/transcode/abc/master.m3u8?token=a%2Bb")!
+        XCTAssertEqual(PlaybackModel.streamPlaylistURL(for: master)?.absoluteString, "http://tv.lan:3000/api/transcode/abc/stream.m3u8?token=a%2Bb")
+        XCTAssertNil(PlaybackModel.streamPlaylistURL(for: URL(string: "http://tv.lan/api/transcode/abc/stream.m3u8")!))
     }
 
     func testStoppingBeforeRecoveryTaskRunsPreventsResolve() async throws {

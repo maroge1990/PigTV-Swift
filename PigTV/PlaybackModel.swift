@@ -38,6 +38,11 @@ final class PlaybackModel: ObservableObject, Identifiable {
     var serverIdentity: String? { client.info?.identity }
     private var hasPlayed = false
     private var recoveryUsed = false
+    // Build 27 fallbacks: what the current item is playing, and whether its
+    // session was resolved with `audioEncode`.
+    private var currentURL: URL?
+    private var currentStrategy: String?
+    private var audioEncodeRequested = false
     private var handlingFailure = false
     private var itemGeneration = UUID()
     private var playbackObservation: NSKeyValueObservation?
@@ -304,9 +309,14 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 }
                 guard !ended else { return }
                 resolveBegan = Date()
+                // A channel whose copied audio this device could not decode
+                // ('fmt?') asks for re-encoded audio straight away.
+                let audioEncode = AudioEncodeMemory.contains(channel.identityKey)
+                audioEncodeRequested = audioEncode
                 let decision: PlaybackDecision = try await client.request("playback/resolve", method: "POST",
                     body: ResolveBody(sourceId: channel.sourceId, channelId: channel.rawID,
-                        capabilities: PlaybackCapabilities.current(), force: force))
+                        capabilities: PlaybackCapabilities.current(), force: force,
+                        audioEncode: audioEncode ? true : nil))
                 sessionID = decision.sessionId
                 guard !ended else { return }
                 let url = try client.playbackURL(decision.url)
@@ -355,11 +365,13 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // delays this (build 27): it comes from the resolve decision, or, when
     // the server sent no usable frame rate, from the asset whenever that
     // load finishes (a stale result is discarded).
-    private func installItem(url: URL, strategy: String, mode: DisplayMode?, generation: UUID) {
+    private func installItem(url: URL, strategy: String, mode: DisplayMode?, assetCriteria: Bool = true, generation: UUID) {
         let item = AVPlayerItem(url: url)
+        currentURL = url
+        currentStrategy = strategy
         #if os(tvOS)
         displayCriteria = mode?.criteria()
-        if mode == nil {
+        if mode == nil, assetCriteria {
             Task { [weak self] in
                 let criteria = try? await item.asset.load(.preferredDisplayCriteria)
                 guard let self, let criteria, !self.ended, self.itemGeneration == generation else { return }
@@ -373,6 +385,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             guard item.status == .failed else { return }
             let failure = item.error as NSError?
             let diagnostic = Self.failureCodes(failure)
+            let chain = Self.errorChain(failure)
             let code = failure?.code
             let domain = failure?.domain
             let safeDomain = ["AVFoundationErrorDomain", "NSURLErrorDomain", "NSOSStatusErrorDomain"].contains(domain ?? "") ? domain : "PlayerError"
@@ -381,13 +394,14 @@ final class PlaybackModel: ObservableObject, Identifiable {
             let detail = "Route: \(route). \(diagnostic)" + (mediaCodes.map { " Media codes: \($0)." } ?? "")
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation else { return }
-                self.playbackFailed(detail: detail, codeName: safeDomain, code: code)
+                self.playbackFailed(detail: detail, codeName: safeDomain, code: code, errorCodes: chain)
             }
         }
-        failedNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
+        failedNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] notification in
+            let chain = Self.errorChain(notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError)
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation else { return }
-                self.playbackFailed(detail: "The player could not finish loading the stream.")
+                self.playbackFailed(detail: "The player could not finish loading the stream.", errorCodes: chain)
             }
         }
         stallNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main) { [weak self] _ in
@@ -421,7 +435,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
         }
     }
 
-    func playbackFailed(detail: String, codeName: String? = nil, code: Int? = nil) {
+    func playbackFailed(detail: String, codeName: String? = nil, code: Int? = nil, errorCodes: [PlayerErrorCode] = []) {
         guard !ended, !handlingFailure else { return }
         handlingFailure = true
         if let context = eventContext {
@@ -438,7 +452,49 @@ final class PlaybackModel: ObservableObject, Identifiable {
             report(event)
         }
         let failedSession = sessionID
+        let failedURL = currentURL
+        let failedStrategy = currentStrategy
+        let failedContext = eventContext
         clearItem()
+        // Build 27: two device errors have a known cure, tried once instead of
+        // (and counting as) the C2 recovery. Never forced, never repeated.
+        if !recoveryUsed, let fallback = PlaybackFallback.for(errorCodes) {
+            switch fallback {
+            case .streamPlaylist:
+                // -11868: the TV cannot show the master playlist's (HDR)
+                // variant. Play the same session's media playlist instead,
+                // with no display criteria.
+                if let failedURL, let failedStrategy, let url = Self.streamPlaylistURL(for: failedURL) {
+                    recoveryUsed = true
+                    handlingFailure = false
+                    reconnecting = hasPlayed
+                    var context = failedContext ?? PlaybackEvent(event: "play-start")
+                    context.path = url.path
+                    eventContext = context
+                    firstPlayReported = false
+                    watchedSeconds = 0
+                    stalls = 0
+                    let generation = UUID()
+                    itemGeneration = generation
+                    installItem(url: url, strategy: failedStrategy, mode: nil, assetCriteria: false, generation: generation)
+                    return
+                }
+            case .audioEncode:
+                // 'fmt?': the copied audio cannot be decoded here. Resolve
+                // again with re-encoded audio, and remember the channel.
+                if !audioEncodeRequested {
+                    recoveryUsed = true
+                    AudioEncodeMemory.remember(channel.identityKey)
+                    reconnecting = hasPlayed
+                    let pending = resolveTask
+                    Task { [weak self] in
+                        await pending?.value
+                        await self?.recoverAfterFailure(session: failedSession)
+                    }
+                    return
+                }
+            }
+        }
         if hasPlayed && !recoveryUsed {
             recoveryUsed = true
             reconnecting = true
@@ -479,7 +535,18 @@ final class PlaybackModel: ObservableObject, Identifiable {
         start()
     }
 
+    /// The same session's media playlist: `…/master.m3u8?token=…` →
+    /// `…/stream.m3u8?token=…`; nil for any other URL.
+    nonisolated static func streamPlaylistURL(for url: URL) -> URL? {
+        guard url.lastPathComponent == "master.m3u8",
+              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        parts.path = (parts.path as NSString).deletingLastPathComponent + "/stream.m3u8"
+        return parts.url
+    }
+
     private func clearItem() {
+        currentURL = nil
+        currentStrategy = nil
         finishMeasurement()
         itemGeneration = UUID()
         observation = nil
@@ -527,6 +594,17 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private func report(_ event: PlaybackEvent) {
         let client = client
         Task { await client.reportPlaybackEvent(event) }
+    }
+
+    nonisolated static func errorChain(_ error: NSError?) -> [PlayerErrorCode] {
+        var current = error
+        var codes: [PlayerErrorCode] = []
+        for _ in 0..<4 {
+            guard let value = current else { break }
+            codes.append(PlayerErrorCode(domain: value.domain, code: value.code))
+            current = value.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return codes
     }
 
     nonisolated private static func failureCodes(_ error: NSError?) -> String {
@@ -632,5 +710,49 @@ final class PlaybackModel: ObservableObject, Identifiable {
         }
         stopTask = task
         return await task.value
+    }
+}
+
+/// One level of a player error (the error and its underlying errors).
+nonisolated struct PlayerErrorCode: Equatable, Sendable {
+    let domain: String
+    let code: Int
+}
+
+/// Build 27: device errors with a one-off cure (Mark's log, test block 26).
+nonisolated enum PlaybackFallback: Equatable, Sendable {
+    /// AVErrorNoCompatibleAlternatesForExternalDisplay (-11868): the HDR
+    /// master playlist on a TV that cannot show it.
+    case streamPlaylist
+    /// kAudioFormatUnsupportedDataFormatError ('fmt?' = 1718449215): copied
+    /// audio the device cannot decode.
+    case audioEncode
+
+    static let noCompatibleAlternates = -11868
+    static let unsupportedAudioFormat = 1718449215
+
+    static func `for`(_ codes: [PlayerErrorCode]) -> PlaybackFallback? {
+        if codes.contains(where: { $0.domain == AVFoundationErrorDomain && $0.code == noCompatibleAlternates }) {
+            return .streamPlaylist
+        }
+        if codes.contains(where: { $0.code == unsupportedAudioFormat }) { return .audioEncode }
+        return nil
+    }
+}
+
+/// Channels (by `identityKey`) that play only with re-encoded audio on this
+/// device, so later plays request `audioEncode` from the first resolve.
+nonisolated enum AudioEncodeMemory {
+    static let key = "pigtv.audioEncode.channels"
+
+    static func contains(_ channel: String, in defaults: UserDefaults = .standard) -> Bool {
+        (defaults.stringArray(forKey: key) ?? []).contains(channel)
+    }
+
+    static func remember(_ channel: String, in defaults: UserDefaults = .standard) {
+        var channels = defaults.stringArray(forKey: key) ?? []
+        guard !channels.contains(channel) else { return }
+        channels.append(channel)
+        defaults.set(Array(channels.suffix(200)), forKey: key)
     }
 }

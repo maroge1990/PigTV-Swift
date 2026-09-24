@@ -220,6 +220,8 @@ struct ResolveBody: Encodable {
     let channelId: String
     let capabilities: [String: Bool]
     var force = false
+    /// Build 27: re-encode only the audio (absent unless true).
+    var audioEncode: Bool? = nil
 }
 
 enum PigTVError: LocalizedError, Equatable {
