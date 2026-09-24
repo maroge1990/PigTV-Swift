@@ -129,19 +129,13 @@ final class GuideGridNavigationUITests: XCTestCase {
         for _ in 0..<6 { XCUIRemote.shared.press(.right) }
         let later = focusedLabel(app)
         XCTAssertNotEqual(viewport(app), baseline, "the grid did not scroll")
-        // The Now button sits over the channel column, below the category
-        // chips; Up from the grid goes to the header's right-hand buttons,
-        // so reach it from the tab bar via the chips (All, then Down).
-        var path: [String] = []
-        for _ in 0..<5 where focusedLabel(app) != "TV Guide" {
-            XCUIRemote.shared.press(.up); path.append(focusedLabel(app))
-        }
-        XCUIRemote.shared.press(.down); path.append(focusedLabel(app))
-        for _ in 0..<12 where focusedLabel(app) != "All" {
-            XCUIRemote.shared.press(.left); path.append(focusedLabel(app))
-        }
-        XCUIRemote.shared.press(.down); path.append(focusedLabel(app))
-        XCTAssertEqual(focusedLabel(app), "Now", "did not reach Now: \(path)")
+        // Build 22: Now sits in the header next to Earlier/Later, and Up
+        // from the grid's top row lands on it.
+        XCUIRemote.shared.press(.up)
+        let deadlineUp = Date().addingTimeInterval(2)
+        while focusedLabel(app) != "Now" && Date() < deadlineUp { usleep(100_000) }
+        attach(app, "New guide after Up from the top row")
+        XCTAssertEqual(focusedLabel(app), "Now", "Up from the top row did not reach Now")
         XCUIRemote.shared.press(.select)
         let deadline = Date().addingTimeInterval(3)
         while !focusedLabel(app).hasPrefix("\(tile), ") && Date() < deadline { usleep(200_000) }
@@ -159,6 +153,44 @@ final class GuideGridNavigationUITests: XCTestCase {
         XCUIRemote.shared.press(.left)
         XCTAssertEqual(focusedLabel(app), tile, "focus after Now was not on the live programme (\(now))")
         XCTAssertEqual(viewport(app), atNow)
+    }
+
+    /// Build 22: Earlier/Later keep focus on their header button, so
+    /// repeated presses keep moving the grid.
+    @MainActor
+    func testLaterAndEarlierKeepFocusOnTheHeader() throws {
+        let app = launch()
+        enterFirstRow(app)
+        let baseline = viewport(app)
+        XCUIRemote.shared.press(.up)
+        let deadline = Date().addingTimeInterval(2)
+        while focusedLabel(app) != "Now" && Date() < deadline { usleep(100_000) }
+        XCTAssertEqual(focusedLabel(app), "Now")
+        XCUIRemote.shared.press(.right)
+        XCUIRemote.shared.press(.right)
+        XCTAssertEqual(focusedLabel(app), "Later")
+        var seen: [String] = [baseline]
+        for _ in 0..<3 {
+            XCUIRemote.shared.press(.select)
+            usleep(600_000)
+            XCTAssertEqual(focusedLabel(app), "Later", "Later took focus away")
+            seen.append(viewport(app))
+        }
+        attach(app, "New guide after 3 × Later")
+        XCTAssertEqual(Set(seen).count, 4, "Later did not move the grid each time: \(seen)")
+        XCUIRemote.shared.press(.left)
+        XCTAssertEqual(focusedLabel(app), "Earlier")
+        XCUIRemote.shared.press(.select)
+        usleep(600_000)
+        XCTAssertEqual(focusedLabel(app), "Earlier", "Earlier took focus away")
+        XCTAssertEqual(viewport(app), seen[2], "Earlier did not step back half an hour")
+        // Down returns to the grid.
+        XCUIRemote.shared.press(.down)
+        var path: [String] = []
+        for _ in 0..<4 where !focusedLabel(app).contains(", ") && focusedLabel(app) != tile {
+            path.append(focusedLabel(app)); XCUIRemote.shared.press(.down)
+        }
+        XCTAssertTrue(focusedLabel(app).contains(", ") || focusedLabel(app) == tile, "Down did not reach the grid: \(path)")
     }
 
     /// A long press on a programme offers the old grid's menu; after the

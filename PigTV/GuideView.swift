@@ -77,6 +77,9 @@ struct GuideView: View {
     // refocuses its last programme or tile).
     @State private var gridFocusRestore = 0
     @FocusState private var gridHasFocus: Bool
+    // New guide: the header's Now button, where Up from the grid's top row
+    // lands (the grid hands focus over through `leaveUp`).
+    @FocusState private var headerNowFocused: Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Row pitch. Every tile (logo and programme) is inset by half a gap on
@@ -314,8 +317,8 @@ struct GuideView: View {
     }
 
     // A2.1: the UIKit grid in place of the SwiftUI time header and rows. It
-    // draws its own pinned time header; the Now button sits in its top-left
-    // corner, above the channel column.
+    // draws its own pinned time header. Now sits in the guide header next to
+    // Earlier/Later (build 22), where Up from the grid's top row lands.
     @ViewBuilder
     private func gridView(channelWidth: CGFloat) -> some View {
         #if os(tvOS)
@@ -338,10 +341,9 @@ struct GuideView: View {
                         retainedFocus = value
                         lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
                     },
-                    viewportChanged: { setViewport($0) }))
+                    viewportChanged: { setViewport($0) },
+                    leaveUp: { headerNowFocused = true }))
                 .focused($gridHasFocus)
-            Button("Now", systemImage: "location.fill") { goTo(Date()) }
-                .frame(width: channelWidth, alignment: .leading)
             if model.guideBusy && model.guide.isEmpty {
                 ProgressView("Loading guide…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
@@ -381,6 +383,10 @@ struct GuideView: View {
             Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
                 .font(GuideTypography.body).foregroundStyle(.secondary)
             Spacer()
+            if usesGridView {
+                Button("Now", systemImage: "location.fill") { goTo(Date()) }
+                    .focused($headerNowFocused)
+            }
             Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
             Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
             Button("Search", systemImage: "magnifyingglass") { searching = true }
@@ -746,12 +752,15 @@ struct GuideView: View {
             favouriteKeys: Set(model.favourites.map(\.identityKey) + model.favourites.map(\.id)))
         rowsVersion += 1
     }
-    private func goTo(_ date: Date) {
+    /// `focusGrid`: Now and Jump to… move focus into the new guide's grid;
+    /// Earlier/Later leave it on the header button so repeated presses work
+    /// (Down then enters the grid where the focus engine chooses).
+    private func goTo(_ date: Date, focusGrid: Bool = true) {
         anchor = date
         if usesGridView {
             // The UIKit grid owns its focus; it only needs the time.
-            gridRequest = GuideGridRequest(viewport: GuideNavigation.rounded(date))
-            claimGridFocus()
+            gridRequest = GuideGridRequest(viewport: GuideNavigation.rounded(date), focus: focusGrid)
+            if focusGrid { claimGridFocus() }
             setViewport(GuideNavigation.rounded(date))
             return
         }
@@ -778,7 +787,7 @@ struct GuideView: View {
             reload()
         }
     }
-    private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds)) }
+    private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds), focusGrid: false) }
     private func reload() { Task { await model.loadGuide() } }
     /// Moves SwiftUI focus into the UIKit grid; the grid then focuses the
     /// cell it chose (its pending focus). UIKit's own focus requests are

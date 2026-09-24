@@ -6,6 +6,9 @@ import SwiftUI
 struct GuideGridRequest: Equatable {
     var id = UUID()
     var viewport: Date
+    /// Now and Jump to… move focus into the grid; Earlier/Later leave it on
+    /// their header button (build 22).
+    var focus = true
 }
 
 #if os(tvOS)
@@ -28,6 +31,9 @@ struct GuideGridActions {
     var focusChanged: (_ channelID: String, _ start: Double?) -> Void
     /// The grid's (half-hour) viewport changed.
     var viewportChanged: (Date) -> Void
+    /// Up from the top row: GuideView focuses its header's Now button
+    /// (otherwise the focus engine picks whatever lies above, e.g. Details).
+    var leaveUp: () -> Void = {}
 }
 
 struct GuideGridView: UIViewControllerRepresentable {
@@ -195,12 +201,15 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             commit(GuideGridMath.snapped(request.viewport))
             anchor = max(request.viewport, Date())
             setOffset(for: viewport, animated: true)
-            // Now / Earlier / Later / Jump to: focus follows the grid, to
-            // the programme under the new anchor in the focused row (else
-            // the first visible row).
+            // Now / Earlier / Later / Jump to: the programme under the new
+            // anchor in the focused row (else the first visible row) becomes
+            // the grid's preferred focus. Now and Jump to… move focus into
+            // the grid (GuideView.claimGridFocus); Earlier/Later keep it on
+            // their header button and claim nothing, so no stale target
+            // is left behind.
             let row = focusIdentity.flatMap { identity in store.rows.firstIndex { $0.id == identity.channel } }
                 ?? firstVisibleRow()
-            if let row { claimFocus(target(in: row, at: anchor)) }
+            if request.focus, let row { claimFocus(target(in: row, at: anchor)) }
         }
         if view.focusRestoreToken != restoreToken {
             let first = restoreToken == Int.min
@@ -396,7 +405,16 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
                         shouldUpdateFocusIn context: UICollectionViewFocusUpdateContext) -> Bool {
         plannedViewport = nil
         plannedRow = context.nextFocusedIndexPath?.section
-        guard let next = context.nextFocusedIndexPath else { return true }
+        guard let next = context.nextFocusedIndexPath else {
+            // Leaving the grid upwards (only possible from the top row):
+            // refuse the engine's choice and let GuideView move SwiftUI focus
+            // to the header's Now button.
+            if context.previouslyFocusedIndexPath != nil, context.focusHeading.contains(.up), let actions {
+                DispatchQueue.main.async { actions.leaveUp() }
+                return false
+            }
+            return true
+        }
         if next == pendingFocus { return true }
         guard let previous = context.previouslyFocusedIndexPath else { return true }
         let heading = context.focusHeading
