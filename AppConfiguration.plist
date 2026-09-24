@@ -18,7 +18,5 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>PigTV connects to your home server to load channels and play live TV.</string>
 </dict>
 </plist>

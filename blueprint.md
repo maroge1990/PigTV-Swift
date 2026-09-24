@@ -112,3 +112,6 @@ C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A t
 - Minimum OS versions/supported devices and distribution/versioning policy need agreement before release. Do not inherit the server patch number as the Swift build number.
 - AirPlay, PiP and background playback remain outside current scope; preserve existing restrictions until session ownership supports them.
 - Avoid speculative VOD/series work. Guide/player changes are now explicitly scoped in §4a; the implemented channel browser still needs device UX acceptance.
+
+**Swift 6 reverted (build 23, 24 Sept):** build 22 crashed to the home screen as soon as a channel loaded (Mark, test 1.9). Swift 6 mode adds runtime isolation checks, and the KVO callbacks in `PlaybackModel` (`item.observe(\.status)`, `player.observe(\.timeControlStatus)`) are inferred main-actor-isolated but fired on AVFoundation's threads. The app target is back on Swift 5; the other Swift 6 code changes stay (they're valid in 5). To retry: make every KVO/AVFoundation callback explicitly `@Sendable`/nonisolated and hop to the main actor, then verify **on a device with real playback**, because the simulator tests don't play media.
+
