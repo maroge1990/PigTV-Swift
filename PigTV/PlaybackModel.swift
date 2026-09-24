@@ -30,6 +30,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private var playingSince: Date?
     private var watchedSeconds: Double = 0
     private var stalls = 0
+    // A4.2 stream info: the resolve decision's route, kept for the overlay
+    // after the play-start event has been sent.
+    private(set) var routeStrategy: String?
+    private(set) var routeVideoMode: String?
+    var stallCount: Int { stalls }
+    var serverIdentity: String? { client.info?.identity }
     private var hasPlayed = false
     private var recoveryUsed = false
     private var handlingFailure = false
@@ -300,6 +306,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 context.path = url.path // URL query (including token/provider URL) is never sent.
                 context.resolveMs = Date().timeIntervalSince(resolveBegan) * 1000
                 eventContext = context
+                routeStrategy = context.strategy
+                routeVideoMode = context.videoMode
                 firstPlayReported = false
                 watchedSeconds = 0
                 stalls = 0
@@ -494,6 +502,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
             event.videoMode = context.videoMode
             event.watchedSec = watchedSeconds
             event.stalls = stalls
+            // A4.2: from the access log, before the item is removed.
+            let log = player.currentItem?.accessLog()?.events ?? []
+            event.droppedFrames = StreamInfoFormat.droppedFrames(log.map(\.numberOfDroppedVideoFrames))
+            event.observedBitrate = log.last.map(\.observedBitrate).flatMap(finite).flatMap { $0 > 0 ? $0 : nil }
             report(event)
         }
         eventContext = nil

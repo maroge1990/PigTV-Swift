@@ -263,4 +263,9 @@ struct PlaybackEvent: Encodable {
     var totalMs: Double?
     var watchedSec: Double?
     var stalls: Int?
+    // A4.2, play-end only: dropped frames over the item and the last access
+    // log event's observed bitrate (bits per second). The server's
+    // client-event route logs named fields and ignores others.
+    var droppedFrames: Int?
+    var observedBitrate: Double?
 }

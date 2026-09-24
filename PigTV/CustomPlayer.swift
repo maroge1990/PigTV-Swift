@@ -47,6 +47,8 @@ struct CustomPlayerView: View {
     @State private var seekForward = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    // A4.2: Labs → Stream info overlay.
+    @AppStorage(Labs.streamInfo) private var showsStreamInfo = false
 
     private var browse: BrowseModel? { app.browse }
     private var channels: [Channel] {
@@ -298,6 +300,7 @@ struct CustomPlayerView: View {
                                 .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
                         }
                     }
+                    if showsStreamInfo { StreamInfoLine(playback: playback) }
                 }
                 Spacer()
                 actionRow
@@ -563,6 +566,28 @@ struct CustomPlayerView: View {
         .background(highlighted ? Color.white.opacity(0.22) : Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 14))
         .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(highlighted ? Color.accentColor : .clear, lineWidth: 3) }
         .scaleEffect(highlighted ? 1.03 : 1, anchor: .leading)
+    }
+}
+
+// A4.2 (Labs → Stream info overlay): codec, size and frame rate, bitrates,
+// dropped frames, stalls, the server's route and build, refreshed every
+// second while the info overlay is up (the task ends when it hides).
+private struct StreamInfoLine: View {
+    @ObservedObject var playback: PlaybackModel
+    @State private var stats: StreamStats?
+    var body: some View {
+        Text(stats?.line ?? " ")
+            .font(.system(size: 18, weight: .medium).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.8))
+            .lineLimit(1).minimumScaleFactor(0.7)
+            .frame(maxWidth: 1100, alignment: .leading)
+            .accessibilityIdentifier("player.streamInfo")
+            .task {
+                while !Task.isCancelled {
+                    stats = await playback.streamStats()
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
     }
 }
 
