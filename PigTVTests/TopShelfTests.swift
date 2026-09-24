@@ -108,3 +108,18 @@ final class TopShelfTests: XCTestCase {
         XCTAssertEqual(built.number, 503)
     }
 }
+
+// A4.5: the intent's entity turns into the same deep link as the Top Shelf.
+@MainActor
+final class PlayChannelIntentTests: XCTestCase {
+    func testEntityPlayURLAndInbox() {
+        let entity = ChannelEntity(ChannelDirectory.Entry(id: "x y", sourceId: 3, name: "Fox Footy", number: 503))
+        XCTAssertEqual(entity.id, "3:x y")
+        XCTAssertEqual(PigTVLink.parse(entity.playURL), PigTVLink.Play(sourceId: 3, id: "x y", name: "Fox Footy", number: 503))
+        let inbox = PlayLinkInbox()
+        XCTAssertNil(inbox.take())
+        inbox.submit(entity.playURL)
+        XCTAssertEqual(inbox.take(), entity.playURL)
+        XCTAssertNil(inbox.pending, "a request is consumed once")
+    }
+}

@@ -59,6 +59,10 @@ struct ContentView: View {
         }
         // A4.1/A4.5: Top Shelf items and the Siri intent open pigtv://play.
         .onOpenURL { model.open($0) }
+        // A4.5: the Play channel intent's request, through the same path.
+        .onReceive(PlayLinkInbox.shared.$pending) { url in
+            if url != nil, let link = PlayLinkInbox.shared.take() { model.open(link) }
+        }
         .alert("PigTV", isPresented: Binding(
             get: { model.error != nil }, set: { if !$0 { model.error = nil } }
         )) {

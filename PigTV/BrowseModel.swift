@@ -141,6 +141,8 @@ final class BrowseModel: ObservableObject {
             }
             // A4.1: the Top Shelf snapshot (first rows / favourites' now-next).
             if isFirstPage || !guideHasMore { exportTopShelf() }
+            // A4.5: every channel's name and number for the Siri query.
+            if !guideHasMore { exportChannelDirectory() }
         } catch {
             guard generation == guideGeneration, !(error is CancellationError) else { return }
             guideError = error.localizedDescription
@@ -167,6 +169,7 @@ final class BrowseModel: ObservableObject {
         guideCacheVersion = cached.version
         loadedGuideIds = Set(cached.channels.map(\.id))
         exportTopShelf()
+        exportChannelDirectory()
         _ = await tryMarkFreshByVersion()
     }
 

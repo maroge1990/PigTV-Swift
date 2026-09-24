@@ -59,11 +59,15 @@ extension BrowseModel {
 enum TopShelfExport {
     @MainActor static var lastWritten: TopShelfSnapshot?
 
-    /// Signing out removes the snapshot: no channels on the Top Shelf.
+    /// Signing out removes the snapshot (no channels on the Top Shelf) and
+    /// the Siri channel directory.
     @MainActor static func clear() {
         lastWritten = nil
+        PlayLinkInbox.lastDirectory = nil
         Task.detached(priority: .utility) {
             if let url = TopShelfSnapshot.fileURL { try? FileManager.default.removeItem(at: url) }
+            // A4.5: and the Siri channel directory.
+            if let url = ChannelDirectory.fileURL { try? FileManager.default.removeItem(at: url) }
             contentChanged()
         }
     }
