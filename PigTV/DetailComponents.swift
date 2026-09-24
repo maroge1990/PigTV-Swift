@@ -186,11 +186,10 @@ struct ChannelLine: View {
         HStack(spacing: 24) {
             ChannelLogoTile(logo: logo, client: client, name: name)
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 12) {
-                    if let number { NumberCapsule(number: number) }
-                    Text(name).lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(name).lineLimit(1).font(DetailType.channel)
+                    if let number { ChannelNumberText(number: String(number), font: DetailType.meta) }
                 }
-                .font(DetailType.channel)
                 if let detail {
                     Text(detail).font(DetailType.meta).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -200,12 +199,18 @@ struct ChannelLine: View {
     }
 }
 
-struct NumberCapsule: View {
-    let number: Int
+/// C-A, build 29: a channel number as small, muted text placed after the
+/// channel's name, never over artwork (Mark: numbers are secondary to him).
+/// `Text(verbatim:)` so it is never locale-grouped.
+struct ChannelNumberText: View {
+    let number: String
+    let font: Font
+    /// Over the player's always-dark chrome use a fixed white; elsewhere the
+    /// hierarchy's tertiary style.
+    var onDark = false
     var body: some View {
-        Text(verbatim: String(number)).monospacedDigit()
-            .padding(.horizontal, 10).padding(.vertical, 2)
-            .background(Color.primary.opacity(0.1), in: Capsule())
+        Text(verbatim: number).font(font).monospacedDigit()
+            .foregroundStyle(onDark ? AnyShapeStyle(Color.white.opacity(0.5)) : AnyShapeStyle(.tertiary))
     }
 }
 

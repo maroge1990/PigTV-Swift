@@ -28,8 +28,10 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
         /// Now, then next (either may be missing).
         var programmes: [Slot]
 
-        /// "503 · Fox Footy", or the name alone without a number.
-        var title: String { number.map { "\($0) · \(name)" } ?? name }
+        /// The item's title: the channel name. Build 29 dropped the "503 · "
+        /// prefix (Mark: channel numbers are not important to him); the number
+        /// is still saved for the play link.
+        var title: String { name }
 
         /// What is on at `date` among the saved slots.
         func programme(at date: Date) -> Slot? {

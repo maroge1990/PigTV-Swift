@@ -525,8 +525,7 @@ struct GuideView: View {
                 // is too narrow to browse); on TV/iPad it starts the channel.
                 if compact { schedule = channel } else { play(channel) }
             } label: {
-                ChannelTile(name: channel.name, number: model.number(for: channel).map { String($0) },
-                            logo: model.logo(for: channel), client: model.client)
+                ChannelTile(name: channel.name, logo: model.logo(for: channel), client: model.client)
                     .frame(width: channelWidth - GuideMetrics.gap, height: rowHeight - GuideMetrics.gap)
                     .overlay(alignment: .topTrailing) {
                         // C-G: an amber dot for an unreliable channel, beside
@@ -695,8 +694,9 @@ struct GuideView: View {
 // name is only drawn here when no artwork is available.
 struct ChannelTile: View {
     let name: String
-    // C-A: the channel number ("504"), shown small in the top-leading corner.
-    var number: String? = nil
+    // Build 29: no channel number on the tile (Mark: it obscured logos and
+    // is not important to him); numbers appear only as muted text beside a
+    // channel's name (`ChannelNumberText`).
     let logo: String?
     let client: APIClient?
     @Environment(\.colorScheme) private var scheme
@@ -715,15 +715,6 @@ struct ChannelTile: View {
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.center).minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            if let number {
-                Text(verbatim: number)
-                    .font(GuideTypography.small.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .accessibilityHidden(true)
             }
         }
     }

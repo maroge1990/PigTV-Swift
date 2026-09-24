@@ -30,7 +30,7 @@ final class TopShelfTests: XCTestCase {
         XCTAssertEqual(snapshot.sectionTitle, "Channels")
         XCTAssertEqual(snapshot.channels.count, TopShelfSnapshot.limit)
         let first = snapshot.channels[0]
-        XCTAssertEqual(first.title, "500 · Channel 0")
+        XCTAssertEqual(first.title, "Channel 0", "build 29: no channel number in the title")
         XCTAssertEqual(first.logo?.absoluteString, "http://tv.local:3000/api/logo/0")
         XCTAssertEqual(first.programmes.map(\.title), ["Now 0", "Next 0"])
         XCTAssertEqual(first.programme(at: now)?.title, "Now 0")
@@ -55,7 +55,8 @@ final class TopShelfTests: XCTestCase {
         let snapshot = try XCTUnwrap(model.topShelfSnapshot(now: now))
         XCTAssertEqual(snapshot.kind, "favourites")
         XCTAssertEqual(snapshot.sectionTitle, "Favourites")
-        XCTAssertEqual(snapshot.channels.map(\.title), ["503 · Fox Footy", "7 · Guide row"])
+        XCTAssertEqual(snapshot.channels.map(\.title), ["Fox Footy", "Guide row"])
+        XCTAssertEqual(snapshot.channels.map(\.number), [503, 7], "the number is kept for the play link")
         XCTAssertEqual(snapshot.channels[0].logo?.absoluteString, "https://cdn.example/fox.png")
         XCTAssertEqual(snapshot.channels[0].programme(at: now)?.title, "AFL Live")
         XCTAssertEqual(snapshot.channels[1].programme(at: now)?.title, "On now")
@@ -68,7 +69,7 @@ final class TopShelfTests: XCTestCase {
         let snapshot = TopShelfSnapshot(kind: "channels", channels: [entry], savedAt: now)
         let decoded = try XCTUnwrap(TopShelfSnapshot.decode(try snapshot.encoded()))
         XCTAssertEqual(decoded, snapshot)
-        XCTAssertEqual(decoded.channels[0].title, "Name", "no number: the name alone")
+        XCTAssertEqual(decoded.channels[0].title, "Name")
         var later = snapshot
         later.savedAt = now.addingTimeInterval(600)
         XCTAssertTrue(later.sameContent(as: snapshot))

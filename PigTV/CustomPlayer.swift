@@ -275,14 +275,14 @@ struct CustomPlayerView: View {
                     LogoTile(logo: browse?.logo(for: playback.channel) ?? playback.channel.logo, client: browse?.client,
                              name: playback.channel.name)
                         .frame(width: 180, height: 100)
-                    HStack(spacing: 12) {
-                        // C-A: the channel number before the name.
-                        if let number = playback.channel.numberText {
-                            Text(verbatim: number).monospacedDigit()
-                        }
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(playback.channel.name)
+                            .font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                        // C-A, build 29: the number small and muted after the name.
+                        if let number = playback.channel.numberText {
+                            ChannelNumberText(number: number, font: .system(size: 20, weight: .medium), onDark: true)
+                        }
                     }
-                    .font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
                     Text(programme?.title ?? "No programme information")
                         .font(.system(size: 56, weight: .bold)).lineLimit(2)
                     if let programme {
@@ -542,11 +542,10 @@ struct CustomPlayerView: View {
                 .frame(width: 120, height: 66)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    if let number = channel.numberText {
-                        Text(verbatim: number).font(.system(size: 20, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
                     Text(channel.name).font(.system(size: 20)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+                    if let number = channel.numberText {
+                        ChannelNumberText(number: number, font: .system(size: 16, weight: .medium), onDark: true)
+                    }
                     if playing { Image(systemName: "play.fill").font(.system(size: 16)).foregroundStyle(Color.pigAccent) }
                 }
                 Text(current?.title ?? "No programme information").font(.system(size: 24, weight: .semibold)).lineLimit(1)

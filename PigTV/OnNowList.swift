@@ -60,14 +60,12 @@ private struct OnNowRowView: View {
         HStack(spacing: 12) {
             Button(action: play) {
                 HStack(spacing: 12) {
-                    ChannelTile(name: channel.name, number: nil, logo: model.logo(for: channel), client: model.client)
+                    ChannelTile(name: channel.name, logo: model.logo(for: channel), client: model.client)
                         .frame(width: 76, height: 48)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
-                            if let number {
-                                Text(verbatim: number).font(.caption.weight(.semibold).monospacedDigit())
-                            }
                             Text(channel.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if let number { ChannelNumberText(number: number, font: .caption2) }
                             if model.isFlaky(channel) {
                                 Circle().fill(Color.orange).frame(width: 8, height: 8)
                                     .accessibilityLabel("Unreliable channel")

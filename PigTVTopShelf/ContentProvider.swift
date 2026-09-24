@@ -9,7 +9,7 @@ import os
 // its own App Transport Security exception (build 27): the app's does not
 // cover it, and without it every logo was refused.
 // Sectioned items have a title but no subtitle, so the programme on now
-// follows the channel in the title: "503 · Fox Footy — AFL Live".
+// follows the channel in the title: "Fox Footy — AFL Live" (no channel number since build 29).
 // Each step is logged under subsystem au.markrogers.PigTV.TopShelf.
 final class ContentProvider: TVTopShelfContentProvider {
     override func loadTopShelfContent() async -> (any TVTopShelfContent)? {

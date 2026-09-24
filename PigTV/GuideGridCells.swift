@@ -80,7 +80,6 @@ struct GuideGridProgrammeView: View {
 /// unreliable-channel dots and the pink focus outline.
 struct GuideGridTileView: View {
     let channel: GuideChannel
-    let number: String?
     let logo: String?
     let client: APIClient?
     let flaky: Bool
@@ -88,7 +87,7 @@ struct GuideGridTileView: View {
     let focused: Bool
 
     var body: some View {
-        ChannelTile(name: channel.name, number: number, logo: logo, client: client)
+        ChannelTile(name: channel.name, logo: logo, client: client)
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 4) {
                     if flaky { Circle().fill(Color.orange).frame(width: 12, height: 12) }
@@ -167,7 +166,7 @@ final class GuideGridTileCell: UICollectionViewCell {
         guard let info, let channel else { contentConfiguration = nil; return }
         let client = client
         contentConfiguration = UIHostingConfiguration {
-            GuideGridTileView(channel: channel, number: info.number, logo: info.logo, client: client,
+            GuideGridTileView(channel: channel, logo: info.logo, client: client,
                               flaky: info.flaky, recording: info.recording, focused: state.isFocused)
         }
         .margins(.all, 0)

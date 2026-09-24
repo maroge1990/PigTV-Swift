@@ -398,15 +398,12 @@ private struct HomeHero: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("CONTINUE WATCHING").font(HomeMetrics.eyebrow).tracking(2.5)
                 .foregroundStyle(Color.pigAccent)
-            HStack(spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(channel.name).lineLimit(1).font(HomeMetrics.heroChannel).foregroundStyle(.secondary)
                 if let number = channel.number {
-                    Text(verbatim: String(number)).monospacedDigit()
-                        .padding(.horizontal, 10).padding(.vertical, 2)
-                        .background(Color.primary.opacity(0.1), in: Capsule())
+                    ChannelNumberText(number: String(number), font: HomeMetrics.cardDetail)
                 }
-                Text(channel.name).lineLimit(1)
             }
-            .font(HomeMetrics.heroChannel).foregroundStyle(.secondary)
             Text(row.current?.title ?? "No programme information")
                 .font(HomeMetrics.heroTitle).lineLimit(2).minimumScaleFactor(0.7)
                 .fixedSize(horizontal: false, vertical: true)
@@ -514,7 +511,6 @@ private struct CardArt<Badge: View>: View {
     let logo: String?
     let name: String
     let client: APIClient
-    var number: Int? = nil
     var symbol: String? = nil
     @ViewBuilder var badge: Badge
     @Environment(\.colorScheme) private var scheme
@@ -534,15 +530,6 @@ private struct CardArt<Badge: View>: View {
             }
         }
         .frame(width: HomeMetrics.cardWidth, height: HomeMetrics.artHeight)
-        .overlay(alignment: .topLeading) {
-            if let number {
-                Text(verbatim: String(number)).font(HomeMetrics.cardDetail.weight(.semibold).monospacedDigit())
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(.black.opacity(0.35), in: Capsule())
-                    .foregroundStyle(.white)
-                    .padding(12)
-            }
-        }
         .overlay(alignment: .topTrailing) { badge.padding(12) }
     }
 }
@@ -577,7 +564,7 @@ private struct HomeChannelCard: View {
         let live = showsLive && row.current.map(HomeRows.isLiveEvent) == true
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                CardArt(logo: channel.logo, name: channel.name, client: model.client, number: channel.number) {
+                CardArt(logo: channel.logo, name: channel.name, client: model.client) {
                     if live { CardBadge(text: "LIVE", colour: .red) }
                 }
                 VStack(alignment: .leading, spacing: 8) {
@@ -614,7 +601,7 @@ private struct HomeSoonCard: View {
         let scheduled = model.scheduledKeys.contains(ScheduledRecording.key(channel: item.channel.name, start: item.programme.startTime))
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                CardArt(logo: item.channel.logo, name: item.channel.name, client: model.client, number: item.channel.number) {
+                CardArt(logo: item.channel.logo, name: item.channel.name, client: model.client) {
                     if scheduled { CardBadge(text: "REC", systemImage: "record.circle.fill", colour: .red) }
                 }
                 .overlay(alignment: .bottomLeading) {

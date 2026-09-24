@@ -409,13 +409,12 @@ struct PlayerScreen: View {
                     .accessibilityLabel("Channels")
             }
             .font(.title2)
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(playback.channel.name).lineLimit(1).font(.subheadline.bold())
                 if let number = playback.channel.numberText {
-                    Text(verbatim: number).monospacedDigit()
+                    ChannelNumberText(number: number, font: .caption, onDark: true)
                 }
-                Text(playback.channel.name).lineLimit(1)
             }
-            .font(.subheadline.bold())
             .padding(.horizontal, 10).padding(.vertical, 4)
             .background(.black.opacity(0.5), in: Capsule())
         }

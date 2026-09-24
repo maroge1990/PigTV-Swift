@@ -31,12 +31,11 @@ struct QuickGuidePanel: View {
                                     ChannelArtwork(logo: browse?.logo(for: channel) ?? channel.logo, client: browse?.client)
                                         .frame(width: 96, height: 54)
                                     VStack(alignment: .leading, spacing: 4) {
-                                        HStack(spacing: 6) {
-                                            // C-A: the channel number before the name.
-                                            if let number = channel.numberText {
-                                                Text(verbatim: number).font(.callout.weight(.semibold).monospacedDigit())
-                                            }
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
                                             Text(channel.name).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                                            if let number = channel.numberText {
+                                                ChannelNumberText(number: number, font: .caption)
+                                            }
                                         }
                                         Text(now?.title ?? "No programme information").font(.headline).lineLimit(1)
                                     }
