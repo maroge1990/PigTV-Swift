@@ -139,6 +139,8 @@ final class BrowseModel: ObservableObject {
                 guideCacheVersion = loadingVersion
                 saveCache()
             }
+            // A4.1: the Top Shelf snapshot (first rows / favourites' now-next).
+            if isFirstPage || !guideHasMore { exportTopShelf() }
         } catch {
             guard generation == guideGeneration, !(error is CancellationError) else { return }
             guideError = error.localizedDescription
@@ -164,6 +166,7 @@ final class BrowseModel: ObservableObject {
         fromCache = true
         guideCacheVersion = cached.version
         loadedGuideIds = Set(cached.channels.map(\.id))
+        exportTopShelf()
         _ = await tryMarkFreshByVersion()
     }
 
@@ -287,7 +290,10 @@ final class BrowseModel: ObservableObject {
         favouritesBusy = true
         favouritesError = nil
         defer { favouritesBusy = false }
-        do { favourites = try await client.request("library/favourites") }
+        do {
+            favourites = try await client.request("library/favourites")
+            exportTopShelf()
+        }
         catch { favouritesError = error.localizedDescription }
     }
 

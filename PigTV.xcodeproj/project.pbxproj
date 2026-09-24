@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B2FE9B0C3056B8D20018450A /* PigTVTopShelf.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B2FE9B013056B8D20018450A /* PigTVTopShelf.appex */; platformFilters = (tvos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		B2FE99F93056B8D20018450A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,13 +25,45 @@
 			remoteGlobalIDString = B2FE99EA3056B8D00018450A;
 			remoteInfo = PigTV;
 		};
+		B2FE9B093056B8D20018450A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B2FE99E33056B8D00018450A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B2FE9B083056B8D20018450A;
+			remoteInfo = PigTVTopShelf;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B2FE9B0B3056B8D20018450A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B2FE9B0C3056B8D20018450A /* PigTVTopShelf.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		B2FE99EB3056B8D00018450A /* PigTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PigTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2FE99F83056B8D20018450A /* PigTVTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PigTVTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2FE9A023056B8D20018450A /* PigTVUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PigTVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B2FE9B013056B8D20018450A /* PigTVTopShelf.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PigTVTopShelf.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B2FE9B043056B8D20018450A /* Exceptions for "PigTVTopShelf" folder in "PigTVTopShelf" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B2FE9B083056B8D20018450A /* PigTVTopShelf */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B2FE99ED3056B8D00018450A /* PigTV */ = {
@@ -43,6 +79,19 @@
 		B2FE9A053056B8D20018450A /* PigTVUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = PigTVUITests;
+			sourceTree = "<group>";
+		};
+		B2FE9B023056B8D20018450A /* PigTVTopShelf */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B2FE9B043056B8D20018450A /* Exceptions for "PigTVTopShelf" folder in "PigTVTopShelf" target */,
+			);
+			path = PigTVTopShelf;
+			sourceTree = "<group>";
+		};
+		B2FE9B033056B8D20018450A /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +118,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B2FE9B063056B8D20018450A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -77,7 +133,9 @@
 			children = (
 				B2FE99ED3056B8D00018450A /* PigTV */,
 				B2FE99FB3056B8D20018450A /* PigTVTests */,
+				B2FE9B033056B8D20018450A /* Shared */,
 				B2FE9A053056B8D20018450A /* PigTVUITests */,
+				B2FE9B023056B8D20018450A /* PigTVTopShelf */,
 				B2FE99EC3056B8D00018450A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +146,7 @@
 				B2FE99EB3056B8D00018450A /* PigTV.app */,
 				B2FE99F83056B8D20018450A /* PigTVTests.xctest */,
 				B2FE9A023056B8D20018450A /* PigTVUITests.xctest */,
+				B2FE9B013056B8D20018450A /* PigTVTopShelf.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -102,13 +161,16 @@
 				B2FE99E73056B8D00018450A /* Sources */,
 				B2FE99E83056B8D00018450A /* Frameworks */,
 				B2FE99E93056B8D00018450A /* Resources */,
+				B2FE9B0B3056B8D20018450A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B2FE9B0A3056B8D20018450A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B2FE99ED3056B8D00018450A /* PigTV */,
+				B2FE9B033056B8D20018450A /* Shared */,
 			);
 			name = PigTV;
 			packageProductDependencies = (
@@ -163,6 +225,29 @@
 			productReference = B2FE9A023056B8D20018450A /* PigTVUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		B2FE9B083056B8D20018450A /* PigTVTopShelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B2FE9B0F3056B8D20018450A /* Build configuration list for PBXNativeTarget "PigTVTopShelf" */;
+			buildPhases = (
+				B2FE9B053056B8D20018450A /* Sources */,
+				B2FE9B063056B8D20018450A /* Frameworks */,
+				B2FE9B073056B8D20018450A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B2FE9B023056B8D20018450A /* PigTVTopShelf */,
+				B2FE9B033056B8D20018450A /* Shared */,
+			);
+			name = PigTVTopShelf;
+			packageProductDependencies = (
+			);
+			productName = PigTVTopShelf;
+			productReference = B2FE9B013056B8D20018450A /* PigTVTopShelf.appex */;
+			productType = "com.apple.product-type.tv-app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +269,9 @@
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = B2FE99EA3056B8D00018450A;
 					};
+					B2FE9B083056B8D20018450A = {
+						CreatedOnToolsVersion = 27.0;
+					};
 				};
 			};
 			buildConfigurationList = B2FE99E63056B8D00018450A /* Build configuration list for PBXProject "PigTV" */;
@@ -203,6 +291,7 @@
 				B2FE99EA3056B8D00018450A /* PigTV */,
 				B2FE99F73056B8D20018450A /* PigTVTests */,
 				B2FE9A013056B8D20018450A /* PigTVUITests */,
+				B2FE9B083056B8D20018450A /* PigTVTopShelf */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +312,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B2FE9A003056B8D20018450A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B2FE9B073056B8D20018450A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +349,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B2FE9B053056B8D20018450A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +368,14 @@
 			isa = PBXTargetDependency;
 			target = B2FE99EA3056B8D00018450A /* PigTV */;
 			targetProxy = B2FE9A033056B8D20018450A /* PBXContainerItemProxy */;
+		};
+		B2FE9B0A3056B8D20018450A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				tvos,
+			);
+			target = B2FE9B083056B8D20018450A /* PigTVTopShelf */;
+			targetProxy = B2FE9B093056B8D20018450A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -402,6 +513,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletv*]" = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PigTV/PigTV.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 6CUZWP49QT;
@@ -437,6 +549,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletv*]" = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PigTV/PigTV.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 6CUZWP49QT;
@@ -554,6 +667,70 @@
 			};
 			name = Release;
 		};
+		B2FE9B0D3056B8D20018450A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PigTVTopShelf/PigTVTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 6CUZWP49QT;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PigTVTopShelf/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PigTVTopShelf;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = au.markrogers.PigTV.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.5;
+			};
+			name = Debug;
+		};
+		B2FE9B0E3056B8D20018450A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PigTVTopShelf/PigTVTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 6CUZWP49QT;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PigTVTopShelf/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PigTVTopShelf;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = au.markrogers.PigTV.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.5;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -589,6 +766,15 @@
 			buildConfigurations = (
 				B2FE9A133056B8D20018450A /* Debug */,
 				B2FE9A143056B8D20018450A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B2FE9B0F3056B8D20018450A /* Build configuration list for PBXNativeTarget "PigTVTopShelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B2FE9B0D3056B8D20018450A /* Debug */,
+				B2FE9B0E3056B8D20018450A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

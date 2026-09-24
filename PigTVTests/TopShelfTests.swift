@@ -1,0 +1,110 @@
+import XCTest
+@testable import PigTV
+
+// A4.1: the Top Shelf snapshot (built by the app, read by the extension)
+// and the pigtv://play deep link.
+@MainActor
+final class TopShelfTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func browse() throws -> BrowseModel {
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true}}"#.utf8))
+        return BrowseModel(client: APIClient(address: try ServerAddress("http://tv.local:3000"), token: "secret-token", info: info))
+    }
+
+    private func programme(_ title: String, from start: TimeInterval, to end: TimeInterval) -> GuideProgramme {
+        GuideProgramme(title: title, description: nil, startTime: (now.timeIntervalSince1970 + start) * 1000,
+                       endTime: (now.timeIntervalSince1970 + end) * 1000)
+    }
+
+    func testLineupSnapshotWithNowNextAndAbsoluteLogos() throws {
+        let model = try browse()
+        model.guide = (0..<20).map { index in
+            GuideChannel(rawID: "c\(index)", sourceId: 1, name: "Channel \(index)", logo: "/api/logo/\(index)", category: nil,
+                         programmes: [programme("Earlier", from: -7200, to: -1800), programme("Now \(index)", from: -1800, to: 1800),
+                                      programme("Next \(index)", from: 1800, to: 3600), programme("Later", from: 3600, to: 7200)],
+                         number: 500 + index)
+        }
+        let snapshot = try XCTUnwrap(model.topShelfSnapshot(now: now))
+        XCTAssertEqual(snapshot.kind, "channels")
+        XCTAssertEqual(snapshot.sectionTitle, "Channels")
+        XCTAssertEqual(snapshot.channels.count, TopShelfSnapshot.limit)
+        let first = snapshot.channels[0]
+        XCTAssertEqual(first.title, "500 · Channel 0")
+        XCTAssertEqual(first.logo?.absoluteString, "http://tv.local:3000/api/logo/0")
+        XCTAssertEqual(first.programmes.map(\.title), ["Now 0", "Next 0"])
+        XCTAssertEqual(first.programme(at: now)?.title, "Now 0")
+        XCTAssertEqual(first.programme(at: now.addingTimeInterval(2000))?.title, "Next 0")
+        XCTAssertNil(first.programme(at: now.addingTimeInterval(4000)))
+        XCTAssertEqual(PigTVLink.parse(first.playURL), PigTVLink.Play(sourceId: 1, id: "c0", name: "Channel 0", number: 500))
+        // Nothing secret is written.
+        let json = String(decoding: try snapshot.encoded(), as: UTF8.self)
+        XCTAssertFalse(json.contains("secret-token"))
+    }
+
+    func testFavouritesComeFirstAndFallBackToTheirOwnNowNext() throws {
+        let model = try browse()
+        model.guide = [GuideChannel(rawID: "g", sourceId: 1, name: "Guide row", logo: nil, category: nil,
+                                    programmes: [programme("On now", from: -60, to: 60)], number: 7)]
+        let outside = Channel(rawID: "x", sourceId: 2, name: "Fox Footy", logo: "https://cdn.example/fox.png", category: nil,
+                              now: Programme(title: "AFL Live", startTime: (now.timeIntervalSince1970 - 60) * 1000,
+                                             endTime: (now.timeIntervalSince1970 + 60) * 1000),
+                              next: nil, number: 503)
+        let inGuide = Channel(rawID: "g", sourceId: 1, name: "Guide row", logo: nil, category: nil, now: nil, next: nil)
+        model.favourites = [outside, inGuide]
+        let snapshot = try XCTUnwrap(model.topShelfSnapshot(now: now))
+        XCTAssertEqual(snapshot.kind, "favourites")
+        XCTAssertEqual(snapshot.sectionTitle, "Favourites")
+        XCTAssertEqual(snapshot.channels.map(\.title), ["503 · Fox Footy", "7 · Guide row"])
+        XCTAssertEqual(snapshot.channels[0].logo?.absoluteString, "https://cdn.example/fox.png")
+        XCTAssertEqual(snapshot.channels[0].programme(at: now)?.title, "AFL Live")
+        XCTAssertEqual(snapshot.channels[1].programme(at: now)?.title, "On now")
+        XCTAssertNil(try browse().topShelfSnapshot(now: now), "nothing loaded: no snapshot")
+    }
+
+    func testSnapshotRoundTripsAndComparesWithoutSavedAt() throws {
+        let entry = TopShelfSnapshot.Entry(id: "a b", sourceId: 3, name: "Name", number: nil, logo: URL(string: "http://h/l.png"),
+                                           programmes: [.init(title: "T", start: now, end: now.addingTimeInterval(60))])
+        let snapshot = TopShelfSnapshot(kind: "channels", channels: [entry], savedAt: now)
+        let decoded = try XCTUnwrap(TopShelfSnapshot.decode(try snapshot.encoded()))
+        XCTAssertEqual(decoded, snapshot)
+        XCTAssertEqual(decoded.channels[0].title, "Name", "no number: the name alone")
+        var later = snapshot
+        later.savedAt = now.addingTimeInterval(600)
+        XCTAssertTrue(later.sameContent(as: snapshot))
+        later.channels[0].name = "Other"
+        XCTAssertFalse(later.sameContent(as: snapshot))
+        XCTAssertFalse(snapshot.sameContent(as: nil))
+        XCTAssertNil(TopShelfSnapshot.decode(Data("{}".utf8)))
+    }
+
+    func testPlayLinks() throws {
+        let url = PigTVLink.playURL(sourceId: 4, id: "12&3+4 5", name: "Sky Sports+ & More", number: 503)
+        XCTAssertEqual(url.scheme, "pigtv")
+        XCTAssertEqual(PigTVLink.parse(url), PigTVLink.Play(sourceId: 4, id: "12&3+4 5", name: "Sky Sports+ & More", number: 503))
+        XCTAssertEqual(PigTVLink.parse(try XCTUnwrap(URL(string: "pigtv://play?sourceId=2&id=77"))),
+                       PigTVLink.Play(sourceId: 2, id: "77", name: nil, number: nil))
+        XCTAssertEqual(PigTVLink.parse(try XCTUnwrap(URL(string: "pigtv://play?sourceId=2&id=77")))?.channelKey, "2:77")
+        for bad in ["pigtv://play?id=77", "pigtv://play?sourceId=x&id=77", "pigtv://play?sourceId=2&id=",
+                    "pigtv://guide?sourceId=2&id=77", "https://play?sourceId=2&id=77"] {
+            XCTAssertNil(PigTVLink.parse(try XCTUnwrap(URL(string: bad))), bad)
+        }
+        XCTAssertNil(PigTVLink.parse(try XCTUnwrap(URL(string: "pigtv://play?sourceId=2&id=7&number=-4")))?.number)
+    }
+
+    func testLinkChannelPrefersTheGuide() throws {
+        let model = try browse()
+        model.guide = [GuideChannel(rawID: "g", sourceId: 1, name: "Guide name", logo: "/api/logo/g", category: nil,
+                                    programmes: [], number: 9)]
+        let app = AppModel()
+        app.configureClientForTesting(model.client, browse: model)
+        let known = app.channel(for: PigTVLink.Play(sourceId: 1, id: "g", name: "Stale", number: 1))
+        XCTAssertEqual(known.name, "Guide name")
+        XCTAssertEqual(known.number, 9)
+        XCTAssertEqual(known.logo, "/api/logo/g")
+        let built = app.channel(for: PigTVLink.Play(sourceId: 2, id: "z", name: "Fox Footy", number: 503))
+        XCTAssertEqual(built.id, "2:z")
+        XCTAssertEqual(built.name, "Fox Footy")
+        XCTAssertEqual(built.number, 503)
+    }
+}

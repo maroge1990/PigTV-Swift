@@ -57,6 +57,8 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { Task { await model.background() } }
         }
+        // A4.1/A4.5: Top Shelf items and the Siri intent open pigtv://play.
+        .onOpenURL { model.open($0) }
         .alert("PigTV", isPresented: Binding(
             get: { model.error != nil }, set: { if !$0 { model.error = nil } }
         )) {

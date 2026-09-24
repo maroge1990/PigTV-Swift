@@ -41,6 +41,8 @@ final class AppModel: ObservableObject {
     var loggedIn: Bool { user != nil }
 
     func restore() async {
+        // A link that is not played by this restore is dropped.
+        defer { pendingLink = nil }
         guard !authBusy, !serverText.isEmpty, !loggedIn else { return }
         authBusy = true
         defer { authBusy = false }
@@ -60,6 +62,7 @@ final class AppModel: ObservableObject {
             canRestore = false
             unreachable = nil
             await loadCategories()
+            openPendingLink()
         } catch {
             if error as? PigTVError == .unauthorised {
                 if let address = try? ServerAddress(serverText) { try? keychain.remove(for: address) }
@@ -200,6 +203,8 @@ final class AppModel: ObservableObject {
 
     private func clearSession() {
         cancelPairing()
+        pendingLink = nil
+        TopShelfExport.clear()
         client = nil
         serverInfo = nil
         browse = nil
@@ -213,6 +218,45 @@ final class AppModel: ObservableObject {
         guard let client else { return }
         do { categories = try await client.request("library/categories") }
         catch { self.error = error.localizedDescription }
+    }
+
+    // MARK: Deep links (A4.1 Top Shelf, A4.5 Siri)
+
+    /// A play link that arrived before sign-in was restored (a cold launch
+    /// from the Top Shelf can deliver the URL before the launch restore
+    /// starts). Only a successful restore plays it, within a minute; any
+    /// other outcome drops it (restore's defer), so a later manual sign-in
+    /// never starts playback unexpectedly.
+    private var pendingLink: (link: PigTVLink.Play, at: Date)?
+
+    /// `pigtv://play?…`: plays that channel when signed in; ignored otherwise.
+    func open(_ url: URL) {
+        guard let link = PigTVLink.parse(url) else { return }
+        if loggedIn { play(link) } else { pendingLink = (link, Date()) }
+    }
+
+    private func openPendingLink() {
+        guard let pending = pendingLink, Date().timeIntervalSince(pending.at) < 60 else { return }
+        pendingLink = nil
+        play(pending.link)
+    }
+
+    /// The channel a link names: the guide's row when loaded, else one built
+    /// from the link's own fields.
+    func channel(for link: PigTVLink.Play) -> Channel {
+        if let row = browse?.guideChannel(id: link.channelKey), let browse { return browse.asChannel(row) }
+        if let favourite = browse?.favourites.first(where: { $0.id == link.channelKey }) { return favourite }
+        return Channel(rawID: link.id, sourceId: link.sourceId, name: link.name ?? "Channel", logo: nil,
+                       category: nil, now: nil, next: nil, number: link.number)
+    }
+
+    private func play(_ link: PigTVLink.Play) {
+        let channel = channel(for: link)
+        if currentPlayback != nil {
+            if currentPlayback?.channel.id != channel.id { switchPlayback(to: channel) }
+        } else {
+            beginPlayback(channel)
+        }
     }
 
     func beginPlayback(_ channel: Channel) {
