@@ -312,4 +312,53 @@ nonisolated struct RecordingPlayback: Decodable, Sendable {
     let url: String
     let container: String?
     let durationSec: Double?
+    // C-E (`recordingHls`): an HLS answer plays directly; `inProgress` means
+    // an EVENT playlist that is still growing.
+    var inProgress: Bool? = nil
+    var isHLS: Bool { container == "hls" }
+    var isGrowing: Bool { isHLS && inProgress == true }
+}
+
+extension Recording {
+    /// The Play button's label, or nil when this recording cannot be played
+    /// yet. A recording still in progress plays only with `recordingHls`.
+    nonisolated func playLabel(recordingHls: Bool) -> String? {
+        switch status {
+        case "completed": return "Play recording"
+        case "recording" where recordingHls: return "Watch from start (still recording)"
+        default: return nil
+        }
+    }
+}
+
+/// Elapsed/remaining for the recording player's scrub bar (A4.3). `end` is
+/// the seekable end (the whole file, or how far a growing recording has got).
+nonisolated struct RecordingTimeline: Equatable, Sendable {
+    let elapsed: Double
+    let end: Double
+    /// Still recording and within 20 s of the newest segment.
+    let atLiveEdge: Bool
+
+    init?(current: Double, end: Double, growing: Bool) {
+        guard current.isFinite, end.isFinite, end > 0 else { return nil }
+        elapsed = min(max(0, current), end)
+        self.end = end
+        atLiveEdge = growing && end - elapsed <= 20
+    }
+
+    var remaining: Double { max(0, end - elapsed) }
+    var fraction: Double { min(1, max(0, elapsed / end)) }
+
+    /// Target of a ±seconds skip, kept inside the recording.
+    static func skipTarget(current: Double, by seconds: Double, end: Double) -> Double {
+        min(max(0, current + seconds), max(0, end))
+    }
+
+    /// "1:02:03" from an hour, else "2:03".
+    static func clock(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.isFinite ? seconds.rounded(.down) : 0))
+        return total >= 3600
+            ? String(format: "%d:%02d:%02d", total / 3600, (total / 60) % 60, total % 60)
+            : String(format: "%d:%02d", total / 60, total % 60)
+    }
 }

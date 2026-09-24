@@ -467,7 +467,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
     #if os(tvOS)
     // Bounded so a slow or failing playlist fetch never holds up playback;
     // without criteria the stream simply plays in the current (SDR) mode.
-    private static func loadDisplayCriteria(_ asset: AVAsset) async -> AVDisplayCriteria? {
+    // Shared with RecordingPlayerModel (A4.3).
+    static func loadDisplayCriteria(_ asset: AVAsset) async -> AVDisplayCriteria? {
         await withTaskGroup(of: AVDisplayCriteria?.self) { group in
             group.addTask { try? await asset.load(.preferredDisplayCriteria) }
             group.addTask { try? await Task.sleep(for: .seconds(3)); return nil }

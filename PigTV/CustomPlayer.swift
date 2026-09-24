@@ -333,22 +333,7 @@ struct CustomPlayerView: View {
     }
 
     private var actionRow: some View {
-        HStack(spacing: 18) {
-            ForEach(Array(actions.enumerated()), id: \.offset) { index, item in
-                let selected = index == action
-                VStack(spacing: 8) {
-                    Image(systemName: icon(item))
-                        .font(.system(size: 30, weight: .semibold))
-                        .frame(width: 76, height: 76)
-                        .background(selected ? Color.white : Color.white.opacity(0.18), in: Circle())
-                        .foregroundStyle(selected ? Color.black : Color.white)
-                        .scaleEffect(selected ? 1.1 : 1)
-                    Text(label(item)).font(.system(size: 18, weight: .medium))
-                        .opacity(selected ? 1 : 0)
-                }
-            }
-        }
-        .animation(.easeOut(duration: 0.15), value: action)
+        PlayerActionRow(items: actions.map { (icon($0), label($0)) }, selected: action)
     }
 
     private func icon(_ item: PlayerAction) -> String {
@@ -494,25 +479,12 @@ struct CustomPlayerView: View {
                 Text(now.formatted(date: .omitted, time: .shortened))
             }
             .font(.system(size: 24, weight: .semibold))
-            GeometryReader { geometry in
-                let fraction = position ?? 1
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.3))
-                    Capsule().fill(Color.accentColor).frame(width: geometry.size.width * fraction)
-                    Circle().fill(Color.white).frame(width: 26, height: 26)
-                        .offset(x: min(geometry.size.width - 26, max(0, geometry.size.width * fraction - 13)))
-                }
-            }.frame(height: 26)
+            PlayerScrubTrack(fraction: position ?? 1)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 90).padding(.bottom, 50)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .background(alignment: .bottom) {
-            LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.95 : 0.75)],
-                           startPoint: .top, endPoint: .bottom)
-                .frame(height: 260).ignoresSafeArea()
-        }
-        .ignoresSafeArea(edges: .bottom)
+        .playerBottomShade(height: 260, opacity: 0.75)
         .transition(.opacity)
     }
 
@@ -594,9 +566,73 @@ struct CustomPlayerView: View {
     }
 }
 
+// Parts shared by the live player and the recording player (A4.3).
+
+/// The row of round action buttons; the selected one is white and labelled.
+struct PlayerActionRow: View {
+    let items: [(icon: String, label: String)]
+    let selected: Int
+    var body: some View {
+        HStack(spacing: 18) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                let isSelected = index == selected
+                VStack(spacing: 8) {
+                    Image(systemName: item.icon)
+                        .font(.system(size: 30, weight: .semibold))
+                        .frame(width: 76, height: 76)
+                        .background(isSelected ? Color.white : Color.white.opacity(0.18), in: Circle())
+                        .foregroundStyle(isSelected ? Color.black : Color.white)
+                        .scaleEffect(isSelected ? 1.1 : 1)
+                    Text(item.label).font(.system(size: 18, weight: .medium))
+                        .opacity(isSelected ? 1 : 0)
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: selected)
+    }
+}
+
+/// The pink scrub track with its knob (R17).
+struct PlayerScrubTrack: View {
+    let fraction: Double
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.3))
+                Capsule().fill(Color.accentColor).frame(width: geometry.size.width * fraction)
+                Circle().fill(Color.white).frame(width: 26, height: 26)
+                    .offset(x: min(geometry.size.width - 26, max(0, geometry.size.width * fraction - 13)))
+            }
+        }.frame(height: 26)
+    }
+}
+
+extension View {
+    /// The dark gradient behind bottom player chrome, opaque enough with
+    /// Reduce Transparency, sitting against the screen bottom.
+    func playerBottomShade(height: CGFloat, opacity: Double) -> some View {
+        modifier(PlayerBottomShade(height: height, opacity: opacity))
+    }
+}
+
+private struct PlayerBottomShade: ViewModifier {
+    let height: CGFloat
+    let opacity: Double
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    func body(content: Content) -> some View {
+        content
+            .background(alignment: .bottom) {
+                LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.95 : opacity)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: height).ignoresSafeArea()
+            }
+            .ignoresSafeArea(edges: .bottom)
+    }
+}
+
 // Draws only the label — no tvOS focus container, lift or border — while still
 // firing its action on the first Select press.
-private struct BlankButtonStyle: ButtonStyle {
+struct BlankButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { configuration.label }
 }
 

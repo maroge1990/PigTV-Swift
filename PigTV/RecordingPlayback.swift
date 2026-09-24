@@ -4,6 +4,10 @@ import Combine
 
 // Server playback contract: authenticated MP4 under /api/recordings/.
 // Capable servers prepare asynchronously; APIClient owns bounded polling.
+// C-E (`recordingHls`): the answer may instead be an HLS playlist, played
+// directly (a 200 needs no polling); `inProgress` = a growing EVENT playlist.
+// tvOS plays recordings in RecordingPlayerView (the custom player's parts,
+// A4.3); iOS keeps AVKit (RecordingNativePlayer) for touch scrubbing.
 @MainActor
 final class RecordingPlayerModel: ObservableObject {
     let recording: Recording
@@ -14,6 +18,11 @@ final class RecordingPlayerModel: ObservableObject {
     @Published private(set) var canRetry = false
     @Published private(set) var inBreak: CommercialBreak?
     @Published private(set) var breaks: [CommercialBreak] = []
+    /// C-E: an in-progress HLS recording (EVENT playlist) that still grows.
+    @Published private(set) var inProgress = false
+    #if os(tvOS)
+    @Published private(set) var displayCriteria: AVDisplayCriteria?
+    #endif
     @Published var autoSkip = UserDefaults.standard.bool(forKey: "pigtv.recordings.autoSkip") {
         didSet { UserDefaults.standard.set(autoSkip, forKey: "pigtv.recordings.autoSkip") }
     }
@@ -52,6 +61,7 @@ final class RecordingPlayerModel: ObservableObject {
                 try Task.checkCancellation()
                 guard !stopped else { return }
                 let url = try client.playbackURL(playback.url)
+                inProgress = playback.isGrowing
                 try await Task.detached(priority: .userInitiated) {
                     try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
                     try AVAudioSession.sharedInstance().setActive(true)
@@ -59,6 +69,14 @@ final class RecordingPlayerModel: ObservableObject {
                 try Task.checkCancellation()
                 guard !stopped else { return }
                 let item = AVPlayerItem(url: url)
+                #if os(tvOS)
+                // The custom player's bare layer does not switch the TV to
+                // HDR/frame rate itself (AVPlayerViewController did).
+                let criteria = await PlaybackModel.loadDisplayCriteria(item.asset)
+                try Task.checkCancellation()
+                guard !stopped, self.generation == generation else { return }
+                displayCriteria = criteria
+                #endif
                 statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
                     guard item.status == .failed else { return }
                     Task { @MainActor [weak self] in
@@ -69,8 +87,9 @@ final class RecordingPlayerModel: ObservableObject {
                     }
                 }
                 player.replaceCurrentItem(with: item)
+                // "Watch from start (still recording)" starts at the start.
                 let resume = UserDefaults.standard.double(forKey: resumeKey)
-                if resume > 10, let duration = recording.duration_sec, resume < duration - 30 {
+                if !inProgress, resume > 10, let duration = recording.duration_sec, resume < duration - 30 {
                     await player.seek(to: CMTime(seconds: resume, preferredTimescale: 600))
                 }
                 try Task.checkCancellation()
@@ -115,6 +134,31 @@ final class RecordingPlayerModel: ObservableObject {
         lastSkipped = marker.id
         player.seek(to: CMTime(seconds: marker.endMs / 1000, preferredTimescale: 600))
         inBreak = nil
+    }
+
+    // MARK: Transport (tvOS recording player)
+
+    /// Position and seekable end. A growing recording's end moves on as
+    /// segments arrive; it is "live" while its duration is indefinite.
+    func timeline() -> RecordingTimeline? {
+        guard let item = player.currentItem else { return nil }
+        let current = CMTimeGetSeconds(item.currentTime())
+        let end = item.seekableTimeRanges.last.map { CMTimeGetSeconds(CMTimeRangeGetEnd($0.timeRangeValue)) }
+            ?? CMTimeGetSeconds(item.duration)
+        return RecordingTimeline(current: current, end: end, growing: inProgress && item.duration.isIndefinite)
+    }
+
+    func skip(_ seconds: Double) {
+        guard let timeline = timeline() else { return }
+        let target = RecordingTimeline.skipTarget(current: timeline.elapsed, by: seconds, end: timeline.end)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    var paused: Bool { player.rate == 0 }
+
+    func togglePause() {
+        if player.rate == 0 { player.play() } else { player.pause() }
+        objectWillChange.send()
     }
 
     private func clearPlayer() {
@@ -162,8 +206,10 @@ struct RecordingPlayerScreen: View {
                     Button("Back") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
             } else if model.ready {
+                #if os(tvOS)
+                RecordingPlayerView(model: model) { dismiss() }
+                #else
                 RecordingNativePlayer(model: model).ignoresSafeArea()
-                    #if os(iOS)
                     .overlay(alignment: .topTrailing) {
                         HStack {
                             if model.inBreak != nil {
@@ -174,7 +220,7 @@ struct RecordingPlayerScreen: View {
                                 .foregroundStyle(.white, .black.opacity(0.6))
                         }.padding()
                     }
-                    #endif
+                #endif
             } else {
                 VStack(spacing: 24) {
                     ProgressView(model.preparing ? "Preparing recording…" : "Loading recording…")
@@ -185,11 +231,14 @@ struct RecordingPlayerScreen: View {
         .onAppear { model.start() }
         .onDisappear { Task { await model.stop() } }
         #if os(tvOS)
-        .onExitCommand { dismiss() }
+        // While playing, the player handles Back itself (hide chrome first).
+        .onExitCommand(perform: model.ready && model.error == nil ? nil : { dismiss() })
         #endif
     }
 }
 
+#if os(iOS)
+// iOS keeps AVKit for recordings: touch scrubbing is its strength.
 struct RecordingNativePlayer: UIViewControllerRepresentable {
     @ObservedObject var model: RecordingPlayerModel
 
@@ -200,21 +249,6 @@ struct RecordingNativePlayer: UIViewControllerRepresentable {
         return controller
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        #if os(tvOS)
-        // "Skip break" appears as the system's contextual action (like Skip Intro).
-        if model.inBreak != nil {
-            controller.contextualActions = [UIAction(title: "Skip break", image: UIImage(systemName: "forward.end.fill")) { _ in
-                model.skipBreak()
-            }]
-        } else {
-            controller.contextualActions = []
-        }
-        let toggle = UIAction(title: model.autoSkip ? "Auto-skip breaks: On" : "Auto-skip breaks: Off",
-                              image: UIImage(systemName: model.autoSkip ? "checkmark.circle" : "circle")) { _ in
-            model.autoSkip.toggle()
-        }
-        controller.transportBarCustomMenuItems = [toggle]
-        #endif
-    }
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {}
 }
+#endif

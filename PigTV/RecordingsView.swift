@@ -140,9 +140,11 @@ struct RecordingDetails: View {
                     }
                     Divider()
                     Text("Playback").font(.headline)
-                    if item.status == "completed" {
-                        Button("Play recording", systemImage: "play.fill") { playing = true }.pigPrimaryButton()
-                        if UserDefaults.standard.double(forKey: "pigtv.resume.\(item.id)") > 10 {
+                    // C-E: with `recordingHls` a recording still in progress
+                    // can be watched from its start while it grows.
+                    if let label = item.playLabel(recordingHls: model.client.info?.features.recordingHls == true) {
+                        Button(label, systemImage: "play.fill") { playing = true }.pigPrimaryButton()
+                        if item.status == "completed", UserDefaults.standard.double(forKey: "pigtv.resume.\(item.id)") > 10 {
                             Text("Resumes where you left off.").font(.caption).foregroundStyle(.secondary)
                         }
                     } else {
