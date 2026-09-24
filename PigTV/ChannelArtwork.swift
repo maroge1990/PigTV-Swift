@@ -29,10 +29,26 @@ struct ChannelArtwork: View {
         init(_ value: DecodedLogo) { self.value = value }
     }
 
+    /// Home's blurred wash: the logo filling its frame (no placeholder glyph).
+    var fill = false
+
+    #if DEBUG
+    /// Fixture logos (PIGTV_UI_TEST_SCREEN=home) go straight into the cache.
+    static func preload(_ image: UIImage, for logo: String) {
+        cache.setObject(LogoBox(DecodedLogo(image: image)), forKey: logo as NSString)
+    }
+    #endif
+
     var body: some View {
         ZStack {
             if let decoded {
-                Image(uiImage: decoded.image).resizable().scaledToFit()
+                if fill {
+                    Image(uiImage: decoded.image).resizable().scaledToFill()
+                } else {
+                    Image(uiImage: decoded.image).resizable().scaledToFit()
+                }
+            } else if fill {
+                Color.clear
 
             } else {
                 Image(systemName: "tv.fill").foregroundStyle(Color.accentColor).padding(8)

@@ -159,13 +159,8 @@ struct GuideView: View {
                 // later browsing position stranded the grid hours ahead.
                 viewport = GuideNavigation.rounded(Date())
                 anchor = Date()
-                if model.guide.isEmpty {
-                    await model.loadCachedGuide()
-                    if model.guide.isEmpty || model.fromCache {
-                        if !model.fromCache { model.window = viewport.addingTimeInterval(-GuideNavigation.leadIn) }
-                        await model.loadGuide(reset: true, keepVisible: model.fromCache)
-                    }
-                }
+                // Shared with Home (build 28): whichever appears first loads.
+                await model.loadInitialGuide()
                 await model.loadFavourites()
                 await model.loadRecordings()
             }

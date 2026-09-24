@@ -33,6 +33,9 @@ struct ServerInfo: Decodable {
         // while still recording.
         let timeshift: Bool?
         let recordingHls: Bool?
+        // C-H (server 0146): categories carry `sport`; the Home screen's
+        // "Sport on now" row uses them.
+        var sportCategories: Bool? = nil
     }
 
     func validate() throws {
@@ -58,12 +61,15 @@ nonisolated struct Category: Decodable, Hashable, Identifiable, Sendable {
     let sourceId: Int
     let name: String
     let channelCount: Int
+    /// C-H: an admin marked this category as sport (false when absent).
+    var sport = false
     var id: String { "\(sourceId):\(rawID)" }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, channelCount
+        case rawID = "id", sourceId, name, channelCount, sport
     }
-    init(rawID: String, sourceId: Int, name: String, channelCount: Int) {
+    init(rawID: String, sourceId: Int, name: String, channelCount: Int, sport: Bool = false) {
         self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.channelCount = channelCount
+        self.sport = sport
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -71,6 +77,7 @@ nonisolated struct Category: Decodable, Hashable, Identifiable, Sendable {
         sourceId = try c.decode(Int.self, forKey: .sourceId)
         name = try c.decode(String.self, forKey: .name)
         channelCount = (try? c.decode(Int.self, forKey: .channelCount)) ?? 0
+        sport = (try? c.decode(Bool.self, forKey: .sport)) ?? false
     }
 }
 
@@ -101,6 +108,9 @@ struct Channel: Decodable, Identifiable, Equatable {
     // C-A (server flag `channelNumbers`): the channel's persistent number.
     // Absent/null on older servers and for an unnumbered channel.
     var number: Int? = nil
+    // `library/recent`: a watched channel that no longer exists in the
+    // playlist comes back with `unavailable: true` (and no logo or EPG).
+    var unavailable: Bool? = nil
     var id: String { "\(sourceId):\(rawID)" }
     /// The number as shown ("504"), never locale-grouped.
     var numberText: String? { number.map { String($0) } }
@@ -109,7 +119,7 @@ struct Channel: Decodable, Identifiable, Equatable {
     // channel that appears in several categories.
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, now, next, stableId, number
+        case rawID = "id", sourceId, name, logo, category, now, next, stableId, number, unavailable
     }
 }
 

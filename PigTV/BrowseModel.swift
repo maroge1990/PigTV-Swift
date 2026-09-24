@@ -19,6 +19,11 @@ final class BrowseModel: ObservableObject {
     @Published var favourites: [Channel] = []
     @Published var favouritesBusy = false
     @Published var favouritesError: String?
+    // Home (build 28): `GET library/recent`, most recent first.
+    @Published var recent: [Channel] = []
+    private var initialGuideLoad: Task<Void, Never>?
+    /// Set only by the offline UI fixtures: Home then makes no requests.
+    var isFixture = false
     @Published var mutationBusy = false
     @Published var actionMessage: String?
     @Published var actionError: String?
@@ -147,6 +152,27 @@ final class BrowseModel: ObservableObject {
             guard generation == guideGeneration, !(error is CancellationError) else { return }
             guideError = error.localizedDescription
         }
+    }
+
+    /// The first guide load, shared by whichever screen appears first (Home
+    /// or the Guide): the cached guide when it still covers the present,
+    /// then the network. A second caller waits for the same load.
+    func loadInitialGuide() async {
+        if let initialGuideLoad { await initialGuideLoad.value; return }
+        guard guide.isEmpty else { return }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.loadCachedGuide()
+            if self.guide.isEmpty || self.fromCache {
+                if !self.fromCache {
+                    self.window = GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn)
+                }
+                await self.loadGuide(reset: true, keepVisible: self.fromCache)
+            }
+        }
+        initialGuideLoad = task
+        await task.value
+        initialGuideLoad = nil
     }
 
     // Cached guide: used only while nothing is loaded, and only if it still
@@ -298,6 +324,53 @@ final class BrowseModel: ObservableObject {
             exportTopShelf()
         }
         catch { favouritesError = error.localizedDescription }
+    }
+
+    /// Home: what this user watched last (server `library/recent`). An
+    /// older server without the route (404) simply has no history.
+    func loadRecent() async {
+        do {
+            let rows: [Channel] = try await client.request("library/recent",
+                query: [URLQueryItem(name: "limit", value: "20")])
+            recent = rows.filter { $0.unavailable != true }
+        } catch {
+            if error as? PigTVError == .http(404) { recent = [] }
+        }
+    }
+
+    // MARK: Home channels
+
+    /// A guide row as Home draws it.
+    func homeChannel(_ row: GuideChannel) -> HomeChannel {
+        HomeChannel(sourceId: row.sourceId, rawID: row.rawID, name: row.name, number: number(for: row),
+                    logo: logo(for: row), category: row.category, stableId: row.stableId, programmes: row.programmes)
+    }
+
+    /// A server channel (favourite, recent) as Home draws it: its guide row
+    /// when the guide has it (by id, else by stable identity), else its own
+    /// now/next.
+    func homeChannel(_ channel: Channel) -> HomeChannel {
+        if let row = guideRow(id: channel.id, identityKey: channel.identityKey) { return homeChannel(row) }
+        let programmes = [channel.now, channel.next].compactMap { $0 }.map {
+            GuideProgramme(title: $0.title, description: nil, startTime: $0.startTime, endTime: $0.endTime)
+        }
+        return HomeChannel(sourceId: channel.sourceId, rawID: channel.rawID, name: channel.name,
+                           number: showsChannelNumbers ? channel.number : nil, logo: logo(for: channel),
+                           category: channel.category, stableId: channel.stableId, programmes: programmes)
+    }
+
+    /// The guide's row for a channel: by id, else by stable identity (a
+    /// playlist reorder changes the id but not the identity).
+    func guideRow(id: String, identityKey: String) -> GuideChannel? {
+        if let row = guideChannel(id: id) { return row }
+        guard identityKey != id else { return nil }
+        return guide.first { $0.identityKey == identityKey }
+    }
+
+    /// The Channel the player needs for a Home card.
+    func playable(_ channel: HomeChannel) -> Channel {
+        Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: channel.logo,
+                category: channel.category, now: nil, next: nil, stableId: channel.stableId, number: channel.number)
     }
 
     // Matched on the stable identity (server 0097): one favourite covers every

@@ -31,6 +31,9 @@ final class AppModel: ObservableObject {
     // channel; not touched by beginPlayback, so leaving and reopening the
     // player on the same channel keeps the previous memory.
     @Published private(set) var previousChannel: Channel?
+    // Home (build 28): the last channel played on this device, kept across
+    // launches for the "Continue watching" hero.
+    @Published private(set) var lastWatched: LastWatched? = LastWatched.load()
 
     private var authRetry: (server: String, until: Date)?
     private var client: APIClient?
@@ -205,6 +208,8 @@ final class AppModel: ObservableObject {
         cancelPairing()
         pendingLink = nil
         TopShelfExport.clear()
+        LastWatched.clear()
+        lastWatched = nil
         client = nil
         serverInfo = nil
         browse = nil
@@ -264,6 +269,7 @@ final class AppModel: ObservableObject {
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         currentPlayback = model
         playback = model
+        remember(channel)
         playbackBusy = true
         playerPresented = true
     }
@@ -277,6 +283,15 @@ final class AppModel: ObservableObject {
         model.prerequisite = Task { _ = await old.stop() }
         currentPlayback = model
         playback = model
+        remember(channel)
+    }
+
+    private func remember(_ channel: Channel) {
+        let entry = LastWatched(sourceId: channel.sourceId, rawID: channel.rawID, name: channel.name,
+                                number: channel.number, logo: channel.logo, category: channel.category,
+                                stableId: channel.stableId)
+        entry.save()
+        lastWatched = entry
     }
 
     // A1.2: swap back to the channel switchPlayback(to:) last switched away
@@ -337,6 +352,30 @@ final class AppModel: ObservableObject {
     func configureClientForTesting(_ client: APIClient, browse: BrowseModel? = nil) {
         self.client = client
         if let browse { self.browse = browse }
+    }
+
+    // Offline Home fixture (PIGTV_UI_TEST_SCREEN=home): the guide fixture
+    // plus favourites, history, recordings, sport categories and logos.
+    func injectHomeFixture(firstRun: Bool = false) {
+        guard let address = try? ServerAddress("http://127.0.0.1:3000"),
+              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportCategories":true,"recordingHls":true}}"#.utf8)) else { return }
+        let client = APIClient(address: address, token: "fixture", info: info)
+        let model = BrowseModel(client: client)
+        model.isFixture = true
+        model.guide = GuideFixtures.channels(logos: true)
+        if !firstRun {
+            model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
+            model.recent = GuideFixtures.recent(from: model.guide).map(model.asChannel)
+            model.recordings = GuideFixtures.recordings()
+            lastWatched = GuideFixtures.lastWatched(from: model.guide)
+        } else {
+            lastWatched = nil
+        }
+        GuideFixtures.preloadLogos()
+        browse = model
+        categories = GuideFixtures.categories()
+        serverInfo = info
+        user = GuideFixtures.user()
     }
 
     // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).

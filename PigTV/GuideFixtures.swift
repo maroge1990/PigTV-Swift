@@ -1,11 +1,12 @@
 #if DEBUG
 import Foundation
+import UIKit
 
 // Synthetic guide data for offline UI iteration (the R14 block-slide work has
 // no server in the simulator). Launch with PIGTV_UI_TEST_SCREEN=guide.
 enum GuideFixtures {
     static func categories() -> [Category] {
-        [Category(rawID: "sports", sourceId: 1, name: "Sports", channelCount: 6),
+        [Category(rawID: "sports", sourceId: 1, name: "Sports", channelCount: 6, sport: true),
          Category(rawID: "movies", sourceId: 1, name: "Movies", channelCount: 4),
          Category(rawID: "news", sourceId: 1, name: "News", channelCount: 3),
          Category(rawID: "kids", sourceId: 1, name: "Kids", channelCount: 1)]
@@ -18,7 +19,7 @@ enum GuideFixtures {
         ("BBC News", "news"), ("Sky News", "news"), ("CNN International", "news"),
         ("CBeebies", "kids")]
 
-    static func channels() -> [GuideChannel] {
+    static func channels(logos: Bool = false) -> [GuideChannel] {
         let step = 1000.0 // ms per second
         let now = Date().timeIntervalSince1970 * step
         let hour = 3600.0 * step
@@ -41,7 +42,7 @@ enum GuideFixtures {
                     let length = longLive ? 3.0 : lengths[k % lengths.count]
                     // Real EPGs often start a minute or two off the half hour.
                     let end = t + length * hour - (k % 3 == 0 ? 90 * step : 0)
-                    programmes.append(GuideProgramme(title: "\(titles[k % titles.count]) \(index + 1)",
+                    programmes.append(GuideProgramme(title: logos ? homeTitle(category, k) : "\(titles[k % titles.count]) \(index + 1)",
                         description: "Synthetic programme for layout testing on \(name). It runs for \(Int(length * 60)) minutes.",
                         startTime: t, endTime: end))
                     // Providers sometimes list a programme twice (merged EPG
@@ -55,8 +56,87 @@ enum GuideFixtures {
                 }
             }
             return GuideChannel(rawID: "ch\(index)", sourceId: 1, name: name,
-                                logo: nil, category: category, programmes: programmes)
+                                logo: logos ? logoKey(index) : nil, category: category, programmes: programmes,
+                                number: 501 + index)
         }
+    }
+
+    // MARK: Home fixture (PIGTV_UI_TEST_SCREEN=home)
+
+    /// Plausible titles per category for the Home screenshots.
+    private static func homeTitle(_ category: String, _ k: Int) -> String {
+        let pool: [String]
+        switch category {
+        case "sports": pool = ["LIVE: Premier League", "Super Rugby Highlights", "AFL: Round 12 Live", "Golf Central",
+                               "F1: Practice 2 Live", "NRL 360", "Test Cricket: Day 3", "The Back Page"]
+        case "movies": pool = ["The Long Way Home", "Northern Lights", "A Quiet Harbour", "Midnight Express Train", "Paper Moons"]
+        case "news": pool = ["The World Tonight", "Business Live", "Weather Watch", "The Briefing", "Newsnight"]
+        default: pool = ["Bluey", "Hey Duggee", "Octonauts", "Peppa Pig"]
+        }
+        return pool[k % pool.count]
+    }
+
+    private static func logoKey(_ index: Int) -> String { "fixture-logo-\(index)" }
+
+    /// Synthetic wordmark logos (a coloured tile with the channel's name),
+    /// put straight into ChannelArtwork's cache so nothing is fetched.
+    @MainActor static func preloadLogos() {
+        let colours: [UIColor] = [
+            UIColor(red: 0.05, green: 0.28, blue: 0.62, alpha: 1), UIColor(red: 0.78, green: 0.10, blue: 0.14, alpha: 1),
+            UIColor(red: 0.10, green: 0.55, blue: 0.30, alpha: 1), UIColor(red: 0.85, green: 0.20, blue: 0.10, alpha: 1),
+            UIColor(red: 0.60, green: 0.05, blue: 0.10, alpha: 1), UIColor(red: 0.42, green: 0.14, blue: 0.62, alpha: 1),
+            UIColor(red: 0.08, green: 0.08, blue: 0.10, alpha: 1), UIColor(red: 0.12, green: 0.36, blue: 0.70, alpha: 1),
+            UIColor(red: 0.55, green: 0.12, blue: 0.40, alpha: 1), UIColor(red: 0.70, green: 0.55, blue: 0.10, alpha: 1),
+            UIColor(red: 0.62, green: 0.08, blue: 0.08, alpha: 1), UIColor(red: 0.00, green: 0.40, blue: 0.60, alpha: 1),
+            UIColor(red: 0.80, green: 0.10, blue: 0.12, alpha: 1), UIColor(red: 0.95, green: 0.60, blue: 0.10, alpha: 1)]
+        let size = CGSize(width: 320, height: 180)
+        for (index, entry) in names.enumerated() {
+            let image = UIGraphicsImageRenderer(size: size).image { context in
+                let rect = CGRect(origin: .zero, size: size).insetBy(dx: 10, dy: 22)
+                colours[index % colours.count].setFill()
+                UIBezierPath(roundedRect: rect, cornerRadius: 22).fill()
+                let style = NSMutableParagraphStyle()
+                style.alignment = .center
+                let text = entry.0.uppercased() as NSString
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 30, weight: .heavy), .foregroundColor: UIColor.white,
+                    .paragraphStyle: style]
+                let bounds = text.boundingRect(with: CGSize(width: rect.width - 24, height: rect.height),
+                                               options: .usesLineFragmentOrigin, attributes: attributes, context: nil)
+                text.draw(with: CGRect(x: rect.minX + 12, y: rect.midY - bounds.height / 2,
+                                       width: rect.width - 24, height: bounds.height),
+                          options: .usesLineFragmentOrigin, attributes: attributes, context: nil)
+            }
+            ChannelArtwork.preload(image, for: logoKey(index))
+        }
+    }
+
+    static func favourites(from guide: [GuideChannel]) -> [GuideChannel] {
+        [2, 0, 6, 10, 7, 4, 13].compactMap { guide.indices.contains($0) ? guide[$0] : nil }
+    }
+
+    static func recent(from guide: [GuideChannel]) -> [GuideChannel] {
+        [2, 11, 0, 8, 5, 12, 3].compactMap { guide.indices.contains($0) ? guide[$0] : nil }
+    }
+
+    @MainActor static func lastWatched(from guide: [GuideChannel]) -> LastWatched? {
+        guard guide.indices.contains(2) else { return nil }
+        let row = guide[2]
+        return LastWatched(sourceId: row.sourceId, rawID: row.rawID, name: row.name, number: row.number,
+                           logo: row.logo, category: row.category, stableId: row.stableId)
+    }
+
+    static func recordings() -> [Recording] {
+        let now = Date().timeIntervalSince1970 * 1000
+        let hour = 3_600_000.0
+        let rows = [
+            #"{"id":31,"title":"Grand Final Replay","channel_name":"Fox Footy 504","started_at":\#(now - 0.6 * hour),"status":"recording","duration_sec":2100}"#,
+            #"{"id":30,"title":"The Headlines","channel_name":"BBC News","started_at":\#(now - 20 * hour),"status":"completed","duration_sec":1800}"#,
+            #"{"id":29,"title":"Feature Film: The Long Way Home","channel_name":"HBO","started_at":\#(now - 30 * hour),"status":"completed","duration_sec":6900}"#,
+            #"{"id":28,"title":"Documentary: Deep Oceans","channel_name":"Sky News","started_at":\#(now - 52 * hour),"status":"completed","duration_sec":3300}"#,
+            #"{"id":27,"title":"Classic Replay","channel_name":"Sky Sports Main Event","started_at":\#(now - 75 * hour),"status":"completed","duration_sec":5400}"#,
+            #"{"id":26,"title":"Weekend Special","channel_name":"TCM","started_at":\#(now - 4 * hour),"status":"scheduled"}"#]
+        return rows.compactMap { try? JSONDecoder().decode(Recording.self, from: Data($0.utf8)) }
     }
 
     static func user() -> User {

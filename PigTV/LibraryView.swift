@@ -2,18 +2,29 @@ import SwiftUI
 
 struct LibraryView: View {
     @ObservedObject var model: AppModel
+    /// The tab the app opens on (Home; the offline fixtures pick their own).
+    var initialTab = "home"
+    @State private var tab: String?
     var body: some View {
         // Accent tint on the TabView so the selected tab reads pink — the
         // white selection was hard to distinguish from unselected tabs.
-        TabView {
+        TabView(selection: Binding(get: { tab ?? (model.browse == nil ? "settings" : initialTab) },
+                                   set: { tab = $0 })) {
             if let browse = model.browse {
+                // Build 28: Home opens with the app.
+                HomeView(app: model, model: browse, openGuide: { tab = "guide" })
+                    .tabItem { Label("Home", systemImage: "house") }
+                    .tag("home")
                 GuideView(app: model, model: browse)
                     .tabItem { Label("TV Guide", systemImage: "calendar") }
+                    .tag("guide")
                 RecordingsView(model: browse)
                     .tabItem { Label("Recordings", systemImage: "record.circle") }
+                    .tag("recordings")
             }
             LibrarySettings(model: model, isTab: true)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag("settings")
         }
         .tint(Color("AccentColor"))
     }

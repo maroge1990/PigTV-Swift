@@ -393,6 +393,8 @@ final class PlaybackLifecycleTests: XCTestCase {
     // PlaybackModels and stops the outgoing one (never-started, so no
     // network call), so a plain client with no synthetic server is enough.
     func testAppModelRemembersPreviousChannelAndCanReturnToIt() throws {
+        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
+        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         let app = AppModel()
         app.configureClientForTesting(try client(SyntheticServer { _, _, _ in .init(status: 200, json: "{}") }))
         let a = Channel(rawID: "a", sourceId: 1, name: "A", logo: nil, category: nil, now: nil, next: nil)
@@ -408,6 +410,9 @@ final class PlaybackLifecycleTests: XCTestCase {
         app.returnToPreviousChannel()
         XCTAssertEqual(app.playback?.channel.id, b.id, "Returning swaps back to the remembered channel")
         XCTAssertEqual(app.previousChannel?.id, c.id, "Returning is itself a switch, so it updates the memory in turn")
+        // Home (build 28): the last channel played is remembered across launches.
+        XCTAssertEqual(app.lastWatched?.id, b.id)
+        XCTAssertEqual(LastWatched.load()?.id, b.id)
     }
 
     func testServerLogoFallbackSkipsArtworkIndexRequestsAndWaitingIsNotRecording() async throws {

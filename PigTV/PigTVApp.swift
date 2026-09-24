@@ -36,6 +36,8 @@ struct PigTVApp: App {
                 SettingsTestScreen()
             } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "guide" {
                 GuideTestScreen()
+            } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+                HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
             } else if ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" {
                 Color.clear
             } else {
@@ -64,18 +66,34 @@ private struct SettingsTestScreen: View {
 private struct GuideTestScreen: View {
     @StateObject private var model = AppModel()
     var body: some View {
-        LibraryView(model: model)
+        LibraryView(model: model, initialTab: "guide")
             .task { model.injectGuideFixture() }
             // PIGTV_UI_TEST_APPEARANCE=light|dark: the tvOS simulator cannot
             // switch its own appearance (simctl ui appearance is unsupported).
-            .preferredColorScheme(Self.scheme)
+            .preferredColorScheme(fixtureScheme)
     }
-    private static var scheme: ColorScheme? {
-        switch ProcessInfo.processInfo.environment["PIGTV_UI_TEST_APPEARANCE"] {
-        case "light": return .light
-        case "dark": return .dark
-        default: return nil
-        }
+}
+
+// Offline Home (build 28): PIGTV_UI_TEST_SCREEN=home (history, favourites,
+// sport, recordings, logos) or home-empty (the first-run state).
+private struct HomeTestScreen: View {
+    let firstRun: Bool
+    @StateObject private var model = AppModel()
+    var body: some View {
+        LibraryView(model: model)
+            #if os(tvOS)
+            .buttonStyle(TVActionStyle())
+            #endif
+            .task { model.injectHomeFixture(firstRun: firstRun) }
+            .preferredColorScheme(fixtureScheme)
+    }
+}
+
+private var fixtureScheme: ColorScheme? {
+    switch ProcessInfo.processInfo.environment["PIGTV_UI_TEST_APPEARANCE"] {
+    case "light": return .light
+    case "dark": return .dark
+    default: return nil
     }
 }
 #endif
