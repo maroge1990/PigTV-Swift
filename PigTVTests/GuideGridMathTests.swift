@@ -148,4 +148,18 @@ final class GuideGridMathTests: XCTestCase {
         XCTAssertEqual(GuideRowFilter.rows(from: guide, category: nil, search: "", onlyFavourites: true,
                                            favouriteKeys: ["1:s:x"]).map(\.id), ["1:a"])
     }
+
+    func testClipAppearanceChangesOnlyWhenTheDrawingDoes() {
+        XCTAssertEqual(GuideGridMath.clipAppearance(leadingClip: 0, visibleWidth: 352), .init())
+        XCTAssertEqual(GuideGridMath.clipAppearance(leadingClip: 0.3, visibleWidth: 100), .init())
+        // Clipped but still wide: the same appearance at every clipped amount,
+        // so sliding does not re-render the cell.
+        let wide = GuideGridMath.clipAppearance(leadingClip: 40, visibleWidth: 312)
+        XCTAssertEqual(wide, .init(clipped: true, titleShift: 0))
+        XCTAssertEqual(GuideGridMath.clipAppearance(leadingClip: 150, visibleWidth: 202), wide)
+        // Narrower than the title: it slides by whole points.
+        XCTAssertEqual(GuideGridMath.clipAppearance(leadingClip: 252, visibleWidth: 100.4).titleShift, -60)
+        XCTAssertEqual(GuideGridMath.clipAppearance(leadingClip: 252, visibleWidth: 100.2),
+                       GuideGridMath.clipAppearance(leadingClip: 252.2, visibleWidth: 100))
+    }
 }

@@ -73,6 +73,10 @@ struct GuideView: View {
     @State private var gridFocus: GuideFocus?
     @State private var gridRequest: GuideGridRequest?
     @State private var rowsVersion = 0
+    // Bumped when the player or a details cover closes (the UIKit grid
+    // refocuses its last programme or tile).
+    @State private var gridFocusRestore = 0
+    @FocusState private var gridHasFocus: Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Row pitch. Every tile (logo and programme) is inset by half a gap on
@@ -277,7 +281,7 @@ struct GuideView: View {
             .onChange(of: model.favourites.count) { refreshRows() }
             .onChange(of: search) { refreshRows() }
             .onChange(of: app.playback == nil) { _, closed in
-                if closed { focus = retainedFocus }
+                if closed { focus = retainedFocus; if usesGridView { gridFocusRestore += 1; claimGridFocus() } }
             }
             .fullScreenCover(item: $selection, onDismiss: finishDetails) { item in
                 ProgrammeDetails(model: model, channel: item.channel, programme: item.programme) {
@@ -318,7 +322,7 @@ struct GuideView: View {
         ZStack(alignment: .topLeading) {
             GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window, clock: clock,
                 scheduled: model.scheduledKeys, recording: model.recordingChannels,
-                request: gridRequest, resetToken: scrollToTop,
+                request: gridRequest, resetToken: scrollToTop, focusRestoreToken: gridFocusRestore,
                 actions: GuideGridActions(
                     select: { channel, programme in
                         if programme.isLive(at: Date()) { play(channel) }
@@ -335,6 +339,7 @@ struct GuideView: View {
                         lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
                     },
                     viewportChanged: { setViewport($0) }))
+                .focused($gridHasFocus)
             Button("Now", systemImage: "location.fill") { goTo(Date()) }
                 .frame(width: channelWidth, alignment: .leading)
             if model.guideBusy && model.guide.isEmpty {
@@ -746,6 +751,7 @@ struct GuideView: View {
         if usesGridView {
             // The UIKit grid owns its focus; it only needs the time.
             gridRequest = GuideGridRequest(viewport: GuideNavigation.rounded(date))
+            claimGridFocus()
             setViewport(GuideNavigation.rounded(date))
             return
         }
@@ -774,8 +780,20 @@ struct GuideView: View {
     }
     private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds)) }
     private func reload() { Task { await model.loadGuide() } }
+    /// Moves SwiftUI focus into the UIKit grid; the grid then focuses the
+    /// cell it chose (its pending focus). UIKit's own focus requests are
+    /// refused while a SwiftUI control holds focus.
+    /// Retried briefly: a cover may still be dismissing.
+    private func claimGridFocus() {
+        for delay in [0.0, 0.4, 0.8] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { if !gridHasFocus { gridHasFocus = true } }
+        }
+    }
     private func finishDetails() {
         focus = retainedFocus
+        // Unless a Watch choice is about to open the player (it restores
+        // focus when it closes).
+        if usesGridView && pendingWatch == nil { gridFocusRestore += 1; claimGridFocus() }
         Task { await model.loadFavourites() }
         if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel) }
     }

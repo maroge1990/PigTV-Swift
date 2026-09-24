@@ -117,5 +117,73 @@ final class GuideGridNavigationUITests: XCTestCase {
         XCTAssertEqual(focusedLabel(app), startLabel, "Up did not return to the first row")
         XCTAssertGreaterThanOrEqual(top.minY, grid.minY - 1, "\(focusedLabel(app)) is under the time header")
     }
+
+    /// A2.1 follow-up: Now after moving right returns the grid to the live
+    /// baseline and focus to what is on now in the same row.
+    @MainActor
+    func testNowAfterMovingRight() throws {
+        let app = launch()
+        enterFirstRow(app)
+        XCTAssertTrue(focusedLabel(app).hasPrefix("\(tile), "), "no first-row programme focused: \(focusedLabel(app))")
+        let baseline = viewport(app)
+        for _ in 0..<6 { XCUIRemote.shared.press(.right) }
+        let later = focusedLabel(app)
+        XCTAssertNotEqual(viewport(app), baseline, "the grid did not scroll")
+        // The Now button sits over the channel column, below the category
+        // chips; Up from the grid goes to the header's right-hand buttons,
+        // so reach it from the tab bar via the chips (All, then Down).
+        var path: [String] = []
+        for _ in 0..<5 where focusedLabel(app) != "TV Guide" {
+            XCUIRemote.shared.press(.up); path.append(focusedLabel(app))
+        }
+        XCUIRemote.shared.press(.down); path.append(focusedLabel(app))
+        for _ in 0..<12 where focusedLabel(app) != "All" {
+            XCUIRemote.shared.press(.left); path.append(focusedLabel(app))
+        }
+        XCUIRemote.shared.press(.down); path.append(focusedLabel(app))
+        XCTAssertEqual(focusedLabel(app), "Now", "did not reach Now: \(path)")
+        XCUIRemote.shared.press(.select)
+        let deadline = Date().addingTimeInterval(3)
+        while !focusedLabel(app).hasPrefix("\(tile), ") && Date() < deadline { usleep(200_000) }
+        attach(app, "New guide after Now")
+        // The live baseline (the current half hour; it may have moved on
+        // during the test).
+        let half = (Date().timeIntervalSince1970 / 1800).rounded(.down) * 1800
+        let current = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: half))
+        XCTAssertTrue([baseline, current].contains(viewport(app)), "Now did not return to the live baseline: \(viewport(app))")
+        let now = focusedLabel(app)
+        XCTAssertTrue(now.hasPrefix("\(tile), ") && now != later, "focus did not follow the grid to the first row: \(now)")
+        // It is the programme on now: everything left of it has finished,
+        // so Left goes straight to the tile without moving the grid.
+        let atNow = viewport(app)
+        XCUIRemote.shared.press(.left)
+        XCTAssertEqual(focusedLabel(app), tile, "focus after Now was not on the live programme (\(now))")
+        XCTAssertEqual(viewport(app), atNow)
+    }
+
+    /// A long press on a programme offers the old grid's menu; after the
+    /// details cover closes, focus is back on that programme.
+    @MainActor
+    func testLongPressMenuAndFocusAfterDetails() throws {
+        let app = launch()
+        enterFirstRow(app)
+        XCUIRemote.shared.press(.right)
+        let programme = focusedLabel(app)
+        XCTAssertTrue(programme.hasPrefix("\(tile), "), "no programme focused: \(programme)")
+        XCUIRemote.shared.press(.select, forDuration: 1.5)
+        XCTAssertTrue(app.otherElements["Programme details"].waitForExistence(timeout: 3), "no context menu")
+        XCTAssertTrue(app.otherElements["Channel and favourites"].exists)
+        attach(app, "New guide long-press menu")
+        // The menu opens on its first item, Programme details.
+        XCUIRemote.shared.press(.select)
+        sleep(2)
+        attach(app, "Programme details cover")
+        XCTAssertFalse(app.otherElements["Channel and favourites"].exists, "the menu did not close")
+        XCTAssertNotEqual(focusedLabel(app), programme, "no details cover opened")
+        XCUIRemote.shared.press(.menu)
+        let deadline = Date().addingTimeInterval(4)
+        while focusedLabel(app) != programme && Date() < deadline { usleep(200_000) }
+        XCTAssertEqual(focusedLabel(app), programme, "focus did not return to the programme after details")
+    }
 }
 #endif

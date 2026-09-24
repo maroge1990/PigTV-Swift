@@ -43,6 +43,9 @@ struct GuideGridView: UIViewControllerRepresentable {
     let request: GuideGridRequest?
     /// Bumped on a category change: back to the top row and the live baseline.
     let resetToken: Int
+    /// Bumped when the player or a details cover closes: focus returns to
+    /// the last focused programme or tile.
+    var focusRestoreToken = 0
     let actions: GuideGridActions
 
     func makeUIViewController(context: Context) -> GuideGridViewController {
@@ -67,6 +70,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     private var rowsVersion = Int.min
     private var requestID: UUID?
     private var resetToken = Int.min
+    private var restoreToken = Int.min
 
     // Navigation state.
     /// The committed (half-hour) viewport: where the grid is or is animating to.
@@ -191,7 +195,64 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             commit(GuideGridMath.snapped(request.viewport))
             anchor = max(request.viewport, Date())
             setOffset(for: viewport, animated: true)
+            // Now / Earlier / Later / Jump to: focus follows the grid, to
+            // the programme under the new anchor in the focused row (else
+            // the first visible row).
+            let row = focusIdentity.flatMap { identity in store.rows.firstIndex { $0.id == identity.channel } }
+                ?? firstVisibleRow()
+            if let row { claimFocus(target(in: row, at: anchor)) }
         }
+        if view.focusRestoreToken != restoreToken {
+            let first = restoreToken == Int.min
+            restoreToken = view.focusRestoreToken
+            if !first { restoreFocus() }
+        }
+    }
+
+    // MARK: Focus from outside the grid
+
+    private func firstVisibleRow() -> Int? {
+        guard !store.rows.isEmpty else { return nil }
+        let row = Int((collectionView.contentOffset.y / layout.metrics.rowHeight).rounded(.up))
+        return min(max(0, row), store.rows.count - 1)
+    }
+
+    /// The programme under `time` in `section` (the placeholder for a row
+    /// without programmes, the tile when nothing is left to focus).
+    private func target(in section: Int, at time: Date) -> IndexPath {
+        let list = store.programmes(in: section)
+        if list.isEmpty { return IndexPath(item: 1, section: section) }
+        guard let programme = GuideGridMath.verticalTarget(in: list, anchor: time, now: Date()) else {
+            return IndexPath(item: 0, section: section)
+        }
+        return store.indexPath(section: section, start: programme.startTime) ?? IndexPath(item: 0, section: section)
+    }
+
+    /// After the player or a details cover closes: back to the last focused
+    /// programme or tile (or, if that programme has finished meanwhile, to
+    /// what is on now in its row).
+    private func restoreFocus() {
+        guard let identity = focusIdentity,
+              let section = store.rows.firstIndex(where: { $0.id == identity.channel }) else { return }
+        var target = store.indexPath(section: section, start: identity.start) ?? IndexPath(item: 0, section: section)
+        if let programme = store.programme(at: target), programme.end <= Date() {
+            target = self.target(in: section, at: Date())
+        }
+        claimFocus(target)
+    }
+
+    /// Makes `target` the grid's focus: the row is brought on screen and
+    /// the cell becomes the preferred focus. Focus outside the grid (a header
+    /// button, a closing cover) is moved in by GuideView through SwiftUI
+    /// (`claimGridFocus`): UIKit's own focus requests are refused while a
+    /// SwiftUI control holds focus.
+    private func claimFocus(_ target: IndexPath) {
+        let y = clampedY(collectionView.contentOffset.y, row: target.section)
+        if y != collectionView.contentOffset.y {
+            collectionView.contentOffset.y = y
+            collectionView.layoutIfNeeded()
+        }
+        requestFocus(target)
     }
 
     private func apply(rows: [GuideChannel]) {
@@ -265,10 +326,9 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     /// animation has finished regardless.
     private func animationFrame() {
         guard let pending = pendingFocus else { return }
-        if pending.item == 0 || layout.visibleWidth(of: pending) >= 1 || !animator.isRunning {
-            collectionView.setNeedsFocusUpdate()
-            collectionView.updateFocusIfNeeded()
-        }
+        guard pending.item == 0 || layout.visibleWidth(of: pending) >= 1 || !animator.isRunning else { return }
+        collectionView.setNeedsFocusUpdate()
+        collectionView.updateFocusIfNeeded()
     }
 
     private func requestFocus(_ indexPath: IndexPath) {

@@ -97,6 +97,21 @@ nonisolated enum GuideGridMath {
         return (result, edge - frame.minX)
     }
 
+    /// What a programme cell draws differently when clipped: square
+    /// leading corners, and a title shifted left (≤ 0, whole points) once the
+    /// visible part is narrower than the 160 pt the title needs. The cell
+    /// re-renders its SwiftUI content only when this changes, not on every
+    /// scroll frame that changes the clipped amount.
+    struct ClipAppearance: Equatable {
+        var clipped = false
+        var titleShift: CGFloat = 0
+    }
+
+    static func clipAppearance(leadingClip: CGFloat, visibleWidth: CGFloat) -> ClipAppearance {
+        guard leadingClip > 0.5 else { return ClipAppearance() }
+        return ClipAppearance(clipped: true, titleShift: min(0, (visibleWidth - 160).rounded()))
+    }
+
     /// The pinned channel tile: always at the left of the visible area.
     static func tileFrame(row: Int, offsetX: CGFloat, metrics m: GuideGridMetrics) -> CGRect {
         CGRect(x: offsetX + m.inset, y: rowMinY(row, metrics: m) + m.inset,

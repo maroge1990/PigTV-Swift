@@ -20,14 +20,12 @@ struct GuideGridProgrammeInfo: Equatable {
 struct GuideGridProgrammeView: View {
     let info: GuideGridProgrammeInfo
     let focused: Bool
-    /// Points of the cell hidden under the channel column (0 when whole).
-    let leadingClip: CGFloat
-    /// Visible width of the cell.
-    let width: CGFloat
+    /// Clipped under the channel column, and how far the title slides.
+    let clip: GuideGridMath.ClipAppearance
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let clippedLeading = leadingClip > 0.5
+        let clippedLeading = clip.clipped
         let shape = UnevenRoundedRectangle(topLeadingRadius: clippedLeading ? 0 : 10,
                                            bottomLeadingRadius: clippedLeading ? 0 : 10,
                                            bottomTrailingRadius: 10, topTrailingRadius: 10)
@@ -36,7 +34,7 @@ struct GuideGridProgrammeView: View {
         // left, until the visible part gets narrower than the text needs;
         // then it slides under the channel column like the cell does
         // (GuideView's `hiddenLeading`).
-        let shift = clippedLeading ? min(0, width - 160) : 0
+        let shift = clip.titleShift
         return content
             // A clipped cell narrower than the title lays out as if it were
             // 160 pt wide and lets the rest slide under the column.
@@ -107,7 +105,7 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
     var info: GuideGridProgrammeInfo? {
         didSet { if info != oldValue { setNeedsUpdateConfiguration() } }
     }
-    private var leadingClip: CGFloat = 0
+    private var clip = GuideGridMath.ClipAppearance()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -121,9 +119,13 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
 
     override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
         super.apply(layoutAttributes)
-        let clip = (layoutAttributes as? GuideGridAttributes)?.leadingClip ?? 0
-        if abs(clip - leadingClip) > 0.25 || (clip > 0) != (leadingClip > 0) {
-            leadingClip = clip
+        // Only the cells at the channel column see their clip change while
+        // the grid slides, and only a change in what they draw (clipped or
+        // not, the title's shift) rebuilds the SwiftUI content.
+        let next = GuideGridMath.clipAppearance(leadingClip: (layoutAttributes as? GuideGridAttributes)?.leadingClip ?? 0,
+                                                visibleWidth: layoutAttributes.frame.width)
+        if next != clip {
+            clip = next
             setNeedsUpdateConfiguration()
         }
     }
@@ -131,7 +133,7 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info else { contentConfiguration = nil; return }
         contentConfiguration = UIHostingConfiguration {
-            GuideGridProgrammeView(info: info, focused: state.isFocused, leadingClip: leadingClip, width: bounds.width)
+            GuideGridProgrammeView(info: info, focused: state.isFocused, clip: clip)
         }
         .margins(.all, 0)
         accessibilityLabel = info.programme.map { "\(info.channelName), \($0.title)" }
