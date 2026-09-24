@@ -76,7 +76,7 @@ private struct OnNowRowView: View {
                         Text(row.current?.title ?? "No programme information")
                             .font(.subheadline.weight(.semibold)).lineLimit(1)
                         if row.current != nil {
-                            ProgressView(value: row.progress).tint(Color.accentColor)
+                            ProgressView(value: row.progress).tint(Color.pigAccent)
                                 .accessibilityHidden(true)
                         }
                         if let next = row.next {

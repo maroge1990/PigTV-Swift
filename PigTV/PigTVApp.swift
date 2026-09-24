@@ -38,6 +38,9 @@ struct PigTVApp: App {
                 GuideTestScreen()
             } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
                 HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
+            } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
+                      DesignTestScreen.screens.contains(screen) {
+                DesignTestScreen(screen: screen)
             } else if ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" {
                 Color.clear
             } else {
@@ -59,6 +62,7 @@ private struct SettingsTestScreen: View {
             #if os(tvOS)
             .buttonStyle(TVActionStyle())
             #endif
+            .preferredColorScheme(fixtureScheme)
     }
 }
 
@@ -86,6 +90,67 @@ private struct HomeTestScreen: View {
             #endif
             .task { model.injectHomeFixture(firstRun: firstRun) }
             .preferredColorScheme(fixtureScheme)
+    }
+}
+
+// One secondary screen on the Home fixture's data, for design checks
+// (build 28 consistency pass): PIGTV_UI_TEST_SCREEN=programme | programme-later
+// | record | schedule | channel | recording | search | jump | unreachable |
+// onboarding, with PIGTV_UI_TEST_APPEARANCE=light|dark.
+private struct DesignTestScreen: View {
+    static let screens: Set<String> = ["programme", "programme-later", "record", "schedule", "channel", "recording",
+                                       "search", "jump", "unreachable", "onboarding"]
+    let screen: String
+    @StateObject private var app = AppModel()
+    @State private var ready = false
+    @State private var search = "sky"
+    @State private var programmeSearch = "live"
+    @State private var jumpDate = Date()
+
+    var body: some View {
+        Group {
+            if ready, let browse = app.browse { content(browse) } else { Color.clear }
+        }
+        #if os(tvOS)
+        .buttonStyle(TVActionStyle())
+        #endif
+        .tint(Color("AccentColor"))
+        .preferredColorScheme(fixtureScheme)
+        .task {
+            app.injectHomeFixture()
+            app.serverText = "http://pigtv.local:3000"
+            if let browse = app.browse { GuideFixtures.addSchedules(to: browse) }
+            ready = true
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ browse: BrowseModel) -> some View {
+        let channel = browse.guide[2]
+        let now = Date()
+        let live = channel.programmes.first { $0.isLive(at: now) } ?? channel.programmes[0]
+        let later = GuideFixtures.scheduledProgramme(in: browse.guide)
+        switch screen {
+        case "programme", "record":
+            ProgrammeDetails(model: browse, channel: channel, programme: live, watch: {}, openSchedule: {})
+        case "programme-later":
+            ProgrammeDetails(model: browse, channel: later.channel, programme: later.programme, watch: {}, openSchedule: {})
+        case "schedule":
+            ChannelScheduleView(model: browse, channel: channel, logo: browse.logo(for: channel), watch: {})
+        case "channel":
+            ChannelDetails(channel: browse.asChannel(channel), browse: browse, watch: {}, openSchedule: {})
+        case "recording":
+            RecordingDetails(model: browse, original: browse.recordings[1])
+        case "search":
+            GuideSearchSheet(model: browse, search: $search, programmeSearch: $programmeSearch,
+                             done: {}, choose: { _, _ in }, refresh: {})
+        case "jump":
+            GuideJumpSheet(date: $jumpDate, show: { _ in }, cancel: {})
+        case "unreachable":
+            UnreachableView(model: app, message: "This device cannot reach the server. Check that you are on the home network or that Tailscale is connected.")
+        default:
+            OnboardingView(model: app)
+        }
     }
 }
 

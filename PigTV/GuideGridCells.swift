@@ -42,8 +42,8 @@ struct GuideGridProgrammeView: View {
             .offset(x: shift)
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .background(focused ? Color.accentColor.opacity(0.22) : Color.guideCell(scheme), in: shape)
-            .overlay { shape.stroke(focused ? Color.accentColor : .clear, lineWidth: 3) }
+            .background(focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme), in: shape)
+            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .clipShape(Rectangle())
             .opacity(finished ? 0.4 : 1)
     }
@@ -64,7 +64,7 @@ struct GuideGridProgrammeView: View {
                 if programme.isLive(at: info.clock) {
                     ProgressView(value: min(1, max(0, info.clock.timeIntervalSince(programme.start)
                                                   / programme.end.timeIntervalSince(programme.start))))
-                        .tint(.accentColor).scaleEffect(x: 1, y: 0.4).frame(height: 4)
+                        .tint(.pigAccent).scaleEffect(x: 1, y: 0.4).frame(height: 4)
                         .accessibilityHidden(true)
                 }
             }
@@ -96,7 +96,7 @@ struct GuideGridTileView: View {
                 }
                 .padding(6)
             }
-            .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.accentColor : .clear, lineWidth: 3) }
+            .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
     }
 }
 

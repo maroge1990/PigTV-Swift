@@ -43,10 +43,10 @@ struct QuickGuidePanel: View {
                                     Spacer()
                                     if let now {
                                         ProgressView(value: min(1, max(0, context.date.timeIntervalSince(now.start) / now.end.timeIntervalSince(now.start))))
-                                            .tint(.accentColor).frame(width: 120)
+                                            .tint(.pigAccent).frame(width: 120)
                                     }
                                     if channel.id == app.playback?.channel.id {
-                                        Image(systemName: "play.fill").foregroundStyle(Color.accentColor)
+                                        Image(systemName: "play.fill").foregroundStyle(Color.pigAccent)
                                     }
                                 }
                                 .padding(.horizontal, 16).padding(.vertical, 8)
@@ -78,9 +78,9 @@ private struct QuickGuideRowStyle: ButtonStyle {
         let active = focused || configuration.isPressed
         configuration.label
             .foregroundStyle(.primary)
-            .background(active ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.06),
+            .background(active ? Color.pigAccent.opacity(0.25) : Color.primary.opacity(0.06),
                         in: RoundedRectangle(cornerRadius: 12))
-            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(active ? Color.accentColor : .clear, lineWidth: 3) }
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(active ? Color.pigAccent : .clear, lineWidth: 3) }
     }
 }
 #endif

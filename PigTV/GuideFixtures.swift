@@ -126,12 +126,30 @@ enum GuideFixtures {
                            logo: row.logo, category: row.category, stableId: row.stableId)
     }
 
+    /// A programme later today on channel 0, with a schedule for it.
+    static func scheduledProgramme(in guide: [GuideChannel]) -> (channel: GuideChannel, programme: GuideProgramme) {
+        let channel = guide[0]
+        let now = Date()
+        let later = channel.programmes.filter { $0.start > now.addingTimeInterval(2 * 3600) }.sorted { $0.start < $1.start }
+        return (channel, later.first ?? channel.programmes[0])
+    }
+
+    @MainActor static func addSchedules(to model: BrowseModel) {
+        let target = scheduledProgramme(in: model.guide)
+        let json = #"[{"id":90,"title":"\#(target.programme.title)","channel_name":"\#(target.channel.name)","program_start":\#(Int64(target.programme.startTime)),"program_end":\#(Int64(target.programme.endTime)),"status":"scheduled"}]"#
+        model.schedules = (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
+    }
+
+    static func markers() -> RecordingMarkers? {
+        try? JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"completed","markers":[{"id":1,"startMs":612000,"endMs":795000,"type":"ad"},{"id":2,"startMs":1420000,"endMs":1590000,"type":"ad"},{"id":3,"startMs":2210000,"endMs":2365000,"type":"ad"}]}"#.utf8))
+    }
+
     static func recordings() -> [Recording] {
         let now = Date().timeIntervalSince1970 * 1000
         let hour = 3_600_000.0
         let rows = [
             #"{"id":31,"title":"Grand Final Replay","channel_name":"Fox Footy 504","started_at":\#(now - 0.6 * hour),"status":"recording","duration_sec":2100}"#,
-            #"{"id":30,"title":"The Headlines","channel_name":"BBC News","started_at":\#(now - 20 * hour),"status":"completed","duration_sec":1800}"#,
+            #"{"id":30,"title":"The Headlines","channel_name":"BBC News","started_at":\#(now - 20 * hour),"status":"completed","duration_sec":1800,"file_size_bytes":1288490188,"ad_detect_status":"completed"}"#,
             #"{"id":29,"title":"Feature Film: The Long Way Home","channel_name":"HBO","started_at":\#(now - 30 * hour),"status":"completed","duration_sec":6900}"#,
             #"{"id":28,"title":"Documentary: Deep Oceans","channel_name":"Sky News","started_at":\#(now - 52 * hour),"status":"completed","duration_sec":3300}"#,
             #"{"id":27,"title":"Classic Replay","channel_name":"Sky Sports Main Event","started_at":\#(now - 75 * hour),"status":"completed","duration_sec":5400}"#,

@@ -51,7 +51,7 @@ struct ChannelArtwork: View {
                 Color.clear
 
             } else {
-                Image(systemName: "tv.fill").foregroundStyle(Color.accentColor).padding(8)
+                Image(systemName: "tv.fill").foregroundStyle(Color.pigAccent).padding(8)
             }
         }
         .accessibilityHidden(true)

@@ -92,25 +92,44 @@ struct UnreachableView: View {
     @ObservedObject var model: AppModel
     let message: String
     @State private var showSignIn = false
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         if showSignIn {
             OnboardingView(model: model)
         } else {
-            VStack(spacing: 24) {
-                Image("PigLogo").resizable().scaledToFit().frame(width: 120, height: 96)
-                Text("Can't reach PigTV").font(.largeTitle.bold())
-                Text(message).multilineTextAlignment(.center).foregroundStyle(.secondary)
-                    .frame(maxWidth: 700)
-                Text(model.serverText).font(.callout.monospaced()).foregroundStyle(.secondary)
-                if model.authBusy {
-                    ProgressView("Trying again…")
-                } else {
-                    Button("Try again", systemImage: "arrow.clockwise") { Task { await model.restore() } }
-                        .pigPrimaryButton()
-                    Button("Use a different server") { showSignIn = true }
+            ZStack {
+                PigPageBackground()
+                VStack(spacing: 26) {
+                    Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
+                        .accessibilityHidden(true)
+                    Eyebrow(text: "Offline")
+                    Text("Can't reach PigTV").font(DetailType.title)
+                    Text(message).font(DetailType.meta).multilineTextAlignment(.center).foregroundStyle(.secondary)
+                        .frame(maxWidth: 820)
+                    Text(model.serverText).font(DetailType.rowDetail.monospaced())
+                        .padding(.horizontal, 20).padding(.vertical, 8)
+                        .background(Color.guideCell(scheme), in: Capsule())
+                    if model.authBusy {
+                        ProgressView("Trying again…").padding(.top, 10)
+                    } else {
+                        DetailActions {
+                            Button("Try again", systemImage: "arrow.clockwise") { Task { await model.restore() } }
+                                .pigPrimaryButton()
+                            Button("Use a different server", systemImage: "server.rack") { showSignIn = true }
+                        }
+                        .padding(.top, 10)
+                    }
+                    Text("PigTV keeps trying every 20 seconds while this screen is open.")
+                        .font(DetailType.rowDetail).foregroundStyle(.secondary)
                 }
+                .padding(60)
+                .frame(maxWidth: 1100)
+                .background {
+                    LogoWash(logo: nil, client: nil)
+                        .clipShape(RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous))
+                }
+                .padding(40)
             }
-            .padding(48)
             .task {
                 // Keep retrying quietly while this screen is showing.
                 while !Task.isCancelled {
@@ -124,56 +143,103 @@ struct UnreachableView: View {
 
 struct OnboardingView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        NavigationStack {
+        ZStack {
+            PigPageBackground()
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    Label { Text("PigTV") } icon: { Image("PigLogo").resizable().scaledToFit().frame(width: 80, height: 64) }
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(Color("AccentColor"))
-                    Text("Your channels. Your server.").font(.title2)
-                    Text("Connect to your PigTV server to watch live TV.")
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Server address").font(.headline)
-                        TextField("http://pigtv.local:3000", text: $model.serverText)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .disabled(model.authBusy)
-                        Text("Use the server address only, including its port if needed. HTTP is supported for your home network.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Divider()
-                    if let pairing = model.pairing {
-                        Text(pairing.code).font(.largeTitle.monospaced().bold())
-                            .accessibilityLabel("Pairing code \(pairing.code.map(String.init).joined(separator: " "))")
-                        Text("Open PigTV in your browser, sign in, then approve this code in Settings → Devices.")
-                        Text("Expires \(pairing.expiry, style: .time)").foregroundStyle(.secondary)
-                        ProgressView("Waiting for approval…")
-                        Button("Cancel pairing") { model.cancelPairing() }
-                    } else {
-                        Button("Pair with browser", systemImage: "link") { model.startPairing() }
-                            .pigPrimaryButton()
-                            .disabled(model.authBusy || model.serverText.isEmpty)
-                        Text("Or sign in with your PigTV account").font(.headline)
-                        TextField("Username", text: $model.username)
-                            .autocorrectionDisabled().textInputAutocapitalization(.never).disabled(model.authBusy)
-                        SecureField("Password", text: $model.password).disabled(model.authBusy)
-                        Button("Sign in") { Task { await model.login() } }
-                            .buttonStyle(.bordered)
-                            .disabled(model.authBusy || model.serverText.isEmpty || model.username.isEmpty || model.password.isEmpty)
-                        if model.authBusy { ProgressView("Connecting…") }
-                        if model.canRestore {
-                            Button("Retry saved sign-in") { Task { await model.restore() } }.disabled(model.authBusy)
-                        }
-                    }
+                #if os(tvOS)
+                HStack(alignment: .top, spacing: 60) {
+                    brand.frame(width: 620, alignment: .leading)
+                    form.frame(maxWidth: 900, alignment: .leading)
                 }
-                .padding(32)
-                .frame(maxWidth: 740)
+                .padding(.vertical, 40)
                 .frame(maxWidth: .infinity)
+                #else
+                VStack(alignment: .leading, spacing: 28) {
+                    brand
+                    form
+                }
+                .padding(24)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
+                #endif
             }
         }
+    }
+
+    /// The pig, the name and what PigTV is, over the pink wash.
+    private var brand: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
+                .accessibilityHidden(true)
+            Text("PigTV").font(DetailType.title).foregroundStyle(Color.pigAccent)
+            Text("Your channels. Your server.").font(DetailType.pageTitle)
+            Text("Connect to your PigTV server to watch live TV, browse the guide and play your recordings.")
+                .font(DetailType.meta).foregroundStyle(.secondary)
+        }
+        .padding(DetailMetrics.heroPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            LogoWash(logo: nil, client: nil)
+                .clipShape(RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous))
+        }
+    }
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            PigSectionHeader(title: "Server address")
+            TextField("http://pigtv.local:3000", text: $model.serverText)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .pigField()
+                .disabled(model.authBusy)
+            Text("The server address only, with its port if needed. HTTP is fine on your home network.")
+                .font(DetailType.rowDetail).foregroundStyle(.secondary)
+            if let pairing = model.pairing {
+                PigSectionHeader(title: "Pair with your browser")
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(pairing.code).font(.system(size: 72, weight: .bold, design: .monospaced))
+                        .tracking(8)
+                        .accessibilityLabel("Pairing code \(pairing.code.map(String.init).joined(separator: " "))")
+                    Text("Open PigTV in your browser, sign in, then approve this code in Settings → Devices.")
+                        .font(DetailType.meta)
+                    Text("Expires \(pairing.expiry, style: .time)").font(DetailType.rowDetail).foregroundStyle(.secondary)
+                    ProgressView("Waiting for approval…")
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                DetailActions {
+                    Button("Cancel pairing", systemImage: "xmark") { model.cancelPairing() }
+                }
+            } else {
+                DetailActions {
+                    Button("Pair with browser", systemImage: "link") { model.startPairing() }
+                        .pigPrimaryButton()
+                        .disabled(model.authBusy || model.serverText.isEmpty)
+                }
+                PigSectionHeader(title: "Or sign in with your PigTV account")
+                TextField("Username", text: $model.username)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never).disabled(model.authBusy)
+                    .pigField()
+                SecureField("Password", text: $model.password).disabled(model.authBusy)
+                    .pigField()
+                DetailActions {
+                    Button("Sign in", systemImage: "person.crop.circle") { Task { await model.login() } }
+                        .disabled(model.authBusy || model.serverText.isEmpty || model.username.isEmpty || model.password.isEmpty)
+                    if model.canRestore {
+                        Button("Retry saved sign-in", systemImage: "arrow.clockwise") { Task { await model.restore() } }
+                            .disabled(model.authBusy)
+                    }
+                }
+                if model.authBusy { ProgressView("Connecting…") }
+            }
+        }
+        #if os(tvOS)
+        .buttonStyle(TVActionStyle())
+        #endif
     }
 }
 

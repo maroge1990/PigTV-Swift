@@ -31,124 +31,6 @@ struct LibraryView: View {
 }
 
 
-// EPG responses can outlive their current programme. Never present expired
-// metadata as live; the supplied next programme can take over when it starts.
-private func currentProgramme(_ channel: Channel, at date: Date) -> Programme? {
-    [channel.now, channel.next].compactMap { $0 }.first {
-        $0.start <= date && date < $0.end
-    }
-}
-
-struct ChannelDetails: View {
-    let channel: Channel
-    var browse: BrowseModel? = nil
-    let watch: () -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 16) {
-                        ChannelArtwork(logo: browse?.logo(for: channel) ?? channel.logo, client: browse?.client)
-                            .frame(width: 96, height: 64)
-                        Text(channel.name).font(.title2.bold())
-                    }
-                    Button("Watch live", systemImage: "play.fill", action: watch)
-                        .pigPrimaryButton()
-                    if let category = channel.category {
-                        Text(category).foregroundStyle(.secondary)
-                    }
-                    TimelineView(.periodic(from: .now, by: 30)) { timeline in
-                        VStack(alignment: .leading, spacing: 24) {
-                            if let now = currentProgramme(channel, at: timeline.date) {
-                                programme(now, heading: "On now")
-                                ProgressView(value: now.progress(at: timeline.date))
-                            } else {
-                                Text("Programme information unavailable")
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let next = channel.next, next.start > timeline.date {
-                                Divider()
-                                programme(next, heading: "Up next")
-                            }
-                        }
-                    }
-                    if let browse { FavouriteControl(channel: channel, client: browse.client) }
-                    Button("Back to channels") { dismiss() }
-                }.padding(40).frame(maxWidth: 850, alignment: .leading)
-                    .frame(maxWidth: .infinity)
-            }
-            .navigationTitle("Channel")
-            .presentationBackground { PigPageBackground() }
-        }
-    }
-
-    private func programme(_ item: Programme, heading: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(heading.uppercased()).font(.caption.bold()).foregroundStyle(Color.accentColor)
-            Text(item.title).font(.title2.bold())
-            HStack {
-                Text(item.start, style: .time)
-                Text("–")
-                Text(item.end, style: .time)
-            }.foregroundStyle(.secondary)
-        }
-    }
-}
-
-struct FavouriteControl: View {
-    let channel: Channel
-    let client: APIClient
-    @State private var saved: Bool?
-    @State private var busy = false
-    @State private var error: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let saved {
-                Button(saved ? "Remove from favourites" : "Add to favourites",
-                       systemImage: saved ? "heart.fill" : "heart") {
-                    Task { await change(!saved) }
-                }.disabled(busy)
-            } else if busy {
-                ProgressView("Checking favourite…")
-            } else {
-                Button("Check favourite status") { Task { await check() } }
-            }
-            if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
-        }.task { await check() }
-    }
-
-    private func check() async {
-        guard !busy else { return }
-        busy = true
-        error = nil
-        defer { busy = false }
-        do {
-            let result: FavouriteCheck = try await client.request("favorites/check", query: [
-                URLQueryItem(name: "sourceId", value: String(channel.sourceId)),
-                URLQueryItem(name: "itemId", value: channel.rawID),
-                URLQueryItem(name: "itemType", value: "channel")
-            ])
-            saved = result.isFavorite
-        } catch { self.error = error.localizedDescription }
-    }
-
-    private func change(_ value: Bool) async {
-        guard !busy else { return }
-        busy = true
-        error = nil
-        defer { busy = false }
-        do {
-            let result: ActionResult = try await client.request("favorites", method: value ? "POST" : "DELETE",
-                body: FavouriteBody(sourceId: channel.sourceId, itemId: channel.rawID))
-            guard result.success else { throw PigTVError.message("The server did not confirm the favourite change.") }
-            saved = value
-        } catch { self.error = error.localizedDescription }
-    }
-}
-
 struct LibrarySettings: View {
     @ObservedObject var model: AppModel
     var isTab: Bool = false
@@ -175,8 +57,13 @@ struct LibrarySettings: View {
             .padding(.horizontal, 48).padding(.vertical, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {
+        // The app's page, not the system's blurred backdrop (build 28).
+        .background(PigPageBackground())
+        .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             signOutButton
+            Button("Stay signed in", role: .cancel) {}
+        } message: {
+            Text("You will need to pair or sign in again on this device.")
         }
         #else
         NavigationStack {
@@ -222,9 +109,10 @@ struct LibrarySettings: View {
                 SettingsRow("Signed in as", value: model.user?.username ?? "")
                 SettingsRow("Server", value: model.serverText)
                 Button(role: .destructive) { confirmSignOut = true } label: {
-                    Text("Sign out")
+                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                         #if os(tvOS)
                         .font(.system(size: 24))
+                        .foregroundStyle(.red)
                         .padding(.horizontal, 24).padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         #endif
@@ -247,12 +135,14 @@ struct LibrarySettings: View {
         }
     }
 
+    @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            #if os(tvOS)
-            .font(.system(size: 24, weight: .semibold)).padding(.top, 8)
-            #endif
-            .foregroundStyle(.secondary)
+        #if os(tvOS)
+        // The detail screens' section heading (build 28).
+        PigSectionHeader(title: title)
+        #else
+        Text(title).foregroundStyle(.secondary)
+        #endif
     }
 
     private var signOutButton: some View {

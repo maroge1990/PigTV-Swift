@@ -90,6 +90,7 @@ struct HomeView: View {
     @State private var playingRecording: Recording?
     @State private var recordingDetails: Recording?
     @State private var pendingWatch: Channel?
+    @State private var pendingSchedule: GuideChannel?
     @Environment(\.colorScheme) private var scheme
 
     private struct HomeDetails: Identifiable {
@@ -177,10 +178,13 @@ struct HomeView: View {
         .onChange(of: app.categories) { refresh() }
         .onChange(of: app.playback == nil) { _, closed in if closed { clock = Date(); refresh() } }
         .fullScreenCover(item: $details, onDismiss: finishCover) { item in
-            ProgrammeDetails(model: model, channel: item.channel, programme: item.programme) {
+            ProgrammeDetails(model: model, channel: item.channel, programme: item.programme, watch: {
                 pendingWatch = model.asChannel(item.channel)
                 details = nil
-            }
+            }, openSchedule: {
+                pendingSchedule = item.channel
+                details = nil
+            })
         }
         .fullScreenCover(item: $schedule, onDismiss: finishCover) { channel in
             ChannelScheduleView(model: model, channel: channel, logo: model.logo(for: channel)) {
@@ -317,6 +321,11 @@ struct HomeView: View {
     }
 
     private func finishCover() {
+        if let channel = pendingSchedule {
+            pendingSchedule = nil
+            DispatchQueue.main.async { schedule = channel }
+            return
+        }
         if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel) }
     }
 }
@@ -333,7 +342,6 @@ private struct HomeHero: View {
     let watch: () -> Void
     let schedule: (() -> Void)?
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     private enum Control: Hashable { case watch, schedule }
     @FocusState private var focus: Control?
 
@@ -351,7 +359,7 @@ private struct HomeHero: View {
         .defaultFocus($focus, .watch, priority: .userInitiated)
         .padding(.horizontal, 64).padding(.vertical, 52)
         .frame(maxWidth: .infinity, minHeight: HomeMetrics.heroHeight, alignment: .leading)
-        .background { wash }
+        .background { LogoWash(logo: channel.logo, client: model.client) }
         .clipShape(RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous)
@@ -365,7 +373,7 @@ private struct HomeHero: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { wash }
+        .background { LogoWash(logo: channel.logo, client: model.client) }
         .clipShape(RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous))
         #endif
     }
@@ -389,7 +397,7 @@ private struct HomeHero: View {
     private func details(_ row: OnNowRow) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("CONTINUE WATCHING").font(HomeMetrics.eyebrow).tracking(2.5)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color.pigAccent)
             HStack(spacing: 12) {
                 if let number = channel.number {
                     Text(verbatim: String(number)).monospacedDigit()
@@ -405,7 +413,7 @@ private struct HomeHero: View {
             if let current = row.current {
                 Text("\(timeRange(current)) · \(remaining(current))")
                     .font(HomeMetrics.heroDetail).foregroundStyle(.secondary)
-                HomeProgressBar(fraction: row.progress, height: 6)
+                PigProgressBar(fraction: row.progress, height: 6)
                     .frame(maxWidth: 560)
                     .accessibilityLabel("\(Int(row.progress * 100)) percent through")
             }
@@ -438,35 +446,6 @@ private struct HomeHero: View {
             .padding(.top, 14)
         }
         .frame(maxWidth: 900, alignment: .leading)
-    }
-
-    /// The logo's colours, blurred and dimmed; the pink accent when there
-    /// is no logo. A solid surface with Reduce Transparency.
-    private var wash: some View {
-        ZStack {
-            (scheme == .dark ? Color(white: 0.07) : Color(white: 0.97))
-            if !reduceTransparency {
-                if channel.logo != nil {
-                    ChannelArtwork(logo: channel.logo, client: model.client, fill: true)
-                        .scaleEffect(1.8)
-                        .blur(radius: 90)
-                        .saturation(1.6)
-                        .opacity(scheme == .dark ? 0.75 : 0.45)
-                        .allowsHitTesting(false)
-                } else {
-                    RadialGradient(colors: [Color.accentColor.opacity(scheme == .dark ? 0.45 : 0.25), .clear],
-                                   center: .topTrailing, startRadius: 40, endRadius: 900)
-                }
-                // Veil: text side darkest (lightest in light mode), the logo
-                // side lets the colour through; a soft floor under it all.
-                LinearGradient(colors: scheme == .dark
-                               ? [.black.opacity(0.82), .black.opacity(0.55), .black.opacity(0.2)]
-                               : [.white.opacity(0.9), .white.opacity(0.7), .white.opacity(0.35)],
-                               startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, (scheme == .dark ? Color.black : Color.white).opacity(0.35)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-        }
     }
 
     private func timeRange(_ programme: GuideProgramme) -> String {
@@ -521,9 +500,9 @@ struct HomeCardButtonStyle: ButtonStyle {
         let shape = RoundedRectangle(cornerRadius: HomeMetrics.cardRadius, style: .continuous)
         configuration.label
             .foregroundStyle(.primary)
-            .background(focused ? Color.accentColor.opacity(0.22) : Color.guideCell(scheme), in: shape)
+            .background(focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme), in: shape)
             .clipShape(shape)
-            .overlay { shape.strokeBorder(focused ? Color.accentColor : .clear, lineWidth: 3) }
+            .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .scaleEffect(focused && !reduceMotion ? 1.07 : (configuration.isPressed ? 0.98 : 1))
             .shadow(color: .black.opacity(focused ? (scheme == .dark ? 0.6 : 0.25) : 0), radius: focused ? 26 : 0, y: focused ? 16 : 0)
             .animation(.easeOut(duration: 0.18), value: focused)
@@ -548,7 +527,7 @@ private struct CardArt<Badge: View>: View {
                     .padding(.horizontal, HomeMetrics.artInset.width).padding(.vertical, HomeMetrics.artInset.height)
             } else if let symbol {
                 Image(systemName: symbol).font(.system(size: 54, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Color.pigAccent)
             } else {
                 Text(name).font(HomeMetrics.cardTitle).multilineTextAlignment(.center)
                     .lineLimit(3).minimumScaleFactor(0.7).padding(16)
@@ -572,7 +551,7 @@ private struct CardArt<Badge: View>: View {
 private struct CardBadge: View {
     let text: String
     var systemImage: String? = nil
-    var colour: Color = .accentColor
+    var colour: Color = .pigAccent
     var body: some View {
         HStack(spacing: 6) {
             if let systemImage { Image(systemName: systemImage) }
@@ -582,20 +561,6 @@ private struct CardBadge: View {
         .padding(.horizontal, 12).padding(.vertical, 5)
         .background(colour, in: Capsule())
         .foregroundStyle(.white)
-    }
-}
-
-struct HomeProgressBar: View {
-    let fraction: Double
-    var height: CGFloat = 4
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.15))
-                Capsule().fill(Color.accentColor).frame(width: max(height, geometry.size.width * min(1, max(0, fraction))))
-            }
-        }
-        .frame(height: height)
     }
 }
 
@@ -620,7 +585,7 @@ private struct HomeChannelCard: View {
                     Text(row.current?.title ?? "No programme information")
                         .font(HomeMetrics.cardTitle).lineLimit(2, reservesSpace: true)
                     if let current = row.current {
-                        HomeProgressBar(fraction: row.progress)
+                        PigProgressBar(fraction: row.progress)
                         Text("Until \(current.end.formatted(date: .omitted, time: .shortened))" + (row.next.map { " · then \($0.title)" } ?? ""))
                             .font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
                     } else {
@@ -691,7 +656,7 @@ private struct HomeRecordingCard: View {
                     Text(recording.channel_name ?? "Recording").font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
                     Text(recording.title).font(HomeMetrics.cardTitle).lineLimit(2, reservesSpace: true)
                     if let resume {
-                        HomeProgressBar(fraction: resume)
+                        PigProgressBar(fraction: resume)
                     }
                     Text(detail(recordingNow: recordingNow, resuming: resume != nil))
                         .font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)

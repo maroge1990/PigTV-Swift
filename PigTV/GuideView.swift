@@ -43,6 +43,8 @@ struct GuideView: View {
     @State private var channelDetails: Channel?
     @State private var schedule: GuideChannel?
     @State private var pendingWatch: Channel?
+    // A details page's "Channel schedule": opened once that page has closed.
+    @State private var pendingSchedule: GuideChannel?
     @State private var retainedFocus: GuideFocus?
     @State private var filterStripMetrics = FilterStripMetrics()
     // Filtered rows are cached: filtering hundreds of channels inside `body`
@@ -144,6 +146,9 @@ struct GuideView: View {
                 }.padding(.vertical, 12)
             }
             .buttonStyle(GuideFilterStyle())
+            // The app's page behind the guide (build 28): tvOS otherwise
+            // shows its blurred system backdrop in dark mode.
+            .background(PigPageBackground())
             .task {
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
@@ -188,16 +193,22 @@ struct GuideView: View {
                 if closed { focus = retainedFocus; if usesGridView { gridFocusRestore += 1; claimGridFocus() } }
             }
             .fullScreenCover(item: $selection, onDismiss: finishDetails) { item in
-                ProgrammeDetails(model: model, channel: item.channel, programme: item.programme) {
+                ProgrammeDetails(model: model, channel: item.channel, programme: item.programme, watch: {
                     pendingWatch = asChannel(item.channel)
                     selection = nil
-                }
+                }, openSchedule: {
+                    pendingSchedule = item.channel
+                    selection = nil
+                })
             }
             .fullScreenCover(item: $channelDetails, onDismiss: finishDetails) { channel in
-                ChannelDetails(channel: channel, browse: model) {
+                ChannelDetails(channel: channel, browse: model, watch: {
                     pendingWatch = channel
                     channelDetails = nil
-                }
+                }, openSchedule: model.guideChannel(id: channel.id).map { row in {
+                    pendingSchedule = row
+                    channelDetails = nil
+                } })
             }
             .fullScreenCover(item: $schedule, onDismiss: finishDetails) { channel in
                 ChannelScheduleView(model: model, channel: channel, logo: model.logo(for: channel)) {
@@ -258,7 +269,7 @@ struct GuideView: View {
             }
             .overlay(alignment: .topLeading) {
                 if let offset = nowLineOffset(width: timelineWidth, duration: duration) {
-                    Rectangle().fill(Color.accentColor).frame(width: 2)
+                    Rectangle().fill(Color.pigAccent).frame(width: 2)
                         .offset(x: 24 + channelWidth + offset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -560,57 +571,17 @@ struct GuideView: View {
     #endif
 
     private var searchSheet: some View {
-        NavigationStack {
-            Form {
-                Section("Channels") {
-                    TextField("Channel name", text: $search).autocorrectionDisabled()
-                    Button("Show matching channels") { searching = false }
-                    if !search.isEmpty { Button("Clear channel filter") { search = ""; searching = false } }
-                }
-                Section("Programmes") {
-                    TextField("Programme title", text: $programmeSearch).autocorrectionDisabled()
-                    let results = model.searchProgrammes(programmeSearch)
-                    if programmeSearch.count >= 2 && results.isEmpty {
-                        Text("No upcoming programmes match.").foregroundStyle(.secondary)
-                    }
-                    ForEach(Array(results.enumerated()), id: \.offset) { _, hit in
-                        Button {
-                            pendingSelection = GuideSelection(channel: hit.channel, programme: hit.programme)
-                            searching = false
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(hit.programme.title).font(.headline).lineLimit(1)
-                                Text("\(hit.channel.name) • \(hit.programme.start.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                Button("Refresh guide") { searching = false; reload() }
-            }.navigationTitle("Search")
-                .presentationBackground { PigPageBackground() }
-        }
+        GuideSearchSheet(model: model, search: $search, programmeSearch: $programmeSearch,
+                         done: { searching = false },
+                         choose: { channel, programme in
+                             pendingSelection = GuideSelection(channel: channel, programme: programme)
+                             searching = false
+                         },
+                         refresh: { searching = false; reload() })
     }
     private var datePicker: some View {
-        NavigationStack {
-            Form {
-                #if os(tvOS)
-                ForEach(0..<7) { day in
-                    Button(Calendar.current.date(byAdding: .day, value: day, to: Date())!.formatted(date: .complete, time: .omitted)) {
-                        jumpDate = Calendar.current.date(byAdding: .day, value: day, to: Date())!
-                    }
-                }
-                Picker("Hour", selection: Binding(get: { Calendar.current.component(.hour, from: jumpDate) }, set: { hour in
-                    jumpDate = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: jumpDate) ?? jumpDate
-                })) { ForEach(0..<24) { Text(String(format: "%02d:00", $0)).tag($0) } }
-                #else
-                DatePicker("Date and time", selection: $jumpDate)
-                #endif
-                Button("Show guide") { choosingDate = false; goTo(jumpDate) }
-                Button("Cancel") { choosingDate = false }
-            }.navigationTitle("Jump to day and time")
-                .presentationBackground { PigPageBackground() }
-        }
+        GuideJumpSheet(date: $jumpDate, show: { date in choosingDate = false; goTo(date) },
+                       cancel: { choosingDate = false })
     }
     // Start a channel and hand the player the current row order for channel up/down.
     private func play(_ channel: GuideChannel) {
@@ -705,6 +676,12 @@ struct GuideView: View {
         }
     }
     private func finishDetails() {
+        if let channel = pendingSchedule {
+            pendingSchedule = nil
+            // Presented after this cover has gone.
+            DispatchQueue.main.async { schedule = channel }
+            return
+        }
         focus = retainedFocus
         // Unless a Watch choice is about to open the player (it restores
         // focus when it closes).
@@ -752,134 +729,6 @@ struct ChannelTile: View {
     }
 }
 
-// Every programme on one channel from now onwards, for picking something to
-// watch or record without steering through the grid.
-struct ChannelScheduleView: View {
-    @ObservedObject var model: BrowseModel
-    let channel: GuideChannel
-    let logo: String?
-    let watch: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var selection: GuideSelection?
-
-    private var upcoming: [GuideProgramme] {
-        let now = Date()
-        return channel.programmes.filter { $0.end > now && $0.end > $0.start }.sorted { $0.start < $1.start }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 16) {
-                        ChannelArtwork(logo: logo, client: model.client).frame(width: 120, height: 68)
-                        Text(channel.name).font(.title2.bold())
-                        Spacer()
-                    }
-                    Button("Watch live", systemImage: "play.fill", action: watch).pigPrimaryButton()
-                    if upcoming.isEmpty {
-                        Text("No programme information for this channel.").foregroundStyle(.secondary)
-                    }
-                    ForEach(upcoming, id: \.startTime) { programme in
-                        Button { selection = GuideSelection(channel: channel, programme: programme) } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(programme.title).font(.headline).lineLimit(2)
-                                    Spacer()
-                                    if programme.isLive(at: Date()) {
-                                        Text("ON NOW").font(.caption.bold()).foregroundStyle(Color.accentColor)
-                                    }
-                                }
-                                Text("\(programme.start.formatted(date: .abbreviated, time: .shortened)) – \(programme.end.formatted(date: .omitted, time: .shortened))")
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                                if let description = programme.description, !description.isEmpty {
-                                    Text(description).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
-                                }
-                            }
-                            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 14))
-                    }
-                    Button("Done") { dismiss() }
-                }.padding(32).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity)
-            }
-            .navigationTitle("Programmes")
-            .presentationBackground { PigPageBackground() }
-            .sheet(item: $selection) { item in
-                ProgrammeDetails(model: model, channel: channel, programme: item.programme) {
-                    selection = nil
-                    watch()
-                }
-            }
-        }
-    }
-}
-
-struct ProgrammeDetails: View {
-    @ObservedObject var model: BrowseModel
-    let channel: GuideChannel
-    let programme: GuideProgramme
-    let watch: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var before = 0
-    @State private var after = 0
-    @State private var scheduled = false
-    @State private var confirming = false
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    Text(channel.name).font(.headline).foregroundStyle(Color.accentColor)
-                    Text(programme.title).font(.largeTitle.bold())
-                    Text("\(programme.start.formatted(date: .abbreviated, time: .shortened)) – \(programme.end.formatted(date: .omitted, time: .shortened))")
-                        .foregroundStyle(.secondary)
-                    if let description = programme.description, !description.isEmpty {
-                        Text(description)
-                    }
-                    TimelineView(.periodic(from: .now, by: 30)) { time in
-                        VStack(alignment: .leading, spacing: 20) {
-                            if programme.isLive(at: time.date) {
-                                Button("Watch channel live", systemImage: "play.fill", action: watch)
-                                    .pigPrimaryButton()
-                            }
-                            if programme.end > time.date && !scheduled {
-                                Picker("Start early", selection: $before) {
-                                    ForEach([0, 1, 2, 5, 10], id: \.self) { Text("\($0) minutes").tag($0) }
-                                }
-                                Picker("Finish late", selection: $after) {
-                                    ForEach([0, 2, 5, 10, 15, 30], id: \.self) { Text("\($0) minutes").tag($0) }
-                                }
-                                Button("Schedule recording", systemImage: "record.circle") { confirming = true }
-                                    .disabled(model.mutationBusy)
-                            } else if scheduled {
-                                Label("Recording scheduled", systemImage: "checkmark.circle.fill")
-                            } else {
-                                Text("This programme has ended. Catch-up playback is not available.")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    if model.mutationBusy { ProgressView("Saving…") }
-                    if let error = model.actionError { Text(error).foregroundStyle(.secondary) }
-                    Button("Done") { dismiss() }.disabled(model.mutationBusy)
-                }.padding(40).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity)
-            }
-            .navigationTitle("Programme")
-            .presentationBackground { PigPageBackground() }
-            .interactiveDismissDisabled(model.mutationBusy)
-            .confirmationDialog("Schedule this recording?", isPresented: $confirming) {
-                Button("Schedule recording") {
-                    Task { scheduled = await model.schedule(channel: channel, programme: programme, before: before, after: after) }
-                }
-            } message: {
-                Text("PigTV has one provider stream. Recording may need live playback to stop. If the programme has already started, only the remaining portion can be recorded.")
-            }
-            .onAppear { model.actionError = nil }
-        }
-    }
-}
-
 struct RetryBanner: View {
     let message: String
     let retry: () -> Void
@@ -890,28 +739,6 @@ struct RetryBanner: View {
             Spacer()
             Button("Retry", action: retry)
         }.padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal)
-    }
-}
-
-// Category chips share the app's pink language: focus is the bright pink
-// outline + translucent pink fill; the current category keeps a quieter pink
-// tint so it stays legible when focus moves elsewhere. Same treatment in both
-// appearances (accent is identical; the neutral rest state adapts).
-private struct GuideFilterStyle: ButtonStyle {
-    var selected = false
-    @Environment(\.isFocused) private var focused
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(GuideTypography.body)
-            .foregroundStyle(selected && !focused ? Color.accentColor : Color.primary)
-            .padding(.horizontal, 18).padding(.vertical, 10)
-            .background(focused ? Color.accentColor.opacity(0.22)
-                        : selected ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.07), in: Capsule())
-            .overlay {
-                Capsule().strokeBorder(focused ? Color.accentColor
-                    : selected ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.12),
-                    lineWidth: focused ? 3 : 1)
-            }
     }
 }
 
@@ -1051,15 +878,15 @@ private struct GuideTimelineRow: View {
             Text(programme.title).font(GuideTypography.body).lineLimit(caption == nil ? 2 : 1)
             if programme.isLive(at: clock) {
                 ProgressView(value: min(1, max(0, clock.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start))))
-                    .tint(.accentColor).scaleEffect(x: 1, y: 0.4).frame(height: 4)
+                    .tint(.pigAccent).scaleEffect(x: 1, y: 0.4).frame(height: 4)
                     .accessibilityHidden(true)
             }
         }
         .foregroundStyle(.primary)
         .padding(.leading, 12 + hiddenLeading).padding(.trailing, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(focused ? Color.accentColor.opacity(0.22) : Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.accentColor : .clear, lineWidth: 3) }
+        .background(focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
         .opacity(finished ? 0.4 : 1)
         .clipped()
     }

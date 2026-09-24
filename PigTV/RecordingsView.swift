@@ -41,7 +41,7 @@ struct RecordingsView: View {
                             Button { selected = item } label: {
                                 HStack(spacing: 20) {
                                     Image(systemName: item.status == "recording" ? "record.circle" : "play.rectangle")
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(Color.pigAccent)
                                     VStack(alignment: .leading, spacing: 8) {
                                         Text(item.title).font(.headline)
                                         Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
@@ -93,6 +93,7 @@ struct RecordingsView: View {
                 if model.recordingsBusy { ProgressView("Refreshing recordings…") }
             }
             .navigationTitle("Recordings")
+            .background(PigPageBackground())
             .task { await model.loadRecordings() }
             .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }
             .confirmationDialog("Cancel this recording?", isPresented: Binding(
@@ -111,98 +112,141 @@ struct RecordingsView: View {
 struct RecordingDetails: View {
     @ObservedObject var model: BrowseModel
     let original: Recording
-    @Environment(\.dismiss) private var dismiss
     @State private var markers: RecordingMarkers?
     @State private var markerError: String?
     @State private var loading = false
     @State private var deleting = false
     @State private var playing = false
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var playFocused: Bool
     private var item: Recording { model.recordings.first { $0.id == original.id } ?? original }
 
+    /// The channel's logo, found by name in the loaded guide.
+    private var logo: String? {
+        guard let name = item.channel_name, let row = model.guide.first(where: { $0.name == name }) else { return nil }
+        return model.logo(for: row)
+    }
+
+    private var resumeFraction: Double? {
+        guard item.status == "completed" else { return nil }
+        return HomeRows.resumeFraction(position: UserDefaults.standard.double(forKey: "pigtv.resume.\(item.id)"),
+                                       duration: item.duration_sec)
+    }
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    Text(item.title).font(.largeTitle.bold())
-                    Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
-                    Label(item.status.capitalized, systemImage: item.status == "recording" ? "record.circle" : "video")
-                        .foregroundStyle(Color.accentColor)
-                    if let date = item.started { Text(date.formatted(date: .abbreviated, time: .shortened)) }
-                    if let duration = item.duration_sec {
-                        Text("Duration: \(Int(max(0, duration) / 60)) minutes")
-                    }
-                    if let bytes = item.file_size_bytes, bytes >= 0, bytes < Double(Int64.max) {
-                        Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
-                    }
-                    if item.is_partial == 1 {
-                        Label("Partial recording", systemImage: "clock.badge.exclamationmark")
-                        Text("The beginning of the programme may be missing.").foregroundStyle(.secondary)
-                    }
-                    Divider()
-                    Text("Playback").font(.headline)
-                    // C-E: with `recordingHls` a recording still in progress
-                    // can be watched from its start while it grows.
-                    if let label = item.playLabel(recordingHls: model.client.info?.features.recordingHls == true) {
-                        Button(label, systemImage: "play.fill") { playing = true }.pigPrimaryButton()
-                        if item.status == "completed", UserDefaults.standard.double(forKey: "pigtv.resume.\(item.id)") > 10 {
-                            Text("Resumes where you left off.").font(.caption).foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Text("Playback is available once the recording has finished.").foregroundStyle(.secondary)
-                    }
-                    Divider()
-                    Text("Commercial breaks").font(.headline)
-                    Text("Analysis: \((markers?.status ?? item.ad_detect_status ?? "not analysed").capitalized)")
-                    if loading { ProgressView("Loading break information…") }
-                    if let error = markerError { Text(error).foregroundStyle(.secondary) }
-                    if let markers {
-                        let valid = markers.markers.filter { $0.valid && $0.type == "ad" }
-                        if valid.isEmpty { Text("No detected breaks available.").foregroundStyle(.secondary) }
-                        ForEach(valid) { marker in
-                            Text("\(time(marker.startMs)) – \(time(marker.endMs))").monospacedDigit()
-                        }
-                    }
-                    if item.status == "completed" {
-                        Button("Analyse commercial breaks", systemImage: "wand.and.stars") {
-                            Task { await model.detectAds(item); await loadMarkers() }
-                        }.disabled(model.mutationBusy || item.ad_detect_status == "running" || item.ad_detect_status == "pending")
-                    }
-                    Button("Refresh details", systemImage: "arrow.clockwise") {
-                        Task { await model.loadRecordings(); await loadMarkers() }
-                    }.disabled(loading || model.recordingsBusy)
-                    if let message = model.actionMessage { Text(message).foregroundStyle(.secondary) }
-                    if let error = model.actionError { Text(error).foregroundStyle(.secondary) }
-                    Divider()
-                    Button("Delete recording", role: .destructive) { deleting = true }
-                        .disabled(model.mutationBusy)
-                    Button("Done") { dismiss() }.disabled(model.mutationBusy)
-                }.padding(40).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity)
-            }
-            .navigationTitle("Recording")
-            .presentationBackground { PigPageBackground() }
-            .interactiveDismissDisabled(model.mutationBusy)
-            .task { await loadMarkers() }
-            .fullScreenCover(isPresented: $playing) { RecordingPlayerScreen(recording: item, client: model.client) }
-            .confirmationDialog("Permanently delete this recording?", isPresented: $deleting) {
-                Button("Delete recording and file", role: .destructive) {
-                    Task {
-                        await model.delete(item)
-                        if !model.recordings.contains(where: { $0.id == original.id }) { dismiss() }
+        let playLabel = item.playLabel(recordingHls: model.client.info?.features.recordingHls == true)
+        DetailPage {
+            DetailHero(logo: logo, client: model.client) {
+                HStack(alignment: .top) {
+                    ChannelLine(logo: logo, client: model.client, name: item.channel_name ?? "Channel unavailable",
+                                number: nil, detail: "Recording")
+                    Spacer(minLength: 20)
+                    statusBadge
+                }
+                .padding(.bottom, 12)
+                if let date = item.started {
+                    Eyebrow(text: "\(DetailText.day(date, now: Date())) · \(date.formatted(date: .omitted, time: .shortened))")
+                }
+                Text(item.title).font(DetailType.title).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                if !meta.isEmpty {
+                    Text(meta).font(DetailType.meta).foregroundStyle(.secondary)
+                }
+                if let resumeFraction {
+                    HStack(spacing: 18) {
+                        PigProgressBar(fraction: resumeFraction, height: 6).frame(maxWidth: 640)
+                        Text("Resumes where you left off").font(DetailType.meta).foregroundStyle(.secondary)
                     }
                 }
-            } message: {
-                Text("This removes \(item.title) and its file from the server. If recording is in progress it will stop first.")
+                if item.is_partial == 1 {
+                    HStack(spacing: 14) {
+                        StatusBadge(text: "Partial recording", systemImage: "clock.badge.exclamationmark", colour: .orange)
+                        Text("The beginning of the programme may be missing.").font(DetailType.meta).foregroundStyle(.secondary)
+                    }
+                }
             }
+            DetailActions {
+                if let playLabel {
+                    Button(resumeFraction == nil ? playLabel : "Resume", systemImage: "play.fill") { playing = true }
+                        .pigPrimaryButton()
+                        .focused($playFocused)
+                }
+                if item.status == "completed" {
+                    Button("Find breaks", systemImage: "wand.and.stars") {
+                        Task { await model.detectAds(item); await loadMarkers() }
+                    }
+                    .disabled(model.mutationBusy || item.ad_detect_status == "running" || item.ad_detect_status == "pending")
+                }
+                Button("Refresh", systemImage: "arrow.clockwise") {
+                    Task { await model.loadRecordings(); await loadMarkers() }
+                }
+                .disabled(loading || model.recordingsBusy)
+                Button(role: .destructive) { deleting = true } label: {
+                    Label("Delete", systemImage: "trash").foregroundStyle(.red)
+                }
+                .disabled(model.mutationBusy)
+            }
+            .defaultFocus($playFocused, true)
+            if playLabel == nil {
+                Text("Playback is available once the recording has finished.").font(DetailType.meta).foregroundStyle(.secondary)
+            }
+            if let message = model.actionMessage { Text(message).font(DetailType.meta).foregroundStyle(.secondary) }
+            if let error = model.actionError { Text(error).font(DetailType.meta).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 14) {
+                PigSectionHeader(title: "Commercial breaks")
+                Text("Analysis: \((markers?.status ?? item.ad_detect_status ?? "not analysed").capitalized)")
+                    .font(DetailType.meta).foregroundStyle(.secondary)
+                if loading { ProgressView("Loading break information…") }
+                if let error = markerError { Text(error).font(DetailType.meta).foregroundStyle(.secondary) }
+                if let markers {
+                    let valid = markers.markers.filter { $0.valid && $0.type == "ad" }
+                    if valid.isEmpty {
+                        Text("No detected breaks.").font(DetailType.meta).foregroundStyle(.secondary)
+                    } else {
+                        BreakList(breaks: valid)
+                    }
+                }
+            }
+        }
+        .interactiveDismissDisabled(model.mutationBusy)
+        .task { await loadMarkers() }
+        .fullScreenCover(isPresented: $playing) { RecordingPlayerScreen(recording: item, client: model.client) }
+        .confirmationDialog("Delete this recording?", isPresented: $deleting, titleVisibility: .visible) {
+            Button("Delete recording and file", role: .destructive) {
+                Task {
+                    await model.delete(item)
+                    if !model.recordings.contains(where: { $0.id == original.id }) { dismiss() }
+                }
+            }
+            Button("Keep it", role: .cancel) {}
+        } message: {
+            Text("This removes \(item.title) and its file from the server. If it is still recording, recording stops first.")
         }
     }
 
-    private func time(_ milliseconds: Double) -> String {
-        let total = Int(min(milliseconds / 1000, Double(Int.max / 2)))
-        return String(format: "%d:%02d:%02d", total / 3600, (total / 60) % 60, total % 60)
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch item.status {
+        case "recording": StatusBadge(text: "Recording now", systemImage: "record.circle.fill", colour: .red)
+        case "completed": StatusBadge(text: "Recorded", systemImage: "checkmark.circle.fill")
+        case "failed": StatusBadge(text: "Failed", systemImage: "exclamationmark.triangle.fill", colour: .gray)
+        default: StatusBadge(text: item.status.capitalized, colour: .gray)
+        }
+    }
+
+    private var meta: String {
+        var parts: [String] = []
+        if let duration = item.duration_sec, duration > 0 { parts.append(DetailText.duration(duration)) }
+        if let bytes = item.file_size_bytes, bytes >= 0, bytes < Double(Int64.max) {
+            parts.append(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func loadMarkers() async {
         guard !loading else { return }
+        #if DEBUG
+        if model.isFixture { markers = GuideFixtures.markers(); return }
+        #endif
         loading = true
         markerError = nil
         defer { loading = false }
@@ -212,5 +256,24 @@ struct RecordingDetails: View {
                 ? "Break information is unavailable on this server or this recording no longer exists."
                 : error.localizedDescription
         }
+    }
+}
+
+/// Detected breaks as time-range chips on the guide's surface.
+private struct BreakList: View {
+    let breaks: [CommercialBreak]
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 14, alignment: .leading)], alignment: .leading, spacing: 14) {
+            ForEach(breaks) { marker in
+                Text("\(RecordingTimeline.clock(marker.startMs / 1000)) – \(RecordingTimeline.clock(marker.endMs / 1000))")
+                    .font(DetailType.rowDetail.monospacedDigit())
+                    .padding(.horizontal, 18).padding(.vertical, 10)
+                    .background(Color.guideCell(scheme), in: Capsule())
+            }
+        }
+        .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(breaks.count) breaks")
     }
 }
