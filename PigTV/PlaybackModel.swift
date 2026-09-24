@@ -18,8 +18,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
     @Published private(set) var reconnecting = false
     @Published private(set) var canRetry = false
     #if os(tvOS)
-    // Display mode the stream asks for (server 0100: VIDEO-RANGE PQ/HLG and
-    // FRAME-RATE in the master playlist). nil for SDR. Applied to the window by
+    // Display mode for the stream (frame rate, SDR/PQ/HLG), built from the
+    // resolve decision's `info` (DisplayMode, build 27). Applied to the window by
     // PlayerLayerView, which clears it when the video leaves the screen, so a
     // channel change or exit to the guide drops back to SDR.
     @Published private(set) var displayCriteria: AVDisplayCriteria?
@@ -327,53 +327,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
                     try AVAudioSession.sharedInstance().setActive(true)
                 }.value
                 guard !ended else { return }
-                let item = AVPlayerItem(url: url)
-                #if os(tvOS)
-                let criteria = await Self.loadDisplayCriteria(item.asset)
-                guard !ended, itemGeneration == generation else { return }
-                displayCriteria = criteria
-                #endif
-                Self.setExternalMetadata(metadata(), on: item)
-                metadataProgrammeStart = programme()?.startTime
-                observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
-                    guard item.status == .failed else { return }
-                    let failure = item.error as NSError?
-                    let diagnostic = Self.failureCodes(failure)
-                    let code = failure?.code
-                    let domain = failure?.domain
-                    let safeDomain = ["AVFoundationErrorDomain", "NSURLErrorDomain", "NSOSStatusErrorDomain"].contains(domain ?? "") ? domain : "PlayerError"
-                    let mediaCodes = item.errorLog()?.events.suffix(3).map { String($0.errorStatusCode) }.joined(separator: ", ")
-                    let route = ["direct", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
-                    let detail = "Route: \(route). \(diagnostic)" + (mediaCodes.map { " Media codes: \($0)." } ?? "")
-                    Task { @MainActor [weak self] in
-                        guard let self, self.itemGeneration == generation else { return }
-                        self.playbackFailed(detail: detail, codeName: safeDomain, code: code)
-                    }
-                }
-                failedNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.itemGeneration == generation else { return }
-                        self.playbackFailed(detail: "The player could not finish loading the stream.")
-                    }
-                }
-                stallNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.itemGeneration == generation, !self.ended else { return }
-                        self.stalls += 1
-                    }
-                }
-                playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-                    let playing = player.timeControlStatus == .playing
-                    Task { @MainActor [weak self] in
-                        guard let self, self.itemGeneration == generation, !self.ended else { return }
-                        self.updateWatchTime(playing: playing)
-                        if playing { self.playbackStarted() }
-                    }
-                }
-                player.replaceCurrentItem(with: item)
-                ready = true
-                player.play()
-                startConflictPolling()
+                installItem(url: url, strategy: decision.strategy,
+                            mode: DisplayMode.make(videoMode: decision.videoMode, info: decision.info),
+                            generation: generation)
             } catch {
                 guard !ended else { return }
                 reconnecting = false
@@ -393,6 +349,65 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 }
             }
         }
+    }
+
+    // Installs the item and starts playing at once. The display mode never
+    // delays this (build 27): it comes from the resolve decision, or, when
+    // the server sent no usable frame rate, from the asset whenever that
+    // load finishes (a stale result is discarded).
+    private func installItem(url: URL, strategy: String, mode: DisplayMode?, generation: UUID) {
+        let item = AVPlayerItem(url: url)
+        #if os(tvOS)
+        displayCriteria = mode?.criteria()
+        if mode == nil {
+            Task { [weak self] in
+                let criteria = try? await item.asset.load(.preferredDisplayCriteria)
+                guard let self, let criteria, !self.ended, self.itemGeneration == generation else { return }
+                self.displayCriteria = criteria
+            }
+        }
+        #endif
+        Self.setExternalMetadata(metadata(), on: item)
+        metadataProgrammeStart = programme()?.startTime
+        observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            let failure = item.error as NSError?
+            let diagnostic = Self.failureCodes(failure)
+            let code = failure?.code
+            let domain = failure?.domain
+            let safeDomain = ["AVFoundationErrorDomain", "NSURLErrorDomain", "NSOSStatusErrorDomain"].contains(domain ?? "") ? domain : "PlayerError"
+            let mediaCodes = item.errorLog()?.events.suffix(3).map { String($0.errorStatusCode) }.joined(separator: ", ")
+            let route = ["direct", "transcode"].contains(strategy) ? strategy : "unknown"
+            let detail = "Route: \(route). \(diagnostic)" + (mediaCodes.map { " Media codes: \($0)." } ?? "")
+            Task { @MainActor [weak self] in
+                guard let self, self.itemGeneration == generation else { return }
+                self.playbackFailed(detail: detail, codeName: safeDomain, code: code)
+            }
+        }
+        failedNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.itemGeneration == generation else { return }
+                self.playbackFailed(detail: "The player could not finish loading the stream.")
+            }
+        }
+        stallNotification = NotificationCenter.default.addObserver(forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.itemGeneration == generation, !self.ended else { return }
+                self.stalls += 1
+            }
+        }
+        playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+            let playing = player.timeControlStatus == .playing
+            Task { @MainActor [weak self] in
+                guard let self, self.itemGeneration == generation, !self.ended else { return }
+                self.updateWatchTime(playing: playing)
+                if playing { self.playbackStarted() }
+            }
+        }
+        player.replaceCurrentItem(with: item)
+        ready = true
+        player.play()
+        startConflictPolling()
     }
 
     func playbackStarted() {
@@ -482,38 +497,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
 
     private func finite(_ value: Double) -> Double? { value.isFinite ? value : nil }
-
-    #if os(tvOS)
-    // Bounded so a slow or failing playlist fetch never holds up playback;
-    // without criteria the stream simply plays in the current (SDR) mode.
-    // Shared with RecordingPlayerModel (A4.3).
-    static func loadDisplayCriteria(_ asset: AVAsset) async -> AVDisplayCriteria? {
-        // Whichever finishes first: the load or a 3 s timeout (then nil).
-        // Both run on the main actor, so the non-Sendable asset never
-        // crosses an isolation boundary (Swift 6).
-        final class Race {
-            var continuation: CheckedContinuation<AVDisplayCriteria?, Never>?
-            var timeout: Task<Void, Never>?
-            func finish(_ value: AVDisplayCriteria?) {
-                timeout?.cancel()
-                continuation?.resume(returning: value)
-                continuation = nil
-            }
-        }
-        let race = Race()
-        return await withCheckedContinuation { continuation in
-            race.continuation = continuation
-            race.timeout = Task { @MainActor in
-                guard (try? await Task.sleep(for: .seconds(3))) != nil else { return }
-                race.finish(nil)
-            }
-            Task { @MainActor in
-                let criteria = try? await asset.load(.preferredDisplayCriteria)
-                race.finish(criteria)
-            }
-        }
-    }
-    #endif
 
     private func updateWatchTime(playing: Bool) {
         let now = Date()

@@ -126,6 +126,67 @@ struct PlaybackDecision: Decodable {
     let container: String?
     let sessionId: String?
     let videoMode: String?
+    /// The server's analysis of the source (`info` in the resolve answer):
+    /// frame rate and HDR range, used for the TV's display mode. Optional and
+    /// decoded tolerantly, so an odd or missing `info` never fails a resolve.
+    var info: ResolveStreamInfo? = nil
+
+    enum CodingKeys: String, CodingKey { case strategy, url, container, sessionId, videoMode, info }
+
+    init(strategy: String, url: String, container: String? = nil, sessionId: String? = nil,
+         videoMode: String? = nil, info: ResolveStreamInfo? = nil) {
+        self.strategy = strategy
+        self.url = url
+        self.container = container
+        self.sessionId = sessionId
+        self.videoMode = videoMode
+        self.info = info
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        strategy = try values.decode(String.self, forKey: .strategy)
+        url = try values.decode(String.self, forKey: .url)
+        container = try values.decodeIfPresent(String.self, forKey: .container)
+        sessionId = try values.decodeIfPresent(String.self, forKey: .sessionId)
+        videoMode = try values.decodeIfPresent(String.self, forKey: .videoMode)
+        info = (try? values.decodeIfPresent(ResolveStreamInfo.self, forKey: .info)) ?? nil
+    }
+}
+
+/// The few `info` fields the client reads. Every field is optional and a
+/// field of an unexpected type is simply nil.
+nonisolated struct ResolveStreamInfo: Decodable, Equatable, Sendable {
+    /// ffprobe's rate as text: "25/1", "30000/1001", "50".
+    var fps: String?
+    /// "PQ" / "HLG" for an HDR source, null otherwise.
+    var videoRange: String?
+    /// Codec name ("h264", "hevc").
+    var video: String?
+    var width: Int?
+    var height: Int?
+
+    enum CodingKeys: String, CodingKey { case fps, videoRange, video, width, height }
+
+    init(fps: String? = nil, videoRange: String? = nil, video: String? = nil, width: Int? = nil, height: Int? = nil) {
+        self.fps = fps
+        self.videoRange = videoRange
+        self.video = video
+        self.width = width
+        self.height = height
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        fps = (try? values.decodeIfPresent(String.self, forKey: .fps)) ?? nil
+        if fps == nil, let number = (try? values.decodeIfPresent(Double.self, forKey: .fps)) ?? nil {
+            fps = String(number)
+        }
+        videoRange = (try? values.decodeIfPresent(String.self, forKey: .videoRange)) ?? nil
+        video = (try? values.decodeIfPresent(String.self, forKey: .video)) ?? nil
+        width = (try? values.decodeIfPresent(Int.self, forKey: .width)) ?? nil
+        height = (try? values.decodeIfPresent(Int.self, forKey: .height)) ?? nil
+    }
 }
 
 struct PlaybackTerminalStatus: Decodable {

@@ -71,11 +71,14 @@ final class RecordingPlayerModel: ObservableObject {
                 let item = AVPlayerItem(url: url)
                 #if os(tvOS)
                 // The custom player's bare layer does not switch the TV to
-                // HDR/frame rate itself (AVPlayerViewController did).
-                let criteria = await PlaybackModel.loadDisplayCriteria(item.asset)
-                try Task.checkCancellation()
-                guard !stopped, self.generation == generation else { return }
-                displayCriteria = criteria
+                // HDR/frame rate itself (AVPlayerViewController did). Applied
+                // whenever the asset answers; playback never waits for it
+                // (build 27: that wait delayed every start by up to 3 s).
+                Task { [weak self] in
+                    let criteria = try? await item.asset.load(.preferredDisplayCriteria)
+                    guard let self, let criteria, !self.stopped, self.generation == generation else { return }
+                    self.displayCriteria = criteria
+                }
                 #endif
                 statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
                     guard item.status == .failed else { return }

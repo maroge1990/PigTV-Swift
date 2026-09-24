@@ -1,6 +1,7 @@
 import XCTest
 import AVFoundation
 import UIKit
+import Combine
 @testable import PigTV
 
 // URLProtocol intercepts every request, including unexpected routes. No fixture
@@ -205,6 +206,30 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertEqual(server.captured.last?.method, "DELETE")
         playback.start()
         XCTAssertEqual(server.captured.count, 2)
+    }
+
+    // Build 27: the item is installed and played as soon as the resolve
+    // answers; the display mode comes from the decision, not an asset load
+    // (which on the device held every start for ~3 s).
+    func testStartInstallsTheItemWithoutWaitingForDisplayCriteria() async throws {
+        let server = SyntheticServer { path, _, _ in
+            if path == "/api/playback/resolve" {
+                return .init(status: 200, json: #"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","container":"hls","videoMode":"copy","info":{"fps":"50/1","videoRange":"PQ","video":"hevc","width":3840,"height":2160}}"#)
+            }
+            return .init(status: 200, json: #"{"success":true}"#)
+        }
+        let playback = model(try client(server))
+        var installedAt: Date?
+        let watch = playback.$ready.sink { if $0, installedAt == nil { installedAt = Date() } }
+        let began = Date()
+        playback.start()
+        try await eventually { installedAt != nil }
+        XCTAssertLessThan(installedAt!.timeIntervalSince(began), 1.5)
+        #if os(tvOS)
+        XCTAssertNotNil(playback.displayCriteria)
+        #endif
+        watch.cancel()
+        _ = await playback.stop()
     }
 
     func testStoppingBeforeRecoveryTaskRunsPreventsResolve() async throws {
