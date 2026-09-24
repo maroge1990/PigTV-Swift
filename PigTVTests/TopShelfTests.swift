@@ -78,6 +78,45 @@ final class TopShelfTests: XCTestCase {
         XCTAssertNil(TopShelfSnapshot.decode(Data("{}".utf8)))
     }
 
+    // Build 27: the write/read path the app and the extension share, through
+    // the container path helper (a temporary directory stands in for the
+    // App Group).
+    func testSnapshotFileRoundTripThroughTheSharedPath() throws {
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent("topshelf-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: container) }
+        XCTAssertEqual(TopShelfSnapshot.fileURL(in: container)?.lastPathComponent, "topshelf-snapshot.json")
+        XCTAssertNil(TopShelfSnapshot.read(container: container), "nothing written yet")
+        let entry = TopShelfSnapshot.Entry(id: "c1", sourceId: 1, name: "Fox Footy", number: 503,
+                                           logo: URL(string: "http://192.168.1.20:3000/api/logo/abc"),
+                                           programmes: [.init(title: "AFL Live", start: now, end: now.addingTimeInterval(3600))])
+        let snapshot = TopShelfSnapshot(kind: "favourites", channels: [entry], savedAt: now)
+        XCTAssertTrue(snapshot.write(container: container))
+        XCTAssertEqual(TopShelfSnapshot.read(container: container), snapshot)
+        // No container (an unentitled process): nothing written, nothing read.
+        XCTAssertFalse(snapshot.write(container: nil))
+        XCTAssertNil(TopShelfSnapshot.read(container: nil))
+        // A corrupt file reads as no snapshot rather than crashing.
+        try Data("not json".utf8).write(to: XCTUnwrap(TopShelfSnapshot.fileURL(in: container)))
+        XCTAssertNil(TopShelfSnapshot.read(container: container))
+    }
+
+    #if os(tvOS)
+    // The app is entitled to the App Group (the extension uses the same file),
+    // and the embedded extension may load plain-http logos from the LAN
+    // server: its own ATS exception, the app's does not apply to it.
+    func testAppGroupAndExtensionConfiguration() throws {
+        XCTAssertNotNil(TopShelfSnapshot.containerURL, "App Group container unavailable to the app")
+        let appex = try XCTUnwrap(Bundle.main.builtInPlugInsURL?.appendingPathComponent("PigTVTopShelf.appex"))
+        let info = try XCTUnwrap(Bundle(url: appex)?.infoDictionary)
+        let ats = try XCTUnwrap(info["NSAppTransportSecurity"] as? [String: Any], "the Top Shelf extension has no ATS exception")
+        XCTAssertEqual(ats["NSAllowsArbitraryLoads"] as? Bool, true)
+        let ext = try XCTUnwrap(info["NSExtension"] as? [String: Any])
+        XCTAssertEqual(ext["NSExtensionPointIdentifier"] as? String, "com.apple.tv-top-shelf")
+        XCTAssertEqual(ext["NSExtensionPrincipalClass"] as? String, "PigTVTopShelf.ContentProvider")
+    }
+    #endif
+
     func testPlayLinks() throws {
         let url = PigTVLink.playURL(sourceId: 4, id: "12&3+4 5", name: "Sky Sports+ & More", number: 503)
         XCTAssertEqual(url.scheme, "pigtv")

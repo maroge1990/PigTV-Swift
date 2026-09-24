@@ -1,4 +1,5 @@
 import Foundation
+import os
 #if os(tvOS)
 import TVServices
 #endif
@@ -47,10 +48,20 @@ extension BrowseModel {
 
     /// Saves the snapshot when its content changed, and tells the Top Shelf.
     func exportTopShelf() {
-        guard let snapshot = topShelfSnapshot(), !snapshot.sameContent(as: TopShelfExport.lastWritten) else { return }
+        guard let snapshot = topShelfSnapshot() else {
+            TopShelfLog.logger.notice("export: nothing to save yet (no favourites or guide rows)")
+            return
+        }
+        guard !snapshot.sameContent(as: TopShelfExport.lastWritten) else { return }
         TopShelfExport.lastWritten = snapshot
         Task.detached(priority: .utility) {
-            guard snapshot.write() else { return }
+            guard snapshot.write() else {
+                // Try again on the next export rather than treating it as saved.
+                await MainActor.run {
+                    if TopShelfExport.lastWritten == snapshot { TopShelfExport.lastWritten = nil }
+                }
+                return
+            }
             TopShelfExport.contentChanged()
         }
     }
@@ -75,6 +86,7 @@ enum TopShelfExport {
     nonisolated static func contentChanged() {
         #if os(tvOS)
         TVTopShelfContentProvider.topShelfContentDidChange()
+        TopShelfLog.logger.notice("export: topShelfContentDidChange posted")
         #endif
     }
 }

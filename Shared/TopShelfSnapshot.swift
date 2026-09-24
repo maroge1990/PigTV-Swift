@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // A4.1: shared by the app and its extensions (the Top Shelf; Siri reads it
 // too). The app writes a small snapshot of up to 12 channels into the App
@@ -54,10 +55,19 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
 
     // MARK: Storage
 
-    static var fileURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
-            .appendingPathComponent(fileName)
+    /// The App Group container, or nil when this process is not entitled to
+    /// it (a device build whose provisioning lacks the group).
+    static var containerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
     }
+
+    /// The snapshot's path inside a container directory (the App Group's by
+    /// default; tests pass a temporary one).
+    static func fileURL(in container: URL?) -> URL? {
+        container?.appendingPathComponent(fileName)
+    }
+
+    static var fileURL: URL? { fileURL(in: containerURL) }
 
     func encoded() throws -> Data {
         let encoder = JSONEncoder()
@@ -69,21 +79,60 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
     static func decode(_ data: Data) -> TopShelfSnapshot? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .millisecondsSince1970
-        return try? decoder.decode(TopShelfSnapshot.self, from: data)
+        do { return try decoder.decode(TopShelfSnapshot.self, from: data) }
+        catch {
+            TopShelfLog.logger.error("snapshot: decode failed: \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
-    static func read() -> TopShelfSnapshot? {
-        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return nil }
-        return decode(data)
+    /// Reads the snapshot, logging each step (Console: subsystem
+    /// au.markrogers.PigTV.TopShelf) so a device shows why nothing appears.
+    static func read(container: URL? = containerURL) -> TopShelfSnapshot? {
+        guard let url = fileURL(in: container) else {
+            TopShelfLog.logger.error("read: no App Group container for \(appGroup, privacy: .public) (entitlement or provisioning missing)")
+            return nil
+        }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            TopShelfLog.logger.notice("read: no snapshot at \(url.path, privacy: .public) (the app has not written one)")
+            return nil
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            let snapshot = decode(data)
+            TopShelfLog.logger.notice("read: \(data.count) bytes, \(snapshot?.channels.count ?? -1) channels")
+            return snapshot
+        } catch {
+            TopShelfLog.logger.error("read: \(url.path, privacy: .public) unreadable: \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     /// Writes atomically; false when the App Group container is unavailable
     /// (for example before the group is registered for a device build).
     @discardableResult
-    func write() -> Bool {
-        guard let url = Self.fileURL, let data = try? encoded() else { return false }
-        return (try? data.write(to: url, options: .atomic)) != nil
+    func write(container: URL? = TopShelfSnapshot.containerURL) -> Bool {
+        guard let url = Self.fileURL(in: container) else {
+            TopShelfLog.logger.error("write: no App Group container for \(Self.appGroup, privacy: .public) (entitlement or provisioning missing)")
+            return false
+        }
+        do {
+            try encoded().write(to: url, options: .atomic)
+            TopShelfLog.logger.notice("write: \(channels.count) \(kind, privacy: .public) channels to \(url.path, privacy: .public)")
+            return true
+        } catch {
+            TopShelfLog.logger.error("write: failed at \(url.path, privacy: .public): \(String(describing: error), privacy: .public)")
+            return false
+        }
     }
+}
+
+/// Top Shelf diagnostics, in both the app and the extension. On a device:
+/// Console.app → the Apple TV → filter "subsystem:au.markrogers.PigTV.TopShelf"
+/// (the category is the process's bundle identifier).
+nonisolated enum TopShelfLog {
+    static let subsystem = "au.markrogers.PigTV.TopShelf"
+    static let logger = Logger(subsystem: subsystem, category: Bundle.main.bundleIdentifier ?? "unknown")
 }
 
 /// `pigtv://play?sourceId=…&id=…[&name=…&number=…]`: from Top Shelf items
