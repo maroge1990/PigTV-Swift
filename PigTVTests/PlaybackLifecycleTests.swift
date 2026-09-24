@@ -1,5 +1,6 @@
 import XCTest
 import AVFoundation
+import UIKit
 @testable import PigTV
 
 // URLProtocol intercepts every request, including unexpected routes. No fixture
@@ -306,4 +307,14 @@ final class PlaybackLifecycleTests: XCTestCase {
         title.value = "Test" as NSString
         PlaybackModel.setExternalMetadata([title], on: item)
     }
+
+    #if os(tvOS)
+    // The TV switches display mode through UIWindow.avDisplayManager, an AVKit
+    // category. If AVKit stops being loaded, that call crashes at channel start.
+    func testAVKitCategoriesAreAvailableOnTV() {
+        XCTAssertTrue(UIWindow.instancesRespond(to: NSSelectorFromString("avDisplayManager")),
+                      "AVKit is not loaded: display-mode switching would crash")
+        XCTAssertTrue(AVPlayerItem.instancesRespond(to: NSSelectorFromString("setExternalMetadata:")))
+    }
+    #endif
 }

@@ -113,11 +113,11 @@ C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A t
 - AirPlay, PiP and background playback remain outside current scope; preserve existing restrictions until session ownership supports them.
 - Avoid speculative VOD/series work. Guide/player changes are now explicitly scoped in §4a; the implemented channel browser still needs device UX acceptance.
 
-**Crash on channel start (builds 21–23), fixed in build 24.** The real cause, from the device console (Mark, test 1.9):
+**Crash on channel start (builds 21–23), fixed in builds 24–25.** The real cause, from the device console (Mark, test 1.9):
 `-[AVPlayerItem setExternalMetadata:]: unrecognized selector`. `externalMetadata` is an AVKit category on AVPlayerItem.
 Once build 21 retired the last AVKit player on tvOS, AVKit was no longer loaded, and setting it crashed the moment a
 channel started. `PlaybackModel.setExternalMetadata` now sets it only when the selector exists, and a test reproduces the
-crash on the old code. **Lesson:** never call AVKit-only API on tvOS without checking it exists; the simulator tests
+crash on the old code. Build 25 also **links AVKit explicitly for tvOS** (`OTHER_LDFLAGS[sdk=appletv*] = -framework AVKit`): `UIWindow.avDisplayManager` (HDR/50 Hz switching) is an AVKit category too and would have crashed next. `testAVKitCategoriesAreAvailableOnTV` guards both. **Lesson:** never call AVKit-only API on tvOS without checking it exists; the simulator tests
 missed this because no test started a real player item.
 
 Build 23 also moved the app target back to Swift 5 on a wrong diagnosis (the KVO-isolation theory). It stays on Swift 5

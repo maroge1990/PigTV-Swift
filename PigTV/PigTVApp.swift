@@ -6,9 +6,24 @@
 //
 
 import SwiftUI
+#if os(tvOS)
+import AVKit
+#endif
 
 @main
 struct PigTVApp: App {
+    #if os(tvOS)
+    // AVKit must be loaded on tvOS even though no AVKit player is used any more:
+    // `UIWindow.avDisplayManager` (HDR / frame-rate switching in PlayerLayerView)
+    // and `AVPlayerItem.externalMetadata` are AVKit categories. After build 21
+    // removed the last AVKit player, nothing referenced AVKit, so it was never
+    // loaded and the first channel start crashed with "unrecognized selector"
+    // (test block 1.9). The app target links AVKit explicitly for tvOS
+    // (OTHER_LDFLAGS[sdk=appletv*] = -framework AVKit); a class reference alone
+    // was stripped. A test asserts the categories exist.
+    init() { _ = AVPlayerViewController.self }
+    #endif
+
     // Appearance is owned by ContentView (a View), where an @AppStorage change
     // re-renders immediately; the Settings test screen sets its own.
     var body: some Scene {
