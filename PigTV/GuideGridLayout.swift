@@ -52,7 +52,9 @@ final class GuideGridStore {
 /// Layout attributes carrying how much of a cell (or header label) is hidden
 /// under the pinned channel column, so the cell keeps its title on screen.
 final class GuideGridAttributes: UICollectionViewLayoutAttributes {
-    var leadingClip: CGFloat = 0
+    // Read by isEqual, which NSObject declares nonisolated; UIKit only uses
+    // layout attributes on the main thread.
+    nonisolated(unsafe) var leadingClip: CGFloat = 0
 
     override func copy(with zone: NSZone? = nil) -> Any {
         let copy = super.copy(with: zone) as! GuideGridAttributes
@@ -60,7 +62,7 @@ final class GuideGridAttributes: UICollectionViewLayoutAttributes {
         return copy
     }
 
-    override func isEqual(_ object: Any?) -> Bool {
+    nonisolated override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? GuideGridAttributes else { return false }
         return other.leadingClip == leadingClip && super.isEqual(object)
     }

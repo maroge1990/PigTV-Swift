@@ -3,7 +3,7 @@ import Foundation
 // Contract C-F: Settings → Labs. Persistent opt-in switches for risky
 // behaviour, all off by default, so Mark can turn them on during testing.
 // Keys live here only; the settings screen and feature code both read them.
-enum Labs {
+nonisolated enum Labs {
     /// Roadmap A2.1: the UIKit guide.
     static let newGuide = "pigtv.labs.newGuide"
     /// Contract C-C: send `capabilities.heaac = true` on resolve.

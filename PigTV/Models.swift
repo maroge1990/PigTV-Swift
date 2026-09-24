@@ -53,7 +53,7 @@ struct LoginResponse: Decodable {
     let user: User
 }
 
-struct Category: Decodable, Hashable, Identifiable {
+nonisolated struct Category: Decodable, Hashable, Identifiable, Sendable {
     let rawID: String
     let sourceId: Int
     let name: String

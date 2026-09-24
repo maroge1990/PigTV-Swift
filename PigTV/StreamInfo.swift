@@ -7,7 +7,7 @@ import CoreMedia
 // pure (unit-tested in StreamInfoTests); PlaybackModel.streamStats() gathers
 // the raw values from the player item.
 
-struct StreamStats: Equatable {
+nonisolated struct StreamStats: Equatable, Sendable {
     var codec: String?
     var dynamicRange: String?
     var width: Int?
@@ -52,7 +52,7 @@ struct StreamStats: Equatable {
     var line: String { parts.joined(separator: " · ") }
 }
 
-enum StreamInfoFormat {
+nonisolated enum StreamInfoFormat {
     /// Four-character code as text ("hvc1").
     static func fourCC(_ code: FourCharCode) -> String {
         let bytes = [24, 16, 8, 0].map { UInt8((code >> $0) & 0xFF) }

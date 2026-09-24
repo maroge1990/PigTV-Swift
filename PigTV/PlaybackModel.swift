@@ -477,12 +477,29 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // without criteria the stream simply plays in the current (SDR) mode.
     // Shared with RecordingPlayerModel (A4.3).
     static func loadDisplayCriteria(_ asset: AVAsset) async -> AVDisplayCriteria? {
-        await withTaskGroup(of: AVDisplayCriteria?.self) { group in
-            group.addTask { try? await asset.load(.preferredDisplayCriteria) }
-            group.addTask { try? await Task.sleep(for: .seconds(3)); return nil }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
+        // Whichever finishes first: the load or a 3 s timeout (then nil).
+        // Both run on the main actor, so the non-Sendable asset never
+        // crosses an isolation boundary (Swift 6).
+        final class Race {
+            var continuation: CheckedContinuation<AVDisplayCriteria?, Never>?
+            var timeout: Task<Void, Never>?
+            func finish(_ value: AVDisplayCriteria?) {
+                timeout?.cancel()
+                continuation?.resume(returning: value)
+                continuation = nil
+            }
+        }
+        let race = Race()
+        return await withCheckedContinuation { continuation in
+            race.continuation = continuation
+            race.timeout = Task { @MainActor in
+                guard (try? await Task.sleep(for: .seconds(3))) != nil else { return }
+                race.finish(nil)
+            }
+            Task { @MainActor in
+                let criteria = try? await asset.load(.preferredDisplayCriteria)
+                race.finish(criteria)
+            }
         }
     }
     #endif

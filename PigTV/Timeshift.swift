@@ -4,7 +4,7 @@ import Foundation
 // segments carry EXT-X-PROGRAM-DATE-TIME, so AVPlayerItem.currentDate() is
 // meaningful. These are the pure date sums behind Start over and the info
 // overlay's programme timeline; PlaybackModel feeds them from AVPlayerItem.
-enum TimeshiftMath {
+nonisolated enum TimeshiftMath {
     /// Wall-clock dates at the ends of the seekable range, from the item's
     /// current date and its media times (seconds):
     /// start = currentDate − (currentTime − rangeStart),

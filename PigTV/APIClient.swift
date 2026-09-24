@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-struct ServerAddress: Equatable {
+nonisolated struct ServerAddress: Equatable, Sendable {
     let url: URL
 
     init(_ text: String) throws {
