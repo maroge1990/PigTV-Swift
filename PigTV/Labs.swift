@@ -6,8 +6,6 @@ import Foundation
 nonisolated enum Labs {
     /// Roadmap A2.1: the UIKit guide.
     static let newGuide = "pigtv.labs.newGuide"
-    /// Contract C-C: send `capabilities.heaac = true` on resolve.
-    static let heaac = "pigtv.labs.heaac"
     /// Roadmap A4.2: codec/resolution/fps/bitrate/dropped frames in the info overlay.
     static let streamInfo = "pigtv.labs.streamInfo"
 
@@ -22,8 +20,6 @@ nonisolated enum Labs {
     static let toggles: [Toggle] = [
         Toggle(key: newGuide, title: "New guide (UIKit)",
                detail: "Uses the rebuilt, faster TV guide while it is being tested."),
-        Toggle(key: heaac, title: "HE-AAC passthrough",
-               detail: "Asks the server to pass HE-AAC audio through instead of converting it."),
         Toggle(key: streamInfo, title: "Stream info overlay",
                detail: "Shows codec, resolution, frame rate, bitrate and dropped frames in the player's info overlay.")
     ]
