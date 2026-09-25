@@ -48,6 +48,8 @@ struct PigTVApp: App {
         } else if ["sport", "sport-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             HomeTestScreen(firstRun: false, initialTab: "sport",
                            noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
+        } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "topshelf-cards" {
+            TopShelfCardsTestScreen()
         } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {
             PlayerTestScreen()
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
@@ -197,6 +199,48 @@ private struct DesignTestScreen: View {
             UnreachableView(model: app, message: "This device cannot reach the server. Check that you are on the home network or that Tailscale is connected.")
         default:
             OnboardingView(model: app)
+        }
+    }
+}
+
+// Build 32: PIGTV_UI_TEST_SCREEN=topshelf-cards renders the Home fixture's
+// Top Shelf cards through the real export (so it also writes the snapshot
+// and cards into the simulator's App Group, for checking the Top Shelf) and
+// shows the first four "on now" cards at 1x size (852×480, the focused size).
+private struct TopShelfCardsTestScreen: View {
+    @StateObject private var app = AppModel()
+    @State private var cards: [(String, UIImage)] = []
+    @State private var summary = "Rendering…"
+
+    var body: some View {
+        ZStack {
+            Color(white: 0.2).ignoresSafeArea()
+            VStack(spacing: 16) {
+                LazyVGrid(columns: [GridItem(.fixed(852), spacing: 24), GridItem(.fixed(852), spacing: 24)], spacing: 24) {
+                    ForEach(cards, id: \.0) { card in
+                        Image(uiImage: card.1).resizable().frame(width: 852, height: 480)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                Text(summary).font(.system(size: 22)).foregroundStyle(.white.opacity(0.8))
+                    .accessibilityIdentifier("topshelf.cards")
+            }
+        }
+        .task {
+            app.injectHomeFixture()
+            guard let browse = app.browse else { return }
+            browse.exportTopShelf()
+            await TopShelfCardExport.finish()
+            guard let snapshot = TopShelfCardExport.lastRendered else { summary = "No cards"; return }
+            let now = Date()
+            cards = snapshot.channels.prefix(4).compactMap { entry in
+                guard let card = entry.card(at: now), let url = TopShelfCards.fileURL(card.file, in: AppGroupStorage.containerURL),
+                      let image = UIImage(contentsOfFile: url.path) else { return nil }
+                return (card.file, image)
+            }
+            let count = TopShelfCards.renderedCount(for: snapshot, in: AppGroupStorage.containerURL)
+            let pixels = cards.first.map { "\(Int($0.1.size.width * $0.1.scale))×\(Int($0.1.size.height * $0.1.scale)) px" } ?? "-"
+            summary = "\(count) cards rendered · \(pixels) each"
         }
     }
 }

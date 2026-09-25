@@ -128,6 +128,42 @@ enum GuideFixtures {
         }
     }
 
+    /// Build 32, the Top Shelf cards fixture: logos at other sizes than the
+    /// guide's 320 px thumbnails. Fox Footy (the first favourite) is a
+    /// large "full size" logo (drawn capped to the card's logo box), Sky
+    /// Sports Main Event a small 160 px one (kept small, never enlarged),
+    /// HBO a dark wordmark on a transparent background (put on a plate).
+    @MainActor static func topShelfLogo(_ logo: String) -> UIImage? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        func tile(_ size: CGSize, _ colour: UIColor, _ text: String, font: CGFloat, clear: Bool = false) -> UIImage {
+            UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                let rect = CGRect(origin: .zero, size: size)
+                if !clear {
+                    colour.setFill()
+                    UIBezierPath(roundedRect: rect, cornerRadius: size.height * 0.12).fill()
+                }
+                let style = NSMutableParagraphStyle()
+                style.alignment = .center
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: font, weight: .heavy),
+                    .foregroundColor: clear ? colour : UIColor.white, .paragraphStyle: style]
+                let bounds = (text as NSString).boundingRect(with: rect.size, options: .usesLineFragmentOrigin,
+                                                             attributes: attributes, context: nil)
+                (text as NSString).draw(with: CGRect(x: 0, y: rect.midY - bounds.height / 2, width: rect.width, height: bounds.height),
+                                        options: .usesLineFragmentOrigin, attributes: attributes, context: nil)
+            }
+        }
+        switch logo {
+        case logoKey(2): return tile(CGSize(width: 1200, height: 540), UIColor(red: 0.10, green: 0.55, blue: 0.30, alpha: 1),
+                                     "FOX FOOTY", font: 150)
+        case logoKey(0): return tile(CGSize(width: 160, height: 72), UIColor(red: 0.05, green: 0.28, blue: 0.62, alpha: 1),
+                                     "SKY SPORTS", font: 22)
+        case logoKey(6): return tile(CGSize(width: 600, height: 240), UIColor(white: 0.08, alpha: 1), "HBO", font: 170, clear: true)
+        default: return nil
+        }
+    }
+
     static func favourites(from guide: [GuideChannel]) -> [GuideChannel] {
         [2, 0, 6, 10, 7, 4, 13].compactMap { guide.indices.contains($0) ? guide[$0] : nil }
     }

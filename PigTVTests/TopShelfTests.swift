@@ -179,7 +179,7 @@ final class TopShelfTests: XCTestCase {
         XCTAssertTrue(TopShelfSnapshot(kind: "channels", channels: [entry, entry], savedAt: now).write(container: container))
         XCTAssertTrue(TopShelfExtensionStatus(askedAt: now.addingTimeInterval(60), items: 2, note: "returned 2 items").write(container: container))
         let written = TopShelfDiagnostics.lines(container: container, format: format)
-        XCTAssertEqual(written.snapshot, "Written T1800000000, 2 items · App Group OK")
+        XCTAssertEqual(written.snapshot, "Written T1800000000, 2 items, 0 cards rendered · App Group OK")
         XCTAssertEqual(written.extensionStatus, "Last asked T1800000060: returned 2 items")
         XCTAssertEqual(TopShelfExtensionStatus.read(container: container)?.items, 2)
     }

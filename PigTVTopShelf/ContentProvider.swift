@@ -8,6 +8,10 @@ import os
 // The server is plain http on the LAN, so this extension's Info.plist needs
 // its own App Transport Security exception (build 27): the app's does not
 // cover it, and without it every logo was refused.
+// Build 32 (Mark: the logos were "very pixelated when blown up to that
+// size"): the app renders a 16:9 card per channel and programme
+// (TopShelfCards.swift) into the App Group's Library/Caches/topshelf/, and
+// items point at those file URLs; the logo URL is only the fallback.
 // Sectioned items have a title but no subtitle, so the programme on now
 // follows the channel in the title: "Fox Footy — AFL Live" (no channel number since build 29).
 // Each step is logged under subsystem au.markrogers.PigTV.TopShelf, and the
@@ -59,11 +63,13 @@ final class ContentProvider: TVTopShelfContentProvider {
                 item.title = entry.title
             }
             item.imageShape = .hdtv
-            if let logo = entry.logo {
-                item.setImageURL(logo, for: [.screenScale1x, .screenScale2x])
-                log.debug("extension: \(entry.title, privacy: .public) logo \(logo.absoluteString, privacy: .public)")
+            // Build 32: the card the app rendered (a file URL in the App
+            // Group), else the logo's URL as before.
+            if let image = entry.imageURL(at: now) {
+                item.setImageURL(image, for: [.screenScale1x, .screenScale2x])
+                log.debug("extension: \(entry.title, privacy: .public) image \(image.absoluteString, privacy: .public)")
             } else {
-                log.notice("extension: \(entry.title, privacy: .public) has no logo URL")
+                log.notice("extension: \(entry.title, privacy: .public) has no card or logo URL")
             }
             let action = TVTopShelfAction(url: entry.playURL)
             item.playAction = action

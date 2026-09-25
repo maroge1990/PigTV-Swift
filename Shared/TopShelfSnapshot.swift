@@ -27,6 +27,10 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
         var logo: URL?
         /// Now, then next (either may be missing).
         var programmes: [Slot]
+        /// Build 32 (tvOS): card images the app rendered for this channel,
+        /// in the App Group's `Library/Caches/topshelf/`. Absent in older
+        /// snapshots and when rendering failed (the logo URL is used then).
+        var cards: [Card]? = nil
 
         /// The item's title: the channel name. Build 29 dropped the "503 · "
         /// prefix (Mark: channel numbers are not important to him); the number
@@ -39,6 +43,34 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
         }
 
         var playURL: URL { PigTVLink.playURL(sourceId: sourceId, id: id, name: name, number: number) }
+
+        /// The card for `date`: the one drawn for the programme on then, or
+        /// the channel's own card (no programme) when there is one.
+        func card(at date: Date) -> Card? {
+            cards?.first { card in
+                guard let start = card.start, let end = card.end else { return false }
+                return start <= date && date < end
+            } ?? cards?.first { $0.start == nil }
+        }
+
+        /// What the Top Shelf item shows: the rendered card's file URL when
+        /// one applies and exists, else the logo's URL (the pre-build-32
+        /// behaviour).
+        func imageURL(at date: Date, container: URL? = AppGroupStorage.containerURL) -> URL? {
+            if let card = card(at: date), let url = TopShelfCards.fileURL(card.file, in: container),
+               FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+            return logo
+        }
+    }
+
+    /// A rendered card (build 32): its file name in the cards directory and
+    /// the programme it shows (both nil for a channel-only card).
+    nonisolated struct Card: Codable, Equatable, Sendable {
+        var file: String
+        var start: Date?
+        var end: Date?
     }
 
     nonisolated struct Slot: Codable, Equatable, Sendable {
@@ -162,6 +194,64 @@ nonisolated enum AppGroupStorage {
     }
 }
 
+/// Build 32: the Top Shelf card images, `<container>/Library/Caches/topshelf/`.
+/// The app renders and writes them (TopShelfCards.swift); the extension
+/// only hands their file URLs to tvOS.
+nonisolated enum TopShelfCards {
+    static let directoryName = "topshelf"
+
+    static func directory(in container: URL?) -> URL? {
+        AppGroupStorage.directory(in: container)?.appendingPathComponent(directoryName, isDirectory: true)
+    }
+
+    static func fileURL(_ name: String, in container: URL?) -> URL? {
+        // Only plain file names (the app makes them); never a path.
+        guard !name.isEmpty, !name.contains("/"), !name.hasPrefix(".") else { return nil }
+        return directory(in: container)?.appendingPathComponent(name, isDirectory: false)
+    }
+
+    /// Writes one card atomically, creating the directory.
+    @discardableResult
+    static func write(_ data: Data, named name: String, in container: URL?) -> Bool {
+        guard let url = fileURL(name, in: container) else { return false }
+        do {
+            try AppGroupStorage.createDirectory(for: url)
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            TopShelfLog.logger.error("cards: write failed at \(url.path, privacy: .public): \(String(describing: error), privacy: .public)")
+            return false
+        }
+    }
+
+    static func exists(_ name: String, in container: URL?) -> Bool {
+        fileURL(name, in: container).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
+
+    /// Deletes every card not in `keeping`; returns how many were removed.
+    @discardableResult
+    static func prune(keeping: Set<String>, in container: URL?) -> Int {
+        guard let directory = directory(in: container),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return 0 }
+        var removed = 0
+        for name in names where !keeping.contains(name) {
+            if (try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))) != nil { removed += 1 }
+        }
+        return removed
+    }
+
+    /// Sign-out: every card goes.
+    static func removeAll(in container: URL?) {
+        guard let directory = directory(in: container) else { return }
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// Cards the snapshot refers to that exist on disk.
+    static func renderedCount(for snapshot: TopShelfSnapshot?, in container: URL?) -> Int {
+        (snapshot?.channels ?? []).flatMap { $0.cards ?? [] }.filter { exists($0.file, in: container) }.count
+    }
+}
+
 /// Top Shelf diagnostics, in both the app and the extension. On a device:
 /// Console.app → the Apple TV → filter "subsystem:au.markrogers.PigTV.TopShelf"
 /// (the category is the process's bundle identifier).
@@ -273,9 +363,13 @@ nonisolated enum TopShelfDiagnostics {
         let snapshot: String
         if let data = try? Data(contentsOf: url) {
             let written = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date)
-            let count = TopShelfSnapshot.decode(data)?.channels.count
-            let when = (TopShelfSnapshot.decode(data)?.savedAt ?? written).map(format) ?? "at an unknown time"
-            snapshot = "Written \(when), \(count.map { "\($0) \($0 == 1 ? "item" : "items")" } ?? "unreadable") · App Group OK"
+            let decoded = TopShelfSnapshot.decode(data)
+            let count = decoded?.channels.count
+            let when = (decoded?.savedAt ?? written).map(format) ?? "at an unknown time"
+            // Build 32: and how many card images it points at exist.
+            let cards = TopShelfCards.renderedCount(for: decoded, in: container)
+            let items = count.map { "\($0) \($0 == 1 ? "item" : "items"), \(cards) \(cards == 1 ? "card" : "cards") rendered" }
+            snapshot = "Written \(when), \(items ?? "unreadable") · App Group OK"
         } else {
             snapshot = "Not written yet · App Group OK"
         }

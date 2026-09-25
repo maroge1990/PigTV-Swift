@@ -47,13 +47,30 @@ extension BrowseModel {
     }
 
     /// Saves the snapshot when its content changed, and tells the Top Shelf.
+    /// Build 32, tvOS: first renders its card images (TopShelfCards.swift),
+    /// so the saved snapshot points at them.
     func exportTopShelf() {
         guard let snapshot = topShelfSnapshot() else {
             TopShelfLog.logger.notice("export: nothing to save yet (no favourites or guide rows)")
             return
         }
-        guard !snapshot.sameContent(as: TopShelfExport.lastWritten) else { return }
-        TopShelfExport.lastWritten = snapshot
+        #if os(tvOS)
+        TopShelfCardExport.schedule(snapshot, logoSources: topShelfLogoSources(for: snapshot),
+                                    loader: { [weak self] logo in await self?.topShelfLogoImage(logo) })
+        #else
+        TopShelfExport.save(snapshot)
+        #endif
+    }
+}
+
+enum TopShelfExport {
+    @MainActor static var lastWritten: TopShelfSnapshot?
+
+    /// Writes `snapshot` unless it is unchanged, then (build 32) deletes card
+    /// images it no longer points at, and tells the Top Shelf.
+    @MainActor static func save(_ snapshot: TopShelfSnapshot, pruneCardsIn cards: URL? = nil) {
+        guard !snapshot.sameContent(as: lastWritten) else { return }
+        lastWritten = snapshot
         Task.detached(priority: .utility) {
             guard snapshot.write() else {
                 // Try again on the next export rather than treating it as saved.
@@ -62,15 +79,16 @@ extension BrowseModel {
                 }
                 return
             }
-            TopShelfExport.contentChanged()
+            if let cards {
+                let keep = Set(snapshot.channels.flatMap { $0.cards ?? [] }.map(\.file))
+                let removed = TopShelfCards.prune(keeping: keep, in: cards)
+                TopShelfLog.logger.notice("export: \(keep.count) cards in use, \(removed) stale removed")
+            }
+            contentChanged()
             // The Siri channel suggestions are the Top Shelf's channels.
             PigTVShortcuts.refreshParameters(reason: "Top Shelf snapshot written")
         }
     }
-}
-
-enum TopShelfExport {
-    @MainActor static var lastWritten: TopShelfSnapshot?
 
     /// Signing out removes the snapshot (no channels on the Top Shelf) and
     /// the Siri channel directory.
@@ -79,6 +97,8 @@ enum TopShelfExport {
         PlayLinkInbox.lastDirectory = nil
         Task.detached(priority: .utility) {
             if let url = TopShelfSnapshot.fileURL { try? FileManager.default.removeItem(at: url) }
+            // Build 32: and the card images.
+            TopShelfCards.removeAll(in: AppGroupStorage.containerURL)
             // A4.5: and the Siri channel directory.
             if let url = ChannelDirectory.fileURL { try? FileManager.default.removeItem(at: url) }
             // Build 29: files an earlier build left in the container's root

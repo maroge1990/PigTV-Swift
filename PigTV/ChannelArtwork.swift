@@ -32,6 +32,12 @@ struct ChannelArtwork: View {
     /// Home's blurred wash: the logo filling its frame (no placeholder glyph).
     var fill = false
 
+    /// The decoded thumbnail, if the guide has drawn this logo (build 32:
+    /// the Top Shelf cards' last resort).
+    static func cachedImage(for logo: String) -> UIImage? {
+        cache.object(forKey: logo as NSString)?.value.image
+    }
+
     #if DEBUG
     /// Fixture logos (PIGTV_UI_TEST_SCREEN=home) go straight into the cache.
     static func preload(_ image: UIImage, for logo: String) {
