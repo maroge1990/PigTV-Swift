@@ -696,6 +696,11 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-e",
+					_NSExtensionMain,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = au.markrogers.PigTV.TopShelf;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
@@ -728,6 +733,11 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-e",
+					_NSExtensionMain,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = au.markrogers.PigTV.TopShelf;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;

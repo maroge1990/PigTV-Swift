@@ -132,6 +132,11 @@ struct LibrarySettings: View {
             Section {
                 ForEach(Labs.toggles) { LabsToggleRow(toggle: $0) }
             } header: { sectionHeader("Labs") }
+            #if os(tvOS)
+            // Build 31: whether the Top Shelf snapshot was written and
+            // whether tvOS asked the extension for it.
+            Section { TopShelfDiagnosticsRows() } header: { sectionHeader("Diagnostics") }
+            #endif
             Section {
                 SettingsRow("App", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
                 SettingsRow("Server", value: model.serverInfo?.identity ?? "Unknown")
@@ -200,19 +205,38 @@ private struct LabsToggleRow: View {
     }
 }
 
+#if os(tvOS)
+/// Settings → Diagnostics: "Top Shelf: Written 25 Sep 2026 at 5:01 pm, 12
+/// items · App Group OK" and what the extension did when tvOS last asked.
+/// Read off the main actor each time Settings appears.
+private struct TopShelfDiagnosticsRows: View {
+    @State private var lines: TopShelfDiagnostics.Lines?
+    var body: some View {
+        Group {
+            SettingsRow("Top Shelf", value: lines?.snapshot ?? "Checking…", wraps: true)
+            SettingsRow("Top Shelf extension", value: lines?.extensionStatus ?? "Checking…", wraps: true)
+        }
+        .task {
+            lines = await Task.detached(priority: .utility) { TopShelfDiagnostics.lines() }.value
+        }
+    }
+}
+#endif
+
 // Read-only settings value. On TV it sits on the same cell surface as the
 // guide so the page matches the other tabs; elsewhere it is a Form row.
 private struct SettingsRow: View {
     let title: String
     let value: String
+    var wraps = false
     @Environment(\.colorScheme) private var scheme
-    init(_ title: String, value: String) { self.title = title; self.value = value }
+    init(_ title: String, value: String, wraps: Bool = false) { self.title = title; self.value = value; self.wraps = wraps }
     var body: some View {
         #if os(tvOS)
-        HStack {
-            Text(title)
+        HStack(alignment: .firstTextBaseline, spacing: 24) {
+            Text(title).fixedSize()
             Spacer()
-            Text(value).foregroundStyle(.secondary).lineLimit(1)
+            Text(value).foregroundStyle(.secondary).lineLimit(wraps ? 2 : 1).multilineTextAlignment(.trailing)
         }
         .font(.system(size: 24))
         .padding(.horizontal, 24).padding(.vertical, 16)

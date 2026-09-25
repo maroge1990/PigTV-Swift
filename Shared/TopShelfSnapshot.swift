@@ -210,3 +210,71 @@ nonisolated enum PigTVLink {
         return Play(sourceId: sourceId, id: id, name: name, number: number)
     }
 }
+
+// MARK: Diagnostics (build 31)
+
+/// What the Top Shelf extension did the last time tvOS asked it for
+/// content, written by the extension next to the snapshot so the app's
+/// Settings can show whether tvOS is asking at all (build 31: tvOS never
+/// could: the extension exited as soon as it launched; see ContentProvider).
+nonisolated struct TopShelfExtensionStatus: Codable, Equatable, Sendable {
+    static let fileName = "topshelf-extension-status.json"
+    var askedAt: Date
+    /// Items returned (0 with no snapshot: the static image is shown).
+    var items: Int
+    /// "returned 12 items", "no snapshot", "no App Group container"…
+    var note: String
+
+    static func read(container: URL? = AppGroupStorage.containerURL) -> TopShelfExtensionStatus? {
+        guard let url = AppGroupStorage.fileURL(fileName, in: container), let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        return try? decoder.decode(TopShelfExtensionStatus.self, from: data)
+    }
+
+    @discardableResult
+    func write(container: URL? = AppGroupStorage.containerURL) -> Bool {
+        guard let url = AppGroupStorage.fileURL(Self.fileName, in: container) else { return false }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .millisecondsSince1970
+        do {
+            try AppGroupStorage.createDirectory(for: url)
+            try encoder.encode(self).write(to: url, options: .atomic)
+            return true
+        } catch {
+            TopShelfLog.logger.error("status: write failed: \(String(describing: error), privacy: .public)")
+            return false
+        }
+    }
+}
+
+/// Settings → Diagnostics (tvOS): one line about the app's snapshot and one
+/// about the extension, read from the App Group (pure apart from the reads;
+/// tests pass a temporary container).
+nonisolated enum TopShelfDiagnostics {
+    struct Lines: Equatable, Sendable {
+        var snapshot: String
+        var extensionStatus: String
+    }
+
+    static func lines(container: URL? = AppGroupStorage.containerURL,
+                      format: (Date) -> String = { $0.formatted(date: .abbreviated, time: .shortened) }) -> Lines {
+        guard let container, let url = TopShelfSnapshot.fileURL(in: container) else {
+            return Lines(snapshot: "Not written: no App Group (entitlement or provisioning missing)",
+                         extensionStatus: "Unknown: no App Group")
+        }
+        let snapshot: String
+        if let data = try? Data(contentsOf: url) {
+            let written = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date)
+            let count = TopShelfSnapshot.decode(data)?.channels.count
+            let when = (TopShelfSnapshot.decode(data)?.savedAt ?? written).map(format) ?? "at an unknown time"
+            snapshot = "Written \(when), \(count.map { "\($0) \($0 == 1 ? "item" : "items")" } ?? "unreadable") · App Group OK"
+        } else {
+            snapshot = "Not written yet · App Group OK"
+        }
+        let status = TopShelfExtensionStatus.read(container: container)
+            .map { "Last asked \(format($0.askedAt)): \($0.note)" }
+            ?? "Not asked yet: move to PigTV in the top row"
+        return Lines(snapshot: snapshot, extensionStatus: status)
+    }
+}

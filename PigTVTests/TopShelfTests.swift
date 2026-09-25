@@ -150,7 +150,38 @@ final class TopShelfTests: XCTestCase {
         XCTAssertEqual(ext["NSExtensionPointIdentifier"] as? String, "com.apple.tv-top-shelf")
         XCTAssertEqual(ext["NSExtensionPrincipalClass"] as? String, "PigTVTopShelf.ContentProvider")
     }
+
+    // Build 31: the tv-app-extension product type links `_TVExtensionMain`,
+    // which the current tvOS runtime implements as an empty function, so the
+    // extension exited at launch and the Top Shelf only ever showed the
+    // static image. The extension must enter through `_NSExtensionMain`.
+    func testTopShelfExtensionEntryPoint() throws {
+        let appex = try XCTUnwrap(Bundle.main.builtInPlugInsURL?.appendingPathComponent("PigTVTopShelf.appex"))
+        let executable = try XCTUnwrap(Bundle(url: appex)?.executableURL)
+        let binary = try Data(contentsOf: executable)
+        XCTAssertNotNil(binary.range(of: Data("_NSExtensionMain".utf8)), "the extension does not enter through NSExtensionMain")
+        XCTAssertNil(binary.range(of: Data("_TVExtensionMain".utf8)), "the extension still links the empty TVExtensionMain")
+    }
     #endif
+
+    func testDiagnosticsLines() throws {
+        let noGroup = TopShelfDiagnostics.lines(container: nil)
+        XCTAssertTrue(noGroup.snapshot.contains("no App Group"), noGroup.snapshot)
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: container) }
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        let format: (Date) -> String = { "T\(Int($0.timeIntervalSince1970))" }
+        let empty = TopShelfDiagnostics.lines(container: container, format: format)
+        XCTAssertEqual(empty.snapshot, "Not written yet · App Group OK")
+        XCTAssertTrue(empty.extensionStatus.hasPrefix("Not asked yet"), empty.extensionStatus)
+        let entry = TopShelfSnapshot.Entry(id: "a", sourceId: 1, name: "A", number: nil, logo: nil, programmes: [])
+        XCTAssertTrue(TopShelfSnapshot(kind: "channels", channels: [entry, entry], savedAt: now).write(container: container))
+        XCTAssertTrue(TopShelfExtensionStatus(askedAt: now.addingTimeInterval(60), items: 2, note: "returned 2 items").write(container: container))
+        let written = TopShelfDiagnostics.lines(container: container, format: format)
+        XCTAssertEqual(written.snapshot, "Written T1800000000, 2 items · App Group OK")
+        XCTAssertEqual(written.extensionStatus, "Last asked T1800000060: returned 2 items")
+        XCTAssertEqual(TopShelfExtensionStatus.read(container: container)?.items, 2)
+    }
 
     func testPlayLinks() throws {
         let url = PigTVLink.playURL(sourceId: 4, id: "12&3+4 5", name: "Sky Sports+ & More", number: 503)
