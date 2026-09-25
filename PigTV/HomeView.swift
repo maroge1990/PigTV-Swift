@@ -36,45 +36,63 @@ private struct HomeContent: Equatable {
     }
 }
 
+// Build 31 (Mark: "a very long screen … continue watching takes up about
+// 50% of the screen"): on the TV the hero is about a third of the screen
+// (~340 pt of 1080) and the cards are smaller, so the hero and two full
+// shelves fit on one 1080p screen. The page header (pig, "Home", date) is
+// not drawn on the TV: the tab bar already says Home.
 private enum HomeMetrics {
     #if os(tvOS)
     static let pagePadding: CGFloat = 0
-    static let sectionSpacing: CGFloat = 44
-    static let cardWidth: CGFloat = 380
-    static let artHeight: CGFloat = 196
-    static let cardSpacing: CGFloat = 40
-    static let heroHeight: CGFloat = 500
-    static let heroRadius: CGFloat = 36
-    static let cardRadius: CGFloat = 20
-    static let heroTitle: Font = .system(size: 56, weight: .bold)
-    static let heroChannel: Font = .system(size: 28, weight: .semibold)
-    static let heroDetail: Font = .system(size: 24, weight: .medium)
-    static let eyebrow: Font = .system(size: 20, weight: .bold)
-    static let sectionTitle: Font = .system(size: 30, weight: .bold)
-    static let cardTitle: Font = .system(size: 24, weight: .semibold)
-    static let cardDetail: Font = .system(size: 20)
-    static let heroLogo = CGSize(width: 440, height: 248)
-    static let heroLogoInset = CGSize(width: 36, height: 26)
-    static let artInset = CGSize(width: 44, height: 30)
+    static let sectionSpacing: CGFloat = 22
+    static let cardWidth: CGFloat = 260
+    static let artHeight: CGFloat = 120
+    static let cardSpacing: CGFloat = 30
+    static let cardPadding: CGFloat = 12
+    static let cardTextSpacing: CGFloat = 6
+    /// Vertical room around a shelf's cards for the focus lift.
+    static let shelfPadding: CGFloat = 14
+    static let heroHeight: CGFloat = 320
+    static let heroPadding = CGSize(width: 56, height: 26)
+    static let heroSpacing: CGFloat = 6
+    static let heroRadius: CGFloat = 32
+    static let cardRadius: CGFloat = 18
+    static let heroTitle: Font = .system(size: 40, weight: .bold)
+    static let heroChannel: Font = .system(size: 22, weight: .semibold)
+    static let heroDetail: Font = .system(size: 22, weight: .medium)
+    static let eyebrow: Font = .system(size: 18, weight: .bold)
+    static let sectionTitle: Font = .system(size: 26, weight: .bold)
+    static let cardTitle: Font = .system(size: 22, weight: .semibold)
+    static let cardDetail: Font = .system(size: 18)
+    static let heroLogo = CGSize(width: 300, height: 170)
+    static let heroLogoInset = CGSize(width: 28, height: 20)
+    static let artInset = CGSize(width: 30, height: 18)
+    static let welcomeTitle: Font = .system(size: 48, weight: .bold)
     #else
     static let pagePadding: CGFloat = 20
-    static let sectionSpacing: CGFloat = 28
-    static let cardWidth: CGFloat = 230
-    static let artHeight: CGFloat = 118
-    static let cardSpacing: CGFloat = 16
+    static let sectionSpacing: CGFloat = 20
+    static let cardWidth: CGFloat = 200
+    static let artHeight: CGFloat = 100
+    static let cardSpacing: CGFloat = 14
+    static let cardPadding: CGFloat = 12
+    static let cardTextSpacing: CGFloat = 5
+    static let shelfPadding: CGFloat = 8
     static let heroHeight: CGFloat = 0
-    static let heroRadius: CGFloat = 24
-    static let cardRadius: CGFloat = 16
-    static let heroTitle: Font = .title.bold()
-    static let heroChannel: Font = .headline
+    static let heroPadding = CGSize(width: 20, height: 18)
+    static let heroSpacing: CGFloat = 6
+    static let heroRadius: CGFloat = 22
+    static let cardRadius: CGFloat = 14
+    static let heroTitle: Font = .title2.bold()
+    static let heroChannel: Font = .subheadline.weight(.semibold)
     static let heroDetail: Font = .subheadline
     static let eyebrow: Font = .caption.bold()
-    static let sectionTitle: Font = .title3.bold()
+    static let sectionTitle: Font = .headline
     static let cardTitle: Font = .subheadline.weight(.semibold)
     static let cardDetail: Font = .caption
     static let heroLogo = CGSize(width: 150, height: 84)
     static let heroLogoInset = CGSize(width: 14, height: 10)
-    static let artInset = CGSize(width: 26, height: 16)
+    static let artInset = CGSize(width: 24, height: 14)
+    static let welcomeTitle: Font = .title.bold()
     #endif
 }
 
@@ -107,7 +125,9 @@ struct HomeView: View {
             ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: HomeMetrics.sectionSpacing) {
+                    #if os(iOS)
                     header
+                    #endif
                     if let hero = content.hero {
                         HomeHero(channel: hero, model: model, clock: clock,
                                  watch: { play(hero, from: [hero]) },
@@ -145,6 +165,11 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, HomeMetrics.pagePadding)
                 .padding(.bottom, 60)
+                #if os(tvOS)
+                // The tab bar is the page's title on the TV; a little air
+                // between it and the hero.
+                .padding(.top, 2)
+                #endif
             }
             .scrollClipDisabled()
             #if DEBUG
@@ -237,7 +262,7 @@ struct HomeView: View {
                         ForEach(items) { card($0) }
                     }
                     // Room for the focus lift and its shadow.
-                    .padding(.vertical, 24)
+                    .padding(.vertical, HomeMetrics.shelfPadding)
                 }
                 .scrollIndicators(.hidden)
                 .scrollClipDisabled()
@@ -350,10 +375,12 @@ private struct HomeHero: View {
     private enum Control: Hashable { case watch, schedule }
     @FocusState private var focus: Control?
 
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
     var body: some View {
         let row = channel.onNow(at: clock)
         #if os(tvOS)
-        HStack(alignment: .center, spacing: 64) {
+        HStack(alignment: .center, spacing: 56) {
             details(row)
             Spacer(minLength: 0)
             logo
@@ -362,7 +389,7 @@ private struct HomeHero: View {
         // below) lands on Watch.
         .focusSection()
         .defaultFocus($focus, .watch, priority: .userInitiated)
-        .padding(.horizontal, 64).padding(.vertical, 52)
+        .padding(.horizontal, HomeMetrics.heroPadding.width).padding(.vertical, HomeMetrics.heroPadding.height)
         .frame(maxWidth: .infinity, minHeight: HomeMetrics.heroHeight, alignment: .leading)
         .background { LogoWash(logo: channel.logo, client: model.client) }
         .clipShape(RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous))
@@ -370,13 +397,25 @@ private struct HomeHero: View {
             RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous)
                 .strokeBorder(Color.primary.opacity(scheme == .dark ? 0.08 : 0.06), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(scheme == .dark ? 0.5 : 0.14), radius: 30, y: 16)
+        .shadow(color: .black.opacity(scheme == .dark ? 0.5 : 0.14), radius: 24, y: 12)
         #else
-        VStack(alignment: .leading, spacing: 16) {
-            logo
-            details(row)
+        Group {
+            // Build 31: iPad (regular width) lays the hero out like the TV,
+            // logo on the right, so it is short; iPhone stacks it.
+            if sizeClass == .regular {
+                HStack(alignment: .center, spacing: 24) {
+                    details(row)
+                    Spacer(minLength: 0)
+                    logo
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    logo
+                    details(row)
+                }
+            }
         }
-        .padding(20)
+        .padding(.horizontal, HomeMetrics.heroPadding.width).padding(.vertical, HomeMetrics.heroPadding.height)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { LogoWash(logo: channel.logo, client: model.client) }
         .clipShape(RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous))
@@ -385,38 +424,39 @@ private struct HomeHero: View {
 
     private var logo: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color.logoTile(scheme))
+            RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.logoTile(scheme))
             if channel.logo != nil {
                 ChannelArtwork(logo: channel.logo, client: model.client)
                     .padding(.horizontal, HomeMetrics.heroLogoInset.width).padding(.vertical, HomeMetrics.heroLogoInset.height)
             } else {
                 Text(channel.name).font(HomeMetrics.heroChannel).multilineTextAlignment(.center)
-                    .lineLimit(3).minimumScaleFactor(0.6).padding(20)
+                    .lineLimit(3).minimumScaleFactor(0.6).padding(16)
             }
         }
         .frame(width: HomeMetrics.heroLogo.width, height: HomeMetrics.heroLogo.height)
-        .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
+        .shadow(color: .black.opacity(0.3), radius: 14, y: 8)
         .accessibilityHidden(true)
     }
 
     private func details(_ row: OnNowRow) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("CONTINUE WATCHING").font(HomeMetrics.eyebrow).tracking(2.5)
-                .foregroundStyle(Color.pigAccent)
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+        VStack(alignment: .leading, spacing: HomeMetrics.heroSpacing) {
+            // One line: the eyebrow, then the channel (build 31, was two).
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Text("CONTINUE WATCHING").font(HomeMetrics.eyebrow).tracking(2.2)
+                    .foregroundStyle(Color.pigAccent)
+                    .fixedSize()
                 Text(channel.name).lineLimit(1).font(HomeMetrics.heroChannel).foregroundStyle(.secondary)
                 if let number = channel.number {
                     ChannelNumberText(number: String(number), font: HomeMetrics.cardDetail)
                 }
             }
             Text(row.current?.title ?? "No programme information")
-                .font(HomeMetrics.heroTitle).lineLimit(2).minimumScaleFactor(0.7)
-                .fixedSize(horizontal: false, vertical: true)
+                .font(HomeMetrics.heroTitle).lineLimit(1).minimumScaleFactor(0.75)
             if let current = row.current {
                 Text("\(timeRange(current)) · \(remaining(current))")
-                    .font(HomeMetrics.heroDetail).foregroundStyle(.secondary)
+                    .font(HomeMetrics.heroDetail).foregroundStyle(.secondary).lineLimit(1)
                 PigProgressBar(fraction: row.progress, height: 6)
-                    .frame(maxWidth: 560)
+                    .frame(maxWidth: 520)
                     .accessibilityLabel("\(Int(row.progress * 100)) percent through")
             }
             if let next = row.next {
@@ -425,12 +465,12 @@ private struct HomeHero: View {
                  + Text(next.title).font(HomeMetrics.heroDetail))
                     .lineLimit(1)
             }
-            HStack(spacing: 24) {
+            HStack(spacing: 22) {
                 Button(action: watch) {
                     Label("Watch", systemImage: "play.fill")
                         #if os(tvOS)
-                        .font(.system(size: 26, weight: .semibold))
-                        .padding(.horizontal, 18).padding(.vertical, 4)
+                        .font(.system(size: 24, weight: .semibold))
+                        .padding(.horizontal, 16).padding(.vertical, 2)
                         #endif
                 }
                 .pigPrimaryButton()
@@ -440,12 +480,12 @@ private struct HomeHero: View {
                 if let schedule {
                     Button("Schedule", systemImage: "list.bullet.rectangle", action: schedule)
                         #if os(tvOS)
-                        .font(.system(size: 24, weight: .medium))
+                        .font(.system(size: 22, weight: .medium))
                         #endif
                         .focused($focus, equals: .schedule)
                 }
             }
-            .padding(.top, 14)
+            .padding(.top, 8)
         }
         .frame(maxWidth: 900, alignment: .leading)
     }
@@ -470,7 +510,7 @@ private struct HomeWelcome: View {
         VStack(spacing: 22) {
             Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
                 .accessibilityHidden(true)
-            Text("Welcome to PigTV").font(HomeMetrics.heroTitle)
+            Text("Welcome to PigTV").font(HomeMetrics.welcomeTitle)
             Text("Channels you watch, your favourites and your recordings will gather here. Start with the TV Guide, and use Details on any channel to add it to your favourites.")
                 .font(HomeMetrics.heroDetail).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: 900)
@@ -527,7 +567,7 @@ private struct CardArt<Badge: View>: View {
                 ChannelArtwork(logo: logo, client: client)
                     .padding(.horizontal, HomeMetrics.artInset.width).padding(.vertical, HomeMetrics.artInset.height)
             } else if let symbol {
-                Image(systemName: symbol).font(.system(size: 54, weight: .semibold))
+                Image(systemName: symbol).font(.system(size: 44, weight: .semibold))
                     .foregroundStyle(Color.pigAccent)
             } else {
                 Text(name).font(HomeMetrics.cardTitle).multilineTextAlignment(.center)
@@ -556,6 +596,36 @@ struct CardBadge: View {
     }
 }
 
+/// The text under a card's art (build 31, one line shorter than before):
+/// the title, a progress bar (its space kept when there is none, so cards in
+/// a shelf line up), and one detail line.
+/// `accent` leads the detail line in colour ("in 12 min", "REC"): with the
+/// smaller art, badges drawn over it covered the logo.
+private struct CardText: View {
+    let title: String
+    let progress: Double?
+    let detail: String
+    var accent: (text: String, colour: Color)? = nil
+    var body: some View {
+        VStack(alignment: .leading, spacing: HomeMetrics.cardTextSpacing) {
+            Text(title).font(HomeMetrics.cardTitle).lineLimit(1)
+            PigProgressBar(fraction: progress ?? 0)
+                .opacity(progress == nil ? 0 : 1)
+                .accessibilityHidden(progress == nil)
+            detailLine.font(HomeMetrics.cardDetail).lineLimit(1)
+        }
+        .padding(HomeMetrics.cardPadding)
+        .frame(width: HomeMetrics.cardWidth, alignment: .leading)
+    }
+
+    private var detailLine: Text {
+        let rest = Text(detail.isEmpty ? " " : detail).foregroundColor(.secondary)
+        guard let accent else { return rest }
+        return Text(accent.text).bold().foregroundColor(accent.colour) + Text(detail.isEmpty ? "" : " · ").foregroundColor(.secondary)
+            + (detail.isEmpty ? Text("") : rest)
+    }
+}
+
 /// A channel: logo, number and name, what is on now with its progress.
 private struct HomeChannelCard: View {
     let channel: HomeChannel
@@ -568,20 +638,9 @@ private struct HomeChannelCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
                 CardArt(logo: channel.logo, name: channel.name, client: model.client) { EmptyView() }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(channel.name).font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
-                    Text(row.current?.title ?? "No programme information")
-                        .font(HomeMetrics.cardTitle).lineLimit(2, reservesSpace: true)
-                    if let current = row.current {
-                        PigProgressBar(fraction: row.progress)
-                        Text("Until \(current.end.formatted(date: .omitted, time: .shortened))" + (row.next.map { " · then \($0.title)" } ?? ""))
-                            .font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
-                    } else {
-                        Text(" ").font(HomeMetrics.cardDetail)
-                    }
-                }
-                .padding(18)
-                .frame(width: HomeMetrics.cardWidth, alignment: .leading)
+                CardText(title: row.current?.title ?? "No programme information", progress: row.current.map { _ in row.progress },
+                         detail: [channel.name, row.current.map { "until \($0.end.formatted(date: .omitted, time: .shortened))" }]
+                            .compactMap { $0 }.joined(separator: " · "))
             }
         }
         .buttonStyle(HomeCardButtonStyle())
@@ -602,20 +661,10 @@ private struct HomeSoonCard: View {
         let scheduled = model.scheduledKeys.contains(ScheduledRecording.key(channel: item.channel.name, start: item.programme.startTime))
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                CardArt(logo: item.channel.logo, name: item.channel.name, client: model.client) {
-                    if scheduled { CardBadge(text: "REC", systemImage: "record.circle.fill", colour: .red) }
-                }
-                .overlay(alignment: .bottomLeading) {
-                    CardBadge(text: countdown, systemImage: "clock").padding(12)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(item.channel.name).font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
-                    Text(item.programme.title).font(HomeMetrics.cardTitle).lineLimit(2, reservesSpace: true)
-                    Text("\(item.programme.start.formatted(date: .omitted, time: .shortened)) – \(item.programme.end.formatted(date: .omitted, time: .shortened))")
-                        .font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
-                }
-                .padding(18)
-                .frame(width: HomeMetrics.cardWidth, alignment: .leading)
+                CardArt(logo: item.channel.logo, name: item.channel.name, client: model.client) { EmptyView() }
+                CardText(title: item.programme.title, progress: nil,
+                         detail: (scheduled ? "REC · " : "") + "\(item.channel.name) · \(item.programme.start.formatted(date: .omitted, time: .shortened))",
+                         accent: (countdown, Color.pigAccent))
             }
         }
         .buttonStyle(HomeCardButtonStyle())
@@ -637,30 +686,21 @@ private struct HomeRecordingCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
                 CardArt(logo: logo, name: recording.channel_name ?? recording.title, client: model.client,
-                        symbol: "play.rectangle.fill") {
-                    if recordingNow { CardBadge(text: "REC", systemImage: "record.circle.fill", colour: .red) }
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(recording.channel_name ?? "Recording").font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
-                    Text(recording.title).font(HomeMetrics.cardTitle).lineLimit(2, reservesSpace: true)
-                    if let resume {
-                        PigProgressBar(fraction: resume)
-                    }
-                    Text(detail(recordingNow: recordingNow, resuming: resume != nil))
-                        .font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
-                }
-                .padding(18)
-                .frame(width: HomeMetrics.cardWidth, alignment: .leading)
+                        symbol: "play.rectangle.fill") { EmptyView() }
+                CardText(title: recording.title, progress: resume,
+                         detail: ([recording.channel_name].compactMap { $0 } + [detail(resuming: resume != nil)])
+                            .filter { !$0.isEmpty }.joined(separator: " · "),
+                         accent: recordingNow ? ("● REC", Color.red) : nil)
             }
         }
         .buttonStyle(HomeCardButtonStyle())
         .accessibilityLabel("\(recording.title), \(recordingNow ? "recording now" : "recorded")")
     }
 
-    private func detail(recordingNow: Bool, resuming: Bool) -> String {
+    /// The channel and REC lead the line; then the date, length and Resume.
+    private func detail(resuming: Bool) -> String {
         var parts: [String] = []
-        if recordingNow { parts.append("Recording now") }
-        else if let started = recording.started { parts.append(started.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))) }
+        if let started = recording.started { parts.append(started.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))) }
         if let duration = recording.duration_sec, duration > 0 { parts.append("\(Int(duration / 60)) min") }
         if resuming { parts.append("Resume") }
         return parts.joined(separator: " · ")

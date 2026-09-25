@@ -11,18 +11,18 @@ import SwiftUI
 
 enum SportMetrics {
     #if os(tvOS)
-    static let cardWidth: CGFloat = 420
-    static let cardPadding: CGFloat = 24
-    static let cardSpacing: CGFloat = 40
-    static let sectionSpacing: CGFloat = 40
+    static let cardWidth: CGFloat = 380
+    static let cardPadding: CGFloat = 20
+    static let cardSpacing: CGFloat = 30
+    static let sectionSpacing: CGFloat = 30
     static let pagePadding: CGFloat = 0
     static let radius: CGFloat = 20
     static let logo = CGSize(width: 112, height: 63)
     static let rowLogo = CGSize(width: 136, height: 76)
-    static let league: Font = .system(size: 20, weight: .bold)
-    static let title: Font = .system(size: 26, weight: .semibold)
-    static let detail: Font = .system(size: 21)
-    static let sectionTitle: Font = .system(size: 30, weight: .bold)
+    static let league: Font = .system(size: 18, weight: .bold)
+    static let title: Font = .system(size: 24, weight: .semibold)
+    static let detail: Font = .system(size: 19)
+    static let sectionTitle: Font = .system(size: 26, weight: .bold)
     #else
     static let cardWidth: CGFloat = 264
     static let cardPadding: CGFloat = 14
