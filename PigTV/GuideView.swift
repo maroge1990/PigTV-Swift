@@ -141,7 +141,7 @@ struct GuideView: View {
             .buttonStyle(GuideFilterStyle())
             // The app's page behind the guide (build 28): tvOS otherwise
             // shows its blurred system backdrop in dark mode.
-            .background(PigPageBackground())
+            .pigPageBackdrop()
             .task {
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }

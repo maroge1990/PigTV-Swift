@@ -93,7 +93,7 @@ struct RecordingsView: View {
                 if model.recordingsBusy { ProgressView("Refreshing recordings…") }
             }
             .navigationTitle("Recordings")
-            .background(PigPageBackground())
+            .pigPageBackdrop()
             // Build 31: only when older than a minute (Refresh reloads at once).
             .task { await model.loadRecordingsIfStale() }
             .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }

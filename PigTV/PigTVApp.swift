@@ -31,30 +31,36 @@ struct PigTVApp: App {
     // re-renders immediately; the Settings test screen sets its own.
     var body: some Scene {
         WindowGroup {
-            #if DEBUG
-            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "settings" {
-                SettingsTestScreen()
-            } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "guide" {
-                GuideTestScreen()
-            } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
-                HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
-            } else if ["sport", "sport-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
-                HomeTestScreen(firstRun: false, initialTab: "sport",
-                               noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
-            } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {
-                PlayerTestScreen()
-            } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
-                      DesignTestScreen.screens.contains(screen) {
-                DesignTestScreen(screen: screen)
-            } else if ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" {
-                Color.clear
-            } else {
-                ContentView()
-            }
-            #else
-            ContentView()
-            #endif
+            // Build 32: the window itself is the page colour (PageBackdrop.swift).
+            root.background(WindowBackdrop().accessibilityHidden(true))
         }
+    }
+
+    @ViewBuilder
+    private var root: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "settings" {
+            SettingsTestScreen()
+        } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "guide" {
+            GuideTestScreen()
+        } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+            HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
+        } else if ["sport", "sport-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+            HomeTestScreen(firstRun: false, initialTab: "sport",
+                           noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
+        } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {
+            PlayerTestScreen()
+        } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
+                  DesignTestScreen.screens.contains(screen) {
+            DesignTestScreen(screen: screen)
+        } else if ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" {
+            Color.clear
+        } else {
+            ContentView()
+        }
+        #else
+        ContentView()
+        #endif
     }
 }
 

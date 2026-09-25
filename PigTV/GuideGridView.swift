@@ -117,9 +117,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .clear
+        // Build 32: the page colour, not clear (see PageBackdrop.swift).
+        view.backgroundColor = .pigPage
         let collectionView = GuideGridCollectionView(frame: view.bounds, collectionViewLayout: layout)
-        collectionView.backgroundColor = .clear
+        collectionView.backgroundColor = .pigPage
         collectionView.clipsToBounds = true
         collectionView.contentInsetAdjustmentBehavior = .never
         collectionView.showsHorizontalScrollIndicator = false

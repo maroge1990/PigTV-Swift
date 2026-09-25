@@ -184,7 +184,7 @@ struct HomeView: View {
             }
             #endif
             }
-            .background(PigPageBackground())
+            .pigPageBackdrop()
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif

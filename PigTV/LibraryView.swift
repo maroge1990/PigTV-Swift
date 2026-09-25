@@ -76,7 +76,7 @@ struct LibrarySettings: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         // The app's page, not the system's blurred backdrop (build 28).
-        .background(PigPageBackground())
+        .pigPageBackdrop()
         .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             signOutButton
             Button("Stay signed in", role: .cancel) {}
@@ -88,7 +88,7 @@ struct LibrarySettings: View {
             Form { settingsContent }
                 .navigationTitle("Settings")
                 .scrollContentBackground(.hidden)
-                .background(PigPageBackground())
+                .pigPageBackdrop()
                 .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {
                     signOutButton
                 }
