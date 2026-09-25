@@ -216,6 +216,34 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// C-I: selecting a sport event plays its best channel (the first in
+    /// `channels`) with the event's channels as the zap list, for real.
+    func testSelectingASportEventPlaysItsBestChannel() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let client = try server.client()
+        let browse = BrowseModel(client: client)
+        let app = AppModel()
+        app.configureClientForTesting(client, browse: browse)
+        await browse.sport.load()
+        let event = try XCTUnwrap(browse.sport.live.first)
+        channelKeys += event.channels.map { browse.playable($0).identityKey }
+        app.playSportEvent(event)
+        let playback = try XCTUnwrap(app.playback)
+        XCTAssertEqual(playback.channel.id, "1:701")
+        XCTAssertEqual(app.zapList.map(\.id), ["1:701", "1:702", "2:88"])
+        playback.start()
+        try await waitFor("the best channel playing") { isPlaying(playback) }
+        let body = try XCTUnwrap(server.resolveBodies().first)
+        XCTAssertEqual(body["channelId"] as? String, "701")
+        XCTAssertEqual(body["sourceId"] as? Int, 1)
+        XCTAssertEqual(body["force"] as? Bool, false)
+        XCTAssertEqual(itemPath(playback), "/api/transcode/s1/master.m3u8")
+        XCTAssertNil(playback.error)
+        await app.endPlayback(playback)
+        server.http.stop()
+    }
+
     /// Channel switching as the app does it: the old model is stopped (and
     /// its session released) before the new one resolves, and the new one
     /// really plays.

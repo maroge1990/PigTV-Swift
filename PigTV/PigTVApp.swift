@@ -38,6 +38,9 @@ struct PigTVApp: App {
                 GuideTestScreen()
             } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
                 HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
+            } else if ["sport", "sport-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+                HomeTestScreen(firstRun: false, initialTab: "sport",
+                               noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
             } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {
                 PlayerTestScreen()
             } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
@@ -82,15 +85,22 @@ private struct GuideTestScreen: View {
 
 // Offline Home (build 28): PIGTV_UI_TEST_SCREEN=home (history, favourites,
 // sport, recordings, logos) or home-empty (the first-run state).
+// C-I (build 30): PIGTV_UI_TEST_SCREEN=sport opens the Sport tab on the same
+// data (NFL, AFL, F1 and NRL events); sport-empty shows its empty state.
 private struct HomeTestScreen: View {
     let firstRun: Bool
+    var initialTab = "home"
+    var noSport = false
     @StateObject private var model = AppModel()
     var body: some View {
-        LibraryView(model: model)
+        LibraryView(model: model, initialTab: initialTab)
             #if os(tvOS)
             .buttonStyle(TVActionStyle())
             #endif
-            .task { model.injectHomeFixture(firstRun: firstRun) }
+            .task {
+                model.injectHomeFixture(firstRun: firstRun)
+                if noSport { model.browse?.sport.setFixture([]) }
+            }
             .preferredColorScheme(fixtureScheme)
     }
 }
@@ -118,10 +128,11 @@ private struct PlayerTestScreen: View {
 // One secondary screen on the Home fixture's data, for design checks
 // (build 28 consistency pass): PIGTV_UI_TEST_SCREEN=programme | programme-later
 // | record | schedule | channel | recording | search | jump | unreachable |
-// onboarding, with PIGTV_UI_TEST_APPEARANCE=light|dark.
+// onboarding | sport-event (an upcoming event's page) | sport-channels (the
+// channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
     static let screens: Set<String> = ["programme", "programme-later", "record", "schedule", "channel", "recording",
-                                       "search", "jump", "unreachable", "onboarding"]
+                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels"]
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
@@ -168,6 +179,14 @@ private struct DesignTestScreen: View {
                              done: {}, choose: { _, _ in }, refresh: {})
         case "jump":
             GuideJumpSheet(date: $jumpDate, show: { _ in }, cancel: {})
+        case "sport-event":
+            if let event = browse.sport.soon.first {
+                SportEventDetails(event: event, app: app, browse: browse, play: { _ in })
+            }
+        case "sport-channels":
+            if let event = browse.sport.live.first {
+                SportChannelPicker(event: event, browse: browse, choose: { _ in })
+            }
         case "unreachable":
             UnreachableView(model: app, message: "This device cannot reach the server. Check that you are on the home network or that Tailscale is connected.")
         default:

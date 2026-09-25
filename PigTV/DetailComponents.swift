@@ -336,6 +336,18 @@ extension View {
         #endif
     }
 
+    /// As above, with an action once the page has gone (play after a
+    /// cover closes: the player cannot present over another cover).
+    @ViewBuilder
+    func detailCover<Item: Identifiable, Page: View>(item: Binding<Item?>, onDismiss: @escaping () -> Void,
+                                                     @ViewBuilder page: @escaping (Item) -> Page) -> some View {
+        #if os(tvOS)
+        fullScreenCover(item: item, onDismiss: onDismiss, content: page)
+        #else
+        sheet(item: item, onDismiss: onDismiss, content: page)
+        #endif
+    }
+
     @ViewBuilder
     func detailCover<Page: View>(isPresented: Binding<Bool>, @ViewBuilder page: @escaping () -> Page) -> some View {
         #if os(tvOS)

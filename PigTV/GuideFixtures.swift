@@ -157,6 +157,38 @@ enum GuideFixtures {
         return rows.compactMap { try? JSONDecoder().decode(Recording.self, from: Data($0.utf8)) }
     }
 
+    // MARK: Sport fixture (C-I, PIGTV_UI_TEST_SCREEN=sport)
+
+    /// Plausible events on the fixture's sport channels: three live (one on
+    /// three channels), three starting within the hour, one later on.
+    static func sportEvents(from guide: [GuideChannel]) -> [SportEvent] {
+        // On the five minutes, as real kick-off times are.
+        let now = (Date().timeIntervalSince1970 / 300).rounded(.down) * 300_000
+        let minute = 60_000.0
+        func on(_ index: Int, _ quality: SportQuality?) -> SportEventChannel? {
+            guard guide.indices.contains(index) else { return nil }
+            let row = guide[index]
+            return SportEventChannel(sourceId: row.sourceId, rawID: row.rawID, stableId: row.stableId, name: row.name,
+                                     number: row.number, logo: row.logo, quality: quality)
+        }
+        func event(_ id: String, _ title: String, _ league: String, from: Double, minutes: Double,
+                   _ channels: [SportEventChannel?]) -> SportEvent {
+            SportEvent(id: id, title: title, league: league, startTime: now + from * minute,
+                       endTime: now + (from + minutes) * minute, channels: channels.compactMap { $0 })
+        }
+        return [
+            event("nfl-kc-buf", "Kansas City Chiefs vs Buffalo Bills", "NFL", from: -70, minutes: 200,
+                  [on(0, .uhd), on(3, .hd), on(1, .hd)]),
+            event("afl-coll-carl", "AFL: Collingwood v Carlton", "AFL", from: -40, minutes: 150, [on(2, .hd)]),
+            event("f1-sgp-q", "F1: Singapore Grand Prix Qualifying", "F1", from: -15, minutes: 75, [on(4, .uhd), on(5, .hd)]),
+            event("nrl-pf", "NRL Preliminary Final: Storm v Panthers", "NRL", from: 25, minutes: 120,
+                  [on(5, .hd), on(1, .hd), on(3, .sd)]),
+            event("nfl-phi-dal", "Philadelphia Eagles vs Dallas Cowboys", "NFL", from: 40, minutes: 195, [on(3, .hd), on(0, .hd)]),
+            event("afl-bris-geel", "AFL: Brisbane Lions v Geelong Cats", "AFL", from: 55, minutes: 150, [on(2, .hd)]),
+            event("nfl-sf-sea", "San Francisco 49ers vs Seattle Seahawks", "NFL", from: 190, minutes: 195, [on(0, .uhd), on(3, .hd)]),
+        ]
+    }
+
     static func user() -> User {
         (try? JSONDecoder().decode(User.self, from: Data(#"{"id":1,"username":"tester","role":"user"}"#.utf8)))
             ?? (try! JSONDecoder().decode(User.self, from: Data(#"{"id":0,"username":"","role":""}"#.utf8)))

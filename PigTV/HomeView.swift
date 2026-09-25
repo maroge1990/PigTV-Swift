@@ -2,7 +2,7 @@ import SwiftUI
 
 // Home (build 28): the first tab. A "Continue watching" hero for the last
 // channel played, then shelves: Recently watched, Favourites on now, Starting
-// soon on your favourites, Sport on now (C-H) and Recordings. Everything is
+// soon on your favourites, Sport now & next (C-I, build 30) and Recordings. Everything is
 // drawn from data the app already holds (the guide, favourites, recordings)
 // plus `library/recent`; the row choices are the pure `HomeRows` functions.
 // No live video here: the provider allows one stream and Home must never
@@ -15,7 +15,8 @@ private struct HomeContent: Equatable {
     var recent: [HomeChannel] = []
     var favouritesOnNow: [HomeChannel] = []
     var startingSoon: [HomeSoonItem] = []
-    var sport: [HomeChannel] = []
+    /// C-I: live sport events, then those starting within the hour.
+    var sport: [SportEvent] = []
     var recordings: [Recording] = []
     /// Recording id → its channel's logo (found by channel name in the guide).
     var recordingLogos: [Int: String] = [:]
@@ -82,6 +83,8 @@ struct HomeView: View {
     @ObservedObject var model: BrowseModel
     /// Switches to the TV Guide tab (first-run state).
     var openGuide: () -> Void = {}
+    /// Switches to the Sport tab (Sport now & next → See all).
+    var openSport: () -> Void = {}
     @State private var content = HomeContent()
     @State private var clock = Date()
     @State private var rebuild: Task<Void, Never>?
@@ -99,8 +102,6 @@ struct HomeView: View {
         var id: String { "\(channel.id)|\(programme.startTime)" }
     }
 
-    private var sportEnabled: Bool { model.client.info?.features.sportCategories == true }
-
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
@@ -114,6 +115,9 @@ struct HomeView: View {
                     } else if content.hasNoHistory && !(model.guideBusy && model.guide.isEmpty) {
                         HomeWelcome(openGuide: openGuide)
                     }
+                    if model.sportEnabled, let pending = app.pendingWatch {
+                        PendingWatchBanner(pending: pending) { app.cancelPendingWatch() }
+                    }
                     shelf("Recently watched", content.recent) { channel in
                         HomeChannelCard(channel: channel, model: model, clock: clock) { play(channel, from: content.recent) }
                     }
@@ -123,8 +127,14 @@ struct HomeView: View {
                     shelf("Starting soon on your favourites", content.startingSoon) { item in
                         HomeSoonCard(item: item, model: model, clock: clock) { showDetails(item) }
                     }
-                    shelf("Sport on now", content.sport) { channel in
-                        HomeChannelCard(channel: channel, model: model, clock: clock, showsLive: true) { play(channel, from: content.sport) }
+                    if !content.sport.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Sport now & next").font(HomeMetrics.sectionTitle)
+                                .accessibilityAddTraits(.isHeader)
+                            SportShelf(events: content.sport, app: app, browse: model, clock: clock, seeAll: openSport)
+                        }
+                        .tvFocusSection()
+                        .id("Sport now & next")
                     }
                     shelf("Recordings", content.recordings) { recording in
                         HomeRecordingCard(recording: recording, logo: content.recordingLogos[recording.id], model: model) { open(recording) }
@@ -175,7 +185,9 @@ struct HomeView: View {
         .onChange(of: model.recent.map(\.id)) { refresh() }
         .onChange(of: model.recordings.map(\.id)) { refresh() }
         .onChange(of: app.lastWatched) { refresh() }
-        .onChange(of: app.categories) { refresh() }
+        // C-I: the sport events (refreshed every minute while Home shows).
+        .onReceive(model.sport.$events) { _ in scheduleRefresh() }
+        .task { if model.sportEnabled { await model.sport.keepFresh() } }
         .onChange(of: app.playback == nil) { _, closed in if closed { clock = Date(); refresh() } }
         .fullScreenCover(item: $details, onDismiss: finishCover) { item in
             ProgrammeDetails(model: model, channel: item.channel, programme: item.programme, watch: {
@@ -271,15 +283,8 @@ struct HomeView: View {
         next.recent = HomeRows.recentlyWatched(recent, excluding: hero)
         next.favouritesOnNow = HomeRows.onNow(favourites, now: now)
         next.startingSoon = HomeRows.startingSoon(favourites, now: now)
-        if sportEnabled {
-            let sportKeys = Set(app.categories.filter(\.sport).flatMap { ["\($0.sourceId)|\($0.rawID)", "\($0.sourceId)|\($0.name)"] })
-            if !sportKeys.isEmpty {
-                // Only rows in a sport category are converted.
-                let candidates = model.guide.lazy
-                    .filter { row in row.category.map { sportKeys.contains("\(row.sourceId)|\($0)") } ?? false }
-                    .map(model.homeChannel)
-                next.sport = HomeRows.sportOnNow(Array(candidates), categories: app.categories, enabled: true, now: now)
-            }
+        if model.sportEnabled {
+            next.sport = SportRows.nowAndNext(SportRows.buckets(model.sport.events, now: now))
         }
         next.recordings = HomeRows.recordings(model.recordings)
         // One pass over the guide for the recordings' channel logos.
@@ -535,7 +540,7 @@ private struct CardArt<Badge: View>: View {
 }
 
 /// A small capsule label on a card ("LIVE", "in 12 min", "REC").
-private struct CardBadge: View {
+struct CardBadge: View {
     let text: String
     var systemImage: String? = nil
     var colour: Color = .pigAccent
@@ -556,17 +561,13 @@ private struct HomeChannelCard: View {
     let channel: HomeChannel
     let model: BrowseModel
     let clock: Date
-    var showsLive = false
     let action: () -> Void
 
     var body: some View {
         let row = channel.onNow(at: clock)
-        let live = showsLive && row.current.map(HomeRows.isLiveEvent) == true
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                CardArt(logo: channel.logo, name: channel.name, client: model.client) {
-                    if live { CardBadge(text: "LIVE", colour: .red) }
-                }
+                CardArt(logo: channel.logo, name: channel.name, client: model.client) { EmptyView() }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(channel.name).font(HomeMetrics.cardDetail).foregroundStyle(.secondary).lineLimit(1)
                     Text(row.current?.title ?? "No programme information")
@@ -584,7 +585,7 @@ private struct HomeChannelCard: View {
             }
         }
         .buttonStyle(HomeCardButtonStyle())
-        .accessibilityLabel([channel.number.map(String.init), channel.name, live ? "live" : nil,
+        .accessibilityLabel([channel.number.map(String.init), channel.name,
                              row.current.map { "now \($0.title)" }].compactMap { $0 }.joined(separator: ", "))
     }
 }

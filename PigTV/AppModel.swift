@@ -34,6 +34,9 @@ final class AppModel: ObservableObject {
     // Home (build 28): the last channel played on this device, kept across
     // launches for the "Continue watching" hero.
     @Published private(set) var lastWatched: LastWatched? = LastWatched.load()
+    // C-I: "Watch <channel> when it starts" on an upcoming sport event.
+    @Published private(set) var pendingWatch: PendingWatch?
+    private var pendingWatchTask: Task<Void, Never>?
 
     private var authRetry: (server: String, until: Date)?
     private var client: APIClient?
@@ -206,6 +209,7 @@ final class AppModel: ObservableObject {
 
     private func clearSession() {
         cancelPairing()
+        cancelPendingWatch()
         pendingLink = nil
         TopShelfExport.clear()
         LastWatched.clear()
@@ -329,6 +333,51 @@ final class AppModel: ObservableObject {
         switchPlayback(to: next)
     }
 
+    // MARK: Sport (C-I)
+
+    /// Plays one of an event's channels (the best, first, by default) with
+    /// the event's channels as the zap list. Switches when already playing.
+    func playSportEvent(_ event: SportEvent, channel: SportEventChannel? = nil) {
+        guard let browse else { return }
+        let channels = event.channels.map(browse.playable)
+        guard let chosen = channel.map(browse.playable) ?? channels.first else { return }
+        if pendingWatch?.eventID == event.id { cancelPendingWatch() }
+        zapList = channels
+        if let currentPlayback {
+            if currentPlayback.channel.id != chosen.id { switchPlayback(to: chosen) }
+        } else {
+            beginPlayback(chosen)
+        }
+    }
+
+    /// "Watch <channel> when it starts": plays at once when the event starts
+    /// within five minutes (or is on), else waits for its start while the
+    /// app stays in the foreground (backgrounding or signing out cancels).
+    func watchWhenStarts(_ event: SportEvent, channel: SportEventChannel? = nil, now: Date = Date()) {
+        guard let chosen = channel ?? event.best else { return }
+        cancelPendingWatch()
+        if event.start.timeIntervalSince(now) <= SportRows.watchNowWindow {
+            playSportEvent(event, channel: chosen)
+            return
+        }
+        let pending = PendingWatch(eventID: event.id, title: event.title, channelName: chosen.name, at: event.start)
+        pendingWatch = pending
+        pendingWatchTask = Task { [weak self] in
+            let wait = max(0, pending.at.timeIntervalSinceNow)
+            do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+            guard let self, self.pendingWatch == pending else { return }
+            self.pendingWatch = nil
+            self.pendingWatchTask = nil
+            self.playSportEvent(event, channel: chosen)
+        }
+    }
+
+    func cancelPendingWatch() {
+        pendingWatchTask?.cancel()
+        pendingWatchTask = nil
+        pendingWatch = nil
+    }
+
     func endPlayback(_ model: PlaybackModel) async {
         let message = await model.stop()
         if currentPlayback === model {
@@ -342,6 +391,8 @@ final class AppModel: ObservableObject {
 
     func background() async {
         cancelPairing()
+        // Returning to the foreground never starts playback by itself.
+        cancelPendingWatch()
         if let currentPlayback { await endPlayback(currentPlayback) }
     }
 
@@ -355,10 +406,10 @@ final class AppModel: ObservableObject {
     }
 
     // Offline Home fixture (PIGTV_UI_TEST_SCREEN=home): the guide fixture
-    // plus favourites, history, recordings, sport categories and logos.
+    // plus favourites, history, recordings, sport events and logos.
     func injectHomeFixture(firstRun: Bool = false) {
         guard let address = try? ServerAddress("http://127.0.0.1:3000"),
-              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportCategories":true,"recordingHls":true}}"#.utf8)) else { return }
+              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true,"recordingHls":true}}"#.utf8)) else { return }
         let client = APIClient(address: address, token: "fixture", info: info)
         let model = BrowseModel(client: client)
         model.isFixture = true
@@ -372,6 +423,7 @@ final class AppModel: ObservableObject {
             lastWatched = nil
         }
         GuideFixtures.preloadLogos()
+        model.sport.setFixture(firstRun ? [] : GuideFixtures.sportEvents(from: model.guide))
         browse = model
         categories = GuideFixtures.categories()
         serverInfo = info
@@ -415,4 +467,12 @@ final class AppModel: ObservableObject {
         user = GuideFixtures.user()
     }
     #endif
+}
+
+/// An upcoming event the user asked to watch when it starts.
+nonisolated struct PendingWatch: Equatable, Sendable {
+    let eventID: String
+    let title: String
+    let channelName: String
+    let at: Date
 }

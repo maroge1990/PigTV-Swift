@@ -146,7 +146,9 @@ struct ProgrammeDetails: View {
 /// Recording options: how early to start and how late to finish, then
 /// Schedule. The sheet itself is the confirmation (it carries the one-stream
 /// note the old dialog showed).
-private struct RecordSheet: View {
+/// Record a programme: start early / finish late, then schedule. Also used
+/// by the Sport tab (C-I) to record an event on its best channel.
+struct RecordSheet: View {
     @ObservedObject var model: BrowseModel
     let channel: GuideChannel
     let programme: GuideProgramme

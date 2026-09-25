@@ -373,6 +373,40 @@ final class BrowseModel: ObservableObject {
                 category: channel.category, now: nil, next: nil, stableId: channel.stableId, number: channel.number)
     }
 
+    // MARK: Sport (C-I)
+
+    /// Sport events, only used with the server's `sportsEvents` flag.
+    private(set) lazy var sport = SportModel(client: client)
+    var sportEnabled: Bool { client.info?.features.sportsEvents == true }
+
+    /// The Channel the player needs for one of an event's channels: its
+    /// guide row when loaded (logo fallback, stable identity), else the
+    /// event's own fields.
+    func playable(_ channel: SportEventChannel) -> Channel {
+        let row = guideRow(id: channel.id, identityKey: channel.identityKey)
+        return Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: logo(for: channel),
+                       category: row?.category, now: nil, next: nil, stableId: channel.stableId ?? row?.stableId,
+                       number: showsChannelNumbers ? (channel.number ?? row?.number) : nil)
+    }
+
+    /// The logo to draw for an event's channel (the event's, else the guide's).
+    func logo(for channel: SportEventChannel) -> String? {
+        if let logo = channel.logo { return logo }
+        return guideRow(id: channel.id, identityKey: channel.identityKey).flatMap { logo(for: $0) }
+    }
+
+    /// A guide row for recording an event on one of its channels: the event
+    /// is the only programme, so `schedule` records exactly its times.
+    func recordingRow(_ event: SportEvent, on channel: SportEventChannel) -> GuideChannel {
+        GuideChannel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: logo(for: channel),
+                     category: nil, programmes: [event.programme], stableId: channel.stableId, number: channel.number)
+    }
+
+    /// True when a recording of this event on this channel is scheduled.
+    func isScheduled(_ event: SportEvent, on channel: SportEventChannel) -> Bool {
+        scheduledKeys.contains(ScheduledRecording.key(channel: channel.name, start: event.startTime))
+    }
+
     // Matched on the stable identity (server 0097): one favourite covers every
     // listing of a cross-listed channel, as it does on the server.
     func isFavourite(_ channel: Channel) -> Bool {

@@ -33,9 +33,9 @@ struct ServerInfo: Decodable {
         // while still recording.
         let timeshift: Bool?
         let recordingHls: Bool?
-        // C-H (server 0146): categories carry `sport`; the Home screen's
-        // "Sport on now" row uses them.
-        var sportCategories: Bool? = nil
+        // C-I (server 0147): `GET sports/events` (the Sport tab and Home's
+        // "Sport now & next"). C-H's `sportCategories` is no longer read.
+        var sportsEvents: Bool? = nil
     }
 
     func validate() throws {

@@ -81,30 +81,7 @@ final class HomeRowsTests: XCTestCase {
         XCTAssertEqual(HomeRows.countdown(to: now, now: now), "starting now")
     }
 
-    // MARK: Sport (C-H)
-
-    func testSportOnNowNeedsTheFlagAndAMarkedCategoryAndPutsLiveFirst() {
-        let sport = PigTV.Category(rawID: "10", sourceId: 1, name: "Sport", channelCount: 3, sport: true)
-        let news = PigTV.Category(rawID: "20", sourceId: 1, name: "News", channelCount: 1)
-        let replay = channel("r", category: "10", [programme("Classic Replay", from: -60, minutes: 60)])
-        let live = channel("l", category: "10", [programme("AFL: Round 12 Live", from: -60, minutes: 60)])
-        let byName = channel("n", category: "Sport", [programme("LIVE: Premier League", from: -60, minutes: 60)])
-        let idle = channel("i", category: "10", [programme("Tomorrow", from: 7200, minutes: 60)])
-        let headlines = channel("h", category: "20", [programme("Live at Five", from: -60, minutes: 60)])
-        let all = [replay, live, byName, idle, headlines]
-        XCTAssertEqual(HomeRows.sportOnNow(all, categories: [sport, news], enabled: true, now: now).map(\.id),
-                       ["1:l", "1:n", "1:r"], "sport categories only, something on now, live first")
-        XCTAssertTrue(HomeRows.sportOnNow(all, categories: [sport, news], enabled: false, now: now).isEmpty, "no flag")
-        XCTAssertTrue(HomeRows.sportOnNow(all, categories: [news], enabled: true, now: now).isEmpty, "nothing marked")
-    }
-
-    func testLiveEventMatchesTheWordOnly() {
-        XCTAssertTrue(HomeRows.isLiveEvent(programme("LIVE: Premier League", from: 0, minutes: 1)))
-        XCTAssertTrue(HomeRows.isLiveEvent(programme("F1 Practice (Live)", from: 0, minutes: 1)))
-        XCTAssertTrue(HomeRows.isLiveEvent(programme("Cricket Live", from: 0, minutes: 1)))
-        XCTAssertFalse(HomeRows.isLiveEvent(programme("Liverpool v Everton", from: 0, minutes: 1)))
-        XCTAssertFalse(HomeRows.isLiveEvent(programme("Deliver Us", from: 0, minutes: 1)))
-    }
+    // MARK: Categories (C-H's `sport` still decodes; C-I replaced the row)
 
     func testCategoriesDecodeSportTolerantly() throws {
         let rows = try JSONDecoder().decode([PigTV.Category].self, from: Data(#"[{"id":"1","sourceId":1,"name":"A","channelCount":2,"sport":true},{"id":"2","sourceId":1,"name":"B","channelCount":1}]"#.utf8))

@@ -1,8 +1,8 @@
 import Foundation
 
 // Home screen (build 28): the data behind each row, as pure functions so the
-// choices (what "continue watching" is, what counts as starting soon, which
-// channels are sport, the order of recordings) are unit-tested
+// choices (what "continue watching" is, what counts as starting soon, the
+// order of recordings) are unit-tested
 // (`HomeRowsTests`). HomeView only draws what these return.
 
 /// One channel as Home draws it: identity, what it shows, and its programmes
@@ -119,32 +119,6 @@ nonisolated enum HomeRows {
         let hours = minutes / 60
         let rest = minutes % 60
         return rest == 0 ? "in \(hours) h" : "in \(hours) h \(rest) min"
-    }
-
-    /// C-H: channels in categories marked sport with something on now, live
-    /// events first (then guide order). Empty without the server flag or
-    /// when no category is marked.
-    static func sportOnNow(_ channels: [HomeChannel], categories: [Category], enabled: Bool,
-                           now: Date, limit: Int = rowLimit) -> [HomeChannel] {
-        let sport = categories.filter(\.sport)
-        guard enabled, !sport.isEmpty else { return [] }
-        // A guide row's category is the category id or its name (as stored).
-        let keys = Set(sport.flatMap { ["\($0.sourceId)|\($0.rawID)", "\($0.sourceId)|\($0.name)"] })
-        var seen = Set<String>()
-        let matches = channels.enumerated().compactMap { index, channel -> (Int, Bool, HomeChannel)? in
-            guard let category = channel.category, keys.contains("\(channel.sourceId)|\(category)"),
-                  let current = channel.current(at: now), seen.insert(channel.identityKey).inserted else { return nil }
-            return (index, isLiveEvent(current), channel)
-        }
-        return Array(matches.sorted { lhs, rhs in
-            lhs.1 != rhs.1 ? lhs.1 : lhs.0 < rhs.0
-        }.map(\.2).prefix(limit))
-    }
-
-    /// A live event, as EPGs mark it: the word "live" in the title
-    /// ("LIVE: …", "… Live", "(Live)"), not "Lively" or "Liverpool".
-    static func isLiveEvent(_ programme: GuideProgramme) -> Bool {
-        programme.title.range(of: #"(?i)(^|[^a-z])live($|[^a-z])"#, options: .regularExpression) != nil
     }
 
     /// Recordings for Home: in progress first (newest first), then the

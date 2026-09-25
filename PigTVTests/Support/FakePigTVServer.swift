@@ -52,17 +52,49 @@ enum HLSFixture {
 /// - recordings (C-E `recordingHls`): `GET /api/recordings/<id>/playback` →
 ///   `{url: …/<id>/stream.m3u8, container: "hls"}`, `…/markers` → one ad
 ///   break 1–2 s, and `/api/recordings/<id>/<file>` → the fixture.
+/// - C-I: `GET /api/sports/events` → `sportEvents` (by default
+///   `sportEventsJSON(now:)`, a realistic answer around the server's start).
 /// Anything else is a 404, and every request is recorded.
 final class FakePigTVServer: @unchecked Sendable {
     let http: LocalHTTPServer
 
     /// `resolve(n)` builds the n-th resolve answer (1-based) as JSON.
-    init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil) throws {
+    init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil,
+         sportEvents: String? = nil) throws {
         let counter = Locked(0)
         let resolve = resolve ?? { count, _ in FakePigTVServer.decision(session: "s\(count)") }
+        let sport = sportEvents ?? FakePigTVServer.sportEventsJSON(now: Date())
         http = try LocalHTTPServer { request in
-            FakePigTVServer.route(request, counter: counter, resolve: resolve)
+            if request.method == "GET", request.path == "/api/sports/events" { return .json(sport) }
+            return FakePigTVServer.route(request, counter: counter, resolve: resolve)
         }
+    }
+
+    /// A realistic C-I answer (times in ms, live first then upcoming,
+    /// channels best first) with odd bits a tolerant decoder must survive:
+    /// an unknown quality, a numeric id, a channel missing its name, an
+    /// event without channels and one without a league.
+    static func sportEventsJSON(now: Date) -> String {
+        let t = (now.timeIntervalSince1970 * 1000).rounded()
+        let m = 60_000.0
+        func ms(_ minutes: Double) -> String { String(Int64(t + minutes * m)) }
+        return #"""
+        {"now":\#(Int64(t)),"events":[
+         {"id":"nfl-1","title":"Kansas City Chiefs vs Buffalo Bills","league":"NFL","start":\#(ms(-70)),"end":\#(ms(110)),"live":true,
+          "channels":[{"sourceId":1,"id":"701","stableId":"espn-uhd","name":"ESPN UHD","number":701,"logo":"/api/logo/701","quality":"UHD"},
+                      {"sourceId":1,"id":"702","stableId":"espn","name":"ESPN HD","number":702,"logo":null,"quality":"HD"},
+                      {"sourceId":2,"id":"88","stableId":null,"name":"NFL Network","number":null,"logo":null,"quality":"8K"},
+                      {"sourceId":2,"id":"89","number":90}]},
+         {"id":"afl-1","title":"AFL: Collingwood v Carlton","league":"AFL","start":\#(ms(-20)),"end":\#(ms(100)),"live":true,
+          "channels":[{"sourceId":1,"id":504,"name":"Fox Footy","number":504,"quality":"HD"}]},
+         {"id":"nrl-1","title":"NRL: Storm v Panthers","league":"NRL","start":\#(ms(25)),"end":\#(ms(145)),"live":false,
+          "channels":[{"sourceId":1,"id":"505","name":"Fox League","quality":null},{"sourceId":1,"id":"9","name":"Nine","quality":"SD"}]},
+         {"id":"f1-1","title":"F1: Singapore Grand Prix","start":\#(ms(200)),"end":\#(ms(320)),"live":false,
+          "channels":[{"sourceId":1,"id":"506","name":"Fox Sports 506","quality":"hd"}]},
+         {"id":"empty","title":"Nowhere Cup","league":"Other","start":\#(ms(30)),"end":\#(ms(90)),"live":false,"channels":[]},
+         {"id":"broken","title":null,"start":"soon"}
+        ]}
+        """#
     }
 
     var resolves: [LocalHTTPServer.Request] { http.requests(path: "/api/playback/resolve", method: "POST") }

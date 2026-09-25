@@ -12,12 +12,19 @@ struct LibraryView: View {
                                    set: { tab = $0 })) {
             if let browse = model.browse {
                 // Build 28: Home opens with the app.
-                HomeView(app: model, model: browse, openGuide: { tab = "guide" })
+                HomeView(app: model, model: browse, openGuide: { tab = "guide" }, openSport: { tab = "sport" })
                     .tabItem { Label("Home", systemImage: "house") }
                     .tag("home")
                 GuideView(app: model, model: browse)
                     .tabItem { Label("TV Guide", systemImage: "calendar") }
                     .tag("guide")
+                // C-I (build 30): only when the server has sport events.
+                // Five tabs fit the iPhone's bar, so it is a tab there too.
+                if browse.sportEnabled {
+                    SportView(app: model, browse: browse, sport: browse.sport)
+                        .tabItem { Label("Sport", systemImage: "sportscourt") }
+                        .tag("sport")
+                }
                 RecordingsView(model: browse)
                     .tabItem { Label("Recordings", systemImage: "record.circle") }
                     .tag("recordings")
