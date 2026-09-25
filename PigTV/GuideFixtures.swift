@@ -189,9 +189,9 @@ enum GuideFixtures {
                                      number: row.number, logo: row.logo, quality: quality)
         }
         func event(_ id: String, _ title: String, _ league: String, from: Double, minutes: Double,
-                   _ channels: [SportEventChannel?]) -> SportEvent {
+                   _ channels: [SportEventChannel?], kind: SportEventKind = .event) -> SportEvent {
             SportEvent(id: id, title: title, league: league, startTime: now + from * minute,
-                       endTime: now + (from + minutes) * minute, channels: channels.compactMap { $0 })
+                       endTime: now + (from + minutes) * minute, channels: channels.compactMap { $0 }, kind: kind)
         }
         return [
             event("nfl-kc-buf", "Kansas City Chiefs vs Buffalo Bills", "NFL", from: -70, minutes: 200,
@@ -203,6 +203,9 @@ enum GuideFixtures {
             event("nfl-phi-dal", "Philadelphia Eagles vs Dallas Cowboys", "NFL", from: 40, minutes: 195, [on(3, .hd), on(0, .hd)]),
             event("afl-bris-geel", "AFL: Brisbane Lions v Geelong Cats", "AFL", from: 55, minutes: 150, [on(2, .hd)]),
             event("nfl-sf-sea", "San Francisco 49ers vs Seattle Seahawks", "NFL", from: 190, minutes: 195, [on(0, .uhd), on(3, .hd)]),
+            // Build 31: replays (their own section; never on Home).
+            event("rp-gb-nyj", "Packers v Jets · Week 2", "NFL", from: -35, minutes: 180, [on(1, .hd)], kind: .replay),
+            event("rp-afl-gf", "AFL Grand Final 2025", "AFL", from: 95, minutes: 180, [on(2, .hd), on(5, .sd)], kind: .replay),
         ]
     }
 

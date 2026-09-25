@@ -30,6 +30,7 @@ final class SportModel: ObservableObject {
     var live: [SportEvent] { buckets.live }
     var soon: [SportEvent] { buckets.soon }
     var later: [SportEvent] { buckets.later }
+    var replays: [SportEvent] { buckets.replays }
     var leagues: [String] { SportRows.leagues(buckets.all) }
 
     /// Fetches the events. Concurrent callers share one request; an older

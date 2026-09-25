@@ -48,6 +48,12 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
     }
 }
 
+/// Build 31: the server also lists replays of identifiable games
+/// (`kind: "replay"`); anything else, or no `kind`, is a live event.
+nonisolated enum SportEventKind: String, Sendable, Equatable {
+    case event, replay
+}
+
 /// One event, with the channels showing it (best first).
 nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
     let id: String
@@ -57,7 +63,9 @@ nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
     let startTime: Double
     let endTime: Double
     let channels: [SportEventChannel]
+    var kind: SportEventKind = .event
 
+    var isReplay: Bool { kind == .replay }
     var start: Date { Date(timeIntervalSince1970: startTime / 1000) }
     var end: Date { Date(timeIntervalSince1970: endTime / 1000) }
     var best: SportEventChannel? { channels.first }
@@ -68,11 +76,12 @@ nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
         GuideProgramme(title: title, description: nil, startTime: startTime, endTime: endTime)
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, league, start, end, channels }
+    enum CodingKeys: String, CodingKey { case id, title, league, start, end, channels, kind }
 
-    init(id: String, title: String, league: String, startTime: Double, endTime: Double, channels: [SportEventChannel]) {
+    init(id: String, title: String, league: String, startTime: Double, endTime: Double, channels: [SportEventChannel],
+         kind: SportEventKind = .event) {
         self.id = id; self.title = title; self.league = league
-        self.startTime = startTime; self.endTime = endTime; self.channels = channels
+        self.startTime = startTime; self.endTime = endTime; self.channels = channels; self.kind = kind
     }
 
     init(from decoder: Decoder) throws {
@@ -85,6 +94,8 @@ nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
         startTime = try c.decode(Double.self, forKey: .start)
         endTime = try c.decode(Double.self, forKey: .end)
         channels = ((try? c.decodeIfPresent(LossyList<SportEventChannel>.self, forKey: .channels)) ?? nil)?.items ?? []
+        kind = ((try? c.decodeIfPresent(String.self, forKey: .kind)) ?? nil)
+            .flatMap { SportEventKind(rawValue: $0.lowercased().trimmingCharacters(in: .whitespaces)) } ?? .event
     }
 }
 
@@ -136,9 +147,13 @@ nonisolated struct SportBuckets: Equatable, Sendable {
     var soon: [SportEvent] = []
     /// Everything later that has not ended.
     var later: [SportEvent] = []
+    /// Build 31: replays (`kind == "replay"`) that have not ended: on now
+    /// first, then by start. Never in the three buckets above or on Home.
+    var replays: [SportEvent] = []
 
-    var all: [SportEvent] { live + soon + later }
-    var isEmpty: Bool { live.isEmpty && soon.isEmpty && later.isEmpty }
+    /// Every event and replay (the league chips count and filter them all).
+    var all: [SportEvent] { live + soon + later + replays }
+    var isEmpty: Bool { live.isEmpty && soon.isEmpty && later.isEmpty && replays.isEmpty }
 }
 
 nonisolated enum SportRows {
@@ -149,16 +164,22 @@ nonisolated enum SportRows {
     static let homeLimit = 20
 
     /// Live, soon and later, each by start time (ties keep the server's
-    /// order); ended events are dropped.
+    /// order); replays on their own, on now first; ended ones are dropped.
     static func buckets(_ events: [SportEvent], now: Date, soonWindow: TimeInterval = soonWindow) -> SportBuckets {
         let ordered = events.enumerated().sorted { ($0.element.startTime, $0.offset) < ($1.element.startTime, $1.offset) }.map(\.element)
         var result = SportBuckets()
         let horizon = now.addingTimeInterval(soonWindow)
+        var upcomingReplays: [SportEvent] = []
         for event in ordered where event.end > now {
+            if event.isReplay {
+                if event.start <= now { result.replays.append(event) } else { upcomingReplays.append(event) }
+                continue
+            }
             if event.start <= now { result.live.append(event) }
             else if event.start <= horizon { result.soon.append(event) }
             else { result.later.append(event) }
         }
+        result.replays += upcomingReplays
         return result
     }
 
@@ -178,7 +199,8 @@ nonisolated enum SportRows {
         guard let league else { return buckets }
         return SportBuckets(live: buckets.live.filter { $0.league == league },
                             soon: buckets.soon.filter { $0.league == league },
-                            later: buckets.later.filter { $0.league == league })
+                            later: buckets.later.filter { $0.league == league },
+                            replays: buckets.replays.filter { $0.league == league })
     }
 
     /// Home's "Sport now & next": live events, then those within the hour.
@@ -213,9 +235,10 @@ nonisolated enum SportRows {
         return seconds > 0 ? "ends in \(span(seconds))" : "ended"
     }
 
-    /// The card's time line: "Live · ends in 40 min", or "8:30 pm · in 25 min".
+    /// The card's time line: "Live · ends in 40 min" ("On now · …" for a
+    /// replay), or "8:30 pm · in 25 min".
     static func timing(_ event: SportEvent, now: Date) -> String {
-        if event.isLive(at: now) { return "Live · \(endsIn(event, now: now))" }
+        if event.isLive(at: now) { return "\(event.isReplay ? "On now" : "Live") · \(endsIn(event, now: now))" }
         if event.end <= now { return "Ended" }
         let clock = event.start.formatted(date: .omitted, time: .shortened)
         let seconds = event.start.timeIntervalSince(now)

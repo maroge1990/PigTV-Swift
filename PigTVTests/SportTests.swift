@@ -7,10 +7,49 @@ final class SportRowsTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func event(_ id: String, league: String = "NFL", from start: TimeInterval, minutes: Double,
-                       channels: Int = 1) -> SportEvent {
+                       channels: Int = 1, kind: SportEventKind = .event) -> SportEvent {
         let begin = (now.timeIntervalSince1970 + start) * 1000
         return SportEvent(id: id, title: "Event \(id)", league: league, startTime: begin, endTime: begin + minutes * 60_000,
-                          channels: (0..<channels).map { SportEventChannel(sourceId: 1, rawID: "\(id)-\($0)", name: "Channel \($0)") })
+                          channels: (0..<channels).map { SportEventChannel(sourceId: 1, rawID: "\(id)-\($0)", name: "Channel \($0)") },
+                          kind: kind)
+    }
+
+    // Build 31: replays have their own section, on now first then by start;
+    // never in On now / Starting soon / Later or Home; the chips count them.
+    func testReplaysAreTheirOwnBucket() {
+        let events = [
+            event("live", from: -600, minutes: 60),
+            event("replay-later", league: "AFL", from: 2 * 3600, minutes: 120, kind: .replay),
+            event("replay-soon", from: 20 * 60, minutes: 120, kind: .replay),
+            event("replay-now", from: -1800, minutes: 120, kind: .replay),
+            event("replay-ended", from: -4 * 3600, minutes: 60, kind: .replay),
+            event("soon", from: 30 * 60, minutes: 60),
+        ]
+        let buckets = SportRows.buckets(events, now: now)
+        XCTAssertEqual(buckets.live.map(\.id), ["live"])
+        XCTAssertEqual(buckets.soon.map(\.id), ["soon"])
+        XCTAssertTrue(buckets.later.isEmpty)
+        XCTAssertEqual(buckets.replays.map(\.id), ["replay-now", "replay-soon", "replay-later"])
+        XCTAssertEqual(SportRows.nowAndNext(buckets).map(\.id), ["live", "soon"], "no replays on Home")
+        XCTAssertEqual(buckets.all.count, 5)
+        XCTAssertEqual(SportRows.leagues(buckets.all), ["NFL", "AFL"])
+        XCTAssertEqual(SportRows.filter(buckets, league: "AFL").replays.map(\.id), ["replay-later"])
+        XCTAssertTrue(SportRows.filter(buckets, league: "AFL").live.isEmpty)
+        XCTAssertTrue(SportRows.timing(buckets.replays[0], now: now).hasPrefix("On now · "))
+        XCTAssertFalse(SportRows.buckets([event("r", from: 600, minutes: 60, kind: .replay)], now: now).isEmpty)
+    }
+
+    func testKindDecodesTolerantly() throws {
+        func decode(_ kind: String) throws -> SportEventKind? {
+            let json = #"{"events":[{"id":1,"title":"T","league":"NFL","start":1,"end":2,\#(kind)"channels":[{"sourceId":1,"id":"a","name":"A"}]}]}"#
+            return try JSONDecoder().decode(SportEventsResponse.self, from: Data(json.utf8)).events.first?.kind
+        }
+        XCTAssertEqual(try decode(""), .event, "no kind: an event")
+        XCTAssertEqual(try decode(#""kind":"replay","#), .replay)
+        XCTAssertEqual(try decode(#""kind":"REPLAY","#), .replay)
+        XCTAssertEqual(try decode(#""kind":"event","#), .event)
+        XCTAssertEqual(try decode(#""kind":"highlights","#), .event, "unknown kinds read as events")
+        XCTAssertEqual(try decode(#""kind":7,"#), .event, "a non-string kind does not drop the event")
     }
 
     func testBucketsByTime() {

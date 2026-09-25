@@ -56,6 +56,7 @@ struct SportView: View {
         let chosen = league.flatMap { leagues.contains($0) ? $0 : nil }
         let shown = SportRows.filter(buckets, league: chosen)
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: SportMetrics.sectionSpacing) {
                     header
@@ -68,6 +69,9 @@ struct SportView: View {
                     shelf("On now", shown.live)
                     shelf("Starting soon", shown.soon)
                     shelf(SportRows.laterTitle(shown.later, now: sport.clock), shown.later)
+                    // Build 31 (Mark: "I don't mind replays … just should
+                    // be its own section").
+                    shelf("Replays", shown.replays)
                     if !sport.loaded {
                         ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, 60)
                     } else if buckets.isEmpty {
@@ -78,6 +82,17 @@ struct SportView: View {
                 .padding(.bottom, 60)
             }
             .scrollClipDisabled()
+            #if DEBUG
+            // Fixture screenshots: PIGTV_UI_TEST_SPORT_SCROLL=<section title>.
+            .task {
+                guard let target = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPORT_SCROLL"] else { return }
+                for _ in 0..<3 {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    proxy.scrollTo(target, anchor: .top)
+                }
+            }
+            #endif
+            }
             .background(PigPageBackground())
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
@@ -247,6 +262,7 @@ struct SportEventCard: View {
     var body: some View {
         let live = event.isLive(at: clock)
         let timing = SportRows.timing(event, now: clock)
+        let replay = event.isReplay
         Button(action: action) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center) {
@@ -255,8 +271,14 @@ struct SportEventCard: View {
                     Spacer(minLength: 8)
                     // Kept (invisible) on upcoming cards so every title
                     // starts at the same height.
-                    CardBadge(text: "LIVE", colour: .red).opacity(live ? 1 : 0)
-                        .accessibilityHidden(true)
+                    // A replay says so instead (build 31).
+                    if replay {
+                        CardBadge(text: "REPLAY", systemImage: "arrow.counterclockwise", colour: Color(white: 0.4))
+                            .accessibilityHidden(true)
+                    } else {
+                        CardBadge(text: "LIVE", colour: .red).opacity(live ? 1 : 0)
+                            .accessibilityHidden(true)
+                    }
                 }
                 Text(event.title).font(SportMetrics.title)
                     .lineLimit(2, reservesSpace: true)
@@ -284,7 +306,7 @@ struct SportEventCard: View {
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .buttonStyle(HomeCardButtonStyle())
-        .accessibilityLabel([event.league, event.title, live ? "live" : nil, timing,
+        .accessibilityLabel([event.league, event.title, replay ? "replay" : (live ? "live" : nil), timing,
                              event.best.map { "on \($0.name)" }, SportRows.moreChannels(event)]
             .compactMap { $0 }.joined(separator: ", "))
         .accessibilityIdentifier("sport.event.\(event.id)")
