@@ -38,6 +38,8 @@ struct PigTVApp: App {
                 GuideTestScreen()
             } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
                 HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
+            } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {
+                PlayerTestScreen()
             } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
                       DesignTestScreen.screens.contains(screen) {
                 DesignTestScreen(screen: screen)
@@ -90,6 +92,26 @@ private struct HomeTestScreen: View {
             #endif
             .task { model.injectHomeFixture(firstRun: firstRun) }
             .preferredColorScheme(fixtureScheme)
+    }
+}
+
+// The player over the Home fixture's data (build 29): PIGTV_UI_TEST_SCREEN=
+// player (with PIGTV_UI_TEST_MEDIA=<path to a local movie>) | player-channels
+// (the channel panel open) | player-tuning (no media: the tuning card).
+private struct PlayerTestScreen: View {
+    @StateObject private var model = AppModel()
+    var body: some View {
+        ZStack {
+            PigPageBackground()
+            if model.playerPresented { PlayerHost(app: model) }
+        }
+        .tint(Color("AccentColor"))
+        .preferredColorScheme(fixtureScheme)
+        .task {
+            let media = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"].map { URL(fileURLWithPath: $0) }
+            let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"]
+            model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media)
+        }
     }
 }
 

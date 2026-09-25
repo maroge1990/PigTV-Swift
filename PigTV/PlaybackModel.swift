@@ -431,6 +431,14 @@ final class PlaybackModel: ObservableObject, Identifiable {
         startConflictPolling()
     }
 
+    #if DEBUG
+    /// Player fixture only (build 29): plays a local file without a resolve,
+    /// so the player's chrome can be checked in the simulator.
+    func playFixtureMedia(_ url: URL) {
+        installItem(url: url, strategy: "direct", mode: nil, assetCriteria: false, generation: itemGeneration)
+    }
+    #endif
+
     func playbackStarted() {
         guard !ended, !handlingFailure else { return }
         hasPlayed = true

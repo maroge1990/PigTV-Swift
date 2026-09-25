@@ -33,7 +33,6 @@ struct GuideView: View {
     @State private var viewport = GuideNavigation.rounded(Date())
     @State private var programmeSearch = ""
     @State private var pendingSelection: GuideSelection?
-    @State private var anchor = Date()
     @State private var clock = Date()
     @State private var search = ""
     @State private var searching = false
@@ -45,7 +44,6 @@ struct GuideView: View {
     @State private var pendingWatch: Channel?
     // A details page's "Channel schedule": opened once that page has closed.
     @State private var pendingSchedule: GuideChannel?
-    @State private var retainedFocus: GuideFocus?
     @State private var filterStripMetrics = FilterStripMetrics()
     // Filtered rows are cached: filtering hundreds of channels inside `body`
     // on every focus change or clock tick is what made scrolling stutter.
@@ -58,7 +56,6 @@ struct GuideView: View {
     // also resets the time window and scrolls to the top.
     @State private var filterResetPending = false
     @State private var scrollToTop = 0
-    @FocusState private var focus: GuideFocus?
     // tvOS: the UIKit grid (GuideGridView, A2.1) is the only grid since
     // build 27. The UIKit grid's focus (it reports it; nothing here assigns it).
     @State private var gridFocus: GuideFocus?
@@ -71,22 +68,10 @@ struct GuideView: View {
     // tvOS: the header's Now button, where Up from the grid's top row
     // lands (the grid hands focus over through `leaveUp`).
     @FocusState private var headerNowFocused: Bool
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
-    #if os(iOS)
-    // Row pitch (iPad grid). Every tile (logo and programme) is inset by half
-    // a gap on each side, so logo→first cell, cell↔cell and row↔row all read
-    // as one `GuideMetrics.gap` (R16).
-    private let rowHeight: CGFloat = 80
-    private static let topAnchor = "guide.top"
-    #endif
     private var category: Category? { app.categories.first { $0.id == filter } }
     // The focused grid element.
-    private var currentFocus: GuideFocus? {
-        if usesGridView { return gridFocus }
-        return focus ?? retainedFocus
-    }
+    private var currentFocus: GuideFocus? { gridFocus }
     private var focusedChannel: GuideChannel? {
         guard let key = currentFocus else { return nil }
         return model.guideChannel(id: key.channel)
@@ -100,11 +85,6 @@ struct GuideView: View {
         NavigationStack {
             GeometryReader { geometry in
                 let compact = geometry.size.width < 700
-                let channelWidth: CGFloat = compact ? 84 : 176
-                let timelineWidth = max(150, geometry.size.width - channelWidth - 48)
-                // Phones show one hour (two columns); everything else shows two hours.
-                let duration: TimeInterval = compact ? 3600 : GuideNavigation.visibleDuration
-                let columns = Int(duration / GuideNavigation.step)
                 VStack(alignment: .leading, spacing: 10) {
                     header(compact: compact)
                     filters(compact: compact)
@@ -133,16 +113,13 @@ struct GuideView: View {
                     if let error = model.guideError {
                         RetryBanner(message: error) { reload() }
                     }
-                    #if os(tvOS)
-                    gridView(channelWidth: channelWidth)
-                    #else
+                    // Build 29: the UIKit grid on iPad too (free touch
+                    // scrolling there); iPhone keeps the On now list.
                     if usesOnNowList {
                         onNowList
                     } else {
-                        timelineGrid(channelWidth: channelWidth, timelineWidth: timelineWidth,
-                                     duration: duration, columns: columns, compact: compact)
+                        gridView()
                     }
-                    #endif
                 }.padding(.vertical, 12)
             }
             .buttonStyle(GuideFilterStyle())
@@ -163,7 +140,6 @@ struct GuideView: View {
                 // The guide always opens at the current half-hour; restoring a
                 // later browsing position stranded the grid hours ahead.
                 viewport = GuideNavigation.rounded(Date())
-                anchor = Date()
                 // Shared with Home (build 28): whichever appears first loads.
                 await model.loadInitialGuide()
                 await model.loadFavourites()
@@ -190,7 +166,7 @@ struct GuideView: View {
             .onChange(of: model.favourites.count) { refreshRows() }
             .onChange(of: search) { refreshRows() }
             .onChange(of: app.playback == nil) { _, closed in
-                if closed { focus = retainedFocus; if usesGridView { gridFocusRestore += 1; claimGridFocus() } }
+                if closed, usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }
             .fullScreenCover(item: $selection, onDismiss: finishDetails) { item in
                 ProgrammeDetails(model: model, channel: item.channel, programme: item.programme, watch: {
@@ -219,100 +195,6 @@ struct GuideView: View {
         }
     }
 
-    #if os(iOS)
-    // The SwiftUI grid: iPad only since build 27 (tvOS uses the UIKit grid,
-    // iPhone the On now list). Time header plus lazily built rows.
-    @ViewBuilder
-    private func timelineGrid(channelWidth: CGFloat, timelineWidth: CGFloat, duration: TimeInterval,
-                              columns: Int, compact: Bool) -> some View {
-        HStack(spacing: 0) {
-            Button("Now", systemImage: "location.fill") { goTo(Date()) }
-                .labelStyle(compact ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleAndIcon))
-                .frame(width: channelWidth, alignment: .leading)
-            // Labels sit at absolute times and slide with the grid
-            // (R14) instead of relabelling fixed columns in place.
-            // Each is inset like the cells so it lines up with the
-            // leading edge of a half-hour cell.
-            let columnWidth = timelineWidth / CGFloat(columns)
-            ZStack(alignment: .leading) {
-                ForEach(headerTimes(duration: duration), id: \.self) { time in
-                    Text(time, style: .time)
-                        .font(GuideTypography.small.monospacedDigit())
-                        .padding(.leading, GuideMetrics.inset)
-                        .frame(width: columnWidth, alignment: .leading)
-                        .offset(x: CGFloat(time.timeIntervalSince(viewport) / duration) * timelineWidth)
-                }
-            }
-            .frame(width: timelineWidth, alignment: .leading)
-            .clipped()
-        }.padding(.horizontal, 24)
-        ScrollViewReader { proxy in
-            ScrollView(.vertical) {
-                LazyVStack(spacing: 0) {
-                    // Stable top anchor: scrolling to it on a category
-                    // change reliably returns to the top without
-                    // rebuilding the list (the .id(filter) rebuild hung
-                    // the focus engine).
-                    Color.clear.frame(height: 1).id(Self.topAnchor)
-                    ForEach(rows) { channel in
-                        guideRow(channel, channelWidth: channelWidth, width: timelineWidth,
-                                 duration: duration, compact: compact)
-                            .id(channel.id)
-                    }
-                    if model.guideBusy && model.guide.isEmpty { ProgressView("Loading guide…") }
-                    if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
-                        ContentUnavailableView(filter == "favourites" ? "No favourites yet" : "No matching channels",
-                            systemImage: filter == "favourites" ? "heart" : "magnifyingglass",
-                            description: Text(filter == "favourites" ? "Choose a channel, then Details to add it to favourites." : "Try another category or search."))
-                    }
-                }.padding(.horizontal, 24).padding(.vertical, 5)
-            }
-            .overlay(alignment: .topLeading) {
-                if let offset = nowLineOffset(width: timelineWidth, duration: duration) {
-                    Rectangle().fill(Color.pigAccent).frame(width: 2)
-                        .offset(x: 24 + channelWidth + offset)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-            }
-            .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
-                shift(value.translation.width < 0 ? duration / 2 : -duration / 2)
-            })
-            .onChange(of: focus) { _, value in
-                // Remember where focus is; the anchor tracks the
-                // focused programme's start so Left/Right and the Now
-                // button have a stable reference. No focus is
-                // reassigned here — doing so fought the focus engine
-                // and made the selection jump on its own.
-                guard let value else { return }
-                if let start = value.start, start > 0,
-                   let channel = model.guideChannel(id: value.channel),
-                   let programme = channel.programmes.first(where: { $0.startTime == start }) {
-                    anchor = max(programme.start, viewport)
-                }
-                retainedFocus = value
-                lastChannel = model.guideChannel(id: value.channel)?.identityKey ?? value.channel
-            }
-            .onChange(of: filter) {
-                // Coalesced: the chip highlight follows every tap at
-                // once, but the rows, time window and scroll position
-                // change once, after taps settle (R18). Focus stays
-                // on the chip; nothing reassigns it here.
-                retainedFocus = nil
-                filterResetPending = true
-                scheduleRowsRefresh(after: .milliseconds(250))
-            }
-            .onChange(of: scrollToTop) { proxy.scrollTo(Self.topAnchor, anchor: .top) }
-            .onChange(of: model.guideBusy) { _, busy in
-                if !busy, focus == nil, let channel = rows.first(where: { $0.identityKey == lastChannel || $0.id == lastChannel }) {
-                    proxy.scrollTo(channel.id)
-                }
-            }
-        }
-    }
-    #endif
-
     // A4.4: iPhone (compact width) shows the "On now" list instead of the
     // one-hour grid; iPad (regular width) keeps the grid.
     private var usesOnNowList: Bool {
@@ -339,21 +221,15 @@ struct GuideView: View {
         #endif
     }
 
-    // A2.1: the UIKit grid is the tvOS grid; iOS uses the SwiftUI grid.
-    private var usesGridView: Bool {
-        #if os(tvOS)
-        true
-        #else
-        false
-        #endif
-    }
+    // A2.1: the UIKit grid is the tvOS grid; since build 29 also the iPad's
+    // (regular width). The SwiftUI grid was deleted.
+    private var usesGridView: Bool { !usesOnNowList }
 
     // A2.1: the UIKit grid in place of the SwiftUI time header and rows. It
     // draws its own pinned time header. Now sits in the guide header next to
     // Earlier/Later (build 22), where Up from the grid's top row lands.
     @ViewBuilder
-    private func gridView(channelWidth: CGFloat) -> some View {
-        #if os(tvOS)
+    private func gridView() -> some View {
         ZStack(alignment: .topLeading) {
             GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window, clock: clock,
                 scheduled: model.scheduledKeys, recording: model.recordingChannels,
@@ -370,7 +246,6 @@ struct GuideView: View {
                     focusChanged: { channel, start in
                         let value = GuideFocus(channel: channel, start: start)
                         gridFocus = value
-                        retainedFocus = value
                         lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
                     },
                     viewportChanged: { setViewport($0) },
@@ -389,12 +264,10 @@ struct GuideView: View {
         .onChange(of: filter) {
             // As the SwiftUI grid (R18): coalesced; the grid returns to the
             // top row and the live baseline once taps settle.
-            retainedFocus = nil
             gridFocus = nil
             filterResetPending = true
             scheduleRowsRefresh(after: .milliseconds(250))
         }
-        #endif
     }
 
     private var focusedDetail: String {
@@ -403,7 +276,11 @@ struct GuideView: View {
             if let description = programme.description, !description.isEmpty { return "\(times) • \(description)" }
             return times
         }
+        #if os(tvOS)
         return "Select to watch • Options for programme details and favourites"
+        #else
+        return "Tap a programme on now to watch, a later one for details • Touch and hold for options"
+        #endif
     }
 
     private func header(compact: Bool) -> some View {
@@ -502,7 +379,7 @@ struct GuideView: View {
     }
 
     private func filterButton(_ title: String, id: String) -> some View {
-        Button { filter = id; retainedFocus = nil } label: {
+        Button { filter = id } label: {
             // No selection checkmark: the pink tint already marks the current
             // category, and a chip that changed width on every tap relaid the
             // whole strip (and its edge fades) under rapid switching (R18).
@@ -513,61 +390,6 @@ struct GuideView: View {
             leading: filterStripMetrics.fadesLeading, trailing: filterStripMetrics.fadesTrailing))
         .accessibilityAddTraits(filter == id ? .isSelected : [])
     }
-
-    #if os(iOS)
-    private func guideRow(_ channel: GuideChannel, channelWidth: CGFloat, width: CGFloat,
-                          duration: TimeInterval, compact: Bool) -> some View {
-        let recordingNow = model.recordingChannels.contains(channel.name)
-        let flaky = model.isFlaky(channel)
-        return HStack(spacing: 0) {
-            Button {
-                // On a phone the tile opens the channel's programme list (the grid
-                // is too narrow to browse); on TV/iPad it starts the channel.
-                if compact { schedule = channel } else { play(channel) }
-            } label: {
-                ChannelTile(name: channel.name, logo: model.logo(for: channel), client: model.client)
-                    .frame(width: channelWidth - GuideMetrics.gap, height: rowHeight - GuideMetrics.gap)
-                    .overlay(alignment: .topTrailing) {
-                        // C-G: an amber dot for an unreliable channel, beside
-                        // the recording dot when both apply.
-                        HStack(spacing: 4) {
-                            if flaky {
-                                Circle().fill(Color.orange).frame(width: 12, height: 12)
-                                    .accessibilityLabel("Unreliable channel")
-                            }
-                            if recordingNow {
-                                Circle().fill(Color.red).frame(width: 12, height: 12)
-                                    .accessibilityLabel("Recording now")
-                            }
-                        }
-                        .padding(6)
-                    }
-            }
-            .buttonStyle(PigSurfaceButtonStyle(drawSurface: false))
-            .padding(GuideMetrics.inset)
-            .focused($focus, equals: GuideFocus(channel: channel.id, start: nil))
-            .accessibilityLabel(model.number(for: channel).map { "\($0) \(channel.name)" } ?? channel.name)
-            // The button's own label hides its children's, so the dots'
-            // meanings are also spoken as its value.
-            .accessibilityValue([flaky ? "Unreliable channel" : nil, recordingNow ? "Recording now" : nil]
-                .compactMap { $0 }.joined(separator: ", "))
-            .contextMenu {
-                Button("All programmes on this channel") { schedule = channel }
-                Button("Channel and favourites") { channelDetails = asChannel(channel) }
-            }
-            GuideTimelineRow(channel: channel, caption: model.logo(for: channel) == nil ? nil : channel.name,
-                scheduled: model.scheduledKeys,
-                viewport: viewport, duration: duration, width: width, height: rowHeight, clock: clock, focus: $focus,
-                select: { programme in
-                    if programme.isLive(at: Date()) { play(channel) }
-                    else { selection = GuideSelection(channel: channel, programme: programme) }
-                }, watch: { play(channel) },
-                details: { selection = GuideSelection(channel: channel, programme: $0) },
-                channelOptions: { channelDetails = asChannel(channel) })
-        }
-    }
-
-    #endif
 
     private var searchSheet: some View {
         GuideSearchSheet(model: model, search: $search, programmeSearch: $programmeSearch,
@@ -592,19 +414,6 @@ struct GuideView: View {
             logo: model.logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId,
             number: model.number(for: channel))
     }
-    #if os(iOS)
-    // Half-hour marks across the same pre-rendered extent as the grid cells.
-    private func headerTimes(duration: TimeInterval) -> [Date] {
-        let start = viewport.addingTimeInterval(-GuideMetrics.visualBuffer)
-        let count = Int((duration + 2 * GuideMetrics.visualBuffer) / GuideNavigation.step)
-        return (0..<count).map { start.addingTimeInterval(Double($0) * GuideNavigation.step) }
-    }
-    private func nowLineOffset(width: CGFloat, duration: TimeInterval) -> CGFloat? {
-        let elapsed = clock.timeIntervalSince(viewport)
-        guard elapsed >= 0, elapsed <= duration else { return nil }
-        return CGFloat(elapsed / duration) * width
-    }
-    #endif
     private func scheduleRowsRefresh(after delay: Duration) {
         rowsRefresh?.cancel()
         rowsRefresh = Task { @MainActor in
@@ -618,7 +427,6 @@ struct GuideView: View {
         if filterResetPending {
             filterResetPending = false
             viewport = GuideNavigation.rounded(Date())
-            anchor = Date()
             scrollToTop += 1
         }
         // Favourites match on the stable identity, and a cross-listed channel
@@ -632,32 +440,15 @@ struct GuideView: View {
     /// Earlier/Later leave it on the header button so repeated presses work
     /// (Down then enters the grid where the focus engine chooses).
     private func goTo(_ date: Date, focusGrid: Bool = true) {
-        anchor = date
-        if usesGridView {
-            // The UIKit grid owns its focus; it only needs the time.
-            gridRequest = GuideGridRequest(viewport: GuideNavigation.rounded(date), focus: focusGrid)
-            if focusGrid { claimGridFocus() }
-            setViewport(GuideNavigation.rounded(date))
-            return
-        }
-        setViewport(GuideNavigation.rounded(date), animated: true)
-        if let channel = focusedChannel {
-            let programme = GuideNavigation.programme(in: channel.programmes, at: date)
-            let target = GuideFocus(channel: channel.id, start: programme?.startTime)
-            retainedFocus = target
-            if focus != nil { focus = target }
-        }
+        // The UIKit grid owns its focus and position; it only needs the time.
+        gridRequest = GuideGridRequest(viewport: GuideNavigation.rounded(date), focus: focusGrid)
+        if focusGrid { claimGridFocus() }
+        setViewport(GuideNavigation.rounded(date))
     }
     // Move the visible window and, only when it leaves the loaded day, request
     // a new day of programme data around it.
-    private func setViewport(_ date: Date, animated: Bool = false) {
-        if viewport != date {
-            if animated && !reduceMotion {
-                withAnimation(.easeInOut(duration: 0.2)) { viewport = date }
-            } else {
-                viewport = date
-            }
-        }
+    private func setViewport(_ date: Date) {
+        if viewport != date { viewport = date }
         if GuideNavigation.needsReload(viewport: viewport, loadedFrom: model.window) {
             model.window = viewport.addingTimeInterval(-GuideNavigation.leadIn)
             reload()
@@ -670,9 +461,12 @@ struct GuideView: View {
     /// refused while a SwiftUI control holds focus.
     /// Retried briefly: a cover may still be dismissing.
     private func claimGridFocus() {
+        // Touch (iPad) has no focus to move.
+        #if os(tvOS)
         for delay in [0.0, 0.4, 0.8] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { if !gridHasFocus { gridHasFocus = true } }
         }
+        #endif
     }
     private func finishDetails() {
         if let channel = pendingSchedule {
@@ -681,7 +475,6 @@ struct GuideView: View {
             DispatchQueue.main.async { schedule = channel }
             return
         }
-        focus = retainedFocus
         // Unless a Watch choice is about to open the player (it restores
         // focus when it closes).
         if usesGridView && pendingWatch == nil { gridFocusRestore += 1; claimGridFocus() }
@@ -738,10 +531,6 @@ enum GuideMetrics {
     // between cells in a row, and between rows.
     static let gap: CGFloat = 8
     static var inset: CGFloat { gap / 2 }
-    // How far either side of the window cells (and header labels) are drawn
-    // off screen. Wider than any single navigation step, including a return
-    // to live from a few windows ahead.
-    static let visualBuffer: TimeInterval = 6 * 3600
 }
 
 enum GuideTypography {
@@ -767,145 +556,6 @@ enum GuideTypography {
         #endif
     }
 }
-
-#if os(iOS)
-// One row of the iPad grid. Only programmes overlapping the visible window are
-// built; everything else stays as plain data in the model. A day of
-// programme data therefore costs nothing on screen, and the row never
-// becomes wider than its visible frame (the previous full-day scroll layers
-// were large enough to bring down the render server).
-private struct GuideTimelineRow: View {
-    let channel: GuideChannel
-    // Channel name shown on the first visible cell when the tile carries a logo.
-    let caption: String?
-    let scheduled: Set<String>
-    let viewport: Date
-    let duration: TimeInterval
-    let width: CGFloat
-    let height: CGFloat
-    let clock: Date
-    let focus: FocusState<GuideFocus?>.Binding
-    let select: (GuideProgramme) -> Void
-    let watch: () -> Void
-    let details: (GuideProgramme) -> Void
-    let channelOptions: () -> Void
-    @Environment(\.colorScheme) private var scheme
-
-    // Points per second of the timeline.
-    private var scale: CGFloat { width / CGFloat(duration) }
-    // Absolute x of a time relative to the current viewport (can be negative /
-    // beyond width; the row is clipped).
-    private func x(_ time: Date) -> CGFloat { CGFloat(time.timeIntervalSince(viewport)) * scale }
-
-    var body: some View {
-        let visible = GuideNavigation.visible(channel.programmes, viewport: viewport, duration: duration)
-        // The channel name rides the now-playing cell, not the first visible
-        // one (which is often a finished programme half off the left edge).
-        let captionStart = visible.first { $0.isLive(at: clock) }?.startTime ?? visible.first?.startTime
-        // Visual extent: programmes well beyond the window on both sides, so
-        // the row reads as one wide guide of which only the window is visible
-        // and cells slide in from off screen rather than appearing (R14).
-        // LazyVStack builds only visible rows, so this stays bounded.
-        let buffered = GuideNavigation.visible(channel.programmes,
-            viewport: viewport.addingTimeInterval(-GuideMetrics.visualBuffer),
-            duration: duration + 2 * GuideMetrics.visualBuffer)
-        ZStack(alignment: .leading) {
-            Color.clear
-            if visible.isEmpty {
-                Button("No programme information — watch live", action: watch)
-                    .font(GuideTypography.body).buttonStyle(PigSurfaceButtonStyle())
-                    .frame(width: width - 2 * edge, height: height - GuideMetrics.gap)
-                    .focused(focus, equals: GuideFocus(channel: channel.id, start: -1))
-                    .offset(x: edge)
-            }
-            // Visual layer — slides as one block; never focusable, so its
-            // off-screen geometry cannot mislead the focus engine.
-            ForEach(buffered, id: \.startTime) { programme in
-                let cellWidth = max(1, CGFloat(programme.end.timeIntervalSince(programme.start)) * scale - GuideMetrics.gap)
-                let start = x(programme.start)
-                cellVisual(programme, caption: programme.startTime == captionStart ? caption : nil,
-                           // Keep the title on screen when the cell starts to the
-                           // left of the window, without pushing it off the right.
-                           hiddenLeading: min(max(0, -start), max(0, cellWidth - 160)))
-                    .frame(width: cellWidth, height: height - GuideMetrics.gap)
-                    .offset(x: start + GuideMetrics.inset)
-            }
-            .allowsHitTesting(false)
-            // Focus layer — transparent buttons clamped to the visible window,
-            // so every focus target's frame is on screen and Up/Down/Left/Right
-            // stay geometrically correct while the visuals slide underneath.
-            // A sliver too thin to focus is left out.
-            ForEach(visible, id: \.startTime) { programme in
-                if let span = GuideGeometry.interval(start: programme.startTime, end: programme.endTime,
-                    window: viewport.timeIntervalSince1970 * 1000, duration: duration * 1000) {
-                    let lower = max(edge, width * span.offset + GuideMetrics.inset)
-                    let upper = min(width - edge, width * (span.offset + span.width) - GuideMetrics.inset)
-                    if upper - lower >= 8 {
-                        focusCell(programme)
-                            .frame(width: upper - lower, height: height - GuideMetrics.gap)
-                            .offset(x: lower)
-                    }
-                }
-            }
-        }
-        .frame(width: width, height: height, alignment: .leading)
-        .clipped()
-    }
-
-    // Drawn cell. Highlight is driven by the focus binding (not @Environment
-    // isFocused) because this view is not the focusable element.
-    private func cellVisual(_ programme: GuideProgramme, caption: String?, hiddenLeading: CGFloat) -> some View {
-        let focused = focus.wrappedValue == GuideFocus(channel: channel.id, start: programme.startTime)
-        let finished = programme.end <= clock
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                if let caption { Text(caption).lineLimit(1).layoutPriority(1) }
-                Text(programme.start, style: .time)
-                if scheduled.contains(ScheduledRecording.key(channel: channel.name, start: programme.startTime)) {
-                    Image(systemName: "record.circle.fill").foregroundStyle(Color.red)
-                }
-            }
-            .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(1)
-            Text(programme.title).font(GuideTypography.body).lineLimit(caption == nil ? 2 : 1)
-            if programme.isLive(at: clock) {
-                ProgressView(value: min(1, max(0, clock.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start))))
-                    .tint(.pigAccent).scaleEffect(x: 1, y: 0.4).frame(height: 4)
-                    .accessibilityHidden(true)
-            }
-        }
-        .foregroundStyle(.primary)
-        .padding(.leading, 12 + hiddenLeading).padding(.trailing, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
-        .opacity(finished ? 0.4 : 1)
-        .clipped()
-    }
-
-    // Margin at each end of the row.
-    private var edge: CGFloat { GuideMetrics.inset }
-
-    // Transparent focus/hit target for one programme.
-    private func focusCell(_ programme: GuideProgramme) -> some View {
-        Button { select(programme) } label: { Color.clear.contentShape(Rectangle()) }
-            .buttonStyle(GuideFocusCellStyle())
-            .disabled(programme.end <= clock)
-            .focused(focus, equals: GuideFocus(channel: channel.id, start: programme.startTime))
-            .contextMenu {
-                Button("Programme details") { details(programme) }
-                Button("Channel and favourites", action: channelOptions)
-            }
-            .accessibilityLabel("\(channel.name), \(programme.title)")
-    }
-}
-
-// The focus layer must be invisible (the visual layer draws the highlight), so
-// this style renders nothing but the clear label.
-private struct GuideFocusCellStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { configuration.label }
-}
-#endif
-
 
 // Lets a label style be chosen at runtime (SwiftUI's styles are distinct types).
 struct AnyLabelStyle: LabelStyle {

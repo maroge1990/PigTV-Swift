@@ -162,4 +162,29 @@ final class GuideGridMathTests: XCTestCase {
         XCTAssertEqual(GuideGridMath.clipAppearance(leadingClip: 252, visibleWidth: 100.2),
                        GuideGridMath.clipAppearance(leadingClip: 252.2, visibleWidth: 100))
     }
+
+    // Build 29 (iPad free scrolling): a pan's deceleration ends on the
+    // nearest half hour, inside the loaded content, also when the loaded
+    // window does not start on a half hour.
+    func testFreeScrollSnapsToTheNearestHalfHour() {
+        let day: TimeInterval = 86400
+        XCTAssertEqual(GuideGridMath.snappedOffsetX(500, origin: origin, duration: day, metrics: m), 360, accuracy: 1e-6)
+        XCTAssertEqual(GuideGridMath.snappedOffsetX(600, origin: origin, duration: day, metrics: m), 720, accuracy: 1e-6)
+        XCTAssertEqual(GuideGridMath.snappedOffsetX(-250, origin: origin, duration: day, metrics: m), 0, accuracy: 1e-6)
+        XCTAssertEqual(GuideGridMath.snappedOffsetX(99_999, origin: origin, duration: day, metrics: m),
+                       GuideGridMath.maximumOffsetX(duration: day, metrics: m), accuracy: 1e-6)
+        // Loaded from 10 past: half hours sit at 240, 600, … (x = 0 is 10 past).
+        let offOrigin = at(10)
+        XCTAssertEqual(GuideGridMath.snappedOffsetX(0, origin: offOrigin, duration: day, metrics: m), 240, accuracy: 1e-6,
+                       "the nearest half hour is before the content; the next one inside it")
+        XCTAssertEqual(GuideGridMath.snappedOffsetX(300, origin: offOrigin, duration: day, metrics: m), 240, accuracy: 1e-6)
+        XCTAssertEqual(GuideGridMath.snappedOffsetX(450, origin: offOrigin, duration: day, metrics: m), 600, accuracy: 1e-6)
+        // Whatever the proposal, the result is a whole half hour in time.
+        for proposed in stride(from: CGFloat(0), through: 16_000, by: 137) {
+            let x = GuideGridMath.snappedOffsetX(proposed, origin: offOrigin, duration: day, metrics: m)
+            let time = GuideGridMath.viewport(forOffsetX: x, origin: offOrigin, metrics: m)
+            XCTAssertEqual(time, GuideGridMath.snapped(time), "\(proposed)")
+            XCTAssertLessThanOrEqual(x, GuideGridMath.maximumOffsetX(duration: day, metrics: m) + 1e-6)
+        }
+    }
 }

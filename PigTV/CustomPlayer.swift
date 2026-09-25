@@ -51,10 +51,7 @@ struct CustomPlayerView: View {
     @AppStorage(Labs.streamInfo) private var showsStreamInfo = false
 
     private var browse: BrowseModel? { app.browse }
-    private var channels: [Channel] {
-        if !app.zapList.isEmpty { return app.zapList }
-        return browse.map { model in model.guide.map(model.asChannel) } ?? []
-    }
+    private var channels: [Channel] { app.playerChannels }
     // Channels are reached with Up/Down (the side list), so the action row no
     // longer carries a Channels button. Go to live only appears when behind.
     private var actions: [PlayerAction] {
@@ -232,26 +229,18 @@ struct CustomPlayerView: View {
             let value = !favourite
             busy = true
             Task {
-                let ok = await browse.setFavourite(playback.channel, value)
+                let result = await PlayerCommands.setFavourite(value, channel: playback.channel, browse: browse)
                 busy = false
-                if ok { favourite = value }
-                notice = ok ? (value ? "Added to favourites" : "Removed from favourites") : "Couldn't update favourites"
+                if result.ok { favourite = value }
+                notice = result.notice
                 touch()
             }
         case .record:
-            guard let browse, !busy,
-                  let channel = browse.guideChannel(id: playback.channel.id),
-                  let programme = playback.programme() else {
-                notice = "No programme information to record"; return
-            }
-            if browse.scheduledKeys.contains(ScheduledRecording.key(channel: channel.name, start: programme.startTime)) {
-                notice = "Already scheduled — manage it in Recordings"; return
-            }
+            guard let browse, !busy else { notice = "No programme information to record"; return }
             busy = true
             Task {
-                let ok = await browse.schedule(channel: channel, programme: programme, before: 0, after: 0)
+                notice = await PlayerCommands.recordNow(playback: playback, browse: browse)
                 busy = false
-                notice = ok ? "Recording \(programme.title)" : (browse.actionError ?? "Couldn't schedule the recording")
                 touch()
             }
         }
@@ -534,37 +523,9 @@ struct CustomPlayerView: View {
     }
 
     private func channelRow(_ channel: Channel, highlighted: Bool, now: Date) -> some View {
-        let programmes = browse?.programmes(for: channel) ?? []
-        let current = GuideNavigation.programme(in: programmes, at: now)
-        let playing = channel.id == playback.channel.id
-        return HStack(spacing: 16) {
-            LogoTile(logo: browse?.logo(for: channel) ?? channel.logo, client: browse?.client, name: channel.name)
-                .frame(width: 120, height: 66)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(channel.name).font(.system(size: 20)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
-                    if let number = channel.numberText {
-                        ChannelNumberText(number: number, font: .system(size: 16, weight: .medium), onDark: true)
-                    }
-                    if playing { Image(systemName: "play.fill").font(.system(size: 16)).foregroundStyle(Color.pigAccent) }
-                }
-                Text(current?.title ?? "No programme information").font(.system(size: 24, weight: .semibold)).lineLimit(1)
-                if let current {
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.25))
-                            Capsule().fill(Color.pigAccent)
-                                .frame(width: geometry.size.width * min(1, max(0, now.timeIntervalSince(current.start) / current.end.timeIntervalSince(current.start))))
-                        }
-                    }.frame(height: 4)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(highlighted ? Color.white.opacity(0.22) : Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 14))
-        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(highlighted ? Color.pigAccent : .clear, lineWidth: 3) }
-        .scaleEffect(highlighted ? 1.03 : 1, anchor: .leading)
+        // Build 29: the row is shared with the iOS channel panel.
+        PlayerChannelRow(channel: channel, browse: browse, highlighted: highlighted,
+                         playing: channel.id == playback.channel.id, now: now)
     }
 }
 
@@ -658,26 +619,6 @@ private struct PlayerBottomShade: ViewModifier {
 // firing its action on the first Select press.
 struct BlankButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { configuration.label }
-}
-
-// Neutral translucent logo tile shared by the player overlays (matches the
-// guide's tile treatment, R04). Internal (not file-private) so ContentView's
-// tvOS "Preparing…"/reconnecting card (A1.2) can reuse it.
-struct LogoTile: View {
-    let logo: String?
-    let client: APIClient?
-    let name: String
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile(.dark))
-            if logo != nil {
-                ChannelArtwork(logo: logo, client: client).padding(.horizontal, 14).padding(.vertical, 10)
-            } else {
-                Text(name).font(.system(size: 18, weight: .semibold)).lineLimit(2)
-                    .multilineTextAlignment(.center).minimumScaleFactor(0.6).padding(8)
-            }
-        }
-    }
 }
 
 // Plain video surface: no AVKit controls, so no competing remote handling.

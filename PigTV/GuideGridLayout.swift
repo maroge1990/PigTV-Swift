@@ -1,4 +1,3 @@
-#if os(tvOS)
 import UIKit
 
 // A2.1: data and layout for the UIKit guide grid. Section = channel row;
@@ -218,4 +217,3 @@ final class GuideGridNowLine: UICollectionReusableView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
-#endif

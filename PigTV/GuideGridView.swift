@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// A request from GuideView's header (Now, Earlier/Later, Jump to…) to show
-/// a time. A new `id` makes it apply again. (Shared so GuideView compiles on
-/// iOS, where the grid itself does not exist.)
+/// a time. A new `id` makes it apply again.
 struct GuideGridRequest: Equatable {
     var id = UUID()
     var viewport: Date
@@ -11,15 +10,24 @@ struct GuideGridRequest: Equatable {
     var focus = true
 }
 
-#if os(tvOS)
 import UIKit
 
-// A2.1: the UIKit TV-guide grid (the only tvOS grid since build 27). One continuous, very
+// A2.1: the UIKit TV-guide grid (the only tvOS grid since build 27; the
+// iPad's too since build 29, with free touch scrolling). One continuous, very
 // wide collection view: rows are channels, programmes sit at their times,
 // horizontal movement is real contentOffset scrolling, and the collection
 // view's own focus engine moves between cells. The navigation rules (column
 // reveal, Up/Down time anchor, Left back to live) are GuideGridMath's pure
 // functions; this file only wires them to UIKit.
+//
+// Build 29, iPad (touch): the horizontal offset is not locked. A pan moves
+// the grid freely under the finger (a normal UIScrollView pan with
+// deceleration and a directional lock), and the gesture's end snaps to the
+// nearest half hour (`GuideGridMath.snappedOffsetX`); the viewport is
+// committed when scrolling stops. The channel column stays pinned and the
+// time header follows, exactly as on the TV. Taps: a live programme plays,
+// others open details, the tile or placeholder plays; touch and hold opens
+// the same menu as the TV's long press. Focus claims are TV-only.
 
 struct GuideGridActions {
     var select: (GuideChannel, GuideProgramme) -> Void
@@ -98,6 +106,14 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     private let timeHeader = GuideGridTimeHeader()
 
     private var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+    /// Touch devices scroll freely; the TV moves by whole columns under focus.
+    private var touchScrolling: Bool {
+        #if os(tvOS)
+        false
+        #else
+        true
+        #endif
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -115,6 +131,11 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         collectionView.accessibilityValue = ISO8601DateFormatter().string(from: viewport)
         collectionView.register(GuideGridTileCell.self, forCellWithReuseIdentifier: GuideGridTileCell.reuseID)
         collectionView.register(GuideGridProgrammeCell.self, forCellWithReuseIdentifier: GuideGridProgrammeCell.reuseID)
+        if touchScrolling {
+            collectionView.locksX = false
+            collectionView.isDirectionalLockEnabled = true
+            collectionView.showsVerticalScrollIndicator = true
+        }
         view.addSubview(timeHeader)
         view.addSubview(collectionView)
         self.collectionView = collectionView
@@ -209,12 +230,12 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             // is left behind.
             let row = focusIdentity.flatMap { identity in store.rows.firstIndex { $0.id == identity.channel } }
                 ?? firstVisibleRow()
-            if request.focus, let row { claimFocus(target(in: row, at: anchor)) }
+            if request.focus, !touchScrolling, let row { claimFocus(target(in: row, at: anchor)) }
         }
         if view.focusRestoreToken != restoreToken {
             let first = restoreToken == Int.min
             restoreToken = view.focusRestoreToken
-            if !first { restoreFocus() }
+            if !first, !touchScrolling { restoreFocus() }
         }
     }
 
@@ -352,11 +373,38 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         return store.indexPath(section: section, start: identity.start)
     }
 
-    // Focus-driven vertical scrolling: tvOS asks for the final offset of
-    // every scroll the focus engine starts. The focused row is kept wholly
+    // Touch: a new pan takes over from a header button's animation.
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        if touchScrolling { animator.stop() }
+    }
+
+    // Touch: when a pan or its deceleration ends, the half hour at the left
+    // edge becomes the viewport (header date, day loading, Earlier/Later).
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if touchScrolling && !decelerate { commitScrolledViewport() }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        if touchScrolling { commitScrolledViewport() }
+    }
+
+    private func commitScrolledViewport() {
+        let x = collectionView.contentOffset.x
+        collectionView.setX(x)
+        commit(GuideGridMath.snapped(GuideGridMath.viewport(forOffsetX: x, origin: layout.origin, metrics: layout.metrics)))
+    }
+
+    // tvOS: focus-driven vertical scrolling. tvOS asks for the final offset
+    // of every scroll the focus engine starts. The focused row is kept wholly
     // inside the grid; the horizontal part is the grid's own (locked).
+    // Touch: a pan ends on the nearest half hour; vertical is left alone.
     func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint,
                                    targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        if touchScrolling {
+            targetContentOffset.pointee.x = GuideGridMath.snappedOffsetX(targetContentOffset.pointee.x, origin: layout.origin,
+                                                                        duration: layout.loadedDuration, metrics: layout.metrics)
+            return
+        }
         targetContentOffset.pointee.x = collectionView.lockedX
         if let row = plannedRow ?? focused?.section {
             targetContentOffset.pointee.y = clampedY(targetContentOffset.pointee.y, row: row)
@@ -496,6 +544,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     // MARK: Selection and menus
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        // Touch leaves a selection behind; nothing is drawn for it.
+        collectionView.deselectItem(at: indexPath, animated: false)
         guard store.rows.indices.contains(indexPath.section), let actions else { return }
         let channel = store.rows[indexPath.section]
         if let programme = programme(indexPath) { actions.select(channel, programme) } else { actions.play(channel) }
@@ -554,12 +604,14 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     }
 }
 
-/// The grid's collection view. Its horizontal offset is locked to `lockedX`,
-/// which only the grid sets (by whole columns): the focus engine's own
-/// scroll-into-view would otherwise slide the grid sideways on Up/Down and
-/// stop between columns. Vertical scrolling is untouched.
+/// The grid's collection view. On tvOS its horizontal offset is locked to
+/// `lockedX`, which only the grid sets (by whole columns): the focus engine's
+/// own scroll-into-view would otherwise slide the grid sideways on Up/Down
+/// and stop between columns. Vertical scrolling is untouched. On iPad
+/// (`locksX == false`, build 29) a touch pan moves it freely.
 final class GuideGridCollectionView: UICollectionView {
     private(set) var lockedX: CGFloat = 0
+    var locksX = true
 
     func setX(_ x: CGFloat) {
         lockedX = x
@@ -570,7 +622,7 @@ final class GuideGridCollectionView: UICollectionView {
         get { super.bounds }
         set {
             var bounds = newValue
-            bounds.origin.x = lockedX
+            if locksX { bounds.origin.x = lockedX }
             super.bounds = bounds
         }
     }
@@ -616,4 +668,3 @@ final class GuideGridScrollAnimator: NSObject {
         onFrame?()
     }
 }
-#endif

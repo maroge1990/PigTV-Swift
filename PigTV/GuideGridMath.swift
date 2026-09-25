@@ -18,7 +18,11 @@ nonisolated struct GuideGridMetrics: Equatable, Sendable {
     var gap: CGFloat = 8
     // Time header above the rows (a separate view that follows the
     // horizontal offset; the rows scroll beneath it, never under it).
+    #if os(tvOS)
     var headerHeight: CGFloat = 56
+    #else
+    var headerHeight: CGFloat = 34
+    #endif
     // Visible width of the timeline (the collection view width minus the
     // channel column); `visibleDuration` of programme time fits in it.
     var timelineWidth: CGFloat = 1696
@@ -61,6 +65,23 @@ nonisolated enum GuideGridMath {
 
     static func clampedOffsetX(_ x: CGFloat, duration: TimeInterval, metrics m: GuideGridMetrics) -> CGFloat {
         min(max(0, x), maximumOffsetX(duration: duration, metrics: m))
+    }
+
+    /// Build 29 (iPad free scrolling): where a pan's deceleration should end,
+    /// the nearest whole half hour to the proposed offset, within the loaded
+    /// content. Half hours are clock times, so this holds when `origin` (the
+    /// loaded window's start) is not itself on a half hour.
+    static func snappedOffsetX(_ proposed: CGFloat, origin: Date, duration: TimeInterval,
+                               metrics m: GuideGridMetrics) -> CGFloat {
+        let clamped = clampedOffsetX(proposed, duration: duration, metrics: m)
+        let x = offsetX(forViewport: snapped(viewport(forOffsetX: clamped, origin: origin, metrics: m)), origin: origin, metrics: m)
+        if x <= maximumOffsetX(duration: duration, metrics: m) + 0.5, x >= -0.5 {
+            return clampedOffsetX(x, duration: duration, metrics: m)
+        }
+        // The nearest half hour lies outside the loaded content: the one
+        // inside it, a column the other way.
+        let step = CGFloat(GuideNavigation.step) * m.pointsPerSecond
+        return clampedOffsetX(x < 0 ? x + step : x - step, duration: duration, metrics: m)
     }
 
     static func rowMinY(_ row: Int, metrics m: GuideGridMetrics) -> CGFloat {

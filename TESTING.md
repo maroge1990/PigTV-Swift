@@ -41,6 +41,7 @@ Before each run record app version/build and source revision, device/OS, server 
 - Channels sheet is remote-focusable; now/next system metadata remains current; Go to live appears when behind.
 - Transparent/mixed logos have a single readable backing; tabs and guide surfaces remain legible in light/dark mode; playback does not change the selected appearance.
 - iPhone header/category controls fit; iPad/touch swipes work; check text scaling, VoiceOver labels and sofa-distance readability.
+- Build 29 (iPad/iPhone player and guide): changing channel shows the Tuning… card; the Channels button opens the side panel (iPad) or bottom sheet (iPhone) with the current channel highlighted, and a tap switches; the info overlay (channel, programme, times, progress, next, Favourite/Record/Last channel) appears and hides with AVKit's controls; the iPad guide pans freely under the finger, settles on a half hour, keeps the channel column pinned and the time header in step; a tap on a live programme plays, on a later one opens details; touch and hold opens the menu.
 
 ## Record results
 

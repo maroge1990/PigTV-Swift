@@ -1,4 +1,3 @@
-#if os(tvOS)
 import SwiftUI
 import UIKit
 
@@ -132,7 +131,8 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info else { contentConfiguration = nil; return }
         contentConfiguration = UIHostingConfiguration {
-            GuideGridProgrammeView(info: info, focused: state.isFocused, clip: clip)
+            // Touch (iPad): the pressed cell takes the focus look.
+            GuideGridProgrammeView(info: info, focused: state.isFocused || state.isHighlighted, clip: clip)
         }
         .margins(.all, 0)
         accessibilityLabel = info.programme.map { "\(info.channelName), \($0.title)" }
@@ -167,7 +167,7 @@ final class GuideGridTileCell: UICollectionViewCell {
         let client = client
         contentConfiguration = UIHostingConfiguration {
             GuideGridTileView(channel: channel, logo: info.logo, client: client,
-                              flaky: info.flaky, recording: info.recording, focused: state.isFocused)
+                              flaky: info.flaky, recording: info.recording, focused: state.isFocused || state.isHighlighted)
         }
         .margins(.all, 0)
         accessibilityLabel = info.number.map { "\($0) \(channel.name)" } ?? channel.name
@@ -204,7 +204,11 @@ final class GuideGridTimeHeader: UIView {
         labels.forEach { $0.removeFromSuperview() }
         labels = GuideGridMath.headerMarks(origin: origin, duration: duration).map { mark in
             let label = UILabel()
+            #if os(tvOS)
             label.font = UIFont.monospacedDigitSystemFont(ofSize: 20, weight: .regular)
+            #else
+            label.font = UIFont.monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+            #endif
             label.textColor = .secondaryLabel
             label.text = Self.formatter.string(from: mark)
             label.sizeToFit()
@@ -221,4 +225,3 @@ final class GuideGridTimeHeader: UIView {
         strip.frame = CGRect(x: -offsetX, y: 0, width: 1, height: bounds.height)
     }
 }
-#endif

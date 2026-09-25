@@ -378,6 +378,32 @@ final class AppModel: ObservableObject {
         user = GuideFixtures.user()
     }
 
+    // Offline player fixture (build 29, PIGTV_UI_TEST_SCREEN=player |
+    // player-channels | player-tuning): the Home fixture's guide, playing its
+    // third channel with a remembered last channel. `media` (a local movie
+    // file) makes it ready at once; without it the player stays on the
+    // tuning card (the resolve goes to a non-routable TEST-NET address).
+    func injectPlayerFixture(media: URL?) {
+        injectHomeFixture()
+        guard let browse, browse.guide.count > 3 else { return }
+        if media == nil, let address = try? ServerAddress("http://192.0.2.1:3000") {
+            let client = APIClient(address: address, token: "fixture", info: serverInfo)
+            self.client = client
+        } else {
+            self.client = browse.client
+        }
+        guard let client else { return }
+        zapList = browse.guide.map(browse.asChannel)
+        let channel = browse.asChannel(browse.guide[2])
+        previousChannel = browse.asChannel(browse.guide[0])
+        let model = PlaybackModel(channel: channel, client: client, programmes: browse.guide[2].programmes)
+        if let media { model.playFixtureMedia(media) }
+        currentPlayback = model
+        playback = model
+        playbackBusy = true
+        playerPresented = true
+    }
+
     // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).
     func injectGuideFixture() {
         guard let address = try? ServerAddress("http://127.0.0.1:3000") else { return }

@@ -267,6 +267,13 @@ struct PlayerScreen: View {
     @State private var enteringNumber = false
     @State private var typedNumber = ""
     @State private var numberNotFound: String?
+    // Build 29: the chrome (top controls, info overlay) follows AVKit's
+    // controls; see PlayerChromeTimer.
+    @State private var chromeVisible = true
+    @State private var lastInput = Date()
+    /// Shown at channel start, not yet by a tap (see PlayerChromeTimer).
+    @State private var chromeUntouched = true
+    @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
     var body: some View {
@@ -295,39 +302,29 @@ struct PlayerScreen: View {
                     Button("Back to channels") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
             } else if playback.reconnecting {
-                #if os(tvOS)
+                // Build 29: the tuning card on iOS too.
                 VStack(spacing: 24) {
                     TuningCard(playback: playback, browse: app.browse, message: "Reconnecting…")
                     Button("Back to guide") { dismiss() }
                 }
                 .environment(\.colorScheme, .dark)
+                #if os(tvOS)
                 .onExitCommand { dismiss() }
-                #else
-                VStack(spacing: 24) {
-                    ProgressView("Reconnecting…")
-                    Button("Back to guide") { dismiss() }
-                }.foregroundStyle(.white)
                 #endif
             } else if playback.ready {
                 #if os(tvOS)
                 CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
                 #else
-                NativePlayer(playback: playback).ignoresSafeArea()
-                    .overlay(alignment: .top) { iOSControls }
+                touchPlayer
                 #endif
             } else {
-                #if os(tvOS)
                 VStack(spacing: 24) {
                     TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
                     Button("Cancel") { dismiss() }
                 }
                 .environment(\.colorScheme, .dark)
+                #if os(tvOS)
                 .onExitCommand { dismiss() }
-                #else
-                VStack(spacing: 24) {
-                    ProgressView("Preparing \(playback.channel.name)…")
-                    Button("Cancel") { dismiss() }
-                }.foregroundStyle(.white)
                 #endif
             }
         }
@@ -349,14 +346,28 @@ struct PlayerScreen: View {
             }
         }
         #if os(iOS)
-        .sheet(isPresented: $showingGuide) {
+        // Build 29: iPhone (compact width) opens the channel list as a
+        // translucent bottom sheet; iPad uses the side panel (touchPlayer).
+        .sheet(isPresented: Binding(get: { showingGuide && sizeClass != .regular },
+                                    set: { if !$0 { showingGuide = false } })) {
             NavigationStack {
-                QuickGuidePanel(app: app, browse: app.browse) { showingGuide = false }
+                PlayerChannelPanel(app: app) { showingGuide = false }
                     .navigationTitle("Channels")
+                    .navigationBarTitleDisplayMode(.inline)
                     .toolbar { Button("Done") { showingGuide = false } }
             }
-            .presentationBackground { PigPageBackground() }
+            .presentationDetents([.medium, .large])
+            .presentationBackground(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
         }
+        #endif
+        #if DEBUG && os(iOS)
+        .onAppear {
+            // Fixture (PIGTV_UI_TEST_SCREEN=player-channels): open the panel.
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "player-channels" { showingGuide = true }
+        }
+        #endif
+        #if os(iOS)
         .alert("Go to channel", isPresented: $enteringNumber) {
             TextField("Channel number", text: $typedNumber)
                 .keyboardType(.numberPad)
@@ -384,10 +395,53 @@ struct PlayerScreen: View {
     }
 
     #if os(iOS)
+    /// AVKit's player with PigTV's chrome over it (build 29): the top
+    /// controls and the info overlay show and hide together, following
+    /// AVKit's own controls; the channel side panel on iPad.
+    private var touchPlayer: some View {
+        NativePlayer(playback: playback) { onControl in
+            chromeVisible = PlayerChromeTimer.afterTap(visible: chromeVisible, onControl: onControl, untouched: chromeUntouched)
+            chromeUntouched = false
+            lastInput = Date()
+        }
+        .ignoresSafeArea()
+        .overlay(alignment: .top) {
+            if chromeVisible { iOSControls.transition(.opacity) }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if chromeVisible, let browse = app.browse {
+                TouchInfoOverlay(playback: playback, app: app, browse: browse) { lastInput = Date() }
+                    .padding(.horizontal, 16)
+                    // Clear of AVKit's transport bar along the bottom.
+                    .padding(.bottom, sizeClass == .regular ? 96 : 84)
+                    .transition(.opacity)
+            }
+        }
+        .overlay {
+            if showingGuide && sizeClass == .regular {
+                PlayerSidePanel(app: app) { showingGuide = false }
+                    .transition(.move(edge: .leading))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: chromeVisible)
+        .animation(.easeInOut(duration: 0.22), value: showingGuide)
+        .task(id: lastInput) {
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                let paused = playback.player.timeControlStatus == .paused
+                if !UIAccessibility.isVoiceOverRunning,
+                   PlayerChromeTimer.shouldHide(visible: chromeVisible, lastInput: lastInput, now: Date(),
+                                                paused: paused, panelOpen: showingGuide || enteringNumber) {
+                    chromeVisible = false
+                    chromeUntouched = false
+                }
+            }
+        }
+    }
+
     private var iOSControls: some View {
-        // A4.4: controls on one row (close left; channel actions right), the
-        // channel's number and name on a line below so a long name never
-        // squeezes the buttons on a phone.
+        // A4.4: controls on one row (close left; channel actions right). The
+        // channel's name is in the info overlay below (build 29).
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
                 Button { dismiss() } label: { Image(systemName: "xmark.circle.fill") }
@@ -405,18 +459,10 @@ struct PlayerScreen: View {
                     Button { enteringNumber = true } label: { Image(systemName: "number.circle.fill") }
                         .accessibilityLabel("Go to number")
                 }
-                Button { showingGuide = true } label: { Image(systemName: "list.bullet.circle.fill") }
+                Button { showingGuide = true; lastInput = Date() } label: { Image(systemName: "list.bullet.circle.fill") }
                     .accessibilityLabel("Channels")
             }
             .font(.title2)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(playback.channel.name).lineLimit(1).font(.subheadline.bold())
-                if let number = playback.channel.numberText {
-                    ChannelNumberText(number: number, font: .caption, onDark: true)
-                }
-            }
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(.black.opacity(0.5), in: Capsule())
         }
         .foregroundStyle(.white, .black.opacity(0.6))
         .padding(.horizontal, 16).padding(.top, 8)
@@ -424,78 +470,66 @@ struct PlayerScreen: View {
     #endif
 }
 
-#if os(tvOS)
-// A1.2: shown centred over black while resolving media or reconnecting, so a
-// channel change reads as "tuning to something" rather than a blank wait.
-// Built entirely from cached guide data (`playback.programme()`/
-// `nextProgramme()`), so there is no network wait to show it.
-private struct TuningCard: View {
-    @ObservedObject var playback: PlaybackModel
-    let browse: BrowseModel?
-    let message: String
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let programme = playback.programme(at: context.date)
-            let next = playback.nextProgramme(after: context.date)
-            VStack(spacing: 18) {
-                LogoTile(logo: browse?.logo(for: playback.channel) ?? playback.channel.logo,
-                         client: browse?.client, name: playback.channel.name)
-                    .frame(width: 200, height: 110)
-                Text(playback.channel.name).font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                Text(programme?.title ?? "No programme information")
-                    .font(.system(size: 32, weight: .bold)).multilineTextAlignment(.center).lineLimit(2)
-                if let programme {
-                    Text("\(programme.start.formatted(date: .omitted, time: .shortened)) – \(programme.end.formatted(date: .omitted, time: .shortened))")
-                        .font(.system(size: 18, weight: .medium)).foregroundStyle(.white.opacity(0.75))
-                    GeometryReader { geometry in
-                        let progress = min(1, max(0, context.date.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start)))
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.25))
-                            Capsule().fill(Color.white).frame(width: geometry.size.width * progress)
-                        }
-                    }.frame(width: 360, height: 6)
-                }
-                if let next {
-                    Text("Next: \(next.title) at \(next.start.formatted(date: .omitted, time: .shortened))")
-                        .font(.system(size: 16)).foregroundStyle(.white.opacity(0.65))
-                }
-                HStack(spacing: 10) {
-                    ProgressView().tint(.white)
-                    Text(message).font(.system(size: 16, weight: .medium)).foregroundStyle(.white.opacity(0.8))
-                }
-                .padding(.top, 6)
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(48)
-        .frame(maxWidth: 640)
-        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 24))
-    }
-}
-#endif
-
 #if os(iOS)
 // iPhone/iPad player: AVKit with its standard controls. Apple TV uses the
 // PigTV-owned CustomPlayerView instead.
 struct NativePlayer: UIViewControllerRepresentable {
     @ObservedObject var playback: PlaybackModel
+    /// Build 29: a tap on the player; true when it landed on one of AVKit's
+    /// controls. AVKit offers no public signal for its controls' visibility
+    /// on iOS, so PigTV's chrome follows the same taps.
+    var onTap: (_ onControl: Bool) -> Void = { _ in }
+
+    func makeCoordinator() -> TapWatcher { TapWatcher() }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = playback.player
         controller.allowsPictureInPicturePlayback = false
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(TapWatcher.tapped(_:)))
+        // Observe only: AVKit still receives every touch.
+        tap.cancelsTouchesInView = false
+        tap.delaysTouchesEnded = false
+        tap.delegate = context.coordinator
+        controller.view.addGestureRecognizer(tap)
+        context.coordinator.onTap = onTap
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         if controller.player !== playback.player { controller.player = playback.player }
+        context.coordinator.onTap = onTap
     }
 
-    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: ()) {
+    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: TapWatcher) {
         controller.player?.pause()
         controller.player = nil
+    }
+
+    /// UIKit gesture callbacks arrive on the main thread.
+    final class TapWatcher: NSObject, UIGestureRecognizerDelegate {
+        var onTap: (Bool) -> Void = { _ in }
+        private var onControl = false
+
+        @objc func tapped(_ recogniser: UITapGestureRecognizer) {
+            guard recogniser.state == .ended else { return }
+            onTap(onControl)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            // A touch on one of AVKit's buttons or its scrubber: keep the
+            // chrome up rather than toggling it.
+            var view = touch.view
+            onControl = false
+            while let current = view {
+                if current is UIControl { onControl = true; break }
+                view = current.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }
 #endif
