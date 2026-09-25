@@ -49,6 +49,11 @@ struct ContentView: View {
         .buttonStyle(TVActionStyle())
         #endif
         .task {
+            // Build 31: Siri's channel phrases need the parameter values
+            // registered at every launch, not only after a directory write.
+            Task.detached(priority: .utility) { PigTVShortcuts.refreshParameters(reason: "launch") }
+        }
+        .task {
             // This is a cold-launch handoff only. It has no arbitrary minimum
             // duration and is not replayed when the app returns to foreground.
             await model.restore()

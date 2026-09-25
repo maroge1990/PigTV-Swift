@@ -1,4 +1,5 @@
 import XCTest
+import AppIntents
 @testable import PigTV
 
 // A4.1: the Top Shelf snapshot (built by the app, read by the extension)
@@ -226,5 +227,26 @@ final class PlayChannelIntentTests: XCTestCase {
         inbox.submit(entity.playURL)
         XCTAssertEqual(inbox.take(), entity.playURL)
         XCTAssertNil(inbox.pending, "a request is consumed once")
+    }
+
+    // Build 31: Siri matches the title, so it is the name alone.
+    func testEntityTitleIsTheNameAndSuggestionsPutTheShelfFirst() {
+        let fox = ChannelDirectory.Entry(id: "f", sourceId: 1, name: "Fox Footy", number: 503)
+        let entity = ChannelEntity(fox)
+        XCTAssertEqual(String(localized: entity.displayRepresentation.title), "Fox Footy")
+        let bbc = ChannelDirectory.Entry(id: "b", sourceId: 1, name: "BBC News", number: 511)
+        let sky = ChannelDirectory.Entry(id: "s", sourceId: 1, name: "Sky News", number: 512)
+        XCTAssertEqual(ChannelQuery.suggestions(shelf: [fox], directory: [bbc, fox, sky]).map(\.name),
+                       ["Fox Footy", "BBC News", "Sky News"])
+        XCTAssertEqual(ChannelQuery.suggestions(shelf: [fox], directory: [bbc, sky], limit: 2).count, 2)
+    }
+
+    func testHomeLinkSwitchesToHome() {
+        XCTAssertTrue(PigTVLink.isHome(PigTVLink.homeURL))
+        XCTAssertNil(PigTVLink.parse(PigTVLink.homeURL))
+        XCTAssertFalse(PigTVLink.isHome(PigTVLink.playURL(sourceId: 1, id: "a")))
+        let app = AppModel()
+        app.open(PigTVLink.homeURL)
+        XCTAssertEqual(app.requestedTab, "home")
     }
 }

@@ -198,6 +198,13 @@ nonisolated enum PigTVLink {
         return parts.url!
     }
 
+    /// `pigtv://home`: open the app on Home (Siri's "Open PigTV", build 31).
+    static let homeURL = URL(string: "\(scheme)://home")!
+
+    static func isHome(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == scheme && url.host?.lowercased() == "home"
+    }
+
     static func parse(_ url: URL) -> Play? {
         guard url.scheme?.lowercased() == scheme, url.host?.lowercased() == "play",
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else { return nil }

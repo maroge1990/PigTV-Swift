@@ -99,7 +99,7 @@ extension BrowseModel {
         PlayLinkInbox.lastDirectory = entries
         Task.detached(priority: .utility) {
             ChannelDirectory(channels: entries).write()
-            PigTVShortcuts.updateAppShortcutParameters()
+            PigTVShortcuts.refreshParameters(reason: "channel directory written")
         }
     }
 }
@@ -143,8 +143,14 @@ nonisolated struct ChannelEntity: AppEntity {
         id = entry.key; sourceId = entry.sourceId; rawID = entry.id; name = entry.name; number = entry.number
     }
 
+    /// Build 31: the title is the channel's name alone, which is what Siri
+    /// matches a spoken phrase against ("Play Fox Footy on PigTV"); it was
+    /// "503 Fox Footy", which no one says. The number is the subtitle and a
+    /// synonym ("channel 503").
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(number.map { "\($0) " } ?? "")\(name)")
+        DisplayRepresentation(title: "\(name)",
+                              subtitle: number.map { "Channel \($0)" },
+                              synonyms: number.map { ["Channel \($0)"] } ?? [])
     }
 
     var playURL: URL { PigTVLink.playURL(sourceId: sourceId, id: rawID, name: name, number: number) }
@@ -168,12 +174,23 @@ nonisolated struct ChannelQuery: EntityStringQuery {
         ChannelDirectory.match(string, in: Self.entries()).map(ChannelEntity.init)
     }
 
-    /// Favourites (or the first channels), as on the Top Shelf.
+    /// Favourites (the Top Shelf's channels) first, then the rest of the
+    /// directory up to `suggestionLimit`. These are also the channel names
+    /// Siri can hear in "Play <channel> on PigTV" (build 31: was only the
+    /// Top Shelf's 12).
     func suggestedEntities() async throws -> [ChannelEntity] {
-        let shelf = (TopShelfSnapshot.read()?.channels ?? []).map {
+        Self.suggestions(shelf: (TopShelfSnapshot.read()?.channels ?? []).map {
             ChannelDirectory.Entry(id: $0.id, sourceId: $0.sourceId, name: $0.name, number: $0.number)
-        }
-        return (shelf.isEmpty ? Array(Self.entries().prefix(TopShelfSnapshot.limit)) : shelf).map(ChannelEntity.init)
+        }, directory: ChannelDirectory.read()?.channels ?? []).map(ChannelEntity.init)
+    }
+
+    static let suggestionLimit = 60
+
+    /// Pure: shelf first, then the directory, each channel once.
+    static func suggestions(shelf: [ChannelDirectory.Entry], directory: [ChannelDirectory.Entry],
+                            limit: Int = suggestionLimit) -> [ChannelDirectory.Entry] {
+        var seen = Set<String>()
+        return Array((shelf + directory).filter { seen.insert($0.key).inserted }.prefix(limit))
     }
 }
 
@@ -200,11 +217,45 @@ struct PlayChannelIntent: AppIntent {
     }
 }
 
+/// Build 31: a parameterless shortcut, so something always works with Siri
+/// even before the channel list has reached it: opens PigTV on Home.
+struct OpenPigTVIntent: AppIntent {
+    nonisolated static let title: LocalizedStringResource = "Open PigTV"
+    nonisolated static let description = IntentDescription("Opens PigTV on Home.")
+    nonisolated static let openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        PlayLinkInbox.shared.submit(PigTVLink.homeURL)
+        return .result()
+    }
+}
+
+// Every phrase names the app (`\(.applicationName)`), as App Shortcuts
+// require. The channel phrases only match channels Siri has been given:
+// the query's suggested entities (favourites, else the first channels),
+// refreshed with `updateAppShortcutParameters()` at launch and whenever the
+// directory or the Top Shelf snapshot is written (build 31; before, only
+// after the directory was written, and never at launch).
 nonisolated struct PigTVShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: PlayChannelIntent(),
-                    phrases: ["Play \(\.$channel) on \(.applicationName)"],
+                    phrases: ["Play \(\.$channel) on \(.applicationName)",
+                              "Watch \(\.$channel) on \(.applicationName)",
+                              "Put \(\.$channel) on in \(.applicationName)"],
                     shortTitle: "Play channel",
                     systemImageName: "play.tv")
+        AppShortcut(intent: OpenPigTVIntent(),
+                    phrases: ["Open \(.applicationName)",
+                              "Watch TV on \(.applicationName)",
+                              "Show \(.applicationName) Home"],
+                    shortTitle: "Open PigTV",
+                    systemImageName: "house")
+    }
+
+    /// Tells the system the parameter values (channels) changed.
+    static func refreshParameters(reason: String) {
+        updateAppShortcutParameters()
+        TopShelfLog.logger.notice("siri: updateAppShortcutParameters (\(reason, privacy: .public))")
     }
 }

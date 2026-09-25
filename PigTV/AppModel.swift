@@ -244,6 +244,8 @@ final class AppModel: ObservableObject {
 
     /// `pigtv://play?…`: plays that channel when signed in; ignored otherwise.
     func open(_ url: URL) {
+        // Build 31: pigtv://home (the Siri "Open PigTV" shortcut) shows Home.
+        if PigTVLink.isHome(url) { requestedTab = "home"; return }
         guard let link = PigTVLink.parse(url) else { return }
         if loggedIn { play(link) } else { pendingLink = (link, Date()) }
     }

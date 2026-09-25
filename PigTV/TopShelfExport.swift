@@ -63,6 +63,8 @@ extension BrowseModel {
                 return
             }
             TopShelfExport.contentChanged()
+            // The Siri channel suggestions are the Top Shelf's channels.
+            PigTVShortcuts.refreshParameters(reason: "Top Shelf snapshot written")
         }
     }
 }
