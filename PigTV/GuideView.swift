@@ -25,6 +25,21 @@ private struct FilterStripMetrics: Equatable {
     var fadesTrailing: Bool { overflows && offset < maximumOffset - 1 }
 }
 
+/// Build 31: the inputs of GuideView's filtered rows.
+private struct GuideRowsInput: Equatable {
+    /// Guides this large are filtered off the main actor.
+    static let offMainThreshold = 3000
+    var count: Int
+    var first: String?
+    var last: String?
+    var loadedAt: Date?
+    var fromCache: Bool
+    var filter: String
+    var search: String
+    var favourites: [String]
+    var categories: Int
+}
+
 struct GuideView: View {
     @ObservedObject var app: AppModel
     @ObservedObject var model: BrowseModel
@@ -61,6 +76,7 @@ struct GuideView: View {
     @State private var gridFocus: GuideFocus?
     @State private var gridRequest: GuideGridRequest?
     @State private var rowsVersion = 0
+    @State private var lastRowsInput: GuideRowsInput?
     // Bumped when the player or a details cover closes (the UIKit grid
     // refocuses its last programme or tile).
     @State private var gridFocusRestore = 0
@@ -142,8 +158,9 @@ struct GuideView: View {
                 viewport = GuideNavigation.rounded(Date())
                 // Shared with Home (build 28): whichever appears first loads.
                 await model.loadInitialGuide()
-                await model.loadFavourites()
-                await model.loadRecordings()
+                // Build 31: not on every appearance, only when stale.
+                await model.loadFavouritesIfStale()
+                await model.loadRecordingsIfStale()
             }
             .task { await model.loadArtworkIndex() }
             .task {
@@ -421,7 +438,15 @@ struct GuideView: View {
             refreshRows()
         }
     }
-    private func refreshRows() {
+    /// Build 31: what the rows depend on. Appearing again with the same
+    /// inputs does not refilter (it used to on every tab switch).
+    private var rowsInput: GuideRowsInput {
+        GuideRowsInput(count: model.guide.count, first: model.guide.first?.id, last: model.guide.last?.id,
+                       loadedAt: model.guideLoadedAt, fromCache: model.fromCache, filter: filter, search: search,
+                       favourites: model.favourites.map(\.id), categories: app.categories.count)
+    }
+
+    private func refreshRows(force: Bool = false) {
         rowsRefresh?.cancel()
         rowsRefresh = nil
         if filterResetPending {
@@ -429,12 +454,35 @@ struct GuideView: View {
             viewport = GuideNavigation.rounded(Date())
             scrollToTop += 1
         }
+        let input = rowsInput
+        guard force || input != lastRowsInput else { return }
+        lastRowsInput = input
         // Favourites match on the stable identity, and a cross-listed channel
         // is shown once in the Favourites filter (server 0097 semantics).
-        rows = GuideRowFilter.rows(from: model.guide, category: category, search: search,
-            onlyFavourites: filter == "favourites",
-            favouriteKeys: Set(model.favourites.map(\.identityKey) + model.favourites.map(\.id)))
-        rowsVersion += 1
+        let guide = model.guide
+        let category = category
+        let search = search
+        let onlyFavourites = filter == "favourites"
+        let keys = Set(model.favourites.map(\.identityKey) + model.favourites.map(\.id))
+        // Small guides (and the very first rows) are filtered at once; a large
+        // guide is filtered off the main actor and published when done, unless
+        // newer inputs arrived meanwhile.
+        if rows.isEmpty || guide.count < GuideRowsInput.offMainThreshold {
+            rows = GuideRowFilter.rows(from: guide, category: category, search: search,
+                                       onlyFavourites: onlyFavourites, favouriteKeys: keys)
+            rowsVersion += 1
+            return
+        }
+        rowsRefresh = Task { @MainActor in
+            let filtered = await Task.detached(priority: .userInitiated) {
+                GuideRowFilter.rows(from: guide, category: category, search: search,
+                                    onlyFavourites: onlyFavourites, favouriteKeys: keys)
+            }.value
+            guard !Task.isCancelled, lastRowsInput == input else { return }
+            rowsRefresh = nil
+            rows = filtered
+            rowsVersion += 1
+        }
     }
     /// `focusGrid`: Now and Jump to… move focus into the new guide's grid;
     /// Earlier/Later leave it on the header button so repeated presses work

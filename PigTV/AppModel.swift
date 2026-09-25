@@ -419,7 +419,7 @@ final class AppModel: ObservableObject {
         let client = APIClient(address: address, token: "fixture", info: info)
         let model = BrowseModel(client: client)
         model.isFixture = true
-        model.guide = GuideFixtures.channels(logos: true)
+        model.guide = GuideFixtures.enlarged(GuideFixtures.channels(logos: true), to: GuideFixtures.requestedCount)
         if !firstRun {
             model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
             model.recent = GuideFixtures.recent(from: model.guide).map(model.asChannel)
@@ -467,7 +467,7 @@ final class AppModel: ObservableObject {
         guard let address = try? ServerAddress("http://127.0.0.1:3000") else { return }
         let client = APIClient(address: address, token: "fixture")
         let model = BrowseModel(client: client)
-        model.guide = GuideFixtures.channels()
+        model.guide = GuideFixtures.enlarged(GuideFixtures.channels(), to: GuideFixtures.requestedCount)
         browse = model
         categories = GuideFixtures.categories()
         user = GuideFixtures.user()

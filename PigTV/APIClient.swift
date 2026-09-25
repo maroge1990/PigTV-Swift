@@ -113,6 +113,17 @@ final class APIClient {
         catch { throw PigTVError.decoding }
     }
 
+    /// Build 31: like `request`, but the JSON is decoded off the main actor
+    /// (recordings lists can be long; they were decoded on the main thread
+    /// on every Recordings/Guide/Home appearance).
+    func decodedOffMain<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
+        let data = try await send(path, method: "GET", query: query)
+        return try await Task.detached(priority: .userInitiated) {
+            do { return try JSONDecoder().decode(T.self, from: data) }
+            catch { throw PigTVError.decoding }
+        }.value
+    }
+
     private func send(_ path: String, method: String, query: [URLQueryItem] = [],
                       body: (any Encodable)? = nil) async throws -> Data {
         try await response(path, method: method, query: query, body: body).data

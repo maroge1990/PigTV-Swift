@@ -94,7 +94,8 @@ struct RecordingsView: View {
             }
             .navigationTitle("Recordings")
             .background(PigPageBackground())
-            .task { await model.loadRecordings() }
+            // Build 31: only when older than a minute (Refresh reloads at once).
+            .task { await model.loadRecordingsIfStale() }
             .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }
             .confirmationDialog("Cancel this recording?", isPresented: Binding(
                 get: { cancellation != nil }, set: { if !$0 { cancellation = nil } }

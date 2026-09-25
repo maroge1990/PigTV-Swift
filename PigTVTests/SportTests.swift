@@ -165,3 +165,27 @@ final class SportModelTests: XCTestCase {
         server.http.stop()
     }
 }
+
+// Build 31: a tab's appearance reloads only what is older than a minute;
+// Refresh/Retry (the plain loads) always go to the server.
+@MainActor
+final class AppearLoadTests: XCTestCase {
+    func testAppearLoadsSkipFreshDataButExplicitLoadsDoNot() async throws {
+        let server = try FakePigTVServer()
+        let browse = BrowseModel(client: try server.client())
+        await browse.loadFavouritesIfStale()
+        await browse.loadFavouritesIfStale()
+        await browse.loadRecordingsIfStale()
+        await browse.loadRecordingsIfStale()
+        await browse.loadRecentIfStale()
+        await browse.loadRecentIfStale()
+        XCTAssertEqual(server.http.requests(path: "/api/library/favourites").count, 1)
+        XCTAssertEqual(server.http.requests(path: "/api/recordings").count, 1)
+        XCTAssertEqual(server.http.requests(path: "/api/library/recent").count, 1)
+        await browse.loadRecordings()
+        XCTAssertEqual(server.http.requests(path: "/api/recordings").count, 2, "Refresh always reloads")
+        await browse.loadFavouritesIfStale(maxAge: 0)
+        XCTAssertEqual(server.http.requests(path: "/api/library/favourites").count, 2, "stale data reloads")
+        server.http.stop()
+    }
+}

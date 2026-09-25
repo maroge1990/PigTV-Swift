@@ -61,6 +61,23 @@ enum GuideFixtures {
         }
     }
 
+    /// Build 31: PIGTV_UI_TEST_CHANNELS=<n> enlarges the fixture guides to
+    /// n channels (copies of the 14 with new ids, names and numbers), to
+    /// measure tab switching on a realistic lineup (~1,000 channels).
+    static var requestedCount: Int? {
+        ProcessInfo.processInfo.environment["PIGTV_UI_TEST_CHANNELS"].flatMap(Int.init).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    static func enlarged(_ base: [GuideChannel], to count: Int?) -> [GuideChannel] {
+        guard let count, count > base.count, !base.isEmpty else { return base }
+        return base + (base.count..<count).map { index in
+            let source = base[index % base.count]
+            return GuideChannel(rawID: "ch\(index)", sourceId: source.sourceId, name: "\(source.name) \(index / base.count + 1)",
+                                logo: source.logo, category: source.category, programmes: source.programmes,
+                                number: 501 + index)
+        }
+    }
+
     // MARK: Home fixture (PIGTV_UI_TEST_SCREEN=home)
 
     /// Plausible titles per category for the Home screenshots.

@@ -277,12 +277,14 @@ struct HomeView: View {
 
     private func load() async {
         guard !model.isFixture else { refresh(); return }
+        // Build 31: each appearance loads only what is older than a minute
+        // (the loop below refreshes every minute while Home shows).
         async let guide: Void = model.loadInitialGuide()
-        async let recent: Void = model.loadRecent()
-        await model.loadFavourites()
+        async let recent: Void = model.loadRecentIfStale()
+        await model.loadFavouritesIfStale()
         await recent
         refresh()
-        await model.loadRecordings()
+        await model.loadRecordingsIfStale()
         await guide
         refresh()
     }

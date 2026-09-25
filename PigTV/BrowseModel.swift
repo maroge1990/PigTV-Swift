@@ -249,8 +249,12 @@ final class BrowseModel: ObservableObject {
 
     func loadArtworkIndex() async {
         guard client.info?.features.epgLogoFallback != true, !artworkBusy, !artworkLoaded else { return }
+        // Build 31: after a failure, try again at most every 10 minutes
+        // (the Guide asked on every appearance).
+        guard !isFresh("artwork", maxAge: 600) else { return }
+        lastLoads["artwork"] = Date()
         artworkBusy = true
-        artworkError = nil
+        if artworkError != nil { artworkError = nil }
         defer { artworkBusy = false }
         do {
             let sources: [EPGSourceSummary] = try await client.request("sources")
@@ -301,26 +305,62 @@ final class BrowseModel: ObservableObject {
         return artworkIndex.logo(tvgID: tvgID, name: name)
     }
 
+    // MARK: Loads that screens repeat on appear (build 31)
+    //
+    // Mark: "switching between the five tabs is slow … it seems to get stuck
+    // loading the one you moved from". Every tab reloaded favourites,
+    // recordings (and Home the history) each time it appeared, and every
+    // load published several changes (busy, data, error, busy) that
+    // re-rendered all five tabs, since they all observe this model. Now a
+    // tab's appearance loads only what is older than `appearMaxAge`; unchanged
+    // data, errors and flags are not re-published. Explicit Refresh/Retry
+    // and the periodic refreshes still call the plain loads.
+
+    static let appearMaxAge: TimeInterval = 60
+    private var lastLoads: [String: Date] = [:]
+
+    private func isFresh(_ key: String, maxAge: TimeInterval, now: Date = Date()) -> Bool {
+        lastLoads[key].map { now.timeIntervalSince($0) < maxAge } ?? false
+    }
+
+    func loadRecordingsIfStale(maxAge: TimeInterval = appearMaxAge) async {
+        guard !isFresh("recordings", maxAge: maxAge) else { return }
+        await loadRecordings()
+    }
+
+    func loadFavouritesIfStale(maxAge: TimeInterval = appearMaxAge) async {
+        guard !isFresh("favourites", maxAge: maxAge) else { return }
+        await loadFavourites()
+    }
+
+    func loadRecentIfStale(maxAge: TimeInterval = appearMaxAge) async {
+        guard !isFresh("recent", maxAge: maxAge) else { return }
+        await loadRecent()
+    }
+
     func loadRecordings() async {
         guard !recordingsBusy else { return }
+        lastLoads["recordings"] = Date()
         recordingsBusy = true
-        recordingsError = nil
+        if recordingsError != nil { recordingsError = nil }
         defer { recordingsBusy = false }
         do {
-            let files: [Recording] = try await client.request("recordings")
-            recordings = files
-            let planned: [ScheduledRecording] = try await client.request("recordings/scheduled")
-            schedules = planned
+            let files: [Recording] = try await client.decodedOffMain("recordings")
+            if files != recordings { recordings = files }
+            let planned: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled")
+            if planned != schedules { schedules = planned }
         } catch { recordingsError = error.localizedDescription }
     }
 
     func loadFavourites() async {
         guard !favouritesBusy else { return }
+        lastLoads["favourites"] = Date()
         favouritesBusy = true
-        favouritesError = nil
+        if favouritesError != nil { favouritesError = nil }
         defer { favouritesBusy = false }
         do {
-            favourites = try await client.request("library/favourites")
+            let loaded: [Channel] = try await client.request("library/favourites")
+            if loaded != favourites { favourites = loaded }
             exportTopShelf()
         }
         catch { favouritesError = error.localizedDescription }
@@ -329,12 +369,14 @@ final class BrowseModel: ObservableObject {
     /// Home: what this user watched last (server `library/recent`). An
     /// older server without the route (404) simply has no history.
     func loadRecent() async {
+        lastLoads["recent"] = Date()
         do {
             let rows: [Channel] = try await client.request("library/recent",
                 query: [URLQueryItem(name: "limit", value: "20")])
-            recent = rows.filter { $0.unavailable != true }
+            let available = rows.filter { $0.unavailable != true }
+            if available != recent { recent = available }
         } catch {
-            if error as? PigTVError == .http(404) { recent = [] }
+            if error as? PigTVError == .http(404), !recent.isEmpty { recent = [] }
         }
     }
 

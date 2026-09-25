@@ -34,6 +34,12 @@ struct LibraryView: View {
                 .tag("settings")
         }
         .tint(Color("AccentColor"))
+        #if DEBUG
+        .overlay(alignment: .bottomTrailing) {
+            if TabSwitchProbe.enabled { TabSwitchProbeLabel() }
+        }
+        .onChange(of: tab) { if TabSwitchProbe.enabled { TabSwitchProbe.shared.tabChanged() } }
+        #endif
         .onChange(of: model.requestedTab, initial: true) { _, requested in
             guard let requested else { return }
             tab = requested

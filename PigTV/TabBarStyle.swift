@@ -67,3 +67,67 @@ enum TabBarStyle {
     }
 }
 #endif
+
+#if DEBUG
+import QuartzCore
+import SwiftUI
+import Combine
+
+/// Build 31, measurement only (PIGTV_UI_TEST_TABPROBE=1): after a tab
+/// switch, watches display-link frames for 1.5 s and reports the longest
+/// main-thread stall and the total time lost to stalls (frame gaps beyond
+/// one refresh), which is what "stuck on the tab you moved from" feels like.
+/// Read by TabSwitchUITests through an accessibility element.
+@MainActor
+final class TabSwitchProbe: NSObject, ObservableObject {
+    static let enabled = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_TABPROBE"] == "1"
+    /// Shared, and observed only by its label, so the probe's own updates
+    /// never re-render the tabs it measures.
+    static let shared = TabSwitchProbe()
+    @Published private(set) var report = "idle"
+    private var link: CADisplayLink?
+    private var last: CFTimeInterval = 0
+    private var began: CFTimeInterval = 0
+    private var switchedAt: CFTimeInterval = 0
+    private var longest: CFTimeInterval = 0
+    private var lost: CFTimeInterval = 0
+    private var count = 0
+
+    func tabChanged() {
+        count += 1
+        link?.invalidate()
+        switchedAt = CACurrentMediaTime()
+        began = switchedAt
+        last = switchedAt
+        longest = 0
+        lost = 0
+        report = "measuring \(count)"
+        let link = CADisplayLink(target: self, selector: #selector(frame(_:)))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func frame(_ link: CADisplayLink) {
+        let now = link.timestamp
+        let gap = now - last
+        let frame = max(link.duration, 1.0 / 60)
+        longest = max(longest, gap)
+        if gap > frame * 1.5 { lost += gap - frame }
+        last = now
+        if now - began > 1.5 {
+            link.invalidate()
+            self.link = nil
+            report = String(format: "switch %d longest %.0f ms lost %.0f ms", count, longest * 1000, lost * 1000)
+        }
+    }
+}
+
+/// The probe's result as an (almost invisible) accessibility element.
+struct TabSwitchProbeLabel: View {
+    @ObservedObject private var probe = TabSwitchProbe.shared
+    var body: some View {
+        Text(probe.report).font(.caption2).opacity(0.02)
+            .accessibilityIdentifier("debug.tabSwitch")
+    }
+}
+#endif

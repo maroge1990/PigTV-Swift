@@ -63,7 +63,7 @@ nonisolated struct GuidePage: Decodable, Sendable {
     var nextCursor: String? = nil
 }
 
-nonisolated struct ScheduledRecording: Decodable, Identifiable, Sendable {
+nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Sendable {
     let id: Int
     let title: String
     let channel_name: String?
@@ -92,7 +92,7 @@ nonisolated struct GuideCache: Codable, Sendable {
     var version: String? = nil
 }
 
-nonisolated struct Recording: Decodable, Identifiable, Sendable {
+nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     let id: Int
     let title: String
     let channel_name: String?
