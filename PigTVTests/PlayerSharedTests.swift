@@ -28,23 +28,42 @@ final class PlayerSharedTests: XCTestCase {
     }
 
     func testChromeFollowsTapsAndHidesWhenIdle() {
-        // A tap on the picture toggles; on an AVKit control it keeps the chrome up.
-        XCTAssertFalse(PlayerChromeTimer.afterTap(visible: true, onControl: false))
-        XCTAssertTrue(PlayerChromeTimer.afterTap(visible: false, onControl: false))
-        XCTAssertTrue(PlayerChromeTimer.afterTap(visible: true, onControl: true))
-        XCTAssertTrue(PlayerChromeTimer.afterTap(visible: false, onControl: true))
-        // Up only because the channel just started: the first tap (which
-        // brings AVKit's controls up) keeps it up.
-        XCTAssertTrue(PlayerChromeTimer.afterTap(visible: true, onControl: false, untouched: true))
-        XCTAssertTrue(PlayerChromeTimer.afterTap(visible: false, onControl: false, untouched: true))
+        // Build 31: PigTV's controls are the only ones; a tap on the picture toggles them.
+        XCTAssertFalse(PlayerChromeTimer.afterTap(visible: true))
+        XCTAssertTrue(PlayerChromeTimer.afterTap(visible: false))
         let idle = now.addingTimeInterval(PlayerChromeTimer.idle)
         XCTAssertTrue(PlayerChromeTimer.shouldHide(visible: true, lastInput: now, now: idle, paused: false, panelOpen: false))
         XCTAssertFalse(PlayerChromeTimer.shouldHide(visible: true, lastInput: now, now: idle.addingTimeInterval(-0.5),
                                                     paused: false, panelOpen: false))
         XCTAssertFalse(PlayerChromeTimer.shouldHide(visible: true, lastInput: now, now: idle, paused: true, panelOpen: false),
-                       "AVKit keeps its controls up while paused")
+                       "the controls stay up while paused")
         XCTAssertFalse(PlayerChromeTimer.shouldHide(visible: true, lastInput: now, now: idle, paused: false, panelOpen: true))
         XCTAssertFalse(PlayerChromeTimer.shouldHide(visible: false, lastInput: now, now: idle, paused: false, panelOpen: false))
+    }
+
+    func testSeekWindowMapsPositionsFractionsAndReadouts() throws {
+        XCTAssertNil(PlayerSeekWindow(start: 0, end: 4, current: 2), "under 5 s is not scrubbable")
+        XCTAssertNil(PlayerSeekWindow(start: 0, end: .infinity, current: 2))
+        // A 3-hour timeshift window, the picture 30 min behind live.
+        let window = try XCTUnwrap(PlayerSeekWindow(start: 100, end: 10_900, current: 9_100))
+        XCTAssertEqual(window.fraction, 9_000.0 / 10_800, accuracy: 1e-9)
+        XCTAssertEqual(window.time(at: 0.5), 5_500)
+        XCTAssertEqual(window.time(at: -1), 100, "clamped to the start")
+        XCTAssertEqual(window.time(at: 2), 10_900, "clamped to the live edge")
+        XCTAssertEqual(window.behindLive(at: window.fraction), 1_800, accuracy: 1e-6)
+        XCTAssertEqual(window.readout(at: window.fraction), "30:00 behind live")
+        XCTAssertEqual(window.readout(at: 0), "3 h 00 min behind live")
+        XCTAssertTrue(window.isLive(at: 1))
+        XCTAssertTrue(window.isLive(at: (10_800 - 15) / 10_800.0), "within 20 s reads as live")
+        XCTAssertEqual(window.readout(at: 1), "LIVE")
+        XCTAssertEqual(window.skipTarget(15), 9_115)
+        XCTAssertEqual(window.skipTarget(5_000), 10_900)
+        XCTAssertEqual(window.skipTarget(-20_000), 100)
+        // Finger position on the track.
+        XCTAssertEqual(PlayerSeekWindow.fraction(forX: 150, width: 600), 0.25)
+        XCTAssertEqual(PlayerSeekWindow.fraction(forX: -30, width: 600), 0)
+        XCTAssertEqual(PlayerSeekWindow.fraction(forX: 700, width: 600), 1)
+        XCTAssertEqual(PlayerSeekWindow.fraction(forX: 10, width: 0), 0)
     }
 
     func testPlayerChannelsFollowTheZapListElseTheGuide() throws {

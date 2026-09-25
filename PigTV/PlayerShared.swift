@@ -206,25 +206,58 @@ extension AppModel {
     }
 }
 
-/// Build 29, iOS: when the player's own chrome (top controls and info
-/// overlay) shows and hides, following AVKit's controls: a tap on the
-/// picture toggles both (AVKit toggles its controls on the same tap), a touch
-/// on one of AVKit's controls keeps them up, and they hide after a few idle
-/// seconds unless paused or the channel panel is open (AVKit keeps its
-/// controls up while paused).
+/// iOS/iPadOS player chrome visibility (build 31: PigTV's controls are the
+/// only ones; AVKit's are off). A tap on the picture toggles the controls;
+/// they hide after 4 idle seconds unless playback is paused or a panel (the
+/// channel list, Go to number) is open. Dragging the scrub bar counts as
+/// input, so the controls never hide under the finger.
 nonisolated enum PlayerChromeTimer {
     static let idle: TimeInterval = 4
 
-    /// Visibility after a tap: on an AVKit control it stays (or becomes)
-    /// visible; on the picture it toggles. `untouched`: PigTV's chrome is up
-    /// only because a channel just started (AVKit's controls are not shown
-    /// then), so the first tap, which brings AVKit's controls up, keeps ours
-    /// up rather than hiding them out of step.
-    static func afterTap(visible: Bool, onControl: Bool, untouched: Bool = false) -> Bool {
-        onControl || (visible && untouched) ? true : !visible
-    }
+    /// Visibility after a tap on the picture (taps on PigTV's own buttons
+    /// never reach it).
+    static func afterTap(visible: Bool) -> Bool { !visible }
 
     static func shouldHide(visible: Bool, lastInput: Date, now: Date, paused: Bool, panelOpen: Bool) -> Bool {
         visible && !paused && !panelOpen && now.timeIntervalSince(lastInput) >= idle
     }
+}
+
+/// The seekable (timeshift or live buffer) window in the player item's
+/// seconds, for the touch scrub bar (build 31). Pure: position ↔ fraction
+/// mapping and the behind-live readout, tested in `PlayerSharedTests`.
+nonisolated struct PlayerSeekWindow: Equatable, Sendable {
+    var start: Double
+    var end: Double
+    var current: Double
+    /// Within this many seconds of the end reads as live (as on the TV).
+    static let liveMargin: Double = 20
+
+    /// Nil when there is nothing meaningful to scrub (under 5 s, or not finite).
+    init?(start: Double, end: Double, current: Double) {
+        guard start.isFinite, end.isFinite, current.isFinite, end - start > 5 else { return nil }
+        self.start = start; self.end = end; self.current = current
+    }
+
+    var duration: Double { end - start }
+    /// Where the picture is, 0…1 through the window.
+    var fraction: Double { Self.clamp((current - start) / duration) }
+    func time(at fraction: Double) -> Double { start + Self.clamp(fraction) * duration }
+    func behindLive(at fraction: Double) -> Double { max(0, end - time(at: fraction)) }
+    func isLive(at fraction: Double) -> Bool { behindLive(at: fraction) <= Self.liveMargin }
+    /// The target of a ±seconds skip, clamped to the window.
+    func skipTarget(_ seconds: Double) -> Double { min(max(current + seconds, start), end) }
+
+    /// A drag's x position on a track `width` wide → fraction.
+    static func fraction(forX x: Double, width: Double) -> Double {
+        guard width > 0 else { return 0 }
+        return clamp(x / width)
+    }
+
+    /// "LIVE", or "2:15 behind live" / "1 h 05 min behind live".
+    func readout(at fraction: Double) -> String {
+        isLive(at: fraction) ? "LIVE" : "\(TimeshiftMath.behindText(behindLive(at: fraction))) behind live"
+    }
+
+    private static func clamp(_ value: Double) -> Double { value.isFinite ? min(1, max(0, value)) : 0 }
 }

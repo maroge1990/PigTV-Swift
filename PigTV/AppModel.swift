@@ -17,6 +17,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var categories: [Category] = []
     @Published var playback: PlaybackModel?
     @Published var playerPresented = false
+    /// Build 31: a tab LibraryView should switch to ("guide" from the iOS
+    /// player's TV Guide button, "home" from the Siri "Open PigTV" shortcut);
+    /// LibraryView applies it and clears it.
+    @Published var requestedTab: String?
     // The tvOS player presents these over native AVKit controls. Keeping the
     // state here lets transport-bar actions open them without resolving media.
     @Published private(set) var browse: BrowseModel?

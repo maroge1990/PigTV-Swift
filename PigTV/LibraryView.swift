@@ -34,6 +34,11 @@ struct LibraryView: View {
                 .tag("settings")
         }
         .tint(Color("AccentColor"))
+        .onChange(of: model.requestedTab, initial: true) { _, requested in
+            guard let requested else { return }
+            tab = requested
+            model.requestedTab = nil
+        }
     }
 }
 

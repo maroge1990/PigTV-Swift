@@ -122,6 +122,21 @@ final class PlaybackModel: ObservableObject, Identifiable {
         return min(1, max(0, (current - start) / (end - start)))
     }
 
+    /// Build 31 (iOS touch scrub bar): the seekable window and position.
+    func seekWindow() -> PlayerSeekWindow? {
+        guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return nil }
+        return PlayerSeekWindow(start: CMTimeGetSeconds(range.start), end: CMTimeGetSeconds(CMTimeRangeGetEnd(range)),
+                                current: CMTimeGetSeconds(item.currentTime()))
+    }
+
+    /// Seeks to a point in the seekable window (the scrub bar's release).
+    func seek(toFraction fraction: Double) {
+        guard let window = seekWindow() else { return }
+        let target = window.time(at: fraction)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        behindLive = !window.isLive(at: fraction)
+    }
+
     // Distance from the live edge, for the scrub readout (R17).
     func secondsBehindLive() -> Double? {
         guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return nil }

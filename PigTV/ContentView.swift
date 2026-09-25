@@ -267,12 +267,10 @@ struct PlayerScreen: View {
     @State private var enteringNumber = false
     @State private var typedNumber = ""
     @State private var numberNotFound: String?
-    // Build 29: the chrome (top controls, info overlay) follows AVKit's
-    // controls; see PlayerChromeTimer.
+    // Build 31: PigTV's controls are the only ones (AVKit's are off); a tap
+    // on the picture shows/hides them, see PlayerChromeTimer.
     @State private var chromeVisible = true
     @State private var lastInput = Date()
-    /// Shown at channel start, not yet by a tap (see PlayerChromeTimer).
-    @State private var chromeUntouched = true
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
@@ -395,31 +393,36 @@ struct PlayerScreen: View {
     }
 
     #if os(iOS)
-    /// AVKit's player with PigTV's chrome over it (build 29): the top
-    /// controls and the info overlay show and hide together, following
-    /// AVKit's own controls; the channel side panel on iPad.
+    /// The picture (AVKit, with its own controls off) and PigTV's controls
+    /// over it (build 31); the channel side panel on iPad.
     private var touchPlayer: some View {
-        NativePlayer(playback: playback) { onControl in
-            chromeVisible = PlayerChromeTimer.afterTap(visible: chromeVisible, onControl: onControl, untouched: chromeUntouched)
-            chromeUntouched = false
-            lastInput = Date()
-        }
-        .ignoresSafeArea()
-        .overlay(alignment: .top) {
-            if chromeVisible { iOSControls.transition(.opacity) }
-        }
-        .overlay(alignment: .bottomLeading) {
+        ZStack {
+            NativePlayer(playback: playback).ignoresSafeArea()
+            // A tap on the picture (anywhere not on a control) shows or hides
+            // the controls.
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    chromeVisible = PlayerChromeTimer.afterTap(visible: chromeVisible)
+                    lastInput = Date()
+                }
+                .accessibilityLabel("Video")
+                .accessibilityHint("Shows or hides the player controls")
             if chromeVisible, let browse = app.browse {
-                TouchInfoOverlay(playback: playback, app: app, browse: browse) { lastInput = Date() }
-                    .padding(.horizontal, 16)
-                    // Clear of AVKit's transport bar along the bottom.
-                    .padding(.bottom, sizeClass == .regular ? 96 : 84)
+                TouchPlayerChrome(playback: playback, app: app, browse: browse,
+                                  close: { dismiss() },
+                                  openGuide: {
+                                      app.requestedTab = "guide"
+                                      dismiss()
+                                  },
+                                  openChannels: { showingGuide = true; lastInput = Date() },
+                                  enterNumber: { enteringNumber = true; lastInput = Date() },
+                                  touch: { lastInput = Date() })
                     .transition(.opacity)
             }
-        }
-        .overlay {
             if showingGuide && sizeClass == .regular {
-                PlayerSidePanel(app: app) { showingGuide = false }
+                PlayerSidePanel(app: app) { showingGuide = false; lastInput = Date() }
                     .transition(.move(edge: .leading))
             }
         }
@@ -433,103 +436,37 @@ struct PlayerScreen: View {
                    PlayerChromeTimer.shouldHide(visible: chromeVisible, lastInput: lastInput, now: Date(),
                                                 paused: paused, panelOpen: showingGuide || enteringNumber) {
                     chromeVisible = false
-                    chromeUntouched = false
                 }
             }
         }
-    }
-
-    private var iOSControls: some View {
-        // A4.4: controls on one row (close left; channel actions right). The
-        // channel's name is in the info overlay below (build 29).
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 14) {
-                Button { dismiss() } label: { Image(systemName: "xmark.circle.fill") }
-                    .accessibilityLabel("Close playback")
-                Spacer()
-                if let previous = app.previousChannel, previous.id != playback.channel.id {
-                    Button { app.returnToPreviousChannel() } label: { Image(systemName: "arrow.uturn.backward.circle.fill") }
-                        .accessibilityLabel("Last channel, \(previous.name)")
-                }
-                Button { app.zap(-1) } label: { Image(systemName: "chevron.down.circle.fill") }
-                    .accessibilityLabel("Previous channel")
-                Button { app.zap(1) } label: { Image(systemName: "chevron.up.circle.fill") }
-                    .accessibilityLabel("Next channel")
-                if app.browse?.showsChannelNumbers == true {
-                    Button { enteringNumber = true } label: { Image(systemName: "number.circle.fill") }
-                        .accessibilityLabel("Go to number")
-                }
-                Button { showingGuide = true; lastInput = Date() } label: { Image(systemName: "list.bullet.circle.fill") }
-                    .accessibilityLabel("Channels")
-            }
-            .font(.title2)
-        }
-        .foregroundStyle(.white, .black.opacity(0.6))
-        .padding(.horizontal, 16).padding(.top, 8)
     }
     #endif
 }
 
 #if os(iOS)
-// iPhone/iPad player: AVKit with its standard controls. Apple TV uses the
+// iPhone/iPad picture: AVPlayerViewController with its playback controls
+// off (build 31), so PigTV's touch controls are the only ones on screen.
+// AirPlay and Picture in Picture stay out of scope. Apple TV uses the
 // PigTV-owned CustomPlayerView instead.
 struct NativePlayer: UIViewControllerRepresentable {
     @ObservedObject var playback: PlaybackModel
-    /// Build 29: a tap on the player; true when it landed on one of AVKit's
-    /// controls. AVKit offers no public signal for its controls' visibility
-    /// on iOS, so PigTV's chrome follows the same taps.
-    var onTap: (_ onControl: Bool) -> Void = { _ in }
-
-    func makeCoordinator() -> TapWatcher { TapWatcher() }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = playback.player
+        controller.showsPlaybackControls = false
         controller.allowsPictureInPicturePlayback = false
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(TapWatcher.tapped(_:)))
-        // Observe only: AVKit still receives every touch.
-        tap.cancelsTouchesInView = false
-        tap.delaysTouchesEnded = false
-        tap.delegate = context.coordinator
-        controller.view.addGestureRecognizer(tap)
-        context.coordinator.onTap = onTap
+        controller.videoGravity = .resizeAspect
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         if controller.player !== playback.player { controller.player = playback.player }
-        context.coordinator.onTap = onTap
     }
 
-    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: TapWatcher) {
+    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: ()) {
         controller.player?.pause()
         controller.player = nil
-    }
-
-    /// UIKit gesture callbacks arrive on the main thread.
-    final class TapWatcher: NSObject, UIGestureRecognizerDelegate {
-        var onTap: (Bool) -> Void = { _ in }
-        private var onControl = false
-
-        @objc func tapped(_ recogniser: UITapGestureRecognizer) {
-            guard recogniser.state == .ended else { return }
-            onTap(onControl)
-        }
-
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-            // A touch on one of AVKit's buttons or its scrubber: keep the
-            // chrome up rather than toggling it.
-            var view = touch.view
-            onControl = false
-            while let current = view {
-                if current is UIControl { onControl = true; break }
-                view = current.superview
-            }
-            return true
-        }
-
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }
 #endif
