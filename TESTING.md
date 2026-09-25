@@ -1,132 +1,98 @@
-# PigTV client verification
+# PigTV client: testing
 
-Current scope/status: [blueprint.md](blueprint.md). Run tests from this repository, not the historical Codex/OneDrive copy. Ask Mark before internet access or deployed-server testing. Choose disposable recordings and obtain agreement before tests that stop another viewer/recording or change server data.
+Current state and rules: [blueprint.md](blueprint.md). The device checklist is the server repo's
+`../PigTV/docs/TEST-BLOCK.md`. The old per-build evidence (builds 3–16) is frozen in
+[docs/archive/TESTING-2026-09-23.md](docs/archive/TESTING-2026-09-23.md).
 
-Testing ownership (confirmed 21 September): the client agent runs synthetic tests and local Xcode simulator builds/tests; Mark conducts physical Apple TV and multi-device checks. Last user-confirmed deployment: **0086**. Local server is now **0094**; confirm `playbackTerminalStatus` is advertised before takeover acceptance testing. The latest review also permits agent testing on the downstairs Apple TV via Xcode, but no physical-device run has been performed. No network access is implied by this testing assignment.
+Who tests what: the agent runs builds and simulator tests; Mark runs the physical Apple TV, iPad and iPhone checks. A simulator
+pass is not a device pass, and nothing becomes *Verified* until Mark reports it. Ask Mark before contacting the deployed
+server or driving the simulator UI by hand.
 
-## Local baseline and change checks
+## Commands
 
-1. Run `sh Tools/test-contracts.sh` without a server. Baseline was 93; review build **1.0 (3)** on 22 September 2026: **133 passed**.
-2. Build the shared PigTV scheme for tvOS and iOS using installed SDKs. Record destination, configuration and actual build outcome. Do not download SDKs/dependencies without approval.
-3. Add focused fixtures for changed contracts: optional info flags/build, viewer/recording/unknown conflicts, 429, recording 200/202/500 and malformed responses. Fixtures live in `PigTVTests/ContractChecks.swift` and run through the existing script.
-4. For C2/C3 add lifecycle tests: one recovery only, repeated failure callbacks, dismiss during resolve/preparation, late response, server/account change, cancellation and explicit retry. Assert request counts and absence of automatic force.
-5. Check new-feature and missing-flag legacy paths. Contract checks alone do not verify focus, cancellation UI or AVPlayer behaviour.
-
-## Approved integration and device checks
-
-Before each run record app version/build and source revision, device/OS, server `/api/info` build/display/features, and relevant channel/recording. Keep provider URLs and tokens out of logs/screenshots shared for diagnosis.
-
-| Check | Expected result |
-|---|---|
-| Setup | Restore, login, pairing/cancel/expiry and unreachable-server retry behave correctly; Settings identity matches the server after C8. |
-| C1 viewer conflict | Second device offers takeover/cancel; cancel leaves first device playing; explicit takeover works. Repeat with TV and web exchanging roles. |
-| Recording conflict | Keep recording preserves it; only explicit takeover stops an agreed disposable recording. Scheduled prompt decline is honoured. |
-| Same-device switching | Channels sheet, Next/Previous/Back switch cleanly without a self-conflict; previous session releases. |
-| C2 session recovery | Established playback losing its session tries once, then presents Retry on failure; takeover during recovery asks C1. Dismissal prevents later playback. |
-| Pause/background | Observe fetching while paused; test >45 seconds and >6 minutes. Resume handles an expired session. Background cleanup remains correct; returning to the foreground shows the guide and never automatically resumes the last channel. No unexpected playback after dismissal. |
-| Server 0085/0086 | Previously juddery and known-good channels stay smooth with lip-sync; finite source 1803789 survives beyond initial segments. Record continuous-play duration and stalls. |
-| C3 recordings | Long recording shows Preparing, then plays; cancel/dismiss stops polling. Test terminal preparation failure, missing file, timeout and explicit retry; legacy path still works. |
-| HEVC and seeking | Physical Apple TV plays an HEVC recording; seeking, resume, manual Skip break and Auto-skip work. Old hev1 sidecar cleanup, if needed, is a separately approved server action. |
-| C4 artwork | Feature-enabled launch makes no proxy EPG index download; playlist/EPG/missing logos render. Missing flag retains legacy fallback; third-party logo requests carry no bearer. |
-| C5 waiting | With agreed recording held by a viewer, Upcoming explains Waiting; cancellation works; no duplicate schedule; waiting is not shown as actively recording. |
-| C6 rate limit | Use fixtures first; do not deliberately lock a real account without agreement. Check actionable timing and bounded retries. |
-| C7 diagnostics | Correlated server events have device identity and useful codes/timings, no query/token; logging failure has no playback effect. |
-| Favourites | An agreed test add/remove round-trips between web and client. |
-
-## UI regression on Apple TV, iPad and iPhone
-
-- Guide category strip scrolls; left/right steps once across viewport boundaries; up/down and returning from playback/details preserve sensible focus.
-- Finished programmes are dimmed/disabled; programme titles, sticky channel captions, time axis and record badges remain aligned.
-- Search, favourites, background page loading, remembered position and cached guide refresh remain usable with hundreds of channels.
-- Channels sheet is remote-focusable; now/next system metadata remains current; Go to live appears when behind.
-- Transparent/mixed logos have a single readable backing; tabs and guide surfaces remain legible in light/dark mode; playback does not change the selected appearance.
-- iPhone header/category controls fit; iPad/touch swipes work; check text scaling, VoiceOver labels and sofa-distance readability.
-- Build 29 (iPad/iPhone player and guide): changing channel shows the Tuning… card; the Channels button opens the side panel (iPad) or bottom sheet (iPhone) with the current channel highlighted, and a tap switches; the info overlay (channel, programme, times, progress, next, Favourite/Record/Last channel) appears and hides with AVKit's controls; the iPad guide pans freely under the finger, settles on a half hour, keeps the channel column pinned and the time header in step; a tap on a live programme plays, on a later one opens details; touch and hold opens the menu.
-
-## Record results
-
-For each check record date, device/OS, client revision/build, server build, steps, expected/actual behaviour and sanitised evidence. Mark **Pass**, **Fail** or **Not run**. Update the matching blueprint item; an unrun device check must not become Verified merely because a build or fixture passed.
-
-## Build 1.0 (16) — R19 for swipes (23 September 2026)
-
-**Device result, build 15 (Mark):** still could not move right — Mark **swipes** on the black Siri Remote's touch surface; swipes never produce the move command build 15 relied on. **Local results, build 16:** contract runner **144 passed**; tvOS 26.5 and tvOS 27.0 simulators: 18 unit + 2 UI tests passed (guide Right ×12 then Left back to the channel tile; XCUIRemote sends clicks, which now take the same focus-engine path as swipes); iOS: 18 unit + 1 UI passed. A left-navigation hang found on the way (AttributeGraph cycle from a focused accessibility-hidden edge target, diagnosed with `sample`) is fixed.
-
-| Item | Steps and expected result |
-|---|---|
-| R19 | **Swipe** right past the screen edge on several rows: the grid slides on and the next programme is fully in view. Swipe left back: grid returns to live, then the channel logo. Repeat with clicks. Up/Down near either edge lands on a programme, never on nothing. |
-
-## Build 1.0 (15) — R19 fix (23 September 2026)
-
-**Local results:** contract runner **143 passed** (8 new R19 navigation checks). tvOS simulator: 18 unit + 2 UI tests passed; the guide fixture now contains duplicate EPG entries, and `GuideNavigationUITests` **failed on the build 14 navigation code (focus stuck on one cell) and passes on build 15**. iOS simulator: 18 unit + 1 UI test passed. Device: repeat the R19 row below, then R14/R16/R20/HDR.
-
-| Item | Steps and expected result |
-|---|---|
-| R19 | From the live column, hold/press Right past the screen edge on several channels and categories: the grid slides on through the day. Then Left all the way back to live and the channel tile. |
-
-## Build 1.0 (14) — device checklist and results (23 September 2026)
-
-**Local results:** tvOS simulator: 18 unit tests + 2 UI tests passed (Settings appearance, new guide Right-navigation). iOS simulator: 18 unit tests passed; the Settings appearance UI test **failed once then passed on rerun** (timed out waiting for "light" to read Selected). That screen's code is unchanged in build 14, so this is treated as a pre-existing flaky test, not a regression. Contract runner: 135 passed.
-
-| Item | Steps and expected result |
-|---|---|
-| R19 | Mark: focus stops at the last on-screen cell (11:30 with now 9:30), all categories; Later works and scrolls well. Fixed in build 15. |
-| R20 | Light mode: play a channel, exit; repeat several times, also after channel changes and after an error screen. Guide, tabs, Recordings and Settings stay fully light. Repeat in Dark and System. |
-| HDR (R13) | Settings → Video and Audio → Match Content → Match Dynamic Range on. Sky Sports Main Event: panel switches to HDR, colours normal. Change to an SDR channel: back to SDR. Exit to guide: SDR. |
-
-## Build 1.0 (13) — device checklist and results (23 September 2026)
-
-**Device results (Mark, build 13):** R18 pass; R17 pass; AVKit fallback removal pass; stableId no issues seen; R16/R14 blocked by R19 (guide won't scroll right); R20 light/dark clash after player found.
-
-**Local results:** Xcode 27.0; Apple TV simulator (tvOS 26.5) and iPad Pro 13-inch (M5) simulator (iOS 26.5): **19 tests passed on each** (contract runner + 13 lifecycle + 4 new `GuideModelTests` + the Settings UI test). `sh Tools/test-contracts.sh`: **135 passed**. tvOS and iOS Debug builds succeed with no Swift warnings. The first test run failed two `GuideModelTests` assertions because the test expected the wrong fixture names (a test error, not an app error); corrected and rerun green. `testProgrammeLookupUsesIndexOnLargeGuide` measures 500 lookups on an 18 000-channel guide at ~0.7 ms (after the one-off index build). No simulator UI driving, physical-device or deployed-server test was performed.
-
-Hands-on checks for Mark on the Apple TV (confirm Settings → Version shows **1.0 (13)**):
-
-| Item | Steps and expected result |
-|---|---|
-| R18 | With the full guide loaded (and once while it is still paging in), flick quickly back and forth across several categories, then stop. The strip stays responsive; the grid settles on the last category about a quarter-second later, back at the top and at the current half-hour. No hang. Also check Favourites and All. |
-| R16 | Logo tile → first cell, cell ↔ cell and row ↔ row gaps look identical; logo tile top/bottom line up with the cells; time labels line up with cell edges; now-line still sits at the current time. Light and Dark. |
-| R14 | Step Right/Left several times and use Earlier/Later: cells and time labels slide in from off screen as one wide sheet, nothing pops in. Return to live from several windows ahead. Watch for frame drops on a busy category. |
-| R17 | In the player with controls hidden, press Left/Right: a slim bottom bar shows ⏪15/⏩15, channel, "m:ss behind live" (or LIVE) and the buffer scrubber — not the full info overlay. Repeated presses keep seeking; Select opens full info; Up/Down/Back hide it; it hides itself after ~4 s. |
-| Fallback removal | Settings has no "Live player" section; every channel plays in the PigTV player; Up/Down side list, Back order and takeover prompts unchanged. |
-| stableId | Favourite a channel listed in two categories: the heart shows as favourite from either listing; the Favourites filter shows it once. Relaunch: the guide still scrolls to the last focused channel. |
-
-## Review acceptance pass — build 1.0 (3)
-
-Record each as Pass/Fail/Not run in the blueprint. These remain physical-device checks even when a simulator model or Settings test passes.
-
-| Item | Hands-on steps and expected result |
-|---|---|
-| U01 | Focus empty, short and long programme descriptions: guide rows never shift vertically. Open Details, then Back: full text was available and guide focus/time are retained. |
-| U02 | On a server advertising `playbackTerminalStatus`, start device A; on B cancel takeover, then explicitly take over. A stops with a useful message and never reclaims B. Repeat TV→web and web→TV, paired and password clients, including A paused beyond 60 seconds. Allow buffered media to drain. Separately check ordinary session expiry still recovers once and same-device channel switching remains clean. |
-| U03 | Categories at left boundary: only right fades. Mid-strip: both fade. Right boundary: only left fades. No overflow: neither fades. Scroll using the remote in both appearances; no coloured edge bands or inaccessible categories. |
-| U04 | Recordings and Refresh remain readable focused/unfocused/pressed/disabled in Light and Dark, matching the guide. |
-| U05 | In the actual Settings tab select Light→Dark→System several times. Screen and focus remain usable. Leave/revisit the tab, relaunch, play/back: selected appearance persists. |
-| U06 | Navigate several screens right, then all the way left, including long shows crossing viewport boundaries. Return to the current half-hour/live baseline every time; no stuck focus, double jumps or stale focus after held input. Compare horizontal motion with vertical; repeat with Reduce Motion. |
-| U07 | Inspect Apple TV home-screen icon (and distribution asset preview), plus iOS light/dark/tinted variants. Pig remains sharp and no added pink disc/backplate remains. |
-| U08 | Check transparent, opaque and missing provider logos. One dark translucent full-size tile, no app-added nested box; correct aspect ratio and readable fallback in Light/Dark. |
-| U09 | Cold launch with no credentials, saved login, expired login and unreachable server. Branded loading hands off without a fixed delay or getting stuck. Ordinary foreground return remains guide-only. |
-| U10 | Show native player transport controls: channel, programme, times/progress, description and next show appear directly. First Back hides controls and keeps playing; next Back exits to guide. Repeat from expanded programme panel and channel browser. |
-| U11 | Open Channels mid-list: current channel focused/centred and neighbours show now-playing/progress. Browse long lists and edge channels without opening streams. Select once: old session releases before switch. Back closes the panel only. Check bright/dark footage and Reduce Transparency. |
-
-## Latest results — 22 September 2026, app 1.0 (3)
-
-- Standalone script: **133 API/model checks passed** (including three left-navigation boundary checks).
-- Xcode 27.0, Apple TV simulator **tvOS 26.5** and iPad Pro 13-inch (M5) simulator **iOS 26.5**: **15 tests passed on each** — 14 contract/lifecycle tests plus one UI test, zero failures in the final runs.
-- Settings UI test selects Light → Dark → System → Light → Dark within the actual tab container, asserting each selected value and continued availability of all three controls. Reviewed saved screenshots: [TV Dark](docs/evidence/2026-09-22-settings-tv-dark.png), [TV Light](docs/evidence/2026-09-22-settings-tv-light.png), [iPad Dark](docs/evidence/2026-09-22-settings-ipad-dark.png). No credentials/server are present in this fixture.
-- Early runs exposed a non-tappable row interior on iPad and nested Form/focus issues on TV. The final layout/full-row hit target and deterministic adjacent remote presses resolve the test failures. One earlier iOS runner also timed out loading Accessibility; final bounded runs completed. No unresolved failure in the final selected suites.
-- Compilation warnings: only skipped App Intents metadata extraction; no Swift compiler warnings. Whitespace check passed.
-- Final logs: `/private/tmp/pigtv-review-tv-settings3.log`, `/private/tmp/pigtv-review-ios-settings.log`. Both result bundles are `Logs/Test/Test-PigTV-2026.09.22_08-19-57-+1000.xcresult` under their respective `/private/tmp/pigtv-review-tv` and `/private/tmp/pigtv-review-ios` DerivedData folders.
-- Physical Apple TV, multi-device/provider playback and deployed-server verification: **Not run in this review**. Local server 0094 availability does not establish that it is deployed.
-
-Reproduce the offline simulator suites from this repository using installed destinations:
+`xcode-select` on the development Mac points at the Command Line Tools, so every command needs `DEVELOPER_DIR`:
 
 ```sh
-xcodebuild -project PigTV.xcodeproj -scheme PigTV -configuration Debug -destination 'platform=tvOS Simulator,id=CDF0C871-2FAA-49A6-A586-DC917C67C3F9' -derivedDataPath /private/tmp/pigtv-review-tv -disableAutomaticPackageResolution -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -collect-test-diagnostics never -only-testing:PigTVTests -only-testing:PigTVUITests/PigTVUITests test
-xcodebuild -project PigTV.xcodeproj -scheme PigTV -configuration Debug -destination 'platform=iOS Simulator,id=7B0936F6-E5F9-4470-B4B8-D7D045F08CC1' -derivedDataPath /private/tmp/pigtv-review-ios -disableAutomaticPackageResolution -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -collect-test-diagnostics never -only-testing:PigTVTests -only-testing:PigTVUITests/PigTVUITests test
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+
+# Before every push: all tests on the tvOS simulator (26 Sept, build 32: 132 pass, 119 unit + 13 UI, ~4 min)
+xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
+  -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
+
+# When shared code changed: the iOS build
+xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'
+
+# iPad: the unit tests that aren't tvOS-only
+xcodebuild test -project PigTV.xcodeproj -scheme PigTV -only-testing:PigTVTests \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=26.5'
+
+# One suite or test
+xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
+  -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5' -only-testing:PigTVTests/RealPlaybackTests
+
+# Synthetic API/model contract checks, no simulator and no server (26 Sept: 177 pass)
+sh Tools/test-contracts.sh
 ```
 
-The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the unit-test host, avoiding saved-session restoration. Fixture URL protocols intercept API requests. The UI tests set the DEBUG-only `PIGTV_UI_TEST_SCREEN=settings` to render offline Settings inside `LibraryView` and repeatedly select appearances, saving screenshots. Normal Run still opens the real app. The Settings fixture does not establish guide/player rendering or real-media behaviour. Simulator service access requires approval outside the sandbox.
+Simulators by name (Xcode 27): **Apple TV** (tvOS 26.5, the one the tests use), Apple TV 4K (3rd generation) (tvOS 27.0);
+**iPad Pro 13-inch (M5)** and the other iPads, iPhone 17 / 17 Pro Max / Air (iOS 26.5; iOS 27.0 variants too). Use names, not
+UDIDs: the UDIDs differ per Mac. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on the newest Apple TV
+simulator it finds.
 
-The XCTest suite contains one contract runner plus 13 lifecycle tests, including confirmed takeover without release/resolve, normal-expiry recovery and dismissal during terminal-status lookup. The additional UI test checks repeated appearance selection. Build-only success is not equivalent to passing these tests.
+The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restores a saved real-server session.
 
-Next hands-on pass: install **1.0 (3)**, check U05/U06/U10/U11 on Apple TV, confirm server 0094/capability before U02, then run the remaining rows above and the recording regression matrix.
+## What the suites cover
+
+**Unit tests (`PigTVTests`)**
+- `ContractChecks` (via `PigTVTests.swift` and `Tools/test-contracts.sh`): JSON fixtures for every server response the client
+  decodes (conflicts, 429, 202 preparing, resolve errors, flags, recordings, HLS recordings, sport events).
+- `PlaybackLifecycleTests`: C2 recovery (one automatic attempt), takeover, terminal status, dismissal, the -11868 and `'fmt?'`
+  fallbacks, the AVKit-category crash guard.
+- **`RealPlaybackTests`, the real-playback harness**: `Support/LocalHTTPServer.swift` (an in-process HTTP server on
+  127.0.0.1) and `Support/FakePigTVServer.swift` (resolve, HLS sessions, conflict, client events, sport events) serve the
+  `Fixtures/HLS` stream (6 s, H.264 + AAC, fMP4, a master playlist like the server's). Real starts, display criteria, -11868 for
+  real, the `'fmt?'` fallback, switching, a recording in the recording player, a sport event's best channel. **New playback
+  code gets a test here.**
+- Pure logic: `GuideGridMathTests`, `GuideModelTests`, `ChannelNumberTests`, `OnNowRowTests`, `HomeRowsTests`, `DetailTextTests`,
+  `PlayerSharedTests` (touch chrome timer, seek window), `TimeshiftMathTests`, `DisplayModeTests`, `StreamInfoTests`,
+  `SportTests` (buckets, days over 72 h, replays, tolerant decoding, the model against the fake server), `ChannelQueryTests`
+  (Siri matching), `TopShelfTests` and `TopShelfCardTests` (snapshot storage, App Group paths, the extension's entry point,
+  card layout and file names, diagnostics).
+
+**UI tests (`PigTVUITests`, tvOS)**
+- `PigTVUITests`: Settings appearance switching. `PigTVUITestsLaunchTests`: launch screenshot.
+- `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details.
+- `HomeUITests`: Home opens first; Down reaches Watch, then a card.
+- `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page.
+- `TabSwitchUITests`: walks all five tabs twice on 1,000 channels; fails on a stall over 1 s (uses the tab probe).
+- `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
+- `TopShelfCardsUITests`: renders the Top Shelf cards through the real export, then focuses PigTV on the Home Screen.
+
+## Offline fixtures (DEBUG builds only)
+
+Launch environment variables that render a screen with made-up data and no server. The UI tests use them; set them in the
+scheme's Run → Arguments to look at a screen by hand. Screenshots in `docs/evidence` come from these, so they show fixture
+data, not the real feed.
+
+| Variable | Values |
+|---|---|
+| `PIGTV_UI_TEST_SCREEN` | `settings` · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `search` · `jump` · `unreachable` · `onboarding` · `sport-event` · `sport-channels` |
+| `PIGTV_UI_TEST_APPEARANCE` | `light` or `dark` (the tvOS simulator has no `simctl ui appearance`) |
+| `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the Home and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
+| `PIGTV_UI_TEST_MEDIA` | A local movie file the `player` fixture plays |
+| `PIGTV_UI_TEST_HOME_SCROLL`, `PIGTV_UI_TEST_SPORT_SCROLL` | A shelf or section title to scroll into view (e.g. `Sport now & next`, `Replays`) |
+| `PIGTV_UI_TEST_TABPROBE` | `1`: measure the longest stall after each tab switch (`debug.tabSwitch`) |
+| `TEST_RUNNER_PIGTV_SCREENSHOT_DIR` | Passed to `xcodebuild test`: `TopShelfCardsUITests` saves its screenshots there |
+
+`Tools/analyse-tab-flash.py` measures a `simctl io recordVideo` capture frame by frame (how the build 32 flash was found).
+
+## Device checklist
+
+The checklist and results live in **`../PigTV/docs/TEST-BLOCK.md`** (rounds 1–4 with a status summary at the top, and
+the next round's checks). For a device run, note the app build (Settings → Version), the server build (`/api/version`), the
+device and OS, and for a fault the channel and roughly when; keep provider URLs and tokens out of anything shared. Useful
+on-device diagnostics: Settings → Diagnostics (tvOS, the Top Shelf), and Console on the Mac filtered to subsystem
+`au.markrogers.PigTV.TopShelf` (the Top Shelf and Siri shortcuts).
+
+Checks that no simulator can settle, still open: an HEVC recording; audio/subtitle track selection; whether AVPlayer stops
+fetching while paused (C2 rests on it); Siri on Apple TV (parked); everything behind the server's `PIGTV_TUNER=1`.

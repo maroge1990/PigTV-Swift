@@ -10,9 +10,23 @@ before changing anything** (`scripts/stream-doctor.js`), gate ffmpeg/timestamp b
 probe (not a build number), and pair every functional change with a `verify-build.sh` check and a
 test that fails on the old code. Log the change in `docs/SWIFT-CLIENT-HANDOFF.md` §5.
 
+## Status (26 September 2026): none open
+
+| Request | Status |
+|---|---|
+| SR-1 HDR channels not flagged as HDR | **Resolved** by server 0100 (a master playlist with `VIDEO-RANGE`; the copied fMP4 already kept `colr`/`nclx`, so the colour-box fix proposed below was not needed), extended to every session by 0115, and client display criteria (builds 14, 27). **Verified** on the HDR TV (test 1.13). |
+| SR-2 Strip the small-caps badge | **Resolved** by server 0099 (and 0138 for names stored earlier); the client stripper was removed in build 12. |
+
+New requests go below as SR-3 onwards, described by user-visible behaviour.
+
 ---
 
-## SR-1 — HDR channels are not flagged as HDR (P1)
+## SR-1 — HDR channels are not flagged as HDR (P1) — ✅ RESOLVED (server 0100, verified on device)
+
+**Resolution.** A capture of Sky Sports Main Event UHD (`pos_31`) showed the source is HDR10 (PQ), not HLG, and that the copied
+fMP4 init segment already carried the right `colr`/`nclx` box. What was missing was the range: AVPlayer only switches the
+panel on a **master playlist's `VIDEO-RANGE`**. Server 0100 hands HDR copy sessions out through `master.m3u8` with
+`VIDEO-RANGE=PQ|HLG`; the custom player sets the display criteria itself. The original request is kept below for reference.
 
 **User-visible problem.** On an HDR channel (reported: Sky Sports Main Event UHD, HLG), the Apple
 TV does not switch the display into HDR; the picture "looks very strange" (washed-out / wrong
@@ -46,17 +60,17 @@ TS→fMP4 copy, so the init segment ends up SDR-tagged (or untagged) and AVFound
 4. Confirm on the Apple TV that the panel flips to HDR and colour is correct; confirm an SDR
    channel is unchanged.
 
-**Client side.** No client change needed or planned — the client renders whatever transfer
-function the stream signals. Tracked as **R13** in the client blueprint.
+**Client side (at the time).** No client change needed or planned — the client renders whatever transfer
+function the stream signals. Tracked as **R13** in the client blueprint (now verified).
 
 ---
 
-## SR-2 — Strip the small-caps "ᴸɪᴠᴇ" badge from EPG titles and names (P2) — ✅ SHIPPED (server 0099)
+## SR-2 — Strip the small-caps "ᴸɪᴠᴇ" badge from EPG titles and names (P2) — ✅ RESOLVED (server 0099; client stripper removed in build 12)
 
 **Shipped** in server build 0099: the badge is stripped at ingest from titles, sub-titles and
 channel names in every response, using the same code-point ranges as the client stripper. The
-client's `String.strippingBadgeSuffix` (DVRModels.swift) is now redundant but retained — remove it
-once 0099 is confirmed deployed (double-stripping is a harmless no-op until then). Original request
+client's `String.strippingBadgeSuffix` was removed in build 12 (R15 closed); server 0138 also cleaned names stored before
+0099. Original request
 below for reference.
 
 
@@ -90,7 +104,7 @@ function stripBadgeSuffix(s) {
 Apply to `title`, `subtitle` and `name`. Pair with a test whose fixture title ends in the badge
 and asserts it is gone (and that an ordinary title is untouched).
 
-**Client side (interim).** The client already strips this at decode
+**Client side (interim, removed in build 12).** The client already strips this at decode
 (`String.strippingBadgeSuffix` in `DVRModels.swift`, covering programme titles and channel names)
 so it is not blocking. Once the server strips at ingest, the client stripper becomes redundant and
 can be removed. Tracked as **R15** in the client blueprint.

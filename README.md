@@ -1,34 +1,41 @@
 # PigTV Apple client
 
-Native SwiftUI and AVKit client for Apple TV, iPad and iPhone.
+The native client for [PigTV](https://github.com/maroge1990/PigTV) (a self-hosted live TV server) on **Apple TV**, **iPad** and
+**iPhone**: SwiftUI with a UIKit guide grid and AVFoundation playback. Build **1.0 (32)**, for server build 0154.
 
-Start with [blueprint.md](blueprint.md) (client facts and rules) and the joint roadmap in `../PigTV/blueprint.md` §6. [TESTING.md](TESTING.md) contains the regression checklist. Previous handovers are frozen in [docs/archive](docs/archive).
+What it has: a Home screen (continue watching and shelves), the TV guide (a UIKit grid on Apple TV and iPad, an "On now" list on
+iPhone), a Sport tab (events across channels for the next 72 hours, with replays), recordings (scheduling, playback with
+break skipping), PigTV's own players (remote-driven on tvOS, large touch controls on iPad/iPhone), a Top Shelf extension, and
+Siri / App Intents. It needs a PigTV server on the local network or VPN.
 
-## Open and run
+## Build and run
 
-Open `PigTV.xcodeproj` from this repository and select the shared **PigTV** scheme. Choose an Apple TV destination for tvOS or an iPad/iPhone destination for iOS. The project currently targets iOS/tvOS 26.5; physical devices require the configured development signing. Final minimum OS support is not yet decided.
+Requirements: Xcode 27 with the iOS/tvOS 26.5 SDKs; physical devices need development signing, and the App Group
+`group.au.markrogers.PigTV` registered for both the `PigTV` and `PigTVTopShelf` targets (Signing & Capabilities).
 
-Use this Git checkout; the old OneDrive/Codex working-copy locations in archived notes are obsolete. Work directly on `main`; commits and pushes to `origin/main` are authorised once the build and tests pass (see blueprint §1). Obtain Mark’s approval before other internet access or deployed-server integration testing.
-
-## Current functionality
-
-- TV Guide, Recordings and Settings navigation; category/favourites filters, programme search and cached guide data.
-- Native live playback, channel switching, now/next metadata, Go to live and recording-conflict prompts.
-- Recording scheduling/management, native recording playback, resume and commercial-break controls.
-- Channel artwork, pig branding and System/Light/Dark appearance.
-
-Implementation does not imply device verification. The blueprint distinguishes completed source work from outstanding tests and tracks integration with server changes through the additive server 0094 takeover-status contract.
-
-## Connect to a server
-
-After server testing is approved, enter the server origin, such as `http://192.168.1.20:3000`, without a path, query or embedded credentials. Use password login or **Pair with browser** and approve the code in the server web app's Settings → Devices. Credentials are stored in Keychain for the selected origin.
-
-The server must advertise API version 1, library and playbackResolve support. Stream preparation remains on the server; the client requests segmented delivery and uses AVPlayer. Build **1.0 (13)** (see blueprint.md for the full history) includes viewer takeover confirmation, one automatic live recovery attempt, cancellable recording-preparation polling, server logo fallback, waiting explanations, auth rate-limit handling and optional diagnostics. Returning from the background still shows the guide.
-
-## Local validation
+Open `PigTV.xcodeproj`, choose the shared **PigTV** scheme and an Apple TV, iPad or iPhone destination, and run. From the command
+line (on the development Mac `xcode-select` points at the Command Line Tools, so set `DEVELOPER_DIR`):
 
 ```sh
-sh Tools/test-contracts.sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcodebuild test  -project PigTV.xcodeproj -scheme PigTV -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
+xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'
+sh Tools/test-contracts.sh    # synthetic API/model checks, no server
 ```
 
-Runs synthetic model/API checks using the local Xcode Swift toolchain; no server or provider is contacted. On 22 September 2026, **133** standalone checks and **15** tests on each of the tvOS 26.5 and iPadOS 26.5 simulators passed for build **1.0 (3)**, including repeated Settings appearance changes. See TESTING.md for evidence and limitations. Physical playback and remote interaction still need testing; see the blueprint and testing checklist.
+In the app, enter the server's origin (e.g. `http://192.168.1.235:3000`, no path), then sign in or choose **Pair with browser**
+and approve the code in the web app's Settings → Devices. Credentials are kept in the Keychain per server.
+
+Work happens on `main`; pushes run CI (`.github/workflows/ci.yml`: iOS build, tvOS tests).
+
+## Where to read next
+
+| Document | For |
+|---|---|
+| [`blueprint.md`](blueprint.md) | Start here: rules, architecture screen by screen, device-verification state, known issues |
+| [`TESTING.md`](TESTING.md) | Test commands, what the suites cover, UI fixtures, the device checklist |
+| [`docs/SERVER-REQUESTS.md`](docs/SERVER-REQUESTS.md) | Requests from this client to the server (none open) |
+| `../PigTV/blueprint.md` §6 | The joint roadmap and its status |
+| `../PigTV/docs/SWIFT-CLIENT-HANDOFF.md` | The server contract, the `/api/info` flags, and every client-visible server change |
+| `../PigTV/docs/TEST-BLOCK.md` | Mark's device test rounds and results |
+| [`docs/archive/`](docs/archive/README.md) | Frozen history (old handovers, the old blueprint, old test evidence) |
