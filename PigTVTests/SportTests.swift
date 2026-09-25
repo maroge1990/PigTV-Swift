@@ -104,12 +104,42 @@ final class SportRowsTests: XCTestCase {
         XCTAssertEqual(SportRows.moreChannels(event("three", from: 0, minutes: 1, channels: 3)), "+2 more channels")
     }
 
-    func testLaterTitle() {
+    // Build 32: a 72 h window in sections by the device's calendar day:
+    // Later today, Tomorrow, then one per weekday; "Sat 1:30 pm" times.
+    func testDaySectionsOverSeventyTwoHours() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        // 1_800_000_000 is 08:00 UTC.
-        XCTAssertEqual(SportRows.laterTitle([event("a", from: 3 * 3600, minutes: 60)], now: now, calendar: calendar), "Later today")
-        XCTAssertEqual(SportRows.laterTitle([event("b", from: 17 * 3600, minutes: 60)], now: now, calendar: calendar), "Later")
+        calendar.locale = Locale(identifier: "en_AU")
+        // 1_800_000_000 is Friday 15 January 2027, 08:00 UTC.
+        let events = [
+            event("sun", league: "NFL", from: 50 * 3600, minutes: 180),          // Sunday 10:00
+            event("today", league: "AFL", from: 5 * 3600, minutes: 120),         // Friday 13:00
+            event("sat-late", league: "AFL", from: 38 * 3600, minutes: 120),     // Saturday 22:00
+            event("tomorrow", league: "NRL", from: 20 * 3600, minutes: 120),     // Saturday 04:00
+            event("sat", league: "NFL", from: 29 * 3600 + 1800, minutes: 180),   // Saturday 13:30
+            event("mon", league: "F1", from: 64 * 3600, minutes: 60),            // Monday 00:00
+            event("soon", from: 30 * 60, minutes: 60),
+            event("replay-sun", league: "NFL", from: 51 * 3600, minutes: 60, kind: .replay),
+        ]
+        let buckets = SportRows.buckets(events, now: now, calendar: calendar)
+        XCTAssertEqual(buckets.soon.map(\.id), ["soon"])
+        XCTAssertEqual(buckets.later.map(\.id), ["today"], "later today")
+        XCTAssertEqual(buckets.tomorrow.map(\.id), ["tomorrow", "sat", "sat-late"], "Saturday is tomorrow, by start")
+        XCTAssertEqual(buckets.days.map(\.title), ["Sunday", "Monday"])
+        XCTAssertEqual(buckets.days.map { $0.events.map(\.id) }, [["sun"], ["mon"]])
+        XCTAssertEqual(buckets.replays.map(\.id), ["replay-sun"], "replays stay last, whatever the day")
+        XCTAssertEqual(SportRows.nowAndNext(buckets).map(\.id), ["soon"], "Home: live and the next 60 min only")
+        // The chips count the whole window.
+        XCTAssertEqual(SportRows.leagues(buckets.all), ["NFL", "AFL", "NRL", "F1"])
+        let nfl = SportRows.filter(buckets, league: "NFL")
+        XCTAssertEqual(nfl.tomorrow.map(\.id), ["sat"])
+        XCTAssertEqual(nfl.days.map(\.title), ["Sunday"], "a day without the league's events is dropped")
+        // Times: today "1:00 pm · in 5 h"; other days "Sat 1:30 pm".
+        let today = SportRows.timing(events[1], now: now, calendar: calendar)
+        XCTAssertTrue(today.hasSuffix("· in 5 h"), today)
+        let saturday = SportRows.timing(events[4], now: now, calendar: calendar)
+        XCTAssertTrue(saturday.hasPrefix("Sat ") && saturday.contains("1:30") && !saturday.contains("·"), saturday)
+        XCTAssertTrue(SportRows.timing(events[0], now: now, calendar: calendar).hasPrefix("Sun "))
     }
 
     func testDecodesTolerantly() throws {
@@ -151,10 +181,11 @@ final class SportModelTests: XCTestCase {
         XCTAssertNil(sport.error)
         XCTAssertEqual(sport.live.map(\.id), ["nfl-1", "afl-1"])
         XCTAssertEqual(sport.soon.map(\.id), ["nrl-1"])
-        XCTAssertEqual(sport.later.map(\.id), ["f1-1"])
+        // f1-1 starts in 3 h 20 min: later today, or tomorrow late in the evening.
+        XCTAssertEqual((sport.later + sport.tomorrow).map(\.id), ["f1-1"])
         XCTAssertEqual(sport.leagues, ["NFL", "AFL", "NRL", "Sport"])
         let request = try XCTUnwrap(server.http.requests(path: "/api/sports/events", method: "GET").first)
-        XCTAssertEqual(request.query, "hours=12")
+        XCTAssertEqual(request.query, "hours=72", "build 32: a whole weekend")
         // The best channel becomes a player Channel with the event's fields.
         let best = browse.playable(try XCTUnwrap(sport.live.first?.best))
         XCTAssertEqual(best.id, "1:701")

@@ -1,13 +1,14 @@
 import Foundation
 import Combine
 
-/// C-I: the next 12 hours of sport events (`GET sports/events?hours=12`),
+/// C-I: the next 72 hours of sport events (`GET sports/events?hours=72`;
+/// build 32, a whole weekend: an older server clamps it silently),
 /// kept fresh every 60 s while a Sport surface (the Sport tab or Home's
 /// "Sport now & next") is on screen. One per signed-in session, owned by
 /// BrowseModel; used only when the server advertises `sportsEvents`.
 @MainActor
 final class SportModel: ObservableObject {
-    static let hours = 12
+    static let hours = 72
     static let refreshInterval: Duration = .seconds(60)
 
     @Published private(set) var events: [SportEvent] = []
@@ -30,6 +31,8 @@ final class SportModel: ObservableObject {
     var live: [SportEvent] { buckets.live }
     var soon: [SportEvent] { buckets.soon }
     var later: [SportEvent] { buckets.later }
+    var tomorrow: [SportEvent] { buckets.tomorrow }
+    var days: [SportDay] { buckets.days }
     var replays: [SportEvent] { buckets.replays }
     var leagues: [String] { SportRows.leagues(buckets.all) }
 

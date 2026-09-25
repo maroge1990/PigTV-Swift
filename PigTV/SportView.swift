@@ -3,7 +3,7 @@ import SwiftUI
 // C-I (build 30): the Sport tab (Home · TV Guide · Sport · Recordings ·
 // Settings) and the event card Home's "Sport now & next" shelf shares. Shown
 // only when the server advertises `sportsEvents`. Data: `SportModel` (the
-// next 12 hours, refreshed every 60 s while a Sport surface is visible);
+// next 72 hours since build 32, refreshed every 60 s while a Sport surface is visible);
 // choices: the pure `SportRows`. Select on a live event plays its best
 // channel with the event's channels as the zap list; on an upcoming event it
 // opens the event page (Watch when it starts, Record, the channels). Long
@@ -68,7 +68,10 @@ struct SportView: View {
                     }
                     shelf("On now", shown.live)
                     shelf("Starting soon", shown.soon)
-                    shelf(SportRows.laterTitle(shown.later, now: sport.clock), shown.later)
+                    shelf("Later today", shown.later)
+                    // Build 32 (72 h): Tomorrow, then one section per day.
+                    shelf("Tomorrow", shown.tomorrow)
+                    ForEach(shown.days, id: \.day) { day in shelf(day.title, day.events) }
                     // Build 31 (Mark: "I don't mind replays … just should
                     // be its own section").
                     shelf("Replays", shown.replays)
@@ -556,7 +559,7 @@ private struct SportEmptyState: View {
             Image(systemName: "sportscourt").font(.system(size: 64, weight: .semibold))
                 .foregroundStyle(Color.pigAccent)
                 .accessibilityHidden(true)
-            Text(error == nil ? "No sport in the next 12 hours" : "Sport is unavailable right now")
+            Text(error == nil ? "No sport in the next three days" : "Sport is unavailable right now")
                 .font(DetailType.title).multilineTextAlignment(.center)
             Text(error ?? "Choose the sports, leagues and teams you follow in the PigTV web app, under Settings → Sports. Their events on your channels appear here and on Home, live ones first.")
                 .font(DetailType.meta).foregroundStyle(.secondary)

@@ -224,6 +224,12 @@ enum GuideFixtures {
             return SportEventChannel(sourceId: row.sourceId, rawID: row.rawID, stableId: row.stableId, name: row.name,
                                      number: row.number, logo: row.logo, quality: quality)
         }
+        /// Minutes from now to `hour` (local) `days` days from today.
+        func dayOffset(_ days: Int, hour: Double) -> Double {
+            let calendar = Calendar.current
+            let day = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: Date())) ?? Date()
+            return (day.addingTimeInterval(hour * 3600).timeIntervalSince1970 * 1000 - now) / minute
+        }
         func event(_ id: String, _ title: String, _ league: String, from: Double, minutes: Double,
                    _ channels: [SportEventChannel?], kind: SportEventKind = .event) -> SportEvent {
             SportEvent(id: id, title: title, league: league, startTime: now + from * minute,
@@ -239,6 +245,13 @@ enum GuideFixtures {
             event("nfl-phi-dal", "Philadelphia Eagles vs Dallas Cowboys", "NFL", from: 40, minutes: 195, [on(3, .hd), on(0, .hd)]),
             event("afl-bris-geel", "AFL: Brisbane Lions v Geelong Cats", "AFL", from: 55, minutes: 150, [on(2, .hd)]),
             event("nfl-sf-sea", "San Francisco 49ers vs Seattle Seahawks", "NFL", from: 190, minutes: 195, [on(0, .uhd), on(3, .hd)]),
+            // Build 32 (72 h): tomorrow and the day after, local time.
+            event("afl-tomorrow", "AFL: Sydney Swans v GWS Giants", "AFL", from: dayOffset(1, hour: 13.5), minutes: 150, [on(2, .hd)]),
+            event("nfl-tomorrow", "Green Bay Packers vs Chicago Bears", "NFL", from: dayOffset(1, hour: 19), minutes: 195,
+                  [on(0, .uhd), on(3, .hd)]),
+            event("nrl-day-after", "NRL Grand Final: Storm v Broncos", "NRL", from: dayOffset(2, hour: 19.5), minutes: 150,
+                  [on(5, .hd), on(1, .hd)]),
+            event("f1-day-after", "F1: Singapore Grand Prix", "F1", from: dayOffset(2, hour: 22), minutes: 120, [on(4, .uhd)]),
             // Build 31: replays (their own section; never on Home).
             event("rp-gb-nyj", "Packers v Jets · Week 2", "NFL", from: -35, minutes: 180, [on(1, .hd)], kind: .replay),
             event("rp-afl-gf", "AFL Grand Final 2025", "AFL", from: 95, minutes: 180, [on(2, .hd), on(5, .sd)], kind: .replay),
