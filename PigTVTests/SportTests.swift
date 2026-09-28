@@ -76,6 +76,11 @@ final class SportRowsTests: XCTestCase {
                       event("c", league: "NFL", from: 600, minutes: 60), event("d", league: "F1", from: 9000, minutes: 60),
                       event("e", league: "NRL", from: 9500, minutes: 60), event("f", league: "NFL", from: 9900, minutes: 60)]
         XCTAssertEqual(SportRows.leagues(events), ["NFL", "AFL", "F1", "NRL"], "most events first, ties in order")
+        let counts = SportRows.leagueCounts(events)
+        XCTAssertEqual(counts["NFL"], 3)
+        XCTAssertEqual(counts["AFL"], 1)
+        XCTAssertEqual(counts["F1"], 1)
+        XCTAssertEqual(counts["NRL"], 1)
         let buckets = SportRows.buckets(events, now: now)
         let nfl = SportRows.filter(buckets, league: "NFL")
         XCTAssertEqual(nfl.live.map(\.id), ["b"])

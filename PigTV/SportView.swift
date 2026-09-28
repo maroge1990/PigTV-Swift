@@ -51,7 +51,7 @@ struct SportView: View {
 
     var body: some View {
         let buckets = sport.buckets
-        let leagues = SportRows.leagues(buckets.all)
+        let leagues = sport.leagues
         // A league that no longer has events falls back to All.
         let chosen = league.flatMap { leagues.contains($0) ? $0 : nil }
         let shown = SportRows.filter(buckets, league: chosen)
@@ -64,7 +64,7 @@ struct SportView: View {
                         PendingWatchBanner(pending: pending) { app.cancelPendingWatch() }
                     }
                     if !leagues.isEmpty {
-                        chips(leagues, chosen: chosen, counts: buckets.all)
+                        chips(leagues, chosen: chosen)
                     }
                     shelf("On now", shown.live)
                     shelf("Starting soon", shown.soon)
@@ -116,13 +116,15 @@ struct SportView: View {
     }
 
     /// All + one chip per league (most events first), the guide's chips.
-    private func chips(_ leagues: [String], chosen: String?, counts events: [SportEvent]) -> some View {
+    private func chips(_ leagues: [String], chosen: String?) -> some View {
         ScrollView(.horizontal) {
             HStack(spacing: 12) {
-                chip("All", count: events.count, selected: chosen == nil) { league = nil }
+                let allCount = sport.leagueCounts.values.reduce(0, +)
+                chip("All", count: allCount, selected: chosen == nil) { league = nil }
                     .focused($chipFocus, equals: "All")
                 ForEach(leagues, id: \.self) { name in
-                    chip(name, count: events.filter { $0.league == name }.count, selected: chosen == name) { league = name }
+                    let count = sport.leagueCounts[name] ?? 0
+                    chip(name, count: count, selected: chosen == name) { league = name }
                         .focused($chipFocus, equals: name)
                 }
             }

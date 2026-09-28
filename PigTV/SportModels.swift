@@ -229,6 +229,15 @@ nonisolated enum SportRows {
         return order.enumerated().sorted { (-(counts[$0.element] ?? 0), $0.offset) < (-(counts[$1.element] ?? 0), $1.offset) }.map(\.element)
     }
 
+    /// Event counts by league (for chip badges).
+    static func leagueCounts(_ events: [SportEvent]) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for event in events {
+            counts[event.league, default: 0] += 1
+        }
+        return counts
+    }
+
     /// Only one league's events (nil: all).
     static func filter(_ buckets: SportBuckets, league: String?) -> SportBuckets {
         guard let league else { return buckets }
