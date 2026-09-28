@@ -1,7 +1,7 @@
 # PigTV Apple client: blueprint
 
-**Last updated:** 28 September 2026 (bug-fix batch 1) · app **1.0 (33)** (not yet pushed; lead reviews and pushes) · server
-build **0154** (roadmap contracts C-A…C-I in `../PigTV/docs/ROADMAP-CONTRACTS.md`, all implemented)
+**Last updated:** 28 September 2026 · app **1.0 (34)** (not yet pushed; lead reviews and pushes) · server
+build **0156** (scheduleHistory) · roadmap contracts C-A…C-I in `../PigTV/docs/ROADMAP-CONTRACTS.md`
 
 Read this at the start of every session, **together with the joint roadmap in
 [`../PigTV/blueprint.md`](../PigTV/blueprint.md) §6**, which is where A-items (Apple) and X-items (both products) are
