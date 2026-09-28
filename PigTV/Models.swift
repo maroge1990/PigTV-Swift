@@ -36,6 +36,9 @@ struct ServerInfo: Decodable {
         // C-I (server 0147): `GET sports/events` (the Sport tab and Home's
         // "Sport now & next"). C-H's `sportCategories` is no longer read.
         var sportsEvents: Bool? = nil
+        // Server 0156: `GET /api/recordings/scheduled?include=recent` also lists
+        // missed/failed schedules from the last 7 days, each with `error`.
+        let scheduleHistory: Bool?
     }
 
     func validate() throws {

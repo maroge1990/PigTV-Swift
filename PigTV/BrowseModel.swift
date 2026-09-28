@@ -479,7 +479,10 @@ final class BrowseModel: ObservableObject {
         do {
             let files: [Recording] = try await client.decodedOffMain("recordings")
             if files != recordings { recordings = files }
-            let planned: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled")
+            let query = client.info?.features.scheduleHistory == true
+                ? [URLQueryItem(name: "include", value: "recent")]
+                : []
+            let planned: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled", query: query)
             if planned != schedules { schedules = planned }
         } catch { recordingsError = error.localizedDescription }
     }

@@ -12,6 +12,10 @@ struct RecordingsView: View {
             ($0.channel_name?.localizedCaseInsensitiveContains(search) ?? false) }
     }
 
+    private var problems: [ScheduledRecording] {
+        model.schedules.filter { ["missed", "failed"].contains($0.status) }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
@@ -66,7 +70,8 @@ struct RecordingsView: View {
                     }
                 } else {
                     List {
-                        ForEach(model.schedules) { item in
+                        let activeSchedules = model.schedules.filter { $0.isActive }
+                        ForEach(activeSchedules) { item in
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(item.title).font(.headline)
                                 Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
@@ -83,6 +88,30 @@ struct RecordingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
                             .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
+                        }
+                        if !problems.isEmpty {
+                            Section("Recent problems") {
+                                ForEach(problems) { item in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text(item.title).font(.headline)
+                                            Spacer()
+                                            Text(item.status.capitalized).font(.caption.bold())
+                                                .foregroundStyle(item.status == "missed" ? .orange : .red)
+                                        }
+                                        Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
+                                        Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
+                                            .font(.caption)
+                                        if let error = item.error {
+                                            Text(error).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .padding(.horizontal, 24).padding(.vertical, 16)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
+                                }
+                            }
                         }
                     }
                     if model.schedules.isEmpty && !model.recordingsBusy {

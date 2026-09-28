@@ -76,10 +76,12 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     let program_start: Double
     let program_end: Double
     let status: String
+    // Server 0156: missed/failed schedules carry an error message.
+    var error: String? = nil
     var start: Date { Date(timeIntervalSince1970: program_start / 1000) }
     var end: Date { Date(timeIntervalSince1970: program_end / 1000) }
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }
-    var isActive: Bool { canCancel }
+    var isActive: Bool { ["scheduled", "waiting", "recording"].contains(status) }
     var statusLabel: String { status == "waiting" ? "Waiting — someone is watching" : status.capitalized }
     // Guide cells match schedules by channel name and programme start.
     var guideKey: String { ScheduledRecording.key(channel: channel_name ?? "", start: program_start) }
