@@ -15,7 +15,7 @@ server or driving the simulator UI by hand.
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
-# Before every push: all tests on the tvOS simulator (26 Sept, build 32: 132 pass, 119 unit + 13 UI, ~4 min)
+# Before every push: all tests on the tvOS simulator (28 Sept, build 33: 140 pass, 125 unit + 15 UI, ~4 min)
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
 
@@ -30,7 +30,7 @@ xcodebuild test -project PigTV.xcodeproj -scheme PigTV -only-testing:PigTVTests 
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5' -only-testing:PigTVTests/RealPlaybackTests
 
-# Synthetic API/model contract checks, no simulator and no server (26 Sept: 177 pass)
+# Synthetic API/model contract checks, no simulator and no server (28 Sept: 187 pass)
 sh Tools/test-contracts.sh
 ```
 
@@ -53,17 +53,22 @@ The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restore
   `Fixtures/HLS` stream (6 s, H.264 + AAC, fMP4, a master playlist like the server's). Real starts, display criteria, -11868 for
   real, the `'fmt?'` fallback, switching, a recording in the recording player, a sport event's best channel. **New playback
   code gets a test here.**
-- Pure logic: `GuideGridMathTests`, `GuideModelTests`, `ChannelNumberTests`, `OnNowRowTests`, `HomeRowsTests`, `DetailTextTests`,
-  `PlayerSharedTests` (touch chrome timer, seek window), `TimeshiftMathTests`, `DisplayModeTests`, `StreamInfoTests`,
-  `SportTests` (buckets, days over 72 h, replays, tolerant decoding, the model against the fake server), `ChannelQueryTests`
-  (Siri matching), `TopShelfTests` and `TopShelfCardTests` (snapshot storage, App Group paths, the extension's entry point,
-  card layout and file names, diagnostics).
+- Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a
+  slice and advances `guideLoadedUntil`, ends cleanly when a slice is empty, a failed page is retried before it surfaces,
+  `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,
+  `HomeRowsTests`, `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `TimeshiftMathTests`,
+  `DisplayModeTests`, `StreamInfoTests`, `SportTests` (buckets, days over 72 h, replays, tolerant decoding, the model against
+  the fake server; build 33: `playsChannelNow`), `ChannelQueryTests` (Siri matching), `TopShelfTests` and `TopShelfCardTests`
+  (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).
 
 **UI tests (`PigTVUITests`, tvOS)**
 - `PigTVUITests`: Settings appearance switching. `PigTVUITestsLaunchTests`: launch screenshot.
-- `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details.
+- `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details;
+  build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h
+  of offline fixture data, no server needed).
 - `HomeUITests`: Home opens first; Down reaches Watch, then a card.
-- `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page.
+- `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page; build 33: an upcoming
+  event's secondary channel offers Record/Watch when it starts instead of tuning immediately.
 - `TabSwitchUITests`: walks all five tabs twice on 1,000 channels; fails on a stall over 1 s (uses the tab probe).
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
 - `TopShelfCardsUITests`: renders the Top Shelf cards through the real export, then focuses PigTV on the Home Screen.
