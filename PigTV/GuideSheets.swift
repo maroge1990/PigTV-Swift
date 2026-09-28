@@ -117,6 +117,16 @@ struct GuideJumpSheet: View {
     let show: (Date) -> Void
     let cancel: () -> Void
     @FocusState private var showFocused: Bool
+    #if os(tvOS)
+    /// The selected day's chip: the cover opens with focus there, so the
+    /// first press moves the selection rather than Back being needed.
+    @FocusState private var focusedDay: Int?
+    private var selectedOffset: Int {
+        let start = Calendar.current.startOfDay(for: Date())
+        let days = Calendar.current.dateComponents([.day], from: start, to: Calendar.current.startOfDay(for: date)).day ?? 0
+        return min(max(days, 0), 6)
+    }
+    #endif
 
     var body: some View {
         DetailPage(title: "Jump to…") {
@@ -128,6 +138,7 @@ struct GuideJumpSheet: View {
                         let day = Calendar.current.date(byAdding: .day, value: offset, to: Calendar.current.startOfDay(for: Date()))!
                         Button(dayTitle(day, offset: offset)) { setDay(day) }
                             .buttonStyle(GuideFilterStyle(selected: Calendar.current.isDate(day, inSameDayAs: date)))
+                            .focused($focusedDay, equals: offset)
                     }
                 }
                 .focusSection()
@@ -155,6 +166,9 @@ struct GuideJumpSheet: View {
                 Button("Cancel", action: cancel)
             }
         }
+        #if os(tvOS)
+        .defaultFocus($focusedDay, selectedOffset)
+        #endif
     }
 
     private func dayTitle(_ day: Date, offset: Int) -> String {

@@ -250,5 +250,42 @@ final class GuideGridNavigationUITests: XCTestCase {
         while focusedLabel(app) != programme && Date() < deadline { usleep(200_000) }
         XCTAssertEqual(focusedLabel(app), programme, "focus did not return to the programme after details")
     }
+
+    /// R6.14: Jump to… was a clipped sheet on tvOS. It is a full-screen page now; it opens with
+    /// focus on the selected day (no Back needed), a day and Show guide work, and the grid gets
+    /// focus back afterwards.
+    @MainActor
+    func testJumpToOpensFullyAndReturnsFocusToTheGrid() throws {
+        let app = launch()
+        enterFirstRow(app)
+        XCUIRemote.shared.press(.up)
+        let deadline0 = Date().addingTimeInterval(2)
+        while focusedLabel(app) != "Now" && Date() < deadline0 { usleep(100_000) }
+        var guardCount = 0
+        while focusedLabel(app) != "Jump to…" && guardCount < 6 { XCUIRemote.shared.press(.right); guardCount += 1; usleep(200_000) }
+        XCTAssertEqual(focusedLabel(app), "Jump to…", "could not reach the Jump to… button")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["Show guide"].waitForExistence(timeout: 5), "Jump to… did not open")
+        usleep(800_000)
+        attach(app, "Jump to page")
+        XCTAssertEqual(focusedLabel(app), "Today", "the page did not open with focus on the selected day")
+        XCTAssertTrue(app.buttons["Tomorrow"].isHittable, "the day chips are clipped")
+        XCTAssertTrue(app.buttons["Show guide"].isHittable)
+        XCUIRemote.shared.press(.right)
+        XCTAssertEqual(focusedLabel(app), "Tomorrow")
+        XCUIRemote.shared.press(.select)
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.down)
+        for _ in 0..<12 where focusedLabel(app) != "Show guide" { XCUIRemote.shared.press(.down) }
+        XCTAssertEqual(focusedLabel(app), "Show guide")
+        XCUIRemote.shared.press(.select)
+        let gone = NSPredicate(format: "exists == false")
+        wait(for: [expectation(for: gone, evaluatedWith: app.buttons["Show guide"])], timeout: 5)
+        let deadline = Date().addingTimeInterval(5)
+        while !(focusedLabel(app).contains(", ") || focusedLabel(app) == tile) && Date() < deadline { usleep(200_000) }
+        attach(app, "Guide after Show guide")
+        XCTAssertTrue(focusedLabel(app).contains(", ") || focusedLabel(app) == tile,
+                      "focus did not return to the grid: \(focusedLabel(app))")
+    }
 }
 #endif

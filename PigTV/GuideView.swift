@@ -56,6 +56,8 @@ struct GuideView: View {
     @State private var search = ""
     @State private var searching = false
     @State private var choosingDate = false
+    /// Show guide was chosen (its own `goTo` already claims grid focus).
+    @State private var jumped = false
     @State private var jumpDate = Date()
     @State private var selection: GuideSelection?
     @State private var channelDetails: Channel?
@@ -152,10 +154,13 @@ struct GuideView: View {
                     clock = Date()
                 }
             }
-            .sheet(isPresented: $searching, onDismiss: {
+            .detailCover(isPresented: $searching, onDismiss: {
                 if let pending = pendingSelection { pendingSelection = nil; selection = pending }
+                else if usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }) { searchSheet }
-            .sheet(isPresented: $choosingDate) { datePicker }
+            // A full-screen cover on tvOS: a tvOS sheet is a narrow card and
+            // clipped the day and time chips (R6.14).
+            .detailCover(isPresented: $choosingDate, onDismiss: finishJump) { datePicker }
             .task {
                 // The guide always opens at the current half-hour; restoring a
                 // later browsing position stranded the grid hours ahead.
@@ -425,7 +430,7 @@ struct GuideView: View {
                          refresh: { searching = false; reload() })
     }
     private var datePicker: some View {
-        GuideJumpSheet(date: $jumpDate, show: { date in choosingDate = false; goTo(date) },
+        GuideJumpSheet(date: $jumpDate, show: { date in jumped = true; choosingDate = false; goTo(date) },
                        cancel: { choosingDate = false })
     }
     // Start a channel and hand the player the current row order for channel up/down.
@@ -530,6 +535,13 @@ struct GuideView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { if !gridHasFocus { gridHasFocus = true } }
         }
         #endif
+    }
+    private func finishJump() {
+        let showed = jumped
+        jumped = false
+        guard usesGridView else { return }
+        if !showed { gridFocusRestore += 1 }
+        claimGridFocus()
     }
     private func finishDetails() {
         if let channel = pendingSchedule {

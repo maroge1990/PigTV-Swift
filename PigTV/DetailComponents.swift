@@ -349,11 +349,12 @@ extension View {
     }
 
     @ViewBuilder
-    func detailCover<Page: View>(isPresented: Binding<Bool>, @ViewBuilder page: @escaping () -> Page) -> some View {
+    func detailCover<Page: View>(isPresented: Binding<Bool>, onDismiss: (() -> Void)? = nil,
+                                 @ViewBuilder page: @escaping () -> Page) -> some View {
         #if os(tvOS)
-        fullScreenCover(isPresented: isPresented, content: page)
+        fullScreenCover(isPresented: isPresented, onDismiss: onDismiss, content: page)
         #else
-        sheet(isPresented: isPresented, content: page)
+        sheet(isPresented: isPresented, onDismiss: onDismiss, content: page)
         #endif
     }
 }
