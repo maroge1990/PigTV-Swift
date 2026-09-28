@@ -1,6 +1,6 @@
 # PigTV Apple client: blueprint
 
-**Last updated:** 28 September 2026 · app **1.0 (34)** (not yet pushed; lead reviews and pushes) · server
+**Last updated:** 28 September 2026 · app **1.0 (35)** (not yet pushed; lead reviews and pushes) · server
 build **0156** (scheduleHistory) · roadmap contracts C-A…C-I in `../PigTV/docs/ROADMAP-CONTRACTS.md`
 
 Read this at the start of every session, **together with the joint roadmap in
@@ -29,7 +29,7 @@ Implementation map · 6 Shared contracts · 7 Deferred choices and crash lessons
   runs the tvOS tests on an Apple TV simulator it finds or creates. It cannot be exercised locally; treat a red run on
   GitHub as equivalent to a local test failure.
 - **Bump the build number** (`CURRENT_PROJECT_VERSION`, both app targets in `project.pbxproj`) once per session that changes
-  app code, so Settings → Version identifies the installed copy. Current: **33**; next: **34**.
+  app code, so Settings → Version identifies the installed copy. Current: **35**; next: **36**.
 - **Crash lessons (builds 21–25, §7):** never call an AVKit-only API (a category on an AVFoundation class, e.g.
   `AVPlayerItem.externalMetadata`, `UIWindow.avDisplayManager`) on tvOS without checking it exists (AVKit is linked explicitly
   for tvOS); **nothing may await before `replaceCurrentItem`/`play()` except the resolve and the audio session**; every
@@ -236,6 +236,26 @@ earlier one where they differ.
   frame, which is what the recording is for. Device check: switch tabs quickly in Light, Dark and System appearance.
 - **Design rules:** page background `PigPageBackground` (tab roots use `.pigPageBackdrop()`, build 32) (set explicitly on every page — Guide, Recordings and Settings gained it in build 28; without it tvOS shows its blurred grey system backdrop in dark mode); surfaces `Color.guideCell` + `PigSurfaceButtonStyle` (pink accent outline on focus); selection chips `GuideFilterStyle` (now internal, in `TVActionStyle.swift`); tvOS type scale in `GuideTypography` (guide) and `DetailType` (detail pages); player overlays force dark scheme and provide an opaque fallback for Reduce Transparency. **Pink is `Color.pigAccent`** (the asset colour), never `Color.accentColor`: on tvOS `accentColor` resolved to white outside a NavigationStack, which is why the unreachable screen's Try again was a blank white capsule (fixed in build 28). `PigPrimaryButtonStyle` is 26 pt semibold on tvOS (was `.headline`, 38 pt, which dwarfed the capsules beside it). New screens reuse these rather than defining new styles.
 - **Detail pages (build 28 consistency pass, `DetailComponents.swift`, `DetailScreens.swift`, `GuideSheets.swift`).** Shared parts: `DetailPage` (page background, scroll view, TVActionStyle applied explicitly because covers do not always inherit it; iOS Done button), `DetailHero` over `LogoWash` (the Home hero's blurred logo colours, pink glow without a logo, solid with Reduce Transparency), `ChannelLine` (logo tile, `NumberCapsule`, name), `Eyebrow`, `StatusBadge`, `PigProgressBar`, `PigSectionHeader`, `DetailActions` (a focus-section row of the app's buttons), `FavouriteButton` (BrowseModel favourites, so the guide filter and Home update at once), `pigField()` (a guideCell well for tvOS text fields, which draw unfocused as bare text), `detailCover` (full-screen cover on tvOS — a tvOS `.sheet` is a narrow panel — sheet on iOS). **ProgrammeDetails** (moved out of GuideView): hero with channel line and status badge (Recording scheduled / Recording now / Waiting to record / Recorded), eyebrow (On now · Starts in 12 min · Today/Tomorrow/day · Ended), title 52 pt, time range and duration, live progress and minutes left; description at reading width; actions Watch live (when on now) · Record (opens `RecordSheet`: Start early / Finish late chips, the one-stream note, Schedule recording — the sheet replaces the old pickers and confirmation dialog) · Channel schedule (`openSchedule`, shown when the caller can open it after closing the page) · Favourite. **ChannelScheduleView:** hero with what is on now, Watch live and Favourite, then programmes grouped by day (`ScheduleDays.group`, pure, tests `DetailTextTests`) as surface rows (time and duration column, title, On now/REC badges, description, progress). **ChannelDetails** (the grid's "Channel and favourites"): now/next from the loaded guide (it used to read the Channel's own now/next, which the guide never fills, so it always said "Programme information unavailable"), Watch live · Favourite · Channel schedule, an Up next card. **RecordingDetails:** hero (channel logo found by name, status badge, date eyebrow, title, duration · size, resume bar, partial badge), actions Play/Resume · Find breaks · Refresh · Delete (red), breaks as time chips. **Search** and **Jump to…** are `GuideSearchSheet`/`GuideJumpSheet`: section headings, field wells, programme results as rows with the channel's logo tile; Jump to… uses day chips and a 24-hour chip grid on tvOS (DatePicker on iOS). **Unreachable** and **Onboarding** use the page background, the pink wash and the shared parts (onboarding is two columns on tvOS). **Settings:** page background, `PigSectionHeader`, a red Sign out with an icon; system confirmation dialogs (sign out, cancel recording, delete) keep the system look (not customisable on tvOS) but now show their title and a cancel choice. **Fixtures:** `PIGTV_UI_TEST_SCREEN=programme | programme-later | record | schedule | channel | recording | search | jump | unreachable | onboarding` (`DesignTestScreen`, Home fixture data), each with `PIGTV_UI_TEST_APPEARANCE`; the settings fixture now honours the appearance variable too. Screenshots: `docs/evidence/2026-09-25-details-*.jpg`.
+
+## Branding ("Spotlight", build 35)
+
+Mark chose direction A. **`PigLogo.png` is never altered** (only scaled uniformly; the tinted iOS icon is Apple's required greyscale form).
+Layers: **back** plum radial `#3A1834` → `#1A1117` at 55% → `#0E090D`; **middle** pink halo `#FF2E94` (55% alpha at the centre, 18% at 22%,
+0 at 42% of the glow radius, smooth spline with zero end slope so it never shows an edge; it ends well inside every canvas so tvOS
+parallax cannot expose one); **front** the pig with a soft shadow (0, 8, 10 px blur, 35% black at 400×240). Wordmark (Top Shelf and
+splash only): "Pig" white + "TV" `#FF6FB2`, Fredoka SemiBold 600. Gradients are dithered (no banding).
+**Optical centre:** PigLogo.png's alpha-weighted centroid is **x = 0.4997, y = 0.4053** of its 1000×797 bitmap (the bitmap has ~80 empty
+rows under the chin, so the mass sits above the bitmap middle; bitmap centring put the pig high). The pig is placed with that centroid at the
+canvas centre (Top Shelf: group centred by extents horizontally, pig centroid on the vertical centre, wordmark cap band on the same row; splash:
+the pig+wordmark group lifts so its ink-mass centroid is centred), and plum and glow are centred on the same point.
+**Regenerate everything** (tvOS icon + App Store layers, Top Shelf ×2, iOS light/dark/tinted, launch/splash images, `PigTV/BrandLayout.swift`,
+`docs/evidence/branding/`, small copies; the script writes full-size previews to a temporary folder): `swiftc -O Tools/make-brand-assets.swift -o /tmp/mba && /tmp/mba` from the repo root; tweak the constants at the top of
+the script. Put `Fredoka-SemiBold.ttf` and its OFL licence in `Tools/brand/` (the script falls back to the system rounded semibold, with a
+printed note, until it is there; the wordmark is a bitmap so the font is not bundled in the app).
+**Launch screen:** `UILaunchScreen` in `AppConfiguration.plist` (colour `LaunchEdge` + image `LaunchBrand`, centred at natural size); works on
+tvOS 26.5 and iOS (checked in the simulator). **Splash:** `BrandSplashView` (`ContentView` while `!initialRestoreFinished`); first frame equals the
+launch screen, then the glow blooms, the pig pops, the wordmark rises and the group lifts; progress spinner after 2 s; Reduce Motion shows the
+final static composition; it never delays the app (cross-fade out when start-up ends). Fixture: `PIGTV_UI_TEST_SCREEN=splash`.
 
 ## 5. Implementation map and constraints
 

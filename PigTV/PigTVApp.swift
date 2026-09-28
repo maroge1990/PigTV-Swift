@@ -48,6 +48,8 @@ struct PigTVApp: App {
         } else if ["sport", "sport-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             HomeTestScreen(firstRun: false, initialTab: "sport",
                            noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
+        } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "splash" {
+            BrandSplashView()
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "topshelf-cards" {
             TopShelfCardsTestScreen()
         } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {

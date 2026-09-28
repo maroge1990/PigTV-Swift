@@ -40,11 +40,13 @@ struct ContentView: View {
 
     private var content: some View {
         Group {
-            if !initialRestoreFinished { LaunchLoadingView() }
+            if !initialRestoreFinished { LaunchLoadingView().transition(.opacity) }
             else if model.loggedIn { LibraryView(model: model) }
             else if let message = model.unreachable { UnreachableView(model: model, message: message).tint(Color("AccentColor")) }
             else { OnboardingView(model: model).tint(Color("AccentColor")) }
         }
+        // The splash never holds the app back: when start-up finishes it fades out at once.
+        .animation(.easeOut(duration: 0.25), value: initialRestoreFinished)
         #if os(tvOS)
         .buttonStyle(TVActionStyle())
         #endif
@@ -80,17 +82,7 @@ struct ContentView: View {
 }
 
 private struct LaunchLoadingView: View {
-    var body: some View {
-        ZStack {
-            PigPageBackground()
-            VStack(spacing: 20) {
-                Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
-                Text("PigTV").font(.largeTitle.bold())
-                ProgressView("Starting PigTV…")
-            }
-            .padding(48)
-        }
-    }
+    var body: some View { BrandSplashView() }
 }
 
 struct UnreachableView: View {
