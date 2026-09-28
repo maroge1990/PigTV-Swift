@@ -468,6 +468,12 @@ final class AppModel: ObservableObject {
         let client = APIClient(address: address, token: "fixture")
         let model = BrowseModel(client: client)
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(), to: GuideFixtures.requestedCount)
+        model.window = GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn)
+        // Build 33: the fixture's synthetic programmes reach `forwardHorizon`
+        // past now (well past a single loaded day), so the offline "moves
+        // right past 24 h" UI test can exercise the grid's actual loaded
+        // width without a real server to extend from.
+        model.setGuideLoadedUntilForFixture(Date().addingTimeInterval(GuideFixtures.forwardHorizon))
         browse = model
         categories = GuideFixtures.categories()
         user = GuideFixtures.user()

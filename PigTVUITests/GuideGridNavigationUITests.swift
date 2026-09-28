@@ -192,6 +192,40 @@ final class GuideGridNavigationUITests: XCTestCase {
         XCTAssertTrue(focusedLabel(app).contains(", ") || focusedLabel(app) == tile, "Down did not reach the grid: \(path)")
     }
 
+    /// Build 33 ("the guide hits a wall moving forward in time"): the fixture's
+    /// synthetic programmes reach `GuideFixtures.forwardHorizon` (26 h) past
+    /// now, well past the old hard-coded 24 h grid width. Moving right must
+    /// reach past the 24 h mark and land on real next-day programmes, not
+    /// stall at the old boundary.
+    @MainActor
+    func testMovingRightPast24HoursReachesTheNextDaysProgrammes() throws {
+        let app = launch()
+        enterFirstRow(app)
+        XCTAssertTrue(focusedLabel(app).hasPrefix("\(tile), "), "no first-row programme focused: \(focusedLabel(app))")
+        let startViewport = viewport(app)
+        guard let start = ISO8601DateFormatter().date(from: startViewport) else {
+            return XCTFail("could not parse the starting viewport: \(startViewport)")
+        }
+        let past24Hours = start.addingTimeInterval(24 * 3600)
+        var labels: [String] = []
+        var reachedNextDay = false
+        for _ in 0..<60 {
+            XCUIRemote.shared.press(.right)
+            let label = focusedLabel(app)
+            labels.append(label)
+            XCTAssertTrue(label.hasPrefix("\(tile), "), "focus left the row or stalled: \(labels.suffix(5))")
+            if let now = ISO8601DateFormatter().date(from: viewport(app)), now >= past24Hours {
+                reachedNextDay = true
+                break
+            }
+        }
+        attach(app, "New guide after moving right past 24 h")
+        XCTAssertTrue(reachedNextDay, "the grid never reached 24 h ahead of the start — still hits the old wall: \(labels.suffix(10))")
+        XCTAssertTrue(focusedLabel(app).hasPrefix("\(tile), "), "no programme focused once past 24 h: \(focusedLabel(app))")
+        XCTAssertGreaterThanOrEqual(Set(labels.suffix(20)).count, 4,
+                                    "focus stalled repeating the same cells near the boundary: \(labels.suffix(20))")
+    }
+
     /// A long press on a programme offers the old grid's menu; after the
     /// details cover closes, focus is back on that programme.
     @MainActor

@@ -54,6 +54,21 @@ final class BrowseModel: ObservableObject {
     private var replacePending = false
     @Published private(set) var guideLoadedAt: Date?
     @Published private(set) var fromCache = false
+    // Build 33: how far ahead programme data actually reaches (initially
+    // `window + GuideNavigation.loadedDuration`, then pushed forward as
+    // `extendGuideForward()` merges in more slices). GuideGridLayout draws
+    // content this wide; GuideView compares the viewport against it instead
+    // of always assuming exactly one day is loaded.
+    @Published private(set) var guideLoadedUntil = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970 / 1800) * 1800)
+        .addingTimeInterval(GuideNavigation.loadedDuration)
+    // True once a forward slice came back with no programmes at all (the
+    // provider's guide has ended): stops further extension attempts.
+    @Published private(set) var guideEnded = false
+    private var guideExtending = false
+    // Bumped whenever programmes are merged into (or trimmed from) existing
+    // rows in place: `guide.count`/first/last id do not change, so this is
+    // what tells GuideView's row-filter memoisation to recompute.
+    @Published private(set) var guideProgrammesVersion = 0
     private static var cacheURL: URL {
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
         return directory.appendingPathComponent("pigtv-guide.json")
@@ -77,6 +92,11 @@ final class BrowseModel: ObservableObject {
             if !replacePending { guide = [] }
             guideTotal = 0
             guideHasMore = false
+            // Build 33: a fresh load/reload always starts a new one-day
+            // window; any in-flight forward extension is stale (the
+            // generation bump above makes its result a no-op if it lands).
+            guideLoadedUntil = window.addingTimeInterval(GuideNavigation.loadedDuration)
+            guideEnded = false
             // A1.1: captured once before the load starts and committed only on
             // completion, so a version change mid-load is never masked.
             loadingVersion = client.info?.features.guideVersion == true ? try? await client.guideVersion() : nil
@@ -117,7 +137,7 @@ final class BrowseModel: ObservableObject {
             query.append(URLQueryItem(name: "offset", value: String(offset)))
         }
         do {
-            let page = try await client.guidePage(query: query)
+            let page = try await requestGuidePage(query, generation: generation)
             guard generation == guideGeneration else { return }
             if replacePending {
                 replacePending = false
@@ -152,6 +172,116 @@ final class BrowseModel: ObservableObject {
             guard generation == guideGeneration, !(error is CancellationError) else { return }
             guideError = error.localizedDescription
         }
+    }
+
+    /// One guide page, retried with backoff (`GuideNavigation.guidePageRetryDelays`)
+    /// before rethrowing — the same failed page each time (nothing about
+    /// `query` changes between attempts), so a caller that gives up leaves
+    /// its paging cursor exactly where a retry can resume it.
+    private func requestGuidePage(_ query: [URLQueryItem], generation: UUID) async throws -> GuidePage {
+        var attempt = 0
+        #if DEBUG
+        let delays = Self.guidePageRetryDelaysOverride ?? GuideNavigation.guidePageRetryDelays
+        #else
+        let delays = GuideNavigation.guidePageRetryDelays
+        #endif
+        while true {
+            do { return try await client.guidePage(query: query) }
+            catch {
+                guard generation == guideGeneration, !(error is CancellationError) else { throw CancellationError() }
+                guard attempt < delays.count else { throw error }
+                let delay = delays[attempt]
+                attempt += 1
+                try? await Task.sleep(for: .seconds(delay))
+                guard generation == guideGeneration else { throw CancellationError() }
+            }
+        }
+    }
+
+    #if DEBUG
+    // Test seam: shrinks (or removes) the retry backoff so tests can
+    // exercise `requestGuidePage`'s retry behaviour without waiting ~20 s in
+    // real time. Never read outside DEBUG builds.
+    static var guidePageRetryDelaysOverride: [TimeInterval]?
+    #endif
+
+    /// The guide error banner's Retry: an empty guide (the very first page
+    /// never arrived) starts over, otherwise this resumes background paging
+    /// from `guideOffset`/`guideCursor` — wherever it stopped — instead of
+    /// restarting the whole guide.
+    func retryGuide() async {
+        guideError = nil
+        await loadGuide(reset: guide.isEmpty)
+    }
+
+    /// Build 33 ("the guide hits a wall moving forward in time"): fetches the
+    /// next `GuideNavigation.loadedDuration` slice — every channel, paged the
+    /// same way as the initial load — and merges it into the existing rows
+    /// (`GuideNavigation.mergeProgrammes`, deduped by start time) instead of
+    /// replacing them, so scroll position, focus and the rows array are all
+    /// untouched. Programmes far enough in the past are trimmed at the same
+    /// time to keep memory bounded over a long session. Called by GuideView
+    /// as the viewport approaches the loaded edge (`GuideNavigation.
+    /// needsExtension`); guarded so only one extension runs at a time. Ends
+    /// for good, with nothing left to retry, once a slice comes back with no
+    /// programmes at all — the provider's guide has ended. A page failure is
+    /// retried like the initial load; if it still fails, `guideLoadedUntil`
+    /// is simply left where it was and the next viewport move tries again.
+    func extendGuideForward() async {
+        guard !guideExtending, !guideEnded, !guideBusy, !guideHasMore, !guide.isEmpty else { return }
+        guideExtending = true
+        defer { guideExtending = false }
+        let generation = guideGeneration
+        let sliceStart = guideLoadedUntil
+        let sliceEnd = sliceStart.addingTimeInterval(GuideNavigation.loadedDuration)
+        let cursorPaging = client.info?.features.guideCursor == true
+        let sliceQueryTimes = [
+            URLQueryItem(name: "start", value: String(Int64(sliceStart.timeIntervalSince1970 * 1000))),
+            URLQueryItem(name: "end", value: String(Int64(sliceEnd.timeIntervalSince1970 * 1000)))
+        ]
+        var merged: [String: [GuideProgramme]] = [:]
+        var anyProgrammes = false
+        var cursor: String?
+        var offset = 0
+        while true {
+            var query = sliceQueryTimes
+            if cursorPaging {
+                query.append(URLQueryItem(name: "limit", value: "500"))
+                if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+            } else {
+                query.append(URLQueryItem(name: "limit", value: "50"))
+                query.append(URLQueryItem(name: "offset", value: String(offset)))
+            }
+            let page: GuidePage
+            do { page = try await requestGuidePage(query, generation: generation) }
+            catch { return } // transient: guideLoadedUntil unchanged, retried on the next viewport move
+            guard generation == guideGeneration else { return }
+            for channel in page.channels where !channel.programmes.isEmpty {
+                merged[channel.id, default: []].append(contentsOf: channel.programmes)
+                anyProgrammes = true
+            }
+            if cursorPaging {
+                cursor = page.nextCursor
+                if cursor == nil { break }
+            } else {
+                offset += page.channels.count
+                if page.channels.isEmpty || offset >= page.total { break }
+            }
+        }
+        guard generation == guideGeneration else { return }
+        guard anyProgrammes else { guideEnded = true; return }
+        let keepFrom = Date().addingTimeInterval(-GuideNavigation.pastTrimMargin)
+        var updated = guide
+        for index in updated.indices {
+            var programmes = updated[index].programmes
+            if let additions = merged[updated[index].id] {
+                programmes = GuideNavigation.mergeProgrammes(programmes, adding: additions)
+            }
+            updated[index] = updated[index].withProgrammes(GuideNavigation.trimmed(programmes, keepFrom: keepFrom))
+        }
+        guide = updated
+        guideLoadedUntil = sliceEnd
+        guideProgrammesVersion += 1
     }
 
     /// The first guide load, shared by whichever screen appears first (Home
@@ -194,6 +324,8 @@ final class BrowseModel: ObservableObject {
         fromCache = true
         guideCacheVersion = cached.version
         loadedGuideIds = Set(cached.channels.map(\.id))
+        guideLoadedUntil = cached.window.addingTimeInterval(GuideNavigation.loadedDuration)
+        guideEnded = false
         exportTopShelf()
         exportChannelDirectory()
         _ = await tryMarkFreshByVersion()
@@ -529,4 +661,12 @@ final class BrowseModel: ObservableObject {
             await loadRecordings()
         } catch { actionError = error.localizedDescription }
     }
+
+    #if DEBUG
+    /// Fixture/test seam (build 33): the offline guide fixture pre-generates
+    /// its own programme data past a single loaded day, with no server to
+    /// extend it from — this tells the grid how far that data actually
+    /// reaches, exactly what `extendGuideForward()` would otherwise set.
+    func setGuideLoadedUntilForFixture(_ date: Date) { guideLoadedUntil = date }
+    #endif
 }

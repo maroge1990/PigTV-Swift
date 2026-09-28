@@ -12,6 +12,13 @@ enum GuideFixtures {
          Category(rawID: "kids", sourceId: 1, name: "Kids", channelCount: 1)]
     }
 
+    // Build 33: how far past "now" the fixture's synthetic programmes reach
+    // — comfortably past a single loaded day (`GuideNavigation.loadedDuration`,
+    // 24 h), so the offline "moves right past 24 h" UI test has next-day
+    // programmes to navigate into with no real server to extend from. Kept
+    // modest so the 1 000-channel perf fixtures stay about as heavy as before.
+    static let forwardHorizon: TimeInterval = 26 * 3600
+
     private static let names: [(String, String)] = [
         ("Sky Sports Main Event", "sports"), ("TSN 1", "sports"), ("Fox Footy 504", "sports"),
         ("ESPN", "sports"), ("Sky Sports F1", "sports"), ("beIN Sports 1", "sports"),
@@ -35,7 +42,7 @@ enum GuideFixtures {
                 // Start six hours ago so finished programmes exist to the left.
                 var t = (now - 6 * hour).rounded()
                 var k = index
-                while t < now + 18 * hour {
+                while t < now + forwardHorizon * step {
                     // Channel 2 carries a long (3h) live sports programme spanning now.
                     let longLive = (index == 2 && t <= now && t + 3 * hour > now)
                     let lengths = [0.5, 1.0, 1.5, 2.0]

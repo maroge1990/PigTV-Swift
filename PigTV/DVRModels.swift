@@ -53,6 +53,12 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     func matches(_ item: Category) -> Bool {
         sourceId == item.sourceId && (category == item.rawID || category == item.name)
     }
+    // Build 33: a forward extension merges/trims a channel's programmes in
+    // place; everything else about the row (identity, logo, number…) stays.
+    func withProgrammes(_ programmes: [GuideProgramme]) -> GuideChannel {
+        GuideChannel(rawID: rawID, sourceId: sourceId, name: name, logo: logo, category: category,
+                    programmes: programmes, tvgId: tvgId, stableId: stableId, number: number, health: health)
+    }
 }
 
 nonisolated struct GuidePage: Decodable, Sendable {
@@ -224,8 +230,46 @@ nonisolated enum GuideNavigation {
         return drawn.last { $0.startTime < startTime }
     }
     static func needsReload(viewport: Date, loadedFrom start: Date) -> Bool {
-        viewport < start || viewport.addingTimeInterval(visibleDuration) > start.addingTimeInterval(loadedDuration)
+        needsReload(viewport: viewport, loadedFrom: start, until: start.addingTimeInterval(loadedDuration))
     }
+    // Build 33: the loaded window can now extend forward past a single
+    // `loadedDuration` (see `needsExtension`/`extendGuideForward`), so the
+    // "this is a genuinely different day, reload" check must compare against
+    // how far data actually reaches (`until`), not always `start + 24 h`.
+    static func needsReload(viewport: Date, loadedFrom start: Date, until: Date) -> Bool {
+        viewport < start || viewport.addingTimeInterval(visibleDuration) > until
+    }
+    // Build 33 ("the guide hits a wall moving forward"): as the viewport's
+    // right edge comes within `extendThreshold` of the end of loaded data,
+    // it is time to fetch the next slice in the background — well before
+    // the grid could actually run out of columns to move into.
+    static let extendThreshold: TimeInterval = 6 * 3600
+    static func needsExtension(viewport: Date, loadedUntil: Date, threshold: TimeInterval = extendThreshold) -> Bool {
+        viewport.addingTimeInterval(visibleDuration) > loadedUntil.addingTimeInterval(-threshold)
+    }
+    // Merges a freshly-fetched slice into a channel's existing programmes,
+    // deduplicating by start time (a slice can repeat the last programme of
+    // the previous one) and keeping start order. Existing programmes are
+    // never replaced, only extended.
+    static func mergeProgrammes(_ existing: [GuideProgramme], adding: [GuideProgramme]) -> [GuideProgramme] {
+        guard !adding.isEmpty else { return existing }
+        var seen = Set(existing.map(\.startTime))
+        let additions = adding.filter { seen.insert($0.startTime).inserted }
+        guard !additions.isEmpty else { return existing }
+        return (existing + additions).sorted { $0.startTime < $1.startTime }
+    }
+    // How far in the past merged programme data is kept in memory, once the
+    // guide has been extended forward a few times (1 000+ channels over
+    // several days otherwise grows without bound). Generous on purpose: nothing
+    // navigates back this far in normal use.
+    static let pastTrimMargin: TimeInterval = 24 * 3600
+    static func trimmed(_ programmes: [GuideProgramme], keepFrom: Date) -> [GuideProgramme] {
+        programmes.filter { $0.end > keepFrom }
+    }
+    // A failed guide page (initial load or a forward extension) is retried
+    // with backoff before the caller gives up: 3 attempts (the original plus
+    // these 2 waits) across roughly 20 s.
+    static let guidePageRetryDelays: [TimeInterval] = [8, 12]
     // A1.1: true when a cheap version check (server flag `guideVersion`) shows
     // the already-loaded guide is still current and its loaded window still
     // covers at least the next 12 hours, so a full re-download can be skipped.

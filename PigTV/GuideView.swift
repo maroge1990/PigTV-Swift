@@ -38,6 +38,10 @@ private struct GuideRowsInput: Equatable {
     var search: String
     var favourites: [String]
     var categories: Int
+    // Build 33: channel identity/count alone does not change when a forward
+    // extension merges more programmes into existing rows, so this is what
+    // tells the memoisation below to recompute `rows` for that.
+    var programmesVersion: Int
 }
 
 struct GuideView: View {
@@ -182,6 +186,8 @@ struct GuideView: View {
             }
             .onChange(of: model.favourites.count) { refreshRows() }
             .onChange(of: search) { refreshRows() }
+            // Build 33: a forward extension merged more programmes in place.
+            .onChange(of: model.guideProgrammesVersion) { refreshRows() }
             .onChange(of: app.playback == nil) { _, closed in
                 if closed, usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }
@@ -248,7 +254,8 @@ struct GuideView: View {
     @ViewBuilder
     private func gridView() -> some View {
         ZStack(alignment: .topLeading) {
-            GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window, clock: clock,
+            GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window,
+                loadedDuration: model.guideLoadedUntil.timeIntervalSince(model.window), clock: clock,
                 scheduled: model.scheduledKeys, recording: model.recordingChannels,
                 request: gridRequest, resetToken: scrollToTop, focusRestoreToken: gridFocusRestore,
                 actions: GuideGridActions(
@@ -443,7 +450,8 @@ struct GuideView: View {
     private var rowsInput: GuideRowsInput {
         GuideRowsInput(count: model.guide.count, first: model.guide.first?.id, last: model.guide.last?.id,
                        loadedAt: model.guideLoadedAt, fromCache: model.fromCache, filter: filter, search: search,
-                       favourites: model.favourites.map(\.id), categories: app.categories.count)
+                       favourites: model.favourites.map(\.id), categories: app.categories.count,
+                       programmesVersion: model.guideProgrammesVersion)
     }
 
     private func refreshRows(force: Bool = false) {
@@ -493,17 +501,24 @@ struct GuideView: View {
         if focusGrid { claimGridFocus() }
         setViewport(GuideNavigation.rounded(date))
     }
-    // Move the visible window and, only when it leaves the loaded day, request
-    // a new day of programme data around it.
+    // Move the visible window; as it approaches the end of the loaded data,
+    // extend it forward in the background (no reload, nothing blanks); only
+    // a genuine jump outside the loaded range (Jump to…) still reloads, and
+    // keeps the grid visible while it does.
     private func setViewport(_ date: Date) {
         if viewport != date { viewport = date }
-        if GuideNavigation.needsReload(viewport: viewport, loadedFrom: model.window) {
+        if GuideNavigation.needsExtension(viewport: viewport, loadedUntil: model.guideLoadedUntil) {
+            Task { await model.extendGuideForward() }
+        }
+        if GuideNavigation.needsReload(viewport: viewport, loadedFrom: model.window, until: model.guideLoadedUntil) {
             model.window = viewport.addingTimeInterval(-GuideNavigation.leadIn)
-            reload()
+            Task { await model.loadGuide(keepVisible: true) }
         }
     }
     private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds), focusGrid: false) }
-    private func reload() { Task { await model.loadGuide() } }
+    // The guide error banner's Retry: resumes background paging from where
+    // it stopped rather than starting the whole guide over (build 33).
+    private func reload() { Task { await model.retryGuide() } }
     /// Moves SwiftUI focus into the UIKit grid; the grid then focuses the
     /// cell it chose (its pending focus). UIKit's own focus requests are
     /// refused while a SwiftUI control holds focus.

@@ -51,6 +51,10 @@ struct GuideGridView: UIViewControllerRepresentable {
     let model: BrowseModel
     /// Start of the loaded day (BrowseModel.window).
     let origin: Date
+    /// Build 33: how much is loaded (BrowseModel.guideLoadedUntil − origin).
+    /// Grows as the guide extends forward; the grid only gets wider, never
+    /// reloads or moves for this.
+    let loadedDuration: TimeInterval
     let clock: Date
     let scheduled: Set<String>
     let recording: Set<String>
@@ -184,6 +188,14 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             layout.origin = view.origin
             needsLayout = true
         }
+        // Build 33: the loaded window growing forward (or, rarely, shrinking
+        // back to a fresh day's worth on reset) — content width only, never
+        // a reload of rows, scroll position or focus.
+        let durationChanged = layout.loadedDuration != view.loadedDuration
+        if durationChanged {
+            layout.loadedDuration = view.loadedDuration
+            needsLayout = true
+        }
         if view.rowsVersion != rowsVersion {
             rowsVersion = view.rowsVersion
             apply(rows: view.rows)
@@ -205,6 +217,11 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             collectionView.layoutIfNeeded()
             rebuildTimeHeader()
             setOffset(for: viewport, animated: false)
+        } else if durationChanged {
+            // Wider content only: the time header's own width follows, but
+            // scroll position and focus are left exactly where they were.
+            collectionView.layoutIfNeeded()
+            rebuildTimeHeader()
         }
         if view.resetToken != resetToken {
             let first = resetToken == Int.min
@@ -299,6 +316,29 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             collectionView.performBatchUpdates {
                 store.setRows(rows)
                 collectionView.insertSections(IndexSet(old.count..<rows.count))
+            }
+            return
+        }
+        // Build 33: a forward extension (or its periodic past-trim) changed
+        // some channels' programme counts in place — same channels, same
+        // first programme, nothing added or removed from the row list
+        // itself. UIKit requires `reloadSections` once a section's item
+        // count changes, but only for the sections that actually did;
+        // scroll position and every other row's focus/cells are untouched.
+        let extendedOnly = !old.isEmpty && rows.count == old.count && zip(old, rows).allSatisfy { a, b in
+            a.id == b.id && a.programmes.first?.startTime == b.programmes.first?.startTime
+        }
+        if extendedOnly {
+            let changedSections = IndexSet(rows.indices.filter { rows[$0].programmes.count != old[$0].programmes.count })
+            store.setRows(rows)
+            guard !changedSections.isEmpty else { layout.invalidateLayout(); return }
+            let refocus = focused.map { changedSections.contains($0.section) } ?? false
+            collectionView.performBatchUpdates {
+                collectionView.reloadSections(changedSections)
+            }
+            if refocus, let identity = focusIdentity,
+               let section = rows.firstIndex(where: { $0.id == identity.channel }) {
+                requestFocus(store.indexPath(section: section, start: identity.start) ?? IndexPath(item: 0, section: section))
             }
             return
         }

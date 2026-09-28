@@ -288,6 +288,42 @@ enum ContractChecks {
         try expect(GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(86400 - 7199), loadedFrom: guideStart), "A viewport that runs past the loaded day reloads")
         try expect(GuideNavigation.rounded(Date(timeIntervalSince1970: 3599)) == Date(timeIntervalSince1970: 1800), "Viewports snap to half hours")
 
+        // Build 33 ("the guide hits a wall moving forward in time"): once
+        // the loaded window has been extended past a single day, reload
+        // must compare against how far data actually reaches, not always
+        // `start + 24 h`; and extension itself is offered well before the
+        // grid could run out of columns to move into.
+        let extendedUntil = guideStart.addingTimeInterval(2 * 86400)
+        try expect(!GuideNavigation.needsReload(viewport: guideStart.addingTimeInterval(86400 - 7199), loadedFrom: guideStart, until: extendedUntil),
+                  "A viewport that would have run past the original day no longer reloads once the guide has been extended")
+        try expect(GuideNavigation.needsReload(viewport: extendedUntil, loadedFrom: guideStart, until: extendedUntil),
+                  "A viewport past even the extended data still reloads")
+        let loadedUntil = guideStart.addingTimeInterval(86400)
+        try expect(!GuideNavigation.needsExtension(viewport: guideStart, loadedUntil: loadedUntil), "Freshly loaded: nowhere near the edge yet")
+        try expect(GuideNavigation.needsExtension(viewport: loadedUntil.addingTimeInterval(-3600), loadedUntil: loadedUntil),
+                  "An hour from the loaded edge: time to fetch the next slice in the background")
+        try expect(!GuideNavigation.needsExtension(viewport: loadedUntil.addingTimeInterval(-10 * 3600), loadedUntil: loadedUntil),
+                  "Ten hours out: still well inside the buffer, no fetch yet")
+        let mergeA = GuideProgramme(title: "A", description: nil, startTime: 0, endTime: 1_800_000)
+        let mergeB = GuideProgramme(title: "B", description: nil, startTime: 1_800_000, endTime: 3_600_000)
+        let mergeBRepeat = GuideProgramme(title: "B (repeat)", description: nil, startTime: 1_800_000, endTime: 3_600_000)
+        let mergeC = GuideProgramme(title: "C", description: nil, startTime: 3_600_000, endTime: 5_400_000)
+        try expect(GuideNavigation.mergeProgrammes([mergeA, mergeB], adding: [mergeBRepeat, mergeC]).map(\.title) == ["A", "B", "C"],
+                  "A repeated start keeps the already-known programme; only the genuinely new one is appended, deduped by start time")
+        try expect(GuideNavigation.mergeProgrammes([mergeA], adding: []) == [mergeA], "Nothing to add leaves the list untouched")
+        let trimOld = GuideProgramme(title: "Old", description: nil, startTime: -7_200_000, endTime: -3_600_000)
+        let trimRecent = GuideProgramme(title: "Recent", description: nil, startTime: -1_800_000, endTime: 1_800_000)
+        try expect(GuideNavigation.trimmed([trimOld, trimRecent], keepFrom: Date(timeIntervalSince1970: -3600)).map(\.title) == ["Recent"],
+                  "A programme that ended at or before the trim margin is dropped; everything after it is kept")
+        try expect(GuideNavigation.guidePageRetryDelays.count == 2 && GuideNavigation.guidePageRetryDelays.reduce(0, +) == 20,
+                  "Three attempts (the original plus these two backoff waits) across roughly 20 s")
+        let mergeChannel = GuideChannel(rawID: "7", sourceId: 3, name: "Extend Me", logo: "logo.png", category: "News",
+                                        programmes: [mergeA], stableId: "s7", number: 12, health: "ok")
+        let extendedChannel = mergeChannel.withProgrammes([mergeA, mergeC])
+        try expect(extendedChannel.programmes.map(\.title) == ["A", "C"] && extendedChannel.id == mergeChannel.id
+                  && extendedChannel.stableId == "s7" && extendedChannel.number == 12,
+                  "withProgrammes swaps only the programme list, keeping every other field")
+
         let categoryFixture = Data(#"{"total":1,"channels":[{"id":"7","sourceId":2,"name":"Sky News HD","logo":"  ","category":"News","programmes":[],"tvgId":"sky.news"}]}"#.utf8)
         let categorised = try JSONDecoder().decode(GuidePage.self, from: categoryFixture).channels[0]
         try expect(categorised.tvgId == "sky.news", "Guide rows carry the EPG channel ID when the server supplies it")
