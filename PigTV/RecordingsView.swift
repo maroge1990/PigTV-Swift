@@ -109,12 +109,16 @@ struct RecordingsView: View {
                                     .padding(.horizontal, 24).padding(.vertical, 16)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                                    #if os(tvOS)
+                                    // No action, but focusable so the focus engine can scroll to it.
+                                    .focusable()
+                                    #endif
                                     .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
                                 }
                             }
                         }
                     }
-                    if model.schedules.isEmpty && !model.recordingsBusy {
+                    if !model.schedules.contains(where: \.isActive) && !model.recordingsBusy {
                         Text("Nothing scheduled. Browse Guide to choose a programme.")
                             .foregroundStyle(.secondary).padding()
                     }

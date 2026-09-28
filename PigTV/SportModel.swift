@@ -66,8 +66,8 @@ final class SportModel: ObservableObject {
                     if !self.events.isEmpty { self.events = [] }
                 } else { self.error = error.localizedDescription }
             }
-            self.updateBuckets()
             self.clock = now
+            self.updateBuckets()
             self.loaded = true
             self.lastLoad = Date()
         }
