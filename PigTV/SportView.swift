@@ -241,9 +241,7 @@ struct SportEventTile: View {
             case .details:
                 SportEventDetails(event: event, app: app, browse: browse, play: close(then:))
             case .channels:
-                SportChannelPicker(event: event, browse: browse) { channel in
-                    close { app.playSportEvent(event, channel: channel) }
-                }
+                SportChannelPicker(event: event, app: app, browse: browse, clock: clock, play: close(then:))
             }
         }
     }
@@ -352,12 +350,18 @@ struct QualityBadge: View {
     }
 }
 
-/// One of an event's channels: logo, name (and number), quality; plays on
-/// select.
+/// One of an event's channels: logo, name (and number), quality. A live (or
+/// about-to-start) event plays on select; an upcoming one on another channel
+/// offers a choice (Record / Watch when it starts) instead of tuning at
+/// once (build 33: Mark, live testing — a secondary channel used to tune
+/// straight away on an upcoming event). The icon and accessibility label
+/// say which: play, an already-scheduled recording, or the choice.
 struct SportChannelRow: View {
     let channel: SportEventChannel
     let browse: BrowseModel
     var isBest = false
+    var playsNow = true
+    var scheduled = false
     let action: () -> Void
 
     var body: some View {
@@ -375,10 +379,13 @@ struct SportChannelRow: View {
                     if isBest {
                         Text("Recommended").font(DetailType.rowDetail).foregroundStyle(.secondary)
                     }
+                    if scheduled {
+                        Text("Recording scheduled").font(DetailType.rowDetail).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 16)
                 if let quality = channel.quality { QualityBadge(quality: quality) }
-                Image(systemName: "play.fill").foregroundStyle(.secondary).accessibilityHidden(true)
+                Image(systemName: icon).foregroundStyle(.secondary).accessibilityHidden(true)
             }
             #if os(tvOS)
             .padding(.horizontal, 24).padding(.vertical, 16)
@@ -389,42 +396,98 @@ struct SportChannelRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 16))
-        .accessibilityLabel("Watch on \(channel.name)" + (channel.quality.map { ", \($0.rawValue)" } ?? ""))
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier("sport.channel.\(channel.id)")
+    }
+
+    private var icon: String {
+        if playsNow { return "play.fill" }
+        return scheduled ? "record.circle" : "alarm"
+    }
+
+    private var accessibilityLabel: String {
+        let text = playsNow ? "Watch on \(channel.name)"
+            : scheduled ? "Recording scheduled on \(channel.name)" : "Record or watch \(channel.name) when it starts"
+        return text + (channel.quality.map { ", \($0.rawValue)" } ?? "")
     }
 }
 
-/// The channel picker (long press → Choose a channel).
+/// The channel picker (long press → Choose a channel). Behaves like the
+/// event page's channel list (`SportChannelList`): the same rule decides
+/// whether a row plays or offers a choice.
 struct SportChannelPicker: View {
     let event: SportEvent
-    let browse: BrowseModel
-    let choose: (SportEventChannel) -> Void
+    @ObservedObject var app: AppModel
+    @ObservedObject var browse: BrowseModel
+    let clock: Date
+    /// Closes the picker, then runs the action (playback or a wait).
+    let play: (@escaping () -> Void) -> Void
 
     var body: some View {
         DetailPage(title: "Choose a channel") {
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow(text: event.league)
                 Text(event.title).font(DetailType.channel)
-                Text(SportRows.timing(event, now: Date())).font(DetailType.meta).foregroundStyle(.secondary)
+                Text(SportRows.timing(event, now: clock)).font(DetailType.meta).foregroundStyle(.secondary)
             }
-            SportChannelList(event: event, browse: browse, choose: choose)
+            SportChannelList(event: event, app: app, browse: browse, clock: clock, play: play)
         }
     }
 }
 
+/// One event's channels, each row deciding for itself (build 33): live, or
+/// starting within `SportRows.watchNowWindow`, plays on select; otherwise
+/// select opens a choice — Record on that channel (unless already
+/// scheduled), or Watch it when it starts — via `confirmationDialog`, not
+/// another full-screen cover (tvOS focus: stacked covers can strand focus;
+/// Record still needs one, same as the event page's own Record button).
+/// Shared by the event page (`SportEventDetails`) and the long-press
+/// channel picker (`SportChannelPicker`).
 struct SportChannelList: View {
     let event: SportEvent
-    let browse: BrowseModel
-    let choose: (SportEventChannel) -> Void
+    @ObservedObject var app: AppModel
+    @ObservedObject var browse: BrowseModel
+    let clock: Date
+    /// Closes the covering page, then runs the action (playback or a wait).
+    let play: (@escaping () -> Void) -> Void
+    @State private var choosing: SportEventChannel?
+    @State private var recording: SportEventChannel?
+
     var body: some View {
+        let playsNow = SportRows.playsChannelNow(event, now: clock)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(event.channels.enumerated()), id: \.element.id) { index, channel in
-                SportChannelRow(channel: channel, browse: browse, isBest: index == 0 && event.channels.count > 1) {
-                    choose(channel)
+                let scheduled = !playsNow && browse.isScheduled(event, on: channel)
+                SportChannelRow(channel: channel, browse: browse, isBest: index == 0 && event.channels.count > 1,
+                                 playsNow: playsNow, scheduled: scheduled) {
+                    if playsNow { play { app.playSportEvent(event, channel: channel) } }
+                    else { choosing = channel }
                 }
             }
         }
         .tvFocusSection()
+        .confirmationDialog(choosing?.name ?? "", isPresented: Binding(
+            get: { choosing != nil }, set: { if !$0 { choosing = nil } }
+        ), titleVisibility: .visible, presenting: choosing) { channel in
+            if !browse.isScheduled(event, on: channel) {
+                Button("Record on \(channel.name)", systemImage: "record.circle") {
+                    choosing = nil
+                    recording = channel
+                }
+            }
+            Button("Watch \(channel.name) when it starts", systemImage: "alarm") {
+                choosing = nil
+                play { app.watchWhenStarts(event, channel: channel, now: clock) }
+            }
+            Button("Cancel", role: .cancel) { choosing = nil }
+        } message: { _ in
+            Text(SportRows.timing(event, now: clock))
+        }
+        .detailCover(item: $recording) { channel in
+            RecordSheet(model: browse, channel: browse.recordingRow(event, on: channel), programme: event.programme) { _ in
+                recording = nil
+            }
+        }
     }
 }
 
@@ -460,7 +523,7 @@ struct SportEventDetails: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let live = event.isLive(at: now)
-        let playsNow = live || event.start.timeIntervalSince(now) <= SportRows.watchNowWindow
+        let playsNow = SportRows.playsChannelNow(event, now: now)
         let pending = app.pendingWatch?.eventID == event.id
         let best = event.best
         VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
@@ -518,9 +581,7 @@ struct SportEventDetails: View {
                 }
             }
             PigSectionHeader(title: event.channels.count == 1 ? "Channel" : "Channels")
-            SportChannelList(event: event, browse: browse) { channel in
-                play { app.playSportEvent(event, channel: channel) }
-            }
+            SportChannelList(event: event, app: app, browse: browse, clock: now, play: play)
         }
     }
 }

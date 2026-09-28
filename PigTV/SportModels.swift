@@ -298,4 +298,13 @@ nonisolated enum SportRows {
         guard extra > 0 else { return nil }
         return extra == 1 ? "+1 more channel" : "+\(extra) more channels"
     }
+
+    /// Build 33: whether choosing a channel for this event plays it at
+    /// once — live, or starting within `watchNowWindow` — or should offer a
+    /// choice (Record / Watch when it starts) instead. One rule shared by
+    /// the event page's primary action, its channel list and the long-press
+    /// channel picker, so all three agree.
+    static func playsChannelNow(_ event: SportEvent, now: Date) -> Bool {
+        event.isLive(at: now) || event.start.timeIntervalSince(now) <= watchNowWindow
+    }
 }

@@ -193,7 +193,7 @@ private struct DesignTestScreen: View {
             }
         case "sport-channels":
             if let event = browse.sport.live.first {
-                SportChannelPicker(event: event, browse: browse, choose: { _ in })
+                SportChannelPicker(event: event, app: app, browse: browse, clock: now, play: { $0() })
             }
         case "unreachable":
             UnreachableView(model: app, message: "This device cannot reach the server. Check that you are on the home network or that Tailscale is connected.")

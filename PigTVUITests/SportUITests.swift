@@ -50,5 +50,48 @@ final class SportUITests: XCTestCase {
         XCTAssertTrue(app.buttons["sport.record"].exists)
         attach(app, "sport-event-page")
     }
+
+    // Build 33 (Mark, live testing): on an upcoming event, choosing a
+    // channel other than the recommended one must offer Record/Watch when
+    // it starts, not tune at once. Covers both the event page's channel
+    // list and the long-press picker (same underlying rule).
+    @MainActor
+    func testUpcomingEventSecondaryChannelOffersRecordOrWatchInsteadOfTuning() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "sport"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        XCTAssertTrue(app.buttons["sport.event.nfl-kc-buf"].waitForExistence(timeout: 10), "the Sport tab did not open")
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.down)
+        XCTAssertEqual(focused(app).identifier, "sport.event.nrl-pf", "Down from On now lands on the first upcoming card")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["sport.watch"].waitForExistence(timeout: 5), "the event page did not open")
+
+        // Into the channel list: row 0 is the recommended channel, row 1 the
+        // second (non-recommended) one, "TSN 1" in the fixture.
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.down)
+        XCTAssertEqual(focused(app).identifier, "sport.channel.1:ch1", "the second, non-recommended channel")
+        XCUIRemote.shared.press(.select)
+
+        // Each labelled button (icon + text) exposes a nested accessibility
+        // element sharing the same label, so match `.firstMatch`.
+        let record = app.buttons["Record on TSN 1"].firstMatch
+        let watch = app.buttons["Watch TSN 1 when it starts"].firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 5),
+                      "an upcoming event's secondary channel must offer Record, not tune immediately")
+        XCTAssertTrue(watch.exists)
+        attach(app, "sport-channel-choice")
+
+        // Watch when it starts (the dialog's second button): closes the
+        // page, no player, a pending-watch banner back on the Sport tab.
+        XCUIRemote.shared.press(.down)
+        XCTAssertTrue(watch.hasFocus, "expected the dialog's second button to gain focus")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["sport.event.nfl-kc-buf"].waitForExistence(timeout: 5), "the event page did not close")
+        XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5), "the pending-watch banner did not appear")
+    }
 }
 #endif

@@ -142,6 +142,19 @@ final class SportRowsTests: XCTestCase {
         XCTAssertTrue(SportRows.timing(events[0], now: now, calendar: calendar).hasPrefix("Sun "))
     }
 
+    // Build 33 (Mark, live testing): choosing a secondary channel on an
+    // upcoming event must offer Record/Watch when it starts, not tune at
+    // once. `playsChannelNow` is the one rule the event page, its channel
+    // list and the long-press picker all share.
+    func testPlaysChannelNowMatchesLiveAndTheWatchNowWindow() {
+        XCTAssertTrue(SportRows.playsChannelNow(event("live", from: -600, minutes: 60), now: now), "already on")
+        XCTAssertTrue(SportRows.playsChannelNow(event("edge", from: SportRows.watchNowWindow, minutes: 60), now: now),
+                      "exactly at the watch-now window: plays")
+        XCTAssertFalse(SportRows.playsChannelNow(event("just-after", from: SportRows.watchNowWindow + 1, minutes: 60), now: now),
+                       "one second past the window: offer a choice")
+        XCTAssertFalse(SportRows.playsChannelNow(event("tomorrow", from: 26 * 3600, minutes: 60), now: now))
+    }
+
     func testDecodesTolerantly() throws {
         let response = try JSONDecoder().decode(SportEventsResponse.self,
             from: Data(FakePigTVServer.sportEventsJSON(now: now).utf8))
