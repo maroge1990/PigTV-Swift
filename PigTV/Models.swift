@@ -24,8 +24,8 @@ struct ServerInfo: Decodable {
         let guideCursor: Bool?
         let guideVersion: Bool?
         let logoCache: Bool?
-        // C-A: rows carry a persistent channel `number`; guide and channel
-        // lists are ordered by it. C-G: guide/channel rows carry `health`.
+        // C-A: rows carry a persistent channel `number`, a label only (since
+        // server 0139 lists keep the provider's order). C-G: rows carry `health`.
         let channelNumbers: Bool?
         let channelHealth: Bool?
         // C-E (server env PIGTV_TUNER=1): an hours-long live window with

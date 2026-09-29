@@ -1,7 +1,7 @@
 # PigTV Apple client: blueprint
 
-**Last updated:** 28 September 2026 · app **1.0 (35)** (not yet pushed; lead reviews and pushes) · server
-build **0156** (scheduleHistory) · roadmap contracts C-A…C-I in `../PigTV/docs/ROADMAP-CONTRACTS.md`
+**Last updated:** 29 September 2026 · app **1.0 (35)** (pushed; **handover state**) · server build **0167** · roadmap
+contracts C-A…C-I in `../PigTV/docs/ROADMAP-CONTRACTS.md`
 
 Read this at the start of every session, **together with the joint roadmap in
 [`../PigTV/blueprint.md`](../PigTV/blueprint.md) §6**, which is where A-items (Apple) and X-items (both products) are
@@ -52,15 +52,15 @@ Implementation map · 6 Shared contracts · 7 Deferred choices and crash lessons
 | Item | Reference |
 |---|---|
 | Project | `PigTV.xcodeproj`, shared scheme `PigTV`; iOS/tvOS 26.5 targets; Xcode 27. Targets: `PigTV` (app, **Swift 6 language mode** since build 28, default MainActor isolation), `PigTVTopShelf` (tvOS extension, Swift 6 since build 28), `PigTVTests`, `PigTVUITests` (Swift 5). Synchronized folders: `PigTV/`, `Shared/` (app + extension), `PigTVTopShelf/`, tests. If Xcode is open while `project.pbxproj` is edited by hand, it may re-save the file: check `platformFilters = (tvos)` on the extension's dependency and embed entry survived (it dropped a singular `platformFilter = tvos` once). |
-| Baseline (28 Sept, build 33) | **140 tests pass** on the tvOS 26.5 "Apple TV" simulator (125 unit + 15 UI). The unit tests that aren't tvOS-only also pass on the iPad Pro 13-inch (M5) simulator (build 33). Per-build counts are in the commit messages. |
+| Baseline (29 Sept, build 35) | **142 tests pass** on the tvOS 26.5 "Apple TV" simulator (125 unit + 17 UI); **122** unit tests pass on the iPad Pro 13-inch (M5) simulator; the contract runner passes **187**. `TabSwitchUITests`' 1,000 ms tab-switch limit can flake once under load (1,150 ms seen; the rerun passed). Per-build counts are in the commit messages. |
 | Contract runner | `sh Tools/test-contracts.sh` (synthetic, no server) |
 | Regression and device procedure | [TESTING.md](TESTING.md) |
 | Server requests | [docs/SERVER-REQUESTS.md](docs/SERVER-REQUESTS.md) |
 
-## 3. Device verification state (Mark's reports, 26 Sept)
+## 3. Device verification state (Mark's reports, 29 Sept)
 
-Mark ran four test rounds (`../PigTV/docs/TEST-BLOCK.md`: app 22, 28, 30, 31 with server 0138, 0146, 0149, 0151).
-**Everything on the Apple TV passed**, apart from the deferred items below.
+Mark ran six test rounds (`../PigTV/docs/TEST-BLOCK.md`: app 22, 28, 30, 31, 32, 34 with server 0138, 0146, 0149, 0151,
+0154, 0166). **Everything on the Apple TV passed**, apart from the round 5 bugs (fixed in builds 33–35) and the items below.
 
 - **Verified on the TV:** the UIKit guide (2.1–2.7; the only guide), channel numbers as labels (1.4, R3.10), favourites (1.5),
   cached guide (1.6), amber flaky dot (1.7), tuning card (1.8), faster repeat starts (1.9), Last channel (1.10), player controls
@@ -70,13 +70,13 @@ Mark ran four test rounds (`../PigTV/docs/TEST-BLOCK.md`: app 22, 28, 30, 31 wit
   event page, channel picker and Home row (R3.3–R3.7), Replays (R4.2, R4.3), **Top Shelf working** (R4.4), tab switching
   without reloads (R4.6). Earlier: U02 two-device takeover, R07/R08 custom player and side list, R17 scrub bar, R18 fast
   category switching.
-- **Shipped, awaiting Mark's check (build 32):** the tab-switch flash fix; Top Shelf rendered cards (replacing stretched logos;
-  uses server 0154's full-size logos); the 72 h Sport sections (with server 0153; replays also move with server 0152).
-- **Shipped, awaiting Mark's check (build 33, this batch — see the report for numbered live-test steps):** an upcoming sport
-  event's secondary channels offer Record/Watch when it starts instead of tuning immediately; the TV guide extends forward
-  in the background instead of blanking or stalling when navigating far ahead in time.
-- **iPad/iPhone:** the build 29–31 changes came from Mark's iPad/iPhone reports; the round 4 checks **R4.7** (the custom touch
-  controls) and **R4.8** (Siri via Shortcuts on iPad) are pending (Mark: "testing tomorrow").
+- **Verified in round 5 (build 32, 28 Sept):** the tab-switch flash fix, the Top Shelf rendered cards, the 72 h Sport sections.
+- **Verified in round 6 (builds 33–34, 29 Sept):** the sport channel Record / Watch-when-it-starts choice (R6.10–R6.12), the
+  guide's forward extension (R6.13, R6.15), the Recordings screen's Recent problems section (R6.2).
+- **Build 35 (29 Sept):** Jump to… and Search as full-screen pages (R6.14 had failed on 34) and the Spotlight branding. Mark:
+  "looking good", with a few minor bugs saved for the next build (not yet reported in detail).
+- **iPad/iPhone:** the build 29–31 changes came from Mark's iPad/iPhone reports; R4.7 (touch controls) and R4.8 (Siri via
+  Shortcuts) were never reported one by one; Mark's 28 Sept round covered "all features except the tuner".
 - **Deferred:** 1.16 Skip break / Auto-skip (no recording with breaks yet); R3.8 the Sport empty state (needs a quiet moment);
   the tuner features (Start over, timeshift scrubbing, watch while recording: TEST-BLOCK Part 3, server `PIGTV_TUNER=1`, not
   yet tested); **Siri on Apple TV** (parked: tvOS Siri may not support third-party App Shortcuts).
@@ -243,7 +243,7 @@ Mark chose direction A. **`PigLogo.png` is never altered** (only scaled uniforml
 Layers: **back** plum radial `#3A1834` → `#1A1117` at 55% → `#0E090D`; **middle** pink halo `#FF2E94` (55% alpha at the centre, 18% at 22%,
 0 at 42% of the glow radius, smooth spline with zero end slope so it never shows an edge; it ends well inside every canvas so tvOS
 parallax cannot expose one); **front** the pig with a soft shadow (0, 8, 10 px blur, 35% black at 400×240). Wordmark (Top Shelf and
-splash only): "Pig" white + "TV" `#FF6FB2`, Fredoka SemiBold 600. Gradients are dithered (no banding).
+splash only): "Pig" white + "TV" `#FF6FB2`, rendered in the **system rounded semibold** (the design called for Fredoka SemiBold; it was never downloaded, see below). Gradients are dithered (no banding).
 **Optical centre:** PigLogo.png's alpha-weighted centroid is **x = 0.4997, y = 0.4053** of its 1000×797 bitmap (the bitmap has ~80 empty
 rows under the chin, so the mass sits above the bitmap middle; bitmap centring put the pig high). The pig is placed with that centroid at the
 canvas centre (Top Shelf: group centred by extents horizontally, pig centroid on the vertical centre, wordmark cap band on the same row; splash:
@@ -320,12 +320,13 @@ Swift 6** (Mark approved) with every KVO/AVFoundation callback explicitly `@Send
 real-playback harness exercising them. Verified on the TV (R2.15: no crashes across live channels, switching, Last channel and
 a recording).
 
-## 8. Known issues and open items (28 Sept, build 33)
+## 8. Known issues and open items (29 Sept, build 35)
 
-- **Awaiting Mark's check:** the tab-switch flash fix, the Top Shelf rendered cards, the 72 h Sport sections (all build 32);
-  the sport channel Record/Watch-when-starts choice and the guide's forward extension (both build 33); R4.7 (iPad/iPhone
-  touch controls) and R4.8 (Siri on iPad).
-- **Stacked full-screen covers can strand tvOS focus (not yet fixed).** A `fullScreenCover`/`detailCover` presented from
+- **Next for this client:** Mark's minor bugs from build 35 (he is collecting them for the next build); W6 below when he names
+  a screen; the tuner features (below) when he tests `PIGTV_TUNER=1`.
+- **Wordmark font:** the Top Shelf and splash wordmark use the system rounded semibold. To switch to Fredoka SemiBold (the
+  design's choice; SIL OFL), download it with Mark's OK into `Tools/brand/` with its licence and rerun the brand script.
+- **W6: stacked full-screen covers can strand tvOS focus (parked; Mark reported "some menus need Back before anything is selectable" on 28 Sept, screen not yet named).** A `fullScreenCover`/`detailCover` presented from
   inside another one (e.g. `RecordSheet` over `SportEventDetails`/`ProgrammeDetails`, already shipped) sometimes needs Back
   before anything is focusable — a SwiftUI/tvOS focus-engine quirk, not specific to one screen. Known workaround: prefer an
   in-page choice (`confirmationDialog`, or the page switching its own state) over adding another cover layer, as build 33's
@@ -346,6 +347,4 @@ a recording).
   retries and this client's one recovery.
 - Recordings on iPad/iPhone use AVKit (`RecordingNativePlayer`), not the custom player; HEVC recordings are unchecked on a device.
 - `docs/evidence` screenshots use **offline fixture data** (made-up channels, programmes and logos), not the real feed.
-- Stale comment: `Models.swift` says guide lists are "ordered by" the channel number; since server 0139 they keep the
-  provider's order (numbers are labels).
 - A0.2 (a SwiftUI "Environment accessed outside a View" runtime warning seen only in an accessibility-heavy UI test) is parked.

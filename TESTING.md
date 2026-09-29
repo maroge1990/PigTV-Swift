@@ -15,7 +15,7 @@ server or driving the simulator UI by hand.
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
-# Before every push: all tests on the tvOS simulator (28 Sept, build 33: 140 pass, 125 unit + 15 UI, ~4 min)
+# Before every push: all tests on the tvOS simulator (29 Sept, build 35: 142 pass, 125 unit + 17 UI, ~5 min)
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
 
@@ -30,7 +30,7 @@ xcodebuild test -project PigTV.xcodeproj -scheme PigTV -only-testing:PigTVTests 
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5' -only-testing:PigTVTests/RealPlaybackTests
 
-# Synthetic API/model contract checks, no simulator and no server (28 Sept: 187 pass)
+# Synthetic API/model contract checks, no simulator and no server (29 Sept: 187 pass)
 sh Tools/test-contracts.sh
 ```
 
