@@ -15,7 +15,7 @@ server or driving the simulator UI by hand.
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
-# Before every push: all tests on the tvOS simulator (29 Sept, build 35: 142 pass, 125 unit + 17 UI, ~5 min)
+# Before every push: all tests on the tvOS simulator (30 Sept, build 36: 150 pass, 133 unit + 17 UI, ~10 min)
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
 
@@ -30,7 +30,7 @@ xcodebuild test -project PigTV.xcodeproj -scheme PigTV -only-testing:PigTVTests 
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5' -only-testing:PigTVTests/RealPlaybackTests
 
-# Synthetic API/model contract checks, no simulator and no server (29 Sept: 187 pass)
+# Synthetic API/model contract checks, no simulator and no server (30 Sept: 204 pass)
 sh Tools/test-contracts.sh
 ```
 
@@ -53,6 +53,8 @@ The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restore
   `Fixtures/HLS` stream (6 s, H.264 + AAC, fMP4, a master playlist like the server's). Real starts, display criteria, -11868 for
   real, the `'fmt?'` fallback, switching, a recording in the recording player, a sport event's best channel. **New playback
   code gets a test here.**
+- `ProviderFailoverTests` (build 36, multi-provider client): C-J provider on resolve and in the stream info line, C-K reminders (once per
+  local day, never during playback, hidden without the flag, auto-dismiss), the renewed recovery allowance with an injected clock.
 - Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a
   slice and advances `guideLoadedUntil`, ends cleanly when a slice is empty, a failed page is retried before it surfaces,
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,

@@ -1,6 +1,6 @@
 # PigTV Apple client: blueprint
 
-**Last updated:** 29 September 2026 · app **1.0 (35)** (pushed; **handover state**) · server build **0167** · roadmap
+**Last updated:** 30 September 2026 · app **1.0 (36)** (committed locally, not pushed; multi-provider client A1, build 35 was the pushed handover state) · server build **0167** · roadmap
 contracts C-A…C-I in `../PigTV/docs/ROADMAP-CONTRACTS.md`
 
 Read this at the start of every session, **together with the joint roadmap in
@@ -29,7 +29,7 @@ Implementation map · 6 Shared contracts · 7 Deferred choices and crash lessons
   runs the tvOS tests on an Apple TV simulator it finds or creates. It cannot be exercised locally; treat a red run on
   GitHub as equivalent to a local test failure.
 - **Bump the build number** (`CURRENT_PROJECT_VERSION`, both app targets in `project.pbxproj`) once per session that changes
-  app code, so Settings → Version identifies the installed copy. Current: **35**; next: **36**.
+  app code, so Settings → Version identifies the installed copy. Current: **36**; next: **37**.
 - **Crash lessons (builds 21–25, §7):** never call an AVKit-only API (a category on an AVFoundation class, e.g.
   `AVPlayerItem.externalMetadata`, `UIWindow.avDisplayManager`) on tvOS without checking it exists (AVKit is linked explicitly
   for tvOS); **nothing may await before `replaceCurrentItem`/`play()` except the resolve and the audio session**; every
@@ -52,7 +52,7 @@ Implementation map · 6 Shared contracts · 7 Deferred choices and crash lessons
 | Item | Reference |
 |---|---|
 | Project | `PigTV.xcodeproj`, shared scheme `PigTV`; iOS/tvOS 26.5 targets; Xcode 27. Targets: `PigTV` (app, **Swift 6 language mode** since build 28, default MainActor isolation), `PigTVTopShelf` (tvOS extension, Swift 6 since build 28), `PigTVTests`, `PigTVUITests` (Swift 5). Synchronized folders: `PigTV/`, `Shared/` (app + extension), `PigTVTopShelf/`, tests. If Xcode is open while `project.pbxproj` is edited by hand, it may re-save the file: check `platformFilters = (tvos)` on the extension's dependency and embed entry survived (it dropped a singular `platformFilter = tvos` once). |
-| Baseline (29 Sept, build 35) | **142 tests pass** on the tvOS 26.5 "Apple TV" simulator (125 unit + 17 UI); **122** unit tests pass on the iPad Pro 13-inch (M5) simulator; the contract runner passes **187**. `TabSwitchUITests`' 1,000 ms tab-switch limit can flake once under load (1,150 ms seen; the rerun passed). Per-build counts are in the commit messages. |
+| Baseline (30 Sept, build 36) | **150 tests pass** on the tvOS 26.5 "Apple TV" simulator (133 unit + 17 UI); **130** unit tests pass on the iPad Pro 13-inch (M5) simulator; the contract runner passes **204**. `TabSwitchUITests`' 1,000 ms tab-switch limit can flake once under load (1,150 ms seen; the rerun passed). Per-build counts are in the commit messages. |
 | Contract runner | `sh Tools/test-contracts.sh` (synthetic, no server) |
 | Regression and device procedure | [TESTING.md](TESTING.md) |
 | Server requests | [docs/SERVER-REQUESTS.md](docs/SERVER-REQUESTS.md) |
@@ -319,6 +319,31 @@ Build 23 also moved the app target back to Swift 5 on a wrong diagnosis (the KVO
 Swift 6** (Mark approved) with every KVO/AVFoundation callback explicitly `@Sendable`/nonisolated (see §4 Swift 6) and the
 real-playback harness exercising them. Verified on the TV (R2.15: no crashes across live channels, switching, Last channel and
 a recording).
+
+## Multi-provider failover, client side (build 36, work package A1)
+
+Spec: `../PigTV/docs/MULTI-PROVIDER-BRIEF.md` (§2.6, §2.8, C-J, C-K). Server flags `providers` and `providerReminders` in
+`ServerInfo.Features`; everything is additive and absent flags change nothing.
+
+- **C-J (`ResolveProvider`, `PlaybackDecision.provider`):** decoded tolerantly (a malformed object is just nil). `PlaybackModel.provider`
+  is set at each resolve; `StreamStats.parts` (the Labs stream info line, tvOS) adds "Provider: Trex (backup)" for a backup and
+  "switched from primary" when `failover` is true. The ordinary primary play adds nothing (matches the line's density).
+- **C-K (`ProviderReminders.swift`, `ProviderReminderModel.swift`, `ProviderReminderBanner` in `ContentView.swift`):**
+  `AppModel.checkProviderReminders()` runs once signed in, on `scenePhase == .active` and when the player closes; needs
+  `providerReminders`, never runs while `playerPresented`, and shows at most one banner per local day per device
+  (`UserDefaults` `pigtv.providerReminderDay`, set only when a banner is actually shown; an empty answer or a failed request
+  leaves the day unused). The banner is an **overlay** on the root view (no cover, so no nested-cover focus trap, W6) and is dismissed
+  after 15 s, by its OK button (iOS/iPadOS) or when playback starts. **On tvOS it is deliberately not focusable** (no button):
+  it cannot take or trap focus and goes away by itself. Text: "Trex expires Mon 30 Mar. Renew it, then update the dates in PigTV's
+  web settings."; past expiry "expired on …"; several providers in one sentence.
+- **Recovery allowance:** `PlaybackModel.recoveryUsed` is renewed when a failure arrives after `recoveryResetInterval` (120 s) of
+  unbroken good playback since the last recovery (`goodPlaySince`, set in `playbackStarted` after a recovery, cleared by a stall,
+  a failure and Retry; `clock` is injectable). Still at most one re-resolve per failure; a failure inside 2 min of a recovery ends in
+  the error as before.
+- **Tests:** `ProviderFailoverTests` (8: provider shown/absent, line formats, reminders once a day / not during playback / flag absent /
+  empty and failing answers / auto-dismiss and "expired", the recovery renewal against real playback), contract checks.
+  `FakePigTVServer` gained `reminders:`, `client(extraFeatures:)` and `decision(provider:)`.
+- **Not verified:** the banner's look and placement on a real TV, iPad and iPhone (no visual check made).
 
 ## 8. Known issues and open items (29 Sept, build 35)
 

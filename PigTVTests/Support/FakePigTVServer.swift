@@ -60,12 +60,15 @@ final class FakePigTVServer: @unchecked Sendable {
 
     /// `resolve(n)` builds the n-th resolve answer (1-based) as JSON.
     init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil,
-         sportEvents: String? = nil) throws {
+         sportEvents: String? = nil,
+         reminders: String? = nil) throws {
         let counter = Locked(0)
         let resolve = resolve ?? { count, _ in FakePigTVServer.decision(session: "s\(count)") }
         let sport = sportEvents ?? FakePigTVServer.sportEventsJSON(now: Date())
         http = try LocalHTTPServer { request in
             if request.method == "GET", request.path == "/api/sports/events" { return .json(sport) }
+            // C-K: `GET /api/providers/reminders` (404 when the fake has none).
+            if request.method == "GET", request.path == "/api/providers/reminders", let reminders { return .json(reminders) }
             return FakePigTVServer.route(request, counter: counter, resolve: resolve)
         }
     }
@@ -112,22 +115,24 @@ final class FakePigTVServer: @unchecked Sendable {
     }
 
     /// Server info advertising client events, so play-start/-end are posted.
-    @MainActor static func info() throws -> ServerInfo {
-        try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"clientEvents":true,"viewerConflict":true}}"#.utf8))
+    /// `extraFeatures` is spliced into `features` (e.g. `"providerReminders":true`).
+    @MainActor static func info(extraFeatures: String = "") throws -> ServerInfo {
+        let extra = extraFeatures.isEmpty ? "" : "," + extraFeatures
+        return try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"clientEvents":true,"viewerConflict":true\#(extra)}}"#.utf8))
     }
 
     /// An APIClient for this server (token "fixture").
-    @MainActor func client() throws -> APIClient {
-        APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: try Self.info())
+    @MainActor func client(extraFeatures: String = "") throws -> APIClient {
+        APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: try Self.info(extraFeatures: extraFeatures))
     }
 
     static func decision(session: String, playlist: String = "master.m3u8", fps: String? = "25/1",
-                         videoRange: String? = nil) -> LocalHTTPServer.Response {
+                         videoRange: String? = nil, provider: String? = nil) -> LocalHTTPServer.Response {
         var info: [String] = []
         if let fps { info.append(#""fps":"\#(fps)""#) }
         if let videoRange { info.append(#""videoRange":"\#(videoRange)""#) }
         info.append(#""video":"h264","width":320,"height":180"#)
-        return .json(#"{"strategy":"transcode","url":"/api/transcode/\#(session)/\#(playlist)","sessionId":"\#(session)","container":"hls","videoMode":"copy","info":{\#(info.joined(separator: ","))}}"#)
+        return .json(#"{"strategy":"transcode","url":"/api/transcode/\#(session)/\#(playlist)","sessionId":"\#(session)","container":"hls","videoMode":"copy","info":{\#(info.joined(separator: ","))}\#(provider.map { #","provider":"# + $0 } ?? "")}"#)
     }
 
     private static func route(_ request: LocalHTTPServer.Request, counter: Locked<Int>,

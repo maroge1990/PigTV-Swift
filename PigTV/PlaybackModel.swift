@@ -38,6 +38,15 @@ final class PlaybackModel: ObservableObject, Identifiable {
     var serverIdentity: String? { client.info?.identity }
     private var hasPlayed = false
     private var recoveryUsed = false
+    // Multi-provider failover: a recovery is only good for one re-resolve, but
+    // after `recoveryResetInterval` of continuous good playback following it
+    // the allowance is renewed (the backup provider may fail later too).
+    // Evaluated lazily when a failure arrives; `clock` is injectable for tests.
+    var clock: () -> Date = Date.init
+    var recoveryResetInterval: TimeInterval = 120
+    private var goodPlaySince: Date?
+    // C-J: the provider serving the current play (nil on an older server).
+    private(set) var provider: ResolveProvider?
     // Build 27 fallbacks: what the current item is playing, and whether its
     // session was resolved with `audioEncode`.
     private var currentURL: URL?
@@ -335,6 +344,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                         capabilities: PlaybackCapabilities.current(), force: force,
                         audioEncode: audioEncode ? true : nil))
                 sessionID = decision.sessionId
+                provider = decision.provider
                 guard !ended else { return }
                 let url = try client.playbackURL(decision.url)
                 var context = PlaybackEvent(event: "play-start")
@@ -430,6 +440,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation, !self.ended else { return }
                 self.stalls += 1
+                self.goodPlaySince = nil
             }
         }
         playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] player, _ in
@@ -458,6 +469,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
         guard !ended, !handlingFailure else { return }
         hasPlayed = true
         reconnecting = false
+        if recoveryUsed, goodPlaySince == nil { goodPlaySince = clock() }
         if !firstPlayReported, var event = eventContext {
             firstPlayReported = true
             event.totalMs = Date().timeIntervalSince(resolveBegan) * 1000
@@ -468,6 +480,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
     func playbackFailed(detail: String, codeName: String? = nil, code: Int? = nil, errorCodes: [PlayerErrorCode] = []) {
         guard !ended, !handlingFailure else { return }
         handlingFailure = true
+        // Two minutes of unbroken playback since the last recovery renews the
+        // allowance; a failure sooner than that still ends in the error.
+        if recoveryUsed, let since = goodPlaySince, clock().timeIntervalSince(since) >= recoveryResetInterval {
+            recoveryUsed = false
+        }
+        goodPlaySince = nil
         if let context = eventContext {
             var event = PlaybackEvent(event: "media-error")
             event.strategy = context.strategy
@@ -559,6 +577,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     func retry() {
         guard canRetry, resolveTask == nil, !ended else { return }
         recoveryUsed = false
+        goodPlaySince = nil
         hasPlayed = false
         error = nil
         clearItem()

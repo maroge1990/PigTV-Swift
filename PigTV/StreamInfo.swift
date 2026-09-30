@@ -21,6 +21,8 @@ nonisolated struct StreamStats: Equatable, Sendable {
     var strategy: String?
     var videoMode: String?
     var server: String?
+    /// C-J: the provider serving this play (nil on an older server).
+    var provider: ResolveProvider?
 
     /// The overlay line's parts, in order; missing values are left out.
     var parts: [String] {
@@ -45,6 +47,14 @@ nonisolated struct StreamStats: Equatable, Sendable {
         if let droppedFrames { parts.append("\(droppedFrames) dropped") }
         parts.append(stalls == 1 ? "1 stall" : "\(stalls) stalls")
         if let route = StreamInfoFormat.route(strategy: strategy, videoMode: videoMode) { parts.append(route) }
+        if let provider {
+            // The primary with no failover is the ordinary case: match the
+            // line's density and show the name only when it is not.
+            if provider.isBackup || provider.failover {
+                parts.append("Provider: \(provider.label)")
+                if provider.failover { parts.append("switched from primary") }
+            }
+        }
         if let server, !server.isEmpty { parts.append("Server \(server)") }
         return parts
     }
@@ -128,6 +138,7 @@ extension PlaybackModel {
         stats.strategy = routeStrategy
         stats.videoMode = routeVideoMode
         stats.server = serverIdentity
+        stats.provider = provider
         guard let item = player.currentItem else { return stats }
         let size = item.presentationSize
         if size.width > 0, size.height > 0 { stats.width = Int(size.width); stats.height = Int(size.height) }

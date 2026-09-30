@@ -18,7 +18,17 @@ struct ContentView: View {
             // the UIKit side only, leaving system-dark backgrounds under
             // light-mode text; setting the window style directly survives that.
             .onChange(of: appearance, initial: true) { syncWindowStyle() }
+            .overlay(alignment: .top) {
+                ProviderReminderBanner(reminders: model.providerReminders)
+            }
+            // C-K: launch (once signed in), foreground, and after playback.
+            .task(id: model.loggedIn) { await model.checkProviderReminders() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await model.checkProviderReminders() } }
+            }
             .onChange(of: model.playerPresented) { _, presented in
+                if presented { model.providerReminders.dismiss() }
+                else { Task { await model.checkProviderReminders() } }
                 guard !presented else { return }
                 syncWindowStyle()
                 // Presentation teardown finishes after this change; apply again.
@@ -78,6 +88,51 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $model.playerPresented) {
             PlayerHost(app: model).tint(Color("AccentColor"))
         }
+    }
+}
+
+/// C-K: a short, non-blocking licence reminder over whatever is showing. An
+/// overlay, not a cover, so it never joins the focus chain of a presentation;
+/// on tvOS it cannot take focus at all (it goes away by itself after 15 s).
+struct ProviderReminderBanner: View {
+    @ObservedObject var reminders: ProviderReminderModel
+
+    var body: some View {
+        if let message = reminders.message {
+            HStack(alignment: .center, spacing: 20) {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.system(size: bannerIcon)).accessibilityHidden(true)
+                Text(message).font(.system(size: bannerText, weight: .medium))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                #if !os(tvOS)
+                Button("OK") { reminders.dismiss() }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("providerReminder.dismiss")
+                #endif
+            }
+            .padding(.horizontal, 28).padding(.vertical, 18)
+            .frame(maxWidth: 1100)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.top, bannerTop).padding(.horizontal, 16)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("providerReminder")
+            #if os(tvOS)
+            .focusable(false)
+            #endif
+        }
+    }
+
+    private var bannerIcon: CGFloat { tv ? 34 : 20 }
+    private var bannerText: CGFloat { tv ? 28 : 15 }
+    private var bannerTop: CGFloat { tv ? 40 : 8 }
+    private var tv: Bool {
+        #if os(tvOS)
+        true
+        #else
+        false
+        #endif
     }
 }
 

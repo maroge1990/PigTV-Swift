@@ -533,6 +533,45 @@ enum ContractChecks {
         try expect(GuideNavigation.revealMovingLeft(future, from: Date(timeIntervalSince1970: 9000), now: now) == future.start, "Left reveals start even when programme tail remains visible")
         try expect(GuideNavigation.revealMovingLeft(future, from: now, now: now) == now, "Visible future show does not unnecessarily move viewport")
 
+        // C-J: the resolve answer's optional `provider` (flag `providers`).
+        let withProvider = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"transcode","url":"/api/transcode/s/master.m3u8","sessionId":"s","provider":{"id":2,"name":"Trex","role":"backup","via":"backup","failover":true}}"#.utf8))
+        try expect(withProvider.provider == ResolveProvider(id: 2, name: "Trex", role: "backup", via: "backup", failover: true), "C-J: provider decodes")
+        try expect(withProvider.provider?.label == "Trex (backup)", "C-J: a backup is labelled as one")
+        let primaryOnly = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"direct","url":"/api/proxy/stream?x=1","provider":{"id":1,"name":"Strong8K","role":"primary","via":"primary","failover":false}}"#.utf8))
+        try expect(primaryOnly.provider?.label == "Strong8K" && primaryOnly.provider?.failover == false, "C-J: the primary is the bare name")
+        let oldServer = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"direct","url":"/api/proxy/stream?x=1"}"#.utf8))
+        try expect(oldServer.provider == nil, "C-J: no provider on an older server")
+        let oddProvider = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"direct","url":"/api/proxy/stream?x=1","provider":{"id":"x","role":5}}"#.utf8))
+        try expect(oddProvider.provider == nil, "C-J: a malformed provider never fails the resolve")
+        let flags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"providers":true,"providerReminders":true}}"#.utf8))
+        try expect(flags.features.providers == true && flags.features.providerReminders == true, "C-J/C-K flags decode")
+        try expect(old.features.providers == nil && old.features.providerReminders == nil, "C-J/C-K flags are absent on an older server")
+
+        // C-K: reminders (flag `providerReminders`).
+        let reminders = try ProviderReminder.list(from: Data(#"[{"id":2,"name":"Trex","expiresAt":1774829300000,"daysLeft":3},{"id":3,"name":"","expiresAt":1},{"name":"Dream4K","expiresAt":1774000000000,"daysLeft":-4},{"id":9}]"#.utf8))
+        try expect(reminders.map(\.name) == ["Trex", "Dream4K"], "C-K: reminders decode, malformed items are dropped")
+        let none = try ProviderReminder.list(from: Data("[]".utf8))
+        try expect(none.isEmpty, "C-K: an empty array means nothing is due")
+        let utc = TimeZone(identifier: "UTC")!, au = Locale(identifier: "en_AU")
+        let trex = ProviderReminder(name: "Trex", expiresAt: 1_774_828_800_000) // Mon 30 Mar 2026 00:00 UTC
+        try expect(ProviderReminderText.day(trex.expiry, timeZone: utc, locale: au) == "Mon 30 Mar", "C-K: the date reads weekday day month")
+        let before = Date(timeIntervalSince1970: 1_774_000_000)
+        try expect(ProviderReminderText.message(for: [trex], now: before, timeZone: utc, locale: au) == "Trex expires Mon 30 Mar. Renew it, then update the dates in PigTV's web settings.", "C-K: the popup wording")
+        let gone = ProviderReminder(name: "Dream4K", expiresAt: 1_774_000_000_000 - 86_400_000 * 3)
+        try expect(ProviderReminderText.message(for: [gone], now: before, timeZone: utc, locale: au)?.hasPrefix("Dream4K expired on ") == true, "C-K: past expiry says expired on")
+        let both = ProviderReminderText.message(for: [trex, gone], now: before, timeZone: utc, locale: au) ?? ""
+        try expect(both.hasPrefix("Dream4K expired on ") && both.contains(" and Trex expires Mon 30 Mar. Renew them,"), "C-K: several providers are listed together")
+        try expect(ProviderReminderText.message(for: [], timeZone: utc) == nil, "C-K: nothing due, no text")
+        let reminderDefaults = UserDefaults(suiteName: "pigtv.contract.reminders")!
+        reminderDefaults.removePersistentDomain(forName: "pigtv.contract.reminders")
+        let schedule = ProviderReminderSchedule(defaults: reminderDefaults)
+        let noon = Date(timeIntervalSince1970: 1_774_000_000)
+        try expect(!schedule.shownToday(now: noon, timeZone: utc), "C-K: nothing shown yet")
+        schedule.markShown(now: noon, timeZone: utc)
+        try expect(schedule.shownToday(now: noon.addingTimeInterval(3600), timeZone: utc), "C-K: once shown, not again the same local day")
+        try expect(!schedule.shownToday(now: noon.addingTimeInterval(86_400), timeZone: utc), "C-K: back the next local day")
+        reminderDefaults.removePersistentDomain(forName: "pigtv.contract.reminders")
+
         return count
     }
 }

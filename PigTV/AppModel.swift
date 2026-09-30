@@ -17,6 +17,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var categories: [Category] = []
     @Published var playback: PlaybackModel?
     @Published var playerPresented = false
+    /// C-K: the licence reminder banner (shown by ContentView).
+    let providerReminders = ProviderReminderModel()
     /// Build 31: a tab LibraryView should switch to ("guide" from the iOS
     /// player's TV Guide button, "home" from the Siri "Open PigTV" shortcut);
     /// LibraryView applies it and clears it.
@@ -393,6 +395,12 @@ final class AppModel: ObservableObject {
             playerPresented = false
             if let message { error = message }
         }
+    }
+
+    /// C-K: launch, foreground and the end of playback. Never during playback.
+    func checkProviderReminders() async {
+        guard loggedIn else { return }
+        await providerReminders.check(client: client, playing: { [weak self] in self?.playerPresented ?? true })
     }
 
     func background() async {

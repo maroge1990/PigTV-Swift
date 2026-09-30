@@ -39,6 +39,10 @@ struct ServerInfo: Decodable {
         // Server 0156: `GET /api/recordings/scheduled?include=recent` also lists
         // missed/failed schedules from the last 7 days, each with `error`.
         let scheduleHistory: Bool?
+        // C-J / C-K (multi-provider failover): `providers` = resolve carries a
+        // `provider` object; `providerReminders` = `GET providers/reminders`.
+        var providers: Bool? = nil
+        var providerReminders: Bool? = nil
     }
 
     func validate() throws {
@@ -143,11 +147,14 @@ struct PlaybackDecision: Decodable {
     /// frame rate and HDR range, used for the TV's display mode. Optional and
     /// decoded tolerantly, so an odd or missing `info` never fails a resolve.
     var info: ResolveStreamInfo? = nil
+    /// C-J: which provider serves this play. Absent on an older server.
+    var provider: ResolveProvider? = nil
 
-    enum CodingKeys: String, CodingKey { case strategy, url, container, sessionId, videoMode, info }
+    enum CodingKeys: String, CodingKey { case strategy, url, container, sessionId, videoMode, info, provider }
 
     init(strategy: String, url: String, container: String? = nil, sessionId: String? = nil,
-         videoMode: String? = nil, info: ResolveStreamInfo? = nil) {
+         videoMode: String? = nil, info: ResolveStreamInfo? = nil, provider: ResolveProvider? = nil) {
+        self.provider = provider
         self.strategy = strategy
         self.url = url
         self.container = container
@@ -164,6 +171,80 @@ struct PlaybackDecision: Decodable {
         sessionId = try values.decodeIfPresent(String.self, forKey: .sessionId)
         videoMode = try values.decodeIfPresent(String.self, forKey: .videoMode)
         info = (try? values.decodeIfPresent(ResolveStreamInfo.self, forKey: .info)) ?? nil
+        provider = (try? values.decodeIfPresent(ResolveProvider.self, forKey: .provider)) ?? nil
+    }
+}
+
+/// C-J: the resolve answer's `provider`. Decoded tolerantly (a malformed
+/// object is simply absent); only a name is required to be worth showing.
+nonisolated struct ResolveProvider: Decodable, Equatable, Sendable {
+    var id: Int?
+    var name: String
+    /// "primary" or "backup".
+    var role: String?
+    /// "primary", "sibling" or "backup".
+    var via: String?
+    /// True when this play was moved off the primary provider.
+    var failover: Bool
+
+    init(id: Int? = nil, name: String, role: String? = nil, via: String? = nil, failover: Bool = false) {
+        self.id = id; self.name = name; self.role = role; self.via = via; self.failover = failover
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, role, via, failover }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let name = ((try? values.decodeIfPresent(String.self, forKey: .name)) ?? nil)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty else { throw PigTVError.decoding }
+        self.name = String(name.prefix(60))
+        id = (try? values.decodeIfPresent(Int.self, forKey: .id)) ?? nil
+        role = (try? values.decodeIfPresent(String.self, forKey: .role)) ?? nil
+        via = (try? values.decodeIfPresent(String.self, forKey: .via)) ?? nil
+        failover = ((try? values.decodeIfPresent(Bool.self, forKey: .failover)) ?? nil) ?? false
+    }
+
+    var isBackup: Bool { role == "backup" }
+
+    /// "Trex (backup)" for a backup, the bare name for the primary.
+    var label: String { isBackup ? "\(name) (backup)" : name }
+}
+
+/// C-K: one provider whose licence is due (or past). `expiresAt` is epoch ms.
+nonisolated struct ProviderReminder: Decodable, Equatable, Sendable {
+    var id: Int?
+    var name: String
+    var expiresAt: Double
+    var daysLeft: Double?
+
+    var expiry: Date { Date(timeIntervalSince1970: expiresAt / 1000) }
+
+    /// Decodes an array, dropping items that are malformed instead of failing
+    /// the whole answer.
+    static func list(from data: Data) throws -> [ProviderReminder] {
+        struct Lossy: Decodable {
+            let item: ProviderReminder?
+            init(from decoder: Decoder) throws { item = try? ProviderReminder(from: decoder) }
+        }
+        return try JSONDecoder().decode([Lossy].self, from: data).compactMap(\.item)
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, expiresAt, daysLeft }
+
+    init(id: Int? = nil, name: String, expiresAt: Double, daysLeft: Double? = nil) {
+        self.id = id; self.name = name; self.expiresAt = expiresAt; self.daysLeft = daysLeft
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let name = try values.decode(String.self, forKey: .name).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw PigTVError.decoding }
+        self.name = String(name.prefix(60))
+        expiresAt = try values.decode(Double.self, forKey: .expiresAt)
+        guard expiresAt.isFinite else { throw PigTVError.decoding }
+        id = (try? values.decodeIfPresent(Int.self, forKey: .id)) ?? nil
+        daysLeft = (try? values.decodeIfPresent(Double.self, forKey: .daysLeft)) ?? nil
     }
 }
 
