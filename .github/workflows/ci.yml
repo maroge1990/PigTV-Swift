@@ -16,7 +16,7 @@ jobs:
   build-and-test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Select newest available Xcode
         run: |
@@ -70,10 +70,17 @@ jobs:
           echo "Using Apple TV simulator $DEVICE_ID"
           echo "device_id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
 
+      # Signed ad hoc ("Sign to Run Locally"), not unsigned: the simulator honours
+      # the entitlements in an ad-hoc signature, so the app and the Top Shelf
+      # extension get their App Group. CODE_SIGNING_ALLOWED=NO dropped the
+      # entitlements, and the Top Shelf tests could never pass here (build 31-35).
       - name: Run tvOS tests
         run: |
           xcodebuild test \
             -project PigTV.xcodeproj \
             -scheme PigTV \
             -destination "id=${{ steps.tvos_sim.outputs.device_id }}" \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
+            PROVISIONING_PROFILE_SPECIFIER=
