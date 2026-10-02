@@ -20,8 +20,8 @@ enum TabBarStyle {
         let item = UITabBarItemAppearance(style: .stacked)
         item.selected.titleTextAttributes = [.foregroundColor: pink]
         item.selected.iconColor = pink
-        item.focused.titleTextAttributes = [.foregroundColor: UIColor.white]
-        item.focused.iconColor = .white
+        item.focused.titleTextAttributes = [.foregroundColor: UIColor(named: "PigOnAccent")!]
+        item.focused.iconColor = UIColor(named: "PigOnAccent")!
         let appearance = UITabBarAppearance()
         appearance.stackedLayoutAppearance = item
         appearance.inlineLayoutAppearance = item
@@ -29,10 +29,10 @@ enum TabBarStyle {
         appearance.selectionIndicatorTintColor = focusInBar ? pink : UIColor { traits in
             pink.withAlphaComponent(traits.userInterfaceStyle == .dark ? 0.22 : 0.12)
         }
-        // Light mode: a near-white bar instead of the system's mid grey, so
-        // pink (and black) text on it keeps its contrast.
+        // Separate the outer navigation capsule from the page in both appearances.
+        // Keep the native material, selected pill and focus behaviour intact.
         appearance.backgroundColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark ? .clear : UIColor.white.withAlphaComponent(0.85)
+            UIColor(named: "PigRaised")!.resolvedColor(with: traits)
         }
         return appearance
     }

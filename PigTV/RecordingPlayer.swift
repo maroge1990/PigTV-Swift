@@ -127,7 +127,7 @@ struct RecordingPlayerView: View {
         switch item {
         case .skipBreak: return "forward.end.fill"
         case .playPause: return model.paused ? "play.fill" : "pause.fill"
-        case .autoSkip: return model.autoSkip ? "checkmark.circle.fill" : "circle"
+        case .autoSkip: return model.autoSkip ? "circle.inset.filled" : "circle"
         }
     }
 

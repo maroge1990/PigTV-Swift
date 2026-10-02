@@ -1,21 +1,12 @@
 import SwiftUI
 
-// PigTV button family. One pink language, three purposeful roles:
-//  • surface / secondary  — subtle at rest, bright pink outline + translucent
-//    pink fill on focus (the reference look). Rounded-rect for list rows
-//    (`PigSurfaceButtonStyle`), capsule for standalone buttons (`TVActionStyle`).
-//  • primary CTA          — solid pink, white label, brighter ring on focus
-//    (`PigPrimaryButtonStyle` / `pigPrimaryButton()`).
-//  • selection            — persistent pink tint for a current choice
-//    (`GuideFilterStyle` in GuideView).
-// Every role uses the same accent (pink, identical in light and dark) with
-// adaptive neutral surfaces/text, so dark and light get corresponding looks.
-
+// Approved Pig family palette. Native control geometry and focus traversal are retained.
 extension Color {
     /// PigTV pink, from the asset catalogue. `Color.accentColor` is not used:
     /// on tvOS it resolved to white outside a NavigationStack (the
     /// unreachable and sign-in screens showed blank white primary buttons).
     static let pigAccent = Color("AccentColor")
+    static let pigMediaAccent = Color(red: 239/255, green: 122/255, blue: 174/255)
 }
 
 // The shared focus treatment: bright pink outline + translucent pink fill.
@@ -59,7 +50,7 @@ struct PigSurfaceButtonStyle: ButtonStyle {
     }
 }
 
-// Primary call to action: solid pink, white label, white ring + lift on focus.
+// Primary action: appearance-specific label contrast, separate focus ring and existing lift.
 struct PigPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
     func makeBody(configuration: Configuration) -> some View {
@@ -73,9 +64,9 @@ struct PigPrimaryButtonStyle: ButtonStyle {
             .font(.headline)
             .padding(.horizontal, 26).padding(.vertical, 14)
             #endif
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.pigOnAccent)
             .background(Color.pigAccent, in: Capsule())
-            .overlay { Capsule().strokeBorder(focused ? Color.white.opacity(0.9) : .clear, lineWidth: 3) }
+            .overlay { Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-5).allowsHitTesting(false) }
             .scaleEffect(focused ? 1.04 : 1)
             .animation(.easeOut(duration: 0.12), value: focused)
     }
@@ -87,37 +78,86 @@ extension View {
         #if os(tvOS)
         self.buttonStyle(PigPrimaryButtonStyle())
         #else
-        self.buttonStyle(.borderedProminent)
+        self.buttonStyle(.borderedProminent).foregroundStyle(Color.pigOnAccent)
         #endif
     }
 }
 
-// Selection chips (guide categories, Jump to… days and hours, recording
-// padding). Category chips share the app's pink language: focus is the bright pink
-// outline + translucent pink fill; the current category keeps a quieter pink
-// tint so it stays legible when focus moves elsewhere. Same treatment in both
-// appearances (accent is identical; the neutral rest state adapts).
+// Selection persists as an inset bar and tint; focus is an independent outer ring.
 struct GuideFilterStyle: ButtonStyle {
     var selected = false
     @Environment(\.isFocused) private var focused
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(GuideTypography.body)
-            .foregroundStyle(selected && !focused ? Color.pigAccent : Color.primary)
+            .foregroundStyle(selected ? Color.pigAccentText : Color("PigText"))
             .padding(.horizontal, 18).padding(.vertical, 10)
-            .background(focused ? Color.pigAccent.opacity(0.22)
-                        : selected ? Color.pigAccent.opacity(0.14) : Color.primary.opacity(0.07), in: Capsule())
-            .overlay {
-                Capsule().strokeBorder(focused ? Color.pigAccent
-                    : selected ? Color.pigAccent.opacity(0.55) : Color.primary.opacity(0.12),
-                    lineWidth: focused ? 3 : 1)
+            .background(selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
+            .overlay(alignment: .bottom) {
+                if selected {
+                    Capsule().fill(Color.pigAccent).frame(width: 26, height: 3)
+                        .padding(.bottom, 4).allowsHitTesting(false).accessibilityHidden(true)
+                }
             }
+            .overlay {
+                Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-4)
+                    .allowsHitTesting(false)
+            }
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
 struct PigPageBackground: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        (scheme == .dark ? Color.black : Color.white).ignoresSafeArea()
+        Color.pigCanvas.ignoresSafeArea()
+    }
+}
+
+
+/// The measured alpha centre, inside the same footprint as the former image.
+struct PigBrandMark: View {
+    var width: CGFloat
+    var height: CGFloat
+    var body: some View {
+        let drawnWidth = min(width, height * 1000 / 797)
+        let drawnHeight = drawnWidth * 797 / 1000
+        Image("PigLogo").resizable().scaledToFit().frame(width: width, height: height)
+            .offset(x: (0.5 - BrandLayout.pigCentroidX) * drawnWidth,
+                    y: (0.5 - BrandLayout.pigCentroidY) * drawnHeight)
+            .accessibilityHidden(true)
+    }
+}
+
+
+struct PigWordmark: View {
+    #if os(tvOS)
+    private let height: CGFloat = 52
+    #else
+    @ScaledMetric(relativeTo: .title) private var height: CGFloat = 28
+    #endif
+    var body: some View {
+        Image("BrandWordmark").resizable().scaledToFit()
+            .frame(width: height * 1552 / 528, height: height)
+            .accessibilityLabel("PigTV")
+    }
+}
+
+/// A quiet, non-interactive halo centred behind the existing sign-in pig.
+struct PigIdentityBackdrop: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Color.pigSurface
+                if !reduceTransparency {
+                    RadialGradient(colors: [Color.pigMediaAccent.opacity(0.24), .clear],
+                                   center: UnitPoint(x: (DetailMetrics.heroPadding + 75) / max(1, geometry.size.width),
+                                                     y: (DetailMetrics.heroPadding + 60) / max(1, geometry.size.height)),
+                                   startRadius: 0, endRadius: max(geometry.size.width, geometry.size.height) * 0.65)
+                }
+            }
+        }
+        .allowsHitTesting(false).accessibilityHidden(true)
     }
 }

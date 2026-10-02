@@ -1,33 +1,11 @@
-// Tools/make-brand-assets.swift: generates every PigTV brand bitmap ("Spotlight" direction).
-//
-//   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-//     swiftc -O Tools/make-brand-assets.swift -o /tmp/make-brand-assets && /tmp/make-brand-assets
-//   (run from the repository root; `swift Tools/make-brand-assets.swift` also works, more slowly)
-//
-// Reads  PigTV/Assets.xcassets/PigLogo.imageset/PigLogo.png (used exactly as it is: it is only ever scaled
-//        uniformly, never recoloured, cropped, or reshaped; the tinted icon is Apple's required greyscale form).
-//        Tools/brand/Fredoka-SemiBold.ttf when present (Fredoka SemiBold 600, SIL OFL); otherwise the wordmark
-//        falls back to the system rounded semibold and the script says so.
-// Writes the tvOS icon layers, App Store layers, Top Shelf images, the iOS icon (light/dark/tinted), the launch
-//        and splash images (Brand*.imageset), PigTV/BrandLayout.swift (the numbers the splash view uses), and the
-//        evidence renders in docs/evidence/branding/.
-//
-// Design (all colours sRGB, blended in gamma space like CSS):
-//   back   deep plum radial gradient, centred on the pig's optical centre: #3A1834 -> #1A1117 at 55% -> #0E090D
-//   middle soft pink halo #FF2E94: 55% alpha at the centre, 18% at 22%, 0 at 42% of the glow radius (smooth spline
-//          with zero slope at the end, so it fades out with no visible edge; it is fully transparent well inside
-//          every canvas so the tvOS focus parallax can never expose an edge)
-//   front  the pig, with a soft shadow (0, 8, 10 px blur, 35% black at 400x240, scaled with the canvas)
-//   wordmark (Top Shelf and splash only): "Pig" white, "TV" #FF6FB2, Fredoka SemiBold
-// Gradients are dithered (triangular noise, one value for R, G, B so it compresses well) so nothing bands.
-//
-// OPTICAL CENTRE. PigLogo.png is 1000x797. Its alpha-weighted centroid is measured by this script (below) and is
-//   x = 0.4997 (of the width), y = 0.4053 (of the height): the ears make the top of the bitmap light and the face
-//   mass sits low, but the bitmap also carries ~80 empty rows under the chin, so the mass is ABOVE the bitmap's
-//   middle (0.5): centring by bitmap bounds put the pig too high. Everywhere below, the pig is placed so this
-//   centroid, not the bitmap centre, lands on the optical centre of the canvas, and the glow and plum are
-//   centred on the same point. Top Shelf and splash: the pig+wordmark group is centred (horizontally by extents,
-//   vertically by the ink-mass centroid of the pig and the wordmark, see `stackedGroupOffset`).
+// Pig family 1.0 asset generator. Soft halo only; rays are not an approved treatment.
+// Run from this repository: swiftc -O Tools/make-brand-assets.swift -o /tmp/make-brand-assets
+// then /tmp/make-brand-assets. Requires macOS ArialRoundedMTBold; no silent font fallback.
+// Reads the cleaned transparent PigLogo master. Measures its alpha-weighted optical centre.
+// Writes luminosity-aware launch/splash/wordmark assets, light/dark/tinted iOS icons,
+// tvOS parallax layers, Top Shelf art and the shared generated BrandLayout geometry.
+// Core colours: paper #FBF8FA, plum #15111A, rose #EF7AAE. Halo is a smooth radial alpha field.
+// Wordmarks are rasterised once so consumers need not install or redistribute the authoring font.
 
 import Foundation
 import ImageIO
@@ -45,14 +23,14 @@ let brandAssets = "\(assets)/App Icon & Top Shelf Image.brandassets"
 // docs/evidence/branding); PIGTV_BRAND_EVIDENCE=<dir> writes them elsewhere.
 let evidenceDir = ProcessInfo.processInfo.environment["PIGTV_BRAND_EVIDENCE"] ?? NSTemporaryDirectory() + "pigtv-brand-evidence"
 try? FileManager.default.createDirectory(atPath: evidenceDir, withIntermediateDirectories: true)
-let fontPath = "\(repo)/Tools/brand/Fredoka-SemiBold.ttf"
+
 
 struct C { var r: Double, g: Double, b: Double
     init(_ hex: UInt32) { r = Double((hex >> 16) & 255) / 255; g = Double((hex >> 8) & 255) / 255; b = Double(hex & 255) / 255 } }
-let plumStops: [(Double, C)] = [(0, C(0x3A1834)), (0.55, C(0x1A1117)), (1, C(0x0E090D))]
-let pink = C(0xFF2E94)
-let wordPink = C(0xFF6FB2)
-let glowStops: [(Double, Double)] = [(0, 0.55), (0.22 / 0.42, 0.18), (1, 0)]   // (fraction of glow radius, alpha)
+let plumStops: [(Double, C)] = [(0, C(0x15111A)), (0.55, C(0x15111A)), (1, C(0x15111A))]
+let pink = C(0xEF7AAE)
+let wordPink = C(0xEF7AAE)
+let glowStops: [(Double, Double)] = [(0, 0.30), (0.22 / 0.42, 0.11), (1, 0)]   // (fraction of glow radius, alpha)
 let glowReachOfRadius = 0.42                                                    // glow radius = 0.42 of the plum radius by default
 
 // Pig sizes as a fraction of the canvas.
@@ -140,12 +118,12 @@ struct Scene {
 }
 
 /// The plum gradient, optionally with the pink halo blended in (a flat composite), dithered, opaque.
-func renderBack(_ s: Scene, withGlow: Bool) -> CGImage {
+func renderBack(_ s: Scene, withGlow: Bool, light: Bool = false) -> CGImage {
     var px = [UInt8](repeating: 255, count: s.w * s.h * 4)
     for y in 0..<s.h { for x in 0..<s.w {
         let dx = Double(x) + 0.5 - Double(s.centre.x), dy = Double(y) + 0.5 - Double(s.centre.y)
         let d = (dx * dx + dy * dy).squareRoot()
-        let b = plum(min(1, d / s.plumRadius))
+        let b = light ? C(0xFBF8FA) : plum(min(1, d / s.plumRadius))
         var r = b.r, g = b.g, bl = b.b
         if withGlow { let a = glowAlpha(d / s.glowRadius); r += (pink.r - r) * a; g += (pink.g - g) * a; bl += (pink.b - bl) * a }
         let n = tri(x, y), o = (y * s.w + x) * 4
@@ -229,28 +207,21 @@ func drawPig(_ ctx: CGContext, width: Double, centroidAt: CGPoint, shadow: (dy: 
 
 struct Wordmark { var image: CGImage; var capHeight: Double; var baselineFromBottom: Double; var mass: Double
     var width: Double { Double(image.width) }; var height: Double { Double(image.height) } }
-var usedFredoka = false
-func makeWordmark() -> Wordmark {
+func makeWordmark(light: Bool = false) -> Wordmark {
     let size: CGFloat = 560
-    var font: CTFont
-    if let data = try? Data(contentsOf: URL(fileURLWithPath: fontPath)),
-       let desc = CTFontManagerCreateFontDescriptorFromData(data as CFData) {
-        // A variable Fredoka has a weight axis; a static SemiBold ignores the variation.
-        let varied = CTFontDescriptorCreateCopyWithVariation(desc, NSNumber(value: 0x77676874) as CFNumber, 600)
-        font = CTFontCreateWithFontDescriptor(varied, size, nil)
-        usedFredoka = true
-    } else {
-        let base = NSFont.systemFont(ofSize: size, weight: .semibold)
-        let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
-        font = (NSFont(descriptor: rounded, size: size) ?? base) as CTFont
-        print("note: Tools/brand/Fredoka-SemiBold.ttf not found; the wordmark uses the system rounded semibold. Add the font and rerun.")
+    // Match the approved guide exactly; never silently fall back to another face.
+    guard let nativeFont = NSFont(name: "ArialRoundedMTBold", size: size) else {
+        fatalError("Arial Rounded MT Bold is required to reproduce the approved wordmark")
     }
+    let font = nativeFont as CTFont
+    let ink = light ? C(0x1C1620) : C(0xF5F1F4)
+    let accent = light ? C(0xD6336C) : wordPink
     let text = NSMutableAttributedString(string: "Pig", attributes: [
         NSAttributedString.Key(kCTFontAttributeName as String): font,
-        NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(red: 1, green: 1, blue: 1, alpha: 1)])
+        NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(red: ink.r, green: ink.g, blue: ink.b, alpha: 1)])
     text.append(NSAttributedString(string: "TV", attributes: [
         NSAttributedString.Key(kCTFontAttributeName as String): font,
-        NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(red: wordPink.r, green: wordPink.g, blue: wordPink.b, alpha: 1)]))
+        NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(red: accent.r, green: accent.g, blue: accent.b, alpha: 1)]))
     let line = CTLineCreateWithAttributedString(text)
     let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
     let w = Int(ceil(bounds.width)) + 2, h = Int(ceil(bounds.height)) + 2
@@ -402,25 +373,25 @@ for (name, w, h) in [("Top Shelf Image", 1920, 720), ("Top Shelf Image Wide", 23
 
 // MARK: - 4: iPhone / iPad icon
 
-func iosIcon(tinted: Bool) -> CGImage {
+func iosIcon(tinted: Bool, light: Bool = false) -> CGImage {
     let n = 1024
     let scene = Scene(w: n, h: n, centre: CGPoint(x: n / 2, y: n / 2), plumRadius: Double(n) * 2.0.squareRoot() / 2, glowRadius: iconGlowRadius * Double(n))
-    let base = tinted ? renderGlow(scene, grey: 0.30) : renderBack(scene, withGlow: true)
+    let base = tinted ? renderGlow(scene, grey: 0.30) : renderBack(scene, withGlow: false, light: light)
     return opaque(compose(n, n) { c in
         if tinted { c.setFillColor(CGColor(gray: 0, alpha: 1)); c.fill(CGRect(x: 0, y: 0, width: n, height: n)) }
         draw(base, in: c, CGRect(x: 0, y: 0, width: n, height: n))
-        drawPig(c, width: Double(n) * iconPigWidth, centroidAt: scene.centre, shadow: tinted ? nil : (8 * 2.56, 10 * 2.56, 0.35), grey: tinted)
+        drawPig(c, width: Double(n) * iconPigWidth, centroidAt: scene.centre, shadow: nil, grey: tinted)
     })
 }
-let iosLight = iosIcon(tinted: false), iosTinted = iosIcon(tinted: true)
+let iosLight = iosIcon(tinted: false, light: true), iosDark = iosIcon(tinted: false), iosTinted = iosIcon(tinted: true)
 writePNG(iosLight, "\(assets)/AppIcon.appiconset/icon-light.png")
-writePNG(iosLight, "\(assets)/AppIcon.appiconset/icon-dark.png")   // the design is dark already
+writePNG(iosDark, "\(assets)/AppIcon.appiconset/icon-dark.png")   // the design is dark already
 writePNG(iosTinted, "\(assets)/AppIcon.appiconset/icon-tinted.png")
-writePNG(iosLight, "\(evidenceDir)/ios-icon-light.png"); writePNG(iosLight, "\(evidenceDir)/ios-icon-dark.png"); writePNG(iosTinted, "\(evidenceDir)/ios-icon-tinted.png")
+writePNG(iosLight, "\(evidenceDir)/ios-icon-light.png"); writePNG(iosDark, "\(evidenceDir)/ios-icon-dark.png"); writePNG(iosTinted, "\(evidenceDir)/ios-icon-tinted.png")
 // the same three at home-screen size with the corner mask, side by side
 writePNG(opaque(compose(3 * 360 + 4 * 40, 440) { c in
     c.setFillColor(CGColor(gray: 0.12, alpha: 1)); c.fill(CGRect(x: 0, y: 0, width: 2000, height: 600))
-    for (i, img) in [iosLight, iosLight, iosTinted].enumerated() {
+    for (i, img) in [iosLight, iosDark, iosTinted].enumerated() {
         let r = CGRect(x: 40 + i * 400, y: 40, width: 360, height: 360)
         c.saveGState(); c.addPath(CGPath(roundedRect: r, cornerWidth: 80, cornerHeight: 80, transform: nil)); c.clip(); draw(img, in: c, r); c.restoreGState()
     }
@@ -432,9 +403,9 @@ writePNG(opaque(compose(3 * 360 + 4 * 40, 440) { c in
 func launchScene(side: Int) -> Scene {
     Scene(w: side, h: side, centre: CGPoint(x: Double(side) / 2, y: Double(side) / 2), plumRadius: Double(side) / 2, glowRadius: launchGlowRadius * Double(side))
 }
-func launchComposite(side: Int) -> CGImage {
+func launchComposite(side: Int, light: Bool = false) -> CGImage {
     let s = launchScene(side: side)
-    let back = renderBack(s, withGlow: true)
+    let back = renderBack(s, withGlow: true, light: light)
     return opaque(compose(side, side) { c in
         draw(back, in: c, CGRect(x: 0, y: 0, width: side, height: side))
         drawPig(c, width: Double(side) * launchPigWidth, centroidAt: s.centre)
@@ -461,10 +432,39 @@ writePNG(renderGlow(Scene(w: glowSide, h: glowSide, centre: CGPoint(x: glowSide 
 imageset("BrandWordmark", [("wordmark.png", nil, "1x")])
 writePNG(wordmark.image, "\(assets)/BrandWordmark.imageset/wordmark.png")
 
-// The colour under the launch image (the plum's edge colour), for UILaunchScreen's UIColorName.
-let edge = plumStops[2].1
-write(contentsJSON([]).replacingOccurrences(of: "\"images\" : [\n\n  ],", with: "\"colors\" : [\n    { \"idiom\" : \"universal\", \"color\" : { \"color-space\" : \"srgb\", \"components\" : { \"red\" : \"\(f(edge.r))\", \"green\" : \"\(f(edge.g))\", \"blue\" : \"\(f(edge.b))\", \"alpha\" : \"1.000\" } } }\n  ],"),
-      "\(assets)/LaunchEdge.colorset/Contents.json")
+// The launch canvas uses the same named dynamic colour as the page.
+let canvasData = try! Data(contentsOf: URL(fileURLWithPath: "\(assets)/PigCanvas.colorset/Contents.json"))
+try! canvasData.write(to: URL(fileURLWithPath: "\(assets)/LaunchEdge.colorset/Contents.json"))
+
+// Explicit luminosity variants keep launch and the first splash frame identical.
+func adaptiveImages(_ name: String, entries: [[String: Any]]) {
+    write(contentsJSON(entries), "\(assets)/\(name).imageset/Contents.json")
+}
+var launchEntries: [[String: Any]] = []
+for (stem, idiom, scale, side) in [("tv@2x", "tv", "2x", 2160), ("phone@2x", "universal", "2x", 1200), ("phone@3x", "universal", "3x", 1800)] {
+    for light in [true, false] {
+        let file = stem + (light ? "" : "-dark") + ".png"
+        writePNG(launchComposite(side: side, light: light), "\(assets)/LaunchBrand.imageset/\(file)")
+        var entry: [String: Any] = ["filename": file, "idiom": idiom, "scale": scale]
+        if !light { entry["appearances"] = [["appearance": "luminosity", "value": "dark"]] }
+        launchEntries.append(entry)
+    }
+}
+adaptiveImages("LaunchBrand", entries: launchEntries)
+for name in ["BrandPlate", "BrandWordmark"] {
+    var entries: [[String: Any]] = []
+    for light in [true, false] {
+        let file = light ? "light.png" : "dark.png"
+        let bitmap = name == "BrandPlate" ? renderBack(plateScene, withGlow: false, light: light) : makeWordmark(light: light).image
+        writePNG(bitmap, "\(assets)/\(name).imageset/\(file)")
+        var entry: [String: Any] = ["filename": file, "idiom": "universal", "scale": "1x"]
+        if !light { entry["appearances"] = [["appearance": "luminosity", "value": "dark"]] }
+        entries.append(entry)
+    }
+    adaptiveImages(name, entries: entries)
+    let oldFile = name == "BrandPlate" ? "plate.png" : "wordmark.png"
+    try? FileManager.default.removeItem(atPath: "\(assets)/\(name).imageset/\(oldFile)")
+}
 
 // The first splash frame equals the launch image; the final frame adds the wordmark and lifts the group.
 let stack = stackedGroupOffset(pigWidth: launchPigWidth)   // in units of S
@@ -513,5 +513,5 @@ nonisolated enum BrandLayout {
 }
 """ + "\n", "\(repo)/PigTV/BrandLayout.swift")
 
-print("pig centroid: x=\(f(pigCentroid.x)) y=\(f(pigCentroid.y)) of \(pigW)x\(pigH); wordmark \(Int(wordmark.width))x\(Int(wordmark.height)) fredoka=\(usedFredoka)")
+print("pig centroid: x=\(f(pigCentroid.x)) y=\(f(pigCentroid.y)) of \(pigW)x\(pigH); wordmark \(Int(wordmark.width))x\(Int(wordmark.height)) font=ArialRoundedMTBold")
 print("splash group lift (of S): \(f(stackUnit.shift * launchPigWidth))")

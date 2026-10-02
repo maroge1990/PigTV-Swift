@@ -239,7 +239,7 @@ struct HomeView: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Image("PigLogo").resizable().scaledToFit().frame(width: 58, height: 48)
+            PigBrandMark(width: 58, height: 48)
                 .accessibilityHidden(true)
             Text("Home").font(GuideTypography.title)
             Text(clock, format: .dateTime.weekday(.wide).day().month(.wide))
@@ -510,7 +510,7 @@ private struct HomeWelcome: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         VStack(spacing: 22) {
-            Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
+            PigBrandMark(width: 150, height: 120)
                 .accessibilityHidden(true)
             Text("Welcome to PigTV").font(HomeMetrics.welcomeTitle)
             Text("Channels you watch, your favourites and your recordings will gather here. Start with the TV Guide, and use Details on any channel to add it to your favourites.")
@@ -594,7 +594,7 @@ struct CardBadge: View {
         .font(HomeMetrics.cardDetail.weight(.bold))
         .padding(.horizontal, 12).padding(.vertical, 5)
         .background(colour, in: Capsule())
-        .foregroundStyle(.white)
+        .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.white)
     }
 }
 

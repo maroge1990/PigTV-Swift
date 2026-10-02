@@ -233,7 +233,7 @@ struct TouchPlayerChrome: View {
                 ScrollView(.horizontal) { actions }.scrollIndicators(.hidden)
             }
             if let notice {
-                Text(notice).font(.footnote.weight(.semibold)).foregroundStyle(Color.pigAccent)
+                Text(notice).font(.footnote.weight(.semibold)).foregroundStyle(Color.pigMediaAccent)
                     .transition(.opacity)
             }
         }
@@ -450,7 +450,7 @@ struct TouchScrubBar: View {
             let knob: CGFloat = 22
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.3)).frame(height: 6)
-                Capsule().fill(Color.pigAccent).frame(width: max(0, width * fraction), height: 6)
+                Capsule().fill(Color.pigMediaAccent).frame(width: max(0, width * fraction), height: 6)
                 Circle().fill(Color.white).frame(width: knob, height: knob)
                     .shadow(color: .black.opacity(0.4), radius: 3)
                     .offset(x: min(max(0, width * fraction - knob / 2), max(0, width - knob)))

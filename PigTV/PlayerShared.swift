@@ -142,7 +142,7 @@ struct PlayerChannelRow: View {
                         ChannelNumberText(number: number, font: .system(size: PlayerMetrics.rowNumber, weight: .medium), onDark: true)
                     }
                     if playing {
-                        Image(systemName: "play.fill").font(.system(size: PlayerMetrics.rowIcon)).foregroundStyle(Color.pigAccent)
+                        Image(systemName: "play.fill").font(.system(size: PlayerMetrics.rowIcon)).foregroundStyle(Color.pigMediaAccent)
                     }
                 }
                 Text(current?.title ?? "No programme information")
@@ -151,7 +151,7 @@ struct PlayerChannelRow: View {
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.white.opacity(0.25))
-                            Capsule().fill(Color.pigAccent)
+                            Capsule().fill(Color.pigMediaAccent)
                                 .frame(width: geometry.size.width * PlayerInfoText.progress(current, at: now))
                         }
                     }.frame(height: PlayerMetrics.rowBar)
@@ -165,7 +165,7 @@ struct PlayerChannelRow: View {
                     in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
         .overlay {
             RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius)
-                .strokeBorder(highlighted ? Color.pigAccent : .clear, lineWidth: 3)
+                .strokeBorder(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3)
         }
         #if os(tvOS)
         .scaleEffect(highlighted ? 1.03 : 1, anchor: .leading)

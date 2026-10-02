@@ -29,7 +29,7 @@ struct BrandSplashView: View {
         let pigH = pigW * 797 / 1000
         let lift = showWord ? BrandLayout.groupLift * s : 0
         ZStack {
-            Color(red: BrandLayout.edge.r, green: BrandLayout.edge.g, blue: BrandLayout.edge.b)
+            Color("LaunchEdge")
             Image("BrandPlate").resizable().frame(width: s, height: s)
             // Everything in front of the plum lifts a little when the wordmark arrives (the group's mass stays centred).
             ZStack {

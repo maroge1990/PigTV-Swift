@@ -152,7 +152,7 @@ struct UnreachableView: View {
             ZStack {
                 PigPageBackground()
                 VStack(spacing: 26) {
-                    Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
+                    PigBrandMark(width: 150, height: 120)
                         .accessibilityHidden(true)
                     Eyebrow(text: "Offline")
                     Text("Can't reach PigTV").font(DetailType.title)
@@ -224,9 +224,9 @@ struct OnboardingView: View {
     /// The pig, the name and what PigTV is, over the pink wash.
     private var brand: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Image("PigLogo").resizable().scaledToFit().frame(width: 150, height: 120)
+            PigBrandMark(width: 150, height: 120)
                 .accessibilityHidden(true)
-            Text("PigTV").font(DetailType.title).foregroundStyle(Color.pigAccent)
+            PigWordmark()
             Text("Your channels. Your server.").font(DetailType.pageTitle)
             Text("Connect to your PigTV server to watch live TV, browse the guide and play your recordings.")
                 .font(DetailType.meta).foregroundStyle(.secondary)
@@ -234,7 +234,7 @@ struct OnboardingView: View {
         .padding(DetailMetrics.heroPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            LogoWash(logo: nil, client: nil)
+            PigIdentityBackdrop()
                 .clipShape(RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous))
         }
     }

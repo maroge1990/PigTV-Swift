@@ -8,15 +8,15 @@ import CoreGraphics
 nonisolated enum BrandLayout {
     /// Alpha-weighted centroid of PigLogo.png as a fraction of its width and height (the optical centre of the pig).
     static let pigCentroidX: CGFloat = 0.49969
-    static let pigCentroidY: CGFloat = 0.40531
+    static let pigCentroidY: CGFloat = 0.40536
     /// Pig width, glow radius (alpha reaches 0 there), wordmark size and position: fractions of S.
     static let pigWidth: CGFloat = 0.42000
     static let glowRadius: CGFloat = 0.42000
     /// The wordmark's rect relative to the pig's centroid (fractions of S), and how far the whole group lifts once it appears.
-    static let wordmarkWidth: CGFloat = 0.19288
-    static let wordmarkHeight: CGFloat = 0.07018
-    static let wordmarkTop: CGFloat = 0.23090
-    static let groupLift: CGFloat = 0.01310
+    static let wordmarkWidth: CGFloat = 0.20388
+    static let wordmarkHeight: CGFloat = 0.06936
+    static let wordmarkTop: CGFloat = 0.23230
+    static let groupLift: CGFloat = 0.01365
     /// The plum's edge colour, which fills everything beyond the launch square.
-    static let edge: (r: Double, g: Double, b: Double) = (0.05490, 0.03529, 0.05098)
+    static let edge: (r: Double, g: Double, b: Double) = (0.08235, 0.06667, 0.10196)
 }

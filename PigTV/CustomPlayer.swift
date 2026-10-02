@@ -375,18 +375,18 @@ struct CustomPlayerView: View {
 
     private func trackSection(_ title: String, tracks: [PlaybackModel.MediaTrack]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased()).font(.system(size: 18, weight: .bold)).foregroundStyle(Color.pigAccent)
+            Text(title.uppercased()).font(.system(size: 18, weight: .bold)).foregroundStyle(Color.pigMediaAccent)
             ForEach(tracks) { track in
                 let highlighted = allTracks.indices.contains(trackCursor) && allTracks[trackCursor].id == track.id
                 HStack(spacing: 16) {
-                    Image(systemName: track.selected ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(track.selected ? Color.pigAccent : Color.white.opacity(0.5))
+                    Image(systemName: track.selected ? "circle.inset.filled" : "circle")
+                        .foregroundStyle(track.selected ? Color.pigMediaAccent : Color.white.opacity(0.5))
                     Text(track.name).font(.system(size: 24, weight: .medium))
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 18).padding(.vertical, 12)
-                .background(highlighted ? Color.pigAccent.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
-                .overlay { RoundedRectangle(cornerRadius: 12).stroke(highlighted ? Color.pigAccent : .clear, lineWidth: 3) }
+                .background(highlighted ? Color.pigMediaAccent.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).stroke(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3) }
             }
         }
     }
@@ -413,7 +413,7 @@ struct CustomPlayerView: View {
                         if dated {
                             Capsule().fill(Color.white.opacity(0.35)).frame(width: geometry.size.width * programmeProgress)
                         }
-                        Capsule().fill(scrubbing ? Color.pigAccent : Color.white).frame(width: geometry.size.width * progress)
+                        Capsule().fill(scrubbing ? Color.pigMediaAccent : Color.white).frame(width: geometry.size.width * progress)
                         if scrubbing {
                             Circle().fill(Color.white).frame(width: 22, height: 22)
                                 .offset(x: min(geometry.size.width - 22, max(0, geometry.size.width * progress - 11)))
@@ -428,7 +428,7 @@ struct CustomPlayerView: View {
                         Text(paused || playback.behindLive ? "BEHIND LIVE" : "LIVE").foregroundStyle(paused || playback.behindLive ? .white : .red)
                         if dated {
                             // The picture's own clock time, then now.
-                            Text(watching.formatted(date: .omitted, time: .shortened)).foregroundStyle(Color.pigAccent)
+                            Text(watching.formatted(date: .omitted, time: .shortened)).foregroundStyle(Color.pigMediaAccent)
                             Text("·")
                         }
                         Text(now.formatted(date: .omitted, time: .shortened))
@@ -584,7 +584,7 @@ struct PlayerScrubTrack: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.3))
-                Capsule().fill(Color.pigAccent).frame(width: geometry.size.width * fraction)
+                Capsule().fill(Color.pigMediaAccent).frame(width: geometry.size.width * fraction)
                 Circle().fill(Color.white).frame(width: 26, height: 26)
                     .offset(x: min(geometry.size.width - 26, max(0, geometry.size.width * fraction - 13)))
             }

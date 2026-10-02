@@ -315,7 +315,7 @@ struct GuideView: View {
     private func header(compact: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
         HStack(spacing: 14) {
-            Image("PigLogo").resizable().scaledToFit().frame(width: 58, height: 48)
+            PigBrandMark(width: 58, height: 48)
                 .accessibilityLabel("PigTV")
             Text("TV Guide").font(GuideTypography.title)
             Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
@@ -337,7 +337,7 @@ struct GuideView: View {
         // Phone layout: icon-only controls so nothing wraps.
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Image("PigLogo").resizable().scaledToFit().frame(width: 36, height: 30)
+                PigBrandMark(width: 36, height: 30)
                 Text("TV Guide").font(.headline)
                 Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
                     .font(.caption).foregroundStyle(.secondary)
@@ -643,7 +643,7 @@ struct AnyLabelStyle: LabelStyle {
 extension Color {
     // Guide surfaces: clearly separated from the page in both appearances.
     static func guideCell(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.09) : Color.black.opacity(0.11)
+        Color.pigRaised
     }
     // Neutral translucent logo backing: darker in light mode so the tile is
     // clearly separated from the page, lighter grey in dark mode and over video.
@@ -651,7 +651,7 @@ extension Color {
         scheme == .dark ? Color(white: 0.42).opacity(0.38) : Color(white: 0.22).opacity(0.42)
     }
     static func pageBackground(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.black : Color.white
+        Color.pigCanvas
     }
 }
 

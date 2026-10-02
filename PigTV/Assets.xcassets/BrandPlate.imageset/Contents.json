@@ -1,7 +1,18 @@
 {
   "images" : [
     {
-      "filename" : "plate.png",
+      "filename" : "light.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "dark.png",
       "idiom" : "universal",
       "scale" : "1x"
     }

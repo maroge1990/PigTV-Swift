@@ -106,7 +106,7 @@ struct SportView: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Image("PigLogo").resizable().scaledToFit().frame(width: 58, height: 48)
+            PigBrandMark(width: 58, height: 48)
                 .accessibilityHidden(true)
             Text("Sport").font(GuideTypography.title)
             Text(sport.clock, format: .dateTime.weekday(.wide).day().month(.wide))

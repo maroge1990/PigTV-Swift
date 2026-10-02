@@ -65,7 +65,7 @@ struct DetailPage<Content: View>: View {
                 VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
                     if let title {
                         HStack(spacing: 14) {
-                            Image("PigLogo").resizable().scaledToFit().frame(width: 58, height: 48)
+                            PigBrandMark(width: 58, height: 48)
                                 .accessibilityHidden(true)
                             Text(title).font(DetailType.pageTitle)
                         }
@@ -236,7 +236,7 @@ struct StatusBadge: View {
         .font(DetailType.eyebrow)
         .padding(.horizontal, 14).padding(.vertical, 6)
         .background(colour, in: Capsule())
-        .foregroundStyle(.white)
+        .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.white)
     }
 }
 
@@ -313,13 +313,12 @@ struct FavouriteButton: View {
 }
 
 extension View {
-    /// A text field on the guide's surface (tvOS draws an unfocused field as
-    /// bare text); the system field style on iOS.
+    /// Keep native field surfaces and focus rendering on both platforms.
     @ViewBuilder
     func pigField() -> some View {
         #if os(tvOS)
+        // Preserve the existing footprint without a second shape behind the native capsule.
         self.padding(.horizontal, 8).padding(.vertical, 4)
-            .modifier(FieldSurface())
         #else
         self.textFieldStyle(.roundedBorder)
         #endif
@@ -366,15 +365,6 @@ extension GuideProgramme {
     }
     /// "1 h 30 min", "45 min".
     var durationText: String { DetailText.duration(end.timeIntervalSince(start)) }
-}
-
-private struct FieldSurface: ViewModifier {
-    @Environment(\.colorScheme) private var scheme
-    func body(content: Content) -> some View {
-        // A well the field sits in; tvOS draws its own platter only in some
-        // states, so without it an unfocused field reads as bare text.
-        content.background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
 }
 
 nonisolated enum DetailText {

@@ -65,7 +65,7 @@ struct LibrarySettings: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 HStack(spacing: 14) {
-                    Image("PigLogo").resizable().scaledToFit().frame(width: 58, height: 48)
+                    PigBrandMark(width: 58, height: 48)
                         .accessibilityHidden(true)
                     Text("Settings").font(.system(size: 34, weight: .bold))
                 }
@@ -103,19 +103,30 @@ struct LibrarySettings: View {
                     Button { appearance = value } label: {
                         HStack {
                             Text(value.capitalized)
+                                .foregroundStyle(appearance == value ? Color.pigAccentText : Color("PigText"))
                             Spacer()
-                            if appearance == value {
-                                Image(systemName: "checkmark").accessibilityHidden(true)
-                            }
                         }
                         #if os(tvOS)
                         .font(.system(size: 24))
                         .padding(.horizontal, 24).padding(.vertical, 16)
+                        .background(appearance == value ? Color.pigAccent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
                         #endif
+                        .overlay(alignment: .leading) {
+                            if appearance == value {
+                                Capsule().fill(Color.pigAccent).frame(width: 3, height: 20)
+                                    #if os(tvOS)
+                                    .offset(x: 8)
+                                    #else
+                                    .offset(x: -6)
+                                    #endif
+                                    .allowsHitTesting(false).accessibilityHidden(true)
+                            }
+                        }
                         .contentShape(Rectangle())
                     }
                     #if os(iOS)
                     .buttonStyle(.borderless)
+                    .listRowBackground(appearance == value ? Color.pigAccent.opacity(0.14) : Color.pigSurface)
                     #else
                     .buttonStyle(PigSurfaceButtonStyle())
                     #endif
@@ -164,7 +175,7 @@ struct LibrarySettings: View {
         // The detail screens' section heading (build 28).
         PigSectionHeader(title: title)
         #else
-        Text(title).foregroundStyle(.secondary)
+        Text(title).foregroundStyle(Color("PigSecondary"))
         #endif
     }
 

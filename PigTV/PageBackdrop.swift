@@ -11,7 +11,7 @@ import UIKit
 // frame; see blueprint.md build 32) as a grey veil in both appearances.
 //
 // Every UIKit layer that can be seen during a switch is painted the page
-// colour, which is dynamic (black in dark, white in light) so it follows the
+// colour, which is dynamic (plum in dark, warm paper in light) so it follows the
 // window's appearance override as well as the system's:
 // - the window (PigTVApp's scene: `WindowBackdrop`);
 // - every view controller from a tab's page up to the window (tab root
@@ -24,8 +24,8 @@ import UIKit
 // - the tab bar's own background (TabBarStyle).
 
 extension UIColor {
-    /// PigPageBackground's colour: black in dark appearance, white in light.
-    static let pigPage = UIColor { traits in traits.userInterfaceStyle == .dark ? .black : .white }
+    /// PigPageBackground's colour: plum in dark appearance, warm paper in light.
+    static let pigPage = UIColor(named: "PigCanvas")!
 }
 
 @MainActor

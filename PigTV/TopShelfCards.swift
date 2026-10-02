@@ -182,7 +182,7 @@ struct TopShelfCardView: View {
         } else {
             // No logo: the pig, small and quiet, and the channel's name.
             VStack(spacing: 14) {
-                Image("PigLogo").resizable().scaledToFit().frame(width: 84, height: 68).opacity(0.85)
+                PigBrandMark(width: 84, height: 68).opacity(0.85)
                 if content.title != nil {
                     Text(content.channel).font(.system(size: 30, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
                         .lineLimit(1)
