@@ -57,6 +57,9 @@ The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restore
   `Fixtures/HLS` stream (6 s, H.264 + AAC, fMP4, a master playlist like the server's). Real starts, display criteria, -11868 for
   real, the `'fmt?'` fallback, switching, a recording in the recording player, a sport event's best channel. **New playback
   code gets a test here.**
+- `ChannelWarmerTests` (audit R11, predictive warming): the warm policy with a hand-moved clock (off by default, dwell, one in flight, cancel on
+  background/real play start, the player's previous-or-next choice, the 60 s refresh); `RealPlaybackTests` warm cases use the fake server's
+  `/api/playback/warm` (a focused live Sport event warms with resolve's body, the play adopts it and play-start carries `warm`).
 - `ProviderFailoverTests` (build 36, multi-provider client): C-J provider on resolve and in the stream info line, C-K reminders (once per
   local day, never during playback, hidden without the flag, auto-dismiss), the renewed recovery allowance with an injected clock.
 - Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a

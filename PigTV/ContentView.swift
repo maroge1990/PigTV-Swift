@@ -71,8 +71,10 @@ struct ContentView: View {
             initialRestoreFinished = true
         }
         .onChange(of: scenePhase) { _, phase in
+            model.warmer.setActive(phase == .active) // R11: any other phase cancels warming
             if phase == .background { Task { await model.background() } }
         }
+        .environment(\.channelWarmer, model.warmer)
         // A4.1: Top Shelf items open pigtv://play.
         .onOpenURL { model.open($0) }
         .alert("PigTV", isPresented: Binding(

@@ -188,7 +188,9 @@ struct SportShelf: View {
     var seeAll: (() -> Void)? = nil
     @ObservedObject private var logos: SportLogoRevision
     @Environment(\.sportPresenter) private var presenter
+    @Environment(\.channelWarmer) private var warmer
     @FocusState private var focused: String?
+    @State private var warmOwner = UUID().uuidString
 
     init(events: [SportEvent], browse: BrowseModel, clock: Date, seeAll: (() -> Void)? = nil) {
         self.events = events
@@ -225,6 +227,22 @@ struct SportShelf: View {
         // on its first event: live first, soonest first.
         .tvFocusSection()
         .defaultFocus($focused, events.first?.id, priority: .userInitiated)
+        // R11: a focused live event warms its best channel (after the dwell).
+        .onChange(of: focused) { _, id in
+            warmer?.setBrowseTarget(SportWarming.target(eventID: id, in: events, now: clock), owner: warmOwner)
+        }
+        .onDisappear { warmer?.setBrowseTarget(nil, owner: warmOwner) }
+    }
+}
+
+/// R11: which channel a focused Sport card should warm.
+enum SportWarming {
+    /// The best channel of the focused event, only for an event that is on
+    /// now (a replay, an upcoming event or no focus warms nothing).
+    nonisolated static func target(eventID: String?, in events: [SportEvent], now: Date) -> WarmTarget? {
+        guard let eventID, let event = events.first(where: { $0.id == eventID }),
+              !event.isReplay, event.isLive(at: now), let best = event.best else { return nil }
+        return WarmTarget(sourceId: best.sourceId, channelId: best.rawID, identityKey: best.identityKey)
     }
 }
 

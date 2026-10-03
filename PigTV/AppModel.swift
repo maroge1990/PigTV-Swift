@@ -13,7 +13,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var unreachable: String?
     @Published private(set) var pairing: PairStart?
     @Published private(set) var user: User?
-    @Published private(set) var serverInfo: ServerInfo?
+    @Published private(set) var serverInfo: ServerInfo? {
+        // R11: warming is on only while the server both supports and enables it.
+        didSet { warmer.setEnabled(serverInfo?.warmingActive == true) }
+    }
     @Published private(set) var categories: [Category] = []
     @Published var playback: PlaybackModel?
     @Published var playerPresented = false
@@ -43,6 +46,9 @@ final class AppModel: ObservableObject {
     // C-I: "Watch <channel> when it starts" on an upcoming sport event.
     @Published private(set) var pendingWatch: PendingWatch?
     private var pendingWatchTask: Task<Void, Never>?
+
+    /// R11: predictive channel warming (the policy lives in `ChannelWarmer`).
+    private(set) lazy var warmer = ChannelWarmer { [weak self] target in await self?.sendWarm(target) ?? false }
 
     private var authRetry: (server: String, until: Date)?
     private var client: APIClient?
@@ -287,6 +293,7 @@ final class AppModel: ObservableObject {
         remember(channel)
         playbackBusy = true
         playerPresented = true
+        updateWarming(for: model, justSwitched: false)
     }
 
     // Change channel without leaving the player. The old session is released
@@ -299,6 +306,29 @@ final class AppModel: ObservableObject {
         currentPlayback = model
         playback = model
         remember(channel)
+        updateWarming(for: model, justSwitched: true)
+    }
+
+    /// R11: tells the warmer which channel the viewer is likely to go to from
+    /// `model`'s: the one they just left (they often flip back), else the next
+    /// up. The model's start holds warming off until its resolve answers.
+    private func updateWarming(for model: PlaybackModel, justSwitched: Bool) {
+        model.warmer = warmer
+        warmer.beginStart(model.id)
+        let list = zapList.isEmpty ? (browse.map { b in b.guide.map(b.asChannel) } ?? []) : zapList
+        let likely = ChannelWarmer.likelyNext(current: model.channel, previous: previousChannel,
+                                              justSwitched: justSwitched, list: list)
+        warmer.setPlayerTarget(likely?.warmTarget)
+    }
+
+    private func sendWarm(_ target: WarmTarget) async -> Bool {
+        guard let client else { return false }
+        // The same body resolve would send for this channel (the server matches
+        // the later resolve on channel and capabilities).
+        let body = ResolveBody(sourceId: target.sourceId, channelId: target.channelId,
+                               capabilities: PlaybackCapabilities.current(),
+                               audioEncode: AudioEncodeMemory.contains(target.identityKey) ? true : nil)
+        return (try? await client.warm(body))?.warm == true
     }
 
     private func remember(_ channel: Channel) {
@@ -396,6 +426,7 @@ final class AppModel: ObservableObject {
             playback = nil
             playbackBusy = false
             playerPresented = false
+            warmer.playerClosed()
             if let message { error = message }
         }
     }
@@ -419,6 +450,7 @@ final class AppModel: ObservableObject {
     // keychain. Channel-switching tests need a client but not a real server.
     func configureClientForTesting(_ client: APIClient, browse: BrowseModel? = nil) {
         self.client = client
+        warmer.setEnabled(client.info?.warmingActive == true)
         if let browse { self.browse = browse }
     }
 

@@ -245,6 +245,16 @@ final class APIClient {
         }
     }
 
+    /// R11: asks the server to start the stream for `body`'s channel ahead of
+    /// a play (the same body resolve sends). Nil for 204 (setting off, nothing
+    /// free, already watching it, any server-side failure: do nothing). The
+    /// request may wait several seconds; callers run it in a cancellable task.
+    func warm(_ body: ResolveBody, timeout: TimeInterval = 25) async throws -> WarmResult? {
+        let result = try await response("playback/warm", method: "POST", body: body, timeout: timeout)
+        guard result.status == 200 else { return nil }
+        return try? JSONDecoder().decode(WarmResult.self, from: result.data)
+    }
+
     func reportPlaybackEvent(_ event: PlaybackEvent) async {
         guard info?.features.clientEvents == true else { return }
         var event = event

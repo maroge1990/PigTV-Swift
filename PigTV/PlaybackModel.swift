@@ -11,6 +11,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // Awaited before resolving: used when switching channels so the previous
     // provider stream is released first.
     var prerequisite: Task<Void, Never>?
+    /// R11: told while this play is resolving, so no warm request runs then.
+    weak var warmer: ChannelWarmer?
+    /// R11: the resolve adopted a stream the app warmed earlier.
+    private(set) var warmAdopted = false
     @Published private(set) var ready = false
     @Published private(set) var error: String?
     @Published private(set) var recordingConflict: RecordingConflict?
@@ -321,9 +325,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
         viewerConflict = nil
         let generation = UUID()
         itemGeneration = generation
+        warmer?.beginStart(id)
         // Never cancel resolve: even a late result may own a session to release.
         resolveTask = Task { [self] in
-            defer { resolveTask = nil }
+            defer { resolveTask = nil; warmer?.endStart(id) }
             await prerequisite?.value
             guard !ended else { return }
             do {
@@ -345,6 +350,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
                         capabilities: PlaybackCapabilities.current(), force: force,
                         audioEncode: audioEncode ? true : nil))
                 PigTVSignpost.event("LiveResolveResponse")
+                warmAdopted = decision.warm == true
+                if warmAdopted { PigTVSignpost.event("LiveWarmAdopted") }
                 sessionID = decision.sessionId
                 provider = decision.provider
                 guard !ended else { return }
@@ -353,6 +360,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 context.strategy = ["direct", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
                 context.container = ["hls", "mp4", "fmp4", "mpegts"].contains(decision.container ?? "") ? decision.container : nil
                 context.videoMode = ["copy", "encode"].contains(decision.videoMode ?? "") ? decision.videoMode : nil
+                context.warm = warmAdopted ? true : nil
                 context.path = url.path // URL query (including token/provider URL) is never sent.
                 context.resolveMs = Date().timeIntervalSince(resolveBegan) * 1000
                 eventContext = context

@@ -582,6 +582,47 @@ enum ContractChecks {
         try expect(!schedule.shownToday(now: noon.addingTimeInterval(86_400), timeZone: utc), "C-K: back the next local day")
         reminderDefaults.removePersistentDomain(forName: "pigtv.contract.reminders")
 
+        // R11: predictive warming (server 0198). Both fields must be present and true; an older server reads as off.
+        let warmOn = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.1.0","apiVersion":1,"warmingEnabled":true,"features":{"library":true,"playbackResolve":true,"warming":true}}"#.utf8))
+        try expect(warmOn.features.warming == true && warmOn.warmingEnabled == true && warmOn.warmingActive, "R11: warming flags decode and switch it on")
+        let warmSettingOff = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.1.0","apiVersion":1,"warmingEnabled":false,"features":{"library":true,"playbackResolve":true,"warming":true}}"#.utf8))
+        try expect(warmSettingOff.features.warming == true && !warmSettingOff.warmingActive, "R11: supported but switched off in the admin: off")
+        let warmNoFeature = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.1.0","apiVersion":1,"warmingEnabled":true,"features":{"library":true,"playbackResolve":true}}"#.utf8))
+        try expect(!warmNoFeature.warmingActive, "R11: a setting without the feature is off")
+        try expect(old.features.warming == nil && old.warmingEnabled == nil && !old.warmingActive, "R11: an older server reads as warming off")
+        let cold = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","info":{"fps":"25/1"}}"#.utf8))
+        try expect(cold.warm == nil, "R11: a resolve without warm is a cold start")
+        let warmed = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","warm":true,"info":{"fps":"25/1","warm":true}}"#.utf8))
+        try expect(warmed.warm == true && warmed.info?.fps != nil, "R11: a resolve that adopted a warm stream says so")
+        let oddWarm = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"direct","url":"/x","warm":"yes"}"#.utf8))
+        try expect(oddWarm.warm == nil, "R11: an odd warm value never fails a resolve")
+        var warmEvent = PlaybackEvent(event: "play-start")
+        let coldJSON = String(decoding: try JSONEncoder().encode(warmEvent), as: UTF8.self)
+        try expect(!coldJSON.contains("warm"), "R11: no warm key unless a play adopted one")
+        warmEvent.warm = true
+        let warmJSON = String(decoding: try JSONEncoder().encode(warmEvent), as: UTF8.self)
+        try expect(warmJSON.contains(#""warm":true"#), "R11: the play-start event carries warm")
+
+        // R11: POST playback/warm sends resolve's body; a 204 means nothing was warmed.
+        let warmBody = ResolveBody(sourceId: 3, channelId: "c9", capabilities: ["hevc": true], audioEncode: true)
+        FixtureProtocol.responseStatus = 204
+        FixtureProtocol.responseData = Data()
+        let nothing = try await modern.warm(warmBody)
+        try expect(nothing == nil, "R11: 204 warms nothing")
+        try expect(FixtureProtocol.capturedRequest?.url?.path == "/api/playback/warm" && FixtureProtocol.capturedRequest?.httpMethod == "POST", "R11: the documented endpoint")
+        try expect(FixtureProtocol.capturedRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token", "R11: signed in like resolve")
+        let warmSent = try JSONSerialization.jsonObject(with: FixtureProtocol.capturedBody) as? [String: Any]
+        try expect(warmSent?["sourceId"] as? Int == 3 && warmSent?["channelId"] as? String == "c9" && warmSent?["audioEncode"] as? Bool == true
+                   && warmSent?["force"] as? Bool == false && (warmSent?["capabilities"] as? [String: Bool])?["hevc"] == true, "R11: warm sends exactly what resolve sends")
+        FixtureProtocol.responseStatus = 200
+        FixtureProtocol.responseData = Data(#"{"warm":true,"ttlSec":90,"refreshed":false}"#.utf8)
+        let did = try await modern.warm(warmBody)
+        try expect(did == WarmResult(warm: true, ttlSec: 90, refreshed: false), "R11: 200 decodes")
+        FixtureProtocol.responseStatus = 500
+        do { _ = try await modern.warm(warmBody); throw CheckFailure(description: "A failed warm must throw (callers ignore it)") }
+        catch PigTVError.http(500) { count += 1 }
+        FixtureProtocol.responseStatus = 200
+
         return count
     }
 }

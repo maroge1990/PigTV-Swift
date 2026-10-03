@@ -54,6 +54,11 @@ enum HLSFixture {
 ///   break 1–2 s, and `/api/recordings/<id>/<file>` → the fixture.
 /// - C-I: `GET /api/sports/events` → `sportEvents` (by default
 ///   `sportEventsJSON(now:)`, a realistic answer around the server's start).
+/// - R11: `POST /api/playback/warm` → `warm` (default 204, "nothing warmed"; pass a
+///   200 `{"warm":true,"ttlSec":90,"refreshed":false}`, optionally with a `delay`).
+///   A 200 remembers the channel, and the default resolve then answers that
+///   channel's next resolve with `"warm":true` (top level and in `info`), as
+///   the server's adoption does.
 /// - `markers:` replaces the markers answer (e.g. with a `delay`, or a 500).
 /// Anything else is a 404, and every request is recorded.
 final class FakePigTVServer: @unchecked Sendable {
@@ -63,12 +68,20 @@ final class FakePigTVServer: @unchecked Sendable {
     init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil,
          sportEvents: String? = nil,
          reminders: String? = nil,
-         markers: LocalHTTPServer.Response? = nil) throws {
+         markers: LocalHTTPServer.Response? = nil,
+         warm: LocalHTTPServer.Response = .init(status: 204, contentType: "application/json", body: Data())) throws {
         let counter = Locked(0)
-        let resolve = resolve ?? { count, _ in FakePigTVServer.decision(session: "s\(count)") }
+        let warmed = Locked<Set<String>>([])
+        let resolve = resolve ?? { count, request in
+            FakePigTVServer.decision(session: "s\(count)", warm: warmed.value.contains(FakePigTVServer.channelKey(request.body)))
+        }
         let sport = sportEvents ?? FakePigTVServer.sportEventsJSON(now: Date())
         http = try LocalHTTPServer { request in
             if request.method == "GET", request.path == "/api/sports/events" { return .json(sport) }
+            if request.method == "POST", request.path == "/api/playback/warm" {
+                if warm.status == 200 { warmed.value.insert(FakePigTVServer.channelKey(request.body)) }
+                return warm
+            }
             // C-K: `GET /api/providers/reminders` (404 when the fake has none).
             if request.method == "GET", request.path == "/api/providers/reminders", let reminders { return .json(reminders) }
             return FakePigTVServer.route(request, counter: counter, markers: markers, resolve: resolve)
@@ -102,6 +115,25 @@ final class FakePigTVServer: @unchecked Sendable {
         """#
     }
 
+    /// "<sourceId>:<channelId>" of a resolve or warm body.
+    private static func channelKey(_ body: Data) -> String {
+        let json = (try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]
+        return "\(json["sourceId"] as? Int ?? -1):\(json["channelId"] as? String ?? "")"
+    }
+
+    var warms: [LocalHTTPServer.Request] { http.requests(path: "/api/playback/warm", method: "POST") }
+
+    func warmBodies() -> [[String: Any]] {
+        warms.compactMap { try? JSONSerialization.jsonObject(with: $0.body) as? [String: Any] }
+    }
+
+    /// Client-event bodies of one kind (e.g. "play-start"), as JSON objects.
+    func clientEventBodies(_ name: String) -> [[String: Any]] {
+        http.requests(path: "/api/playback/client-event", method: "POST").compactMap {
+            try? JSONSerialization.jsonObject(with: $0.body) as? [String: Any]
+        }.filter { $0["event"] as? String == name }
+    }
+
     var resolves: [LocalHTTPServer.Request] { http.requests(path: "/api/playback/resolve", method: "POST") }
 
     /// Resolve bodies as JSON objects, in order.
@@ -118,23 +150,28 @@ final class FakePigTVServer: @unchecked Sendable {
 
     /// Server info advertising client events, so play-start/-end are posted.
     /// `extraFeatures` is spliced into `features` (e.g. `"providerReminders":true`).
-    @MainActor static func info(extraFeatures: String = "") throws -> ServerInfo {
-        let extra = extraFeatures.isEmpty ? "" : "," + extraFeatures
-        return try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"clientEvents":true,"viewerConflict":true\#(extra)}}"#.utf8))
+    /// `warmingEnabled` (R11) adds `features.warming:true` and the top-level
+    /// setting; nil leaves both out, as an older server does.
+    @MainActor static func info(extraFeatures: String = "", warmingEnabled: Bool? = nil) throws -> ServerInfo {
+        var extra = extraFeatures.isEmpty ? "" : "," + extraFeatures
+        var top = ""
+        if let warmingEnabled { extra += #","warming":true"#; top = #","warmingEnabled":\#(warmingEnabled)"# }
+        return try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1\#(top),"features":{"library":true,"playbackResolve":true,"clientEvents":true,"viewerConflict":true\#(extra)}}"#.utf8))
     }
 
     /// An APIClient for this server (token "fixture").
-    @MainActor func client(extraFeatures: String = "") throws -> APIClient {
-        APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: try Self.info(extraFeatures: extraFeatures))
+    @MainActor func client(extraFeatures: String = "", warmingEnabled: Bool? = nil) throws -> APIClient {
+        APIClient(address: try ServerAddress(http.baseURL), token: "fixture",
+                  info: try Self.info(extraFeatures: extraFeatures, warmingEnabled: warmingEnabled))
     }
 
     static func decision(session: String, playlist: String = "master.m3u8", fps: String? = "25/1",
-                         videoRange: String? = nil, provider: String? = nil) -> LocalHTTPServer.Response {
-        var info: [String] = []
+                         videoRange: String? = nil, provider: String? = nil, warm: Bool = false) -> LocalHTTPServer.Response {
+        var info: [String] = warm ? [#""warm":true"#] : []
         if let fps { info.append(#""fps":"\#(fps)""#) }
         if let videoRange { info.append(#""videoRange":"\#(videoRange)""#) }
         info.append(#""video":"h264","width":320,"height":180"#)
-        return .json(#"{"strategy":"transcode","url":"/api/transcode/\#(session)/\#(playlist)","sessionId":"\#(session)","container":"hls","videoMode":"copy","info":{\#(info.joined(separator: ","))}\#(provider.map { #","provider":"# + $0 } ?? "")}"#)
+        return .json(#"{"strategy":"transcode","url":"/api/transcode/\#(session)/\#(playlist)","sessionId":"\#(session)","container":"hls","videoMode":"copy","info":{\#(info.joined(separator: ","))}\#(provider.map { #","provider":"# + $0 } ?? "")\#(warm ? #","warm":true"# : "")}"#)
     }
 
     private static func route(_ request: LocalHTTPServer.Request, counter: Locked<Int>, markers: LocalHTTPServer.Response?,

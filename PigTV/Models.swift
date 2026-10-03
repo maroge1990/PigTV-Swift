@@ -8,6 +8,12 @@ struct ServerInfo: Decodable {
     var identity: String { display ?? "v\(version)" + (build.map { " · build \($0)" } ?? "") }
     let apiVersion: Int
     let features: Features
+    /// Audit R11 (server 0198): the admin's "Warm the next channel" setting.
+    /// Absent on an older server, which reads as off.
+    var warmingEnabled: Bool? = nil
+    /// Predictive warming runs only when the server can do it AND its admin
+    /// turned it on (it is off by default and costs a provider connection).
+    var warmingActive: Bool { features.warming == true && warmingEnabled == true }
 
     struct Features: Decodable {
         let playbackResolve: Bool?
@@ -43,6 +49,8 @@ struct ServerInfo: Decodable {
         // `provider` object; `providerReminders` = `GET providers/reminders`.
         var providers: Bool? = nil
         var providerReminders: Bool? = nil
+        // R11 (server 0198): `POST playback/warm` exists.
+        var warming: Bool? = nil
     }
 
     func validate() throws {
@@ -149,11 +157,16 @@ struct PlaybackDecision: Decodable {
     var info: ResolveStreamInfo? = nil
     /// C-J: which provider serves this play. Absent on an older server.
     var provider: ResolveProvider? = nil
+    /// R11: this play adopted a stream the app warmed earlier. Absent (nil)
+    /// on an older server or when nothing was warm.
+    var warm: Bool? = nil
 
-    enum CodingKeys: String, CodingKey { case strategy, url, container, sessionId, videoMode, info, provider }
+    enum CodingKeys: String, CodingKey { case strategy, url, container, sessionId, videoMode, info, provider, warm }
 
     init(strategy: String, url: String, container: String? = nil, sessionId: String? = nil,
-         videoMode: String? = nil, info: ResolveStreamInfo? = nil, provider: ResolveProvider? = nil) {
+         videoMode: String? = nil, info: ResolveStreamInfo? = nil, provider: ResolveProvider? = nil,
+         warm: Bool? = nil) {
+        self.warm = warm
         self.provider = provider
         self.strategy = strategy
         self.url = url
@@ -172,6 +185,7 @@ struct PlaybackDecision: Decodable {
         videoMode = try values.decodeIfPresent(String.self, forKey: .videoMode)
         info = (try? values.decodeIfPresent(ResolveStreamInfo.self, forKey: .info)) ?? nil
         provider = (try? values.decodeIfPresent(ResolveProvider.self, forKey: .provider)) ?? nil
+        warm = (try? values.decodeIfPresent(Bool.self, forKey: .warm)) ?? nil
     }
 }
 
@@ -318,6 +332,13 @@ struct ResolveBody: Encodable {
     var audioEncode: Bool? = nil
 }
 
+/// R11: the 200 answer of `POST playback/warm` (a 204 means nothing was warmed).
+nonisolated struct WarmResult: Decodable, Equatable, Sendable {
+    let warm: Bool
+    var ttlSec: Int? = nil
+    var refreshed: Bool? = nil
+}
+
 enum PigTVError: LocalizedError, Equatable {
     case invalidServerURL
     case unauthorised
@@ -425,4 +446,7 @@ struct PlaybackEvent: Encodable {
     // client-event route logs named fields and ignores others.
     var droppedFrames: Int?
     var observedBitrate: Double?
+    // R11, play-start: true when the resolve adopted a warmed stream (absent
+    // otherwise, so the server can compare warm and cold start times).
+    var warm: Bool?
 }

@@ -383,6 +383,7 @@ private struct HomeHero: View {
     @Environment(\.colorScheme) private var scheme
     private enum Control: Hashable { case watch, schedule }
     @FocusState private var focus: Control?
+    @Environment(\.channelWarmer) private var warmer
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -398,6 +399,11 @@ private struct HomeHero: View {
         // below) lands on Watch.
         .focusSection()
         .defaultFocus($focus, .watch, priority: .userInitiated)
+        // R11: focus resting on Watch warms the hero channel (after the dwell).
+        .onChange(of: focus) { _, now in
+            warmer?.setBrowseTarget(now == .watch ? WarmTarget(sourceId: channel.sourceId, channelId: channel.rawID, identityKey: channel.identityKey) : nil, owner: "home.hero")
+        }
+        .onDisappear { warmer?.setBrowseTarget(nil, owner: "home.hero") }
         .padding(.horizontal, HomeMetrics.heroPadding.width).padding(.vertical, HomeMetrics.heroPadding.height)
         .frame(maxWidth: .infinity, minHeight: HomeMetrics.heroHeight, alignment: .leading)
         .background { LogoWash(logo: channel.logo, client: model.client) }

@@ -163,6 +163,7 @@ final class LocalHTTPServer: @unchecked Sendable {
     private static func reason(_ status: Int) -> String {
         switch status {
         case 200: return "OK"
+        case 204: return "No Content"
         case 206: return "Partial Content"
         case 404: return "Not Found"
         case 409: return "Conflict"
