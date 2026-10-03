@@ -64,7 +64,7 @@ The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restore
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,
   `HomeRowsTests`, `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `TimeshiftMathTests`,
   `DisplayModeTests`, `StreamInfoTests`, `SportTests` (buckets, days over 72 h, replays, tolerant decoding, the model against
-  the fake server; build 33: `playsChannelNow`), `ChannelQueryTests` (Siri matching), `TopShelfTests` and `TopShelfCardTests`
+  the fake server; build 33: `playsChannelNow`), `TopShelfTests` and `TopShelfCardTests`
   (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).
 
 **UI tests (`PigTVUITests`, tvOS)**
@@ -104,7 +104,7 @@ The checklist and results live in **`../PigTV/docs/TEST-BLOCK.md`** (rounds 1–
 the next round's checks). For a device run, note the app build (Settings → Version), the server build (`/api/version`), the
 device and OS, and for a fault the channel and roughly when; keep provider URLs and tokens out of anything shared. Useful
 on-device diagnostics: Settings → Diagnostics (tvOS, the Top Shelf), and Console on the Mac filtered to subsystem
-`au.markrogers.PigTV.TopShelf` (the Top Shelf and Siri shortcuts).
+`au.markrogers.PigTV.TopShelf` (the Top Shelf).
 
 Checks that no simulator can settle, still open: an HEVC recording; audio/subtitle track selection; whether AVPlayer stops
-fetching while paused (C2 rests on it); Siri on Apple TV (parked); everything behind the server's `PIGTV_TUNER=1`.
+fetching while paused (C2 rests on it); everything behind the server's `PIGTV_TUNER=1`.

@@ -6,7 +6,7 @@ The native client for [PigTV](https://github.com/maroge1990/PigTV) (a self-hoste
 What it has: a Home screen (continue watching and shelves), the TV guide (a UIKit grid on Apple TV and iPad, an "On now" list on
 iPhone), a Sport tab (events across channels for the next 72 hours, with replays), recordings (scheduling, playback with
 break skipping), PigTV's own players (remote-driven on tvOS, large touch controls on iPad/iPhone), a Top Shelf extension, and
-Siri / App Intents. It needs a PigTV server on the local network or VPN.
+deep links. It needs a PigTV server on the local network or VPN.
 
 ## Build and run
 

@@ -61,9 +61,8 @@ struct ContentView: View {
         .buttonStyle(TVActionStyle())
         #endif
         .task {
-            // Build 31: Siri's channel phrases need the parameter values
-            // registered at every launch, not only after a directory write.
-            Task.detached(priority: .utility) { PigTVShortcuts.refreshParameters(reason: "launch") }
+            // Build 37: Siri is gone; remove the channel directory older builds wrote.
+            TopShelfExport.removeLegacyChannelDirectory()
         }
         .task {
             // This is a cold-launch handoff only. It has no arbitrary minimum
@@ -74,12 +73,8 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { Task { await model.background() } }
         }
-        // A4.1/A4.5: Top Shelf items and the Siri intent open pigtv://play.
+        // A4.1: Top Shelf items open pigtv://play.
         .onOpenURL { model.open($0) }
-        // A4.5: the Play channel intent's request, through the same path.
-        .onReceive(PlayLinkInbox.shared.$pending) { url in
-            if url != nil, let link = PlayLinkInbox.shared.take() { model.open(link) }
-        }
         .alert("PigTV", isPresented: Binding(
             get: { model.error != nil }, set: { if !$0 { model.error = nil } }
         )) {

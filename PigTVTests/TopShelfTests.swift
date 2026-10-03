@@ -1,5 +1,4 @@
 import XCTest
-import AppIntents
 @testable import PigTV
 
 // A4.1: the Top Shelf snapshot (built by the app, read by the extension)
@@ -111,21 +110,13 @@ final class TopShelfTests: XCTestCase {
         XCTAssertNil(TopShelfSnapshot.read(container: container))
     }
 
-    // Build 29: the shared path helper and the Siri channel directory use
-    // the same writable place.
+    // Build 29: the shared path helper puts files in the writable place.
     func testAppGroupPathsEndInLibraryCaches() throws {
         let container = FileManager.default.temporaryDirectory.appendingPathComponent("group-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: container) }
         XCTAssertNil(AppGroupStorage.directory(in: nil))
         XCTAssertEqual(Array(try XCTUnwrap(AppGroupStorage.directory(in: container)).pathComponents.suffix(2)), ["Library", "Caches"])
-        let directoryFile = try XCTUnwrap(ChannelDirectory.fileURL(in: container))
-        XCTAssertEqual(Array(directoryFile.pathComponents.suffix(3)), ["Library", "Caches", "channel-directory.json"])
-        XCTAssertNil(ChannelDirectory.read(container: container))
-        let directory = ChannelDirectory(channels: [.init(id: "c1", sourceId: 1, name: "Fox Footy", number: 503)])
-        XCTAssertTrue(directory.write(container: container))
-        XCTAssertEqual(ChannelDirectory.read(container: container), directory)
-        XCTAssertFalse(directory.write(container: nil))
         #if os(tvOS)
         // The real App Group: its Library/Caches accepts a write (the root
         // is what a device refuses).
@@ -212,33 +203,6 @@ final class TopShelfTests: XCTestCase {
         XCTAssertEqual(built.id, "2:z")
         XCTAssertEqual(built.name, "Fox Footy")
         XCTAssertEqual(built.number, 503)
-    }
-}
-
-// A4.5: the intent's entity turns into the same deep link as the Top Shelf.
-@MainActor
-final class PlayChannelIntentTests: XCTestCase {
-    func testEntityPlayURLAndInbox() {
-        let entity = ChannelEntity(ChannelDirectory.Entry(id: "x y", sourceId: 3, name: "Fox Footy", number: 503))
-        XCTAssertEqual(entity.id, "3:x y")
-        XCTAssertEqual(PigTVLink.parse(entity.playURL), PigTVLink.Play(sourceId: 3, id: "x y", name: "Fox Footy", number: 503))
-        let inbox = PlayLinkInbox()
-        XCTAssertNil(inbox.take())
-        inbox.submit(entity.playURL)
-        XCTAssertEqual(inbox.take(), entity.playURL)
-        XCTAssertNil(inbox.pending, "a request is consumed once")
-    }
-
-    // Build 31: Siri matches the title, so it is the name alone.
-    func testEntityTitleIsTheNameAndSuggestionsPutTheShelfFirst() {
-        let fox = ChannelDirectory.Entry(id: "f", sourceId: 1, name: "Fox Footy", number: 503)
-        let entity = ChannelEntity(fox)
-        XCTAssertEqual(String(localized: entity.displayRepresentation.title), "Fox Footy")
-        let bbc = ChannelDirectory.Entry(id: "b", sourceId: 1, name: "BBC News", number: 511)
-        let sky = ChannelDirectory.Entry(id: "s", sourceId: 1, name: "Sky News", number: 512)
-        XCTAssertEqual(ChannelQuery.suggestions(shelf: [fox], directory: [bbc, fox, sky]).map(\.name),
-                       ["Fox Footy", "BBC News", "Sky News"])
-        XCTAssertEqual(ChannelQuery.suggestions(shelf: [fox], directory: [bbc, sky], limit: 2).count, 2)
     }
 
     func testHomeLinkSwitchesToHome() {

@@ -1,8 +1,7 @@
 import Foundation
 import os
 
-// A4.1: shared by the app and its extensions (the Top Shelf; Siri reads it
-// too). The app writes a small snapshot of up to 12 channels into the App
+// A4.1: shared by the app and its extensions (the Top Shelf). The app writes a small snapshot of up to 12 channels into the App
 // Group container whenever the guide or favourites load; extensions only
 // read it and never touch the network. Nothing secret goes in: channel
 // identity, name, number, an absolute logo URL (served unauthenticated by
@@ -260,8 +259,8 @@ nonisolated enum TopShelfLog {
     static let logger = Logger(subsystem: subsystem, category: Bundle.main.bundleIdentifier ?? "unknown")
 }
 
-/// `pigtv://play?sourceId=…&id=…[&name=…&number=…]`: from Top Shelf items
-/// and the Siri intent. Name and number let the app build a channel when
+/// `pigtv://play?sourceId=…&id=…[&name=…&number=…]`: from Top Shelf items.
+/// Name and number let the app build a channel when
 /// the guide has not loaded yet.
 nonisolated enum PigTVLink {
     static let scheme = "pigtv"
@@ -288,7 +287,7 @@ nonisolated enum PigTVLink {
         return parts.url!
     }
 
-    /// `pigtv://home`: open the app on Home (Siri's "Open PigTV", build 31).
+    /// `pigtv://home`: open the app on Home.
     static let homeURL = URL(string: "\(scheme)://home")!
 
     static func isHome(_ url: URL) -> Bool {

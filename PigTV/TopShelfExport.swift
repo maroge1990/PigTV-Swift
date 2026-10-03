@@ -85,26 +85,37 @@ enum TopShelfExport {
                 TopShelfLog.logger.notice("export: \(keep.count) cards in use, \(removed) stale removed")
             }
             contentChanged()
-            // The Siri channel suggestions are the Top Shelf's channels.
-            PigTVShortcuts.refreshParameters(reason: "Top Shelf snapshot written")
+        }
+    }
+
+    /// The Siri channel directory older builds wrote (Siri was removed in
+    /// build 37). Deleted at launch and on sign-out so it does not linger.
+    nonisolated static let legacyChannelDirectoryName = "channel-directory.json"
+
+    nonisolated static func removeLegacyChannelDirectory() {
+        Task.detached(priority: .utility) {
+            guard let container = AppGroupStorage.containerURL else { return }
+            for url in [AppGroupStorage.fileURL(legacyChannelDirectoryName, in: container),
+                        container.appendingPathComponent(legacyChannelDirectoryName)] {
+                if let url { try? FileManager.default.removeItem(at: url) }
+            }
         }
     }
 
     /// Signing out removes the snapshot (no channels on the Top Shelf) and
-    /// the Siri channel directory.
+    /// any leftover Siri channel directory.
     @MainActor static func clear() {
         lastWritten = nil
-        PlayLinkInbox.lastDirectory = nil
         Task.detached(priority: .utility) {
             if let url = TopShelfSnapshot.fileURL { try? FileManager.default.removeItem(at: url) }
             // Build 32: and the card images.
             TopShelfCards.removeAll(in: AppGroupStorage.containerURL)
-            // A4.5: and the Siri channel directory.
-            if let url = ChannelDirectory.fileURL { try? FileManager.default.removeItem(at: url) }
+            // And the Siri channel directory older builds wrote.
+            if let url = AppGroupStorage.fileURL(legacyChannelDirectoryName, in: AppGroupStorage.containerURL) { try? FileManager.default.removeItem(at: url) }
             // Build 29: files an earlier build left in the container's root
             // (possible on iOS only; tvOS never allowed writing there).
             if let root = AppGroupStorage.containerURL {
-                for name in [TopShelfSnapshot.fileName, ChannelDirectory.fileName] {
+                for name in [TopShelfSnapshot.fileName, legacyChannelDirectoryName] {
                     try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
                 }
             }

@@ -20,7 +20,7 @@ final class AppModel: ObservableObject {
     /// C-K: the licence reminder banner (shown by ContentView).
     let providerReminders = ProviderReminderModel()
     /// Build 31: a tab LibraryView should switch to ("guide" from the iOS
-    /// player's TV Guide button, "home" from the Siri "Open PigTV" shortcut);
+    /// player's TV Guide button, "home" from a pigtv://home link);
     /// LibraryView applies it and clears it.
     @Published var requestedTab: String?
     // The tvOS player presents these over native AVKit controls. Keeping the
@@ -235,7 +235,7 @@ final class AppModel: ObservableObject {
         catch { self.error = error.localizedDescription }
     }
 
-    // MARK: Deep links (A4.1 Top Shelf, A4.5 Siri)
+    // MARK: Deep links (A4.1 Top Shelf)
 
     /// A play link that arrived before sign-in was restored (a cold launch
     /// from the Top Shelf can deliver the URL before the launch restore
@@ -246,7 +246,7 @@ final class AppModel: ObservableObject {
 
     /// `pigtv://play?…`: plays that channel when signed in; ignored otherwise.
     func open(_ url: URL) {
-        // Build 31: pigtv://home (the Siri "Open PigTV" shortcut) shows Home.
+        // Build 31: pigtv://home shows Home.
         if PigTVLink.isHome(url) { requestedTab = "home"; return }
         guard let link = PigTVLink.parse(url) else { return }
         if loggedIn { play(link) } else { pendingLink = (link, Date()) }
