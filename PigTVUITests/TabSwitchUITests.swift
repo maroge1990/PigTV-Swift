@@ -90,21 +90,10 @@ final class TabSwitchUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
         XCTAssertEqual(times.count, 16, "Expected 16 measured switches.")
-        // Known outlier, tracked (blueprint, build 37 "Next"): the FIRST visit to the TV
-        // Guide builds its 1,000-row UIKit grid and stalled 0.36-0.6 s on CI runners. It
-        // keeps the old 1 s limit until that work lands; every other switch, Sport's
-        // included, is held to the budget. Remove this once the Guide is fixed.
-        let firstGuideVisit = "Home→TV Guide"
-        let firstGuideAllowance = max(budget, 1000)
-        let firstGuide = times.first { $0.0 == firstGuideVisit }
-        let others = times.enumerated().filter { $0.offset != times.firstIndex { $0.0 == firstGuideVisit } }.map(\.element)
-        let worst = others.map(\.1).max() ?? 0
-        print(String(format: "TABSWITCH worst stall %.0f ms (first Guide visit %.0f ms, allowed %.0f), mean %.0f ms, budget %.0f ms",
-                     worst, firstGuide?.1 ?? 0, firstGuideAllowance, times.map(\.1).reduce(0, +) / Double(max(times.count, 1)), budget))
+        let worst = times.map(\.1).max() ?? 0
+        print(String(format: "TABSWITCH worst stall %.0f ms, mean %.0f ms, budget %.0f ms",
+                     worst, times.map(\.1).reduce(0, +) / Double(max(times.count, 1)), budget))
         XCTAssertLessThan(worst, budget, "Worst tab-switch stall \(Int(worst)) ms is over the \(Int(budget)) ms budget.\n" + report)
-        if let firstGuide {
-            XCTAssertLessThan(firstGuide.1, firstGuideAllowance, "The first Guide visit stalled \(Int(firstGuide.1)) ms.\n" + report)
-        }
     }
 }
 #endif

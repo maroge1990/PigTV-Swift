@@ -303,7 +303,53 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         requestFocus(target)
     }
 
+    /// The first fill shows the first few rows, then a few more, then the rest,
+    /// each after a frame has been shown. Building every visible cell (each a
+    /// SwiftUI-hosted view) in the same pass as the screen around it was most
+    /// of the first visit's half-second stall. The rows themselves go in at
+    /// once (inserting a thousand sections later cost more than the cells).
+    private static let revealSteps = [3, 6]
+    private var fillGeneration = 0
+
+    private var revision: GuideGridRevision {
+        GuideGridRevision(programmes: model?.guideProgrammesVersion ?? 0, loadedAt: model?.guideLoadedAt)
+    }
+
     private func apply(rows: [GuideChannel]) {
+        let revision = revision
+        // A newer list supersedes a first fill still waiting for its frames.
+        fillGeneration += 1
+        let generation = fillGeneration
+        if layout.revealedRows != .max {
+            layout.revealedRows = .max
+            layout.invalidateLayout()
+        }
+        guard store.rows.isEmpty, rows.count > Self.revealSteps[0] else {
+            applyNow(rows: rows, revision: revision)
+            return
+        }
+        Task { [weak self] in
+            // Ordering a thousand channels' programmes is the other half of a
+            // reload; do it off the main actor and publish if still current.
+            let lists = await Task.detached(priority: .userInitiated) { GuideGridStore.orderedLists(for: rows) }.value
+            guard let self, generation == fillGeneration else { return }
+            store.prime(lists, revision: revision)
+            layout.revealedRows = Self.revealSteps[0]
+            applyNow(rows: rows, revision: revision)
+            reveal(step: 1, generation: generation)
+        }
+    }
+
+    private func reveal(step: Int, generation: Int) {
+        NextFrame.run { [weak self] in
+            guard let self, generation == fillGeneration else { return }
+            layout.revealedRows = step < Self.revealSteps.count ? Self.revealSteps[step] : .max
+            layout.invalidateLayout()
+            if step < Self.revealSteps.count { reveal(step: step + 1, generation: generation) }
+        }
+    }
+
+    private func applyNow(rows: [GuideChannel], revision: GuideGridRevision) {
         let old = store.rows
         // Background paging appends channels; keep the existing cells (and
         // focus) then. Anything else reloads and restores focus by identity.
@@ -312,9 +358,9 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
                 && a.programmes.first?.startTime == b.programmes.first?.startTime
         }
         if appendOnly {
-            guard rows.count > old.count else { store.setRows(rows); return }
+            guard rows.count > old.count else { store.setRows(rows, revision: revision); return }
             collectionView.performBatchUpdates {
-                store.setRows(rows)
+                store.setRows(rows, revision: revision)
                 collectionView.insertSections(IndexSet(old.count..<rows.count))
             }
             return
@@ -330,7 +376,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         }
         if extendedOnly {
             let changedSections = IndexSet(rows.indices.filter { rows[$0].programmes.count != old[$0].programmes.count })
-            store.setRows(rows)
+            store.setRows(rows, revision: revision)
             guard !changedSections.isEmpty else { layout.invalidateLayout(); return }
             let refocus = focused.map { changedSections.contains($0.section) } ?? false
             collectionView.performBatchUpdates {
@@ -343,7 +389,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             return
         }
         let hadFocus = focused != nil
-        store.setRows(rows)
+        store.setRows(rows, revision: revision)
         focused = nil
         collectionView.reloadData()
         if hadFocus, let identity = focusIdentity,

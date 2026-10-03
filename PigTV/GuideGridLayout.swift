@@ -4,26 +4,60 @@ import UIKit
 // item 0 = the pinned channel tile; items 1…n = programmes by time (or one
 // "no programme information" placeholder).
 
+/// What the programme lists were built from. A change here (the model merged
+/// or corrected programmes, or the guide was reloaded) drops every cached
+/// list; the channel's count and first start cannot tell a same-shape EPG
+/// correction (a changed title or end time) from the old data.
+nonisolated struct GuideGridRevision: Hashable {
+    var programmes = 0
+    var loadedAt: Date?
+}
+
 /// Rows shared by the grid's data source and layout. Programme lists are
 /// ordered/deduplicated lazily and cached by channel, because the real guide
 /// has ~18 000 channels and the collection view asks for every section's
 /// item count on reload.
 final class GuideGridStore {
     private(set) var rows: [GuideChannel] = []
-    private var ordered: [String: (count: Int, first: Double, list: [GuideProgramme])] = [:]
+    private(set) var revision = GuideGridRevision()
+    private var ordered: [String: [GuideProgramme]] = [:]
 
-    func setRows(_ rows: [GuideChannel]) { self.rows = rows }
+    func setRows(_ rows: [GuideChannel], revision: GuideGridRevision = GuideGridRevision()) {
+        if revision != self.revision {
+            self.revision = revision
+            ordered.removeAll()
+        }
+        self.rows = rows
+    }
 
     func programmes(in section: Int) -> [GuideProgramme] {
         guard rows.indices.contains(section) else { return [] }
         let channel = rows[section]
-        let first = channel.programmes.first?.startTime ?? -1
-        if let cached = ordered[channel.id], cached.count == channel.programmes.count, cached.first == first {
-            return cached.list
-        }
+        if let cached = ordered[channel.id] { return cached }
         let list = GuideNavigation.ordered(channel.programmes)
-        ordered[channel.id] = (channel.programmes.count, first, list)
+        ordered[channel.id] = list
         return list
+    }
+
+    /// The lists for `rows`, computed away from the main actor (it is most of
+    /// a reload's cost for a thousand channels) and handed to `adopt`.
+    nonisolated static func orderedLists(for rows: [GuideChannel]) -> [String: [GuideProgramme]] {
+        var lists: [String: [GuideProgramme]] = [:]
+        lists.reserveCapacity(rows.count)
+        for channel in rows where lists[channel.id] == nil {
+            lists[channel.id] = GuideNavigation.ordered(channel.programmes)
+        }
+        return lists
+    }
+
+    /// Takes lists built by `orderedLists` for `revision`, ahead of the rows
+    /// that use them.
+    func prime(_ lists: [String: [GuideProgramme]], revision: GuideGridRevision) {
+        if revision != self.revision {
+            self.revision = revision
+            ordered.removeAll()
+        }
+        for (id, list) in lists where ordered[id] == nil { ordered[id] = list }
     }
 
     func itemCount(in section: Int) -> Int { 1 + max(1, programmes(in: section).count) }
@@ -75,6 +109,10 @@ final class GuideGridLayout: UICollectionViewLayout {
     var origin = Date()
     var loadedDuration: TimeInterval = GuideNavigation.loadedDuration
     var now = Date()
+    /// Rows from this one on get no cells yet. The first fill reveals the grid
+    /// in steps (a frame each); building every visible SwiftUI-hosted cell
+    /// at once was most of the TV Guide's first-visit stall.
+    var revealedRows = Int.max
     private(set) var metrics = GuideGridMetrics()
 
     private let zTile = 10, zProgramme = 0, zNowLine = 5
@@ -112,7 +150,8 @@ final class GuideGridLayout: UICollectionViewLayout {
         var result: [UICollectionViewLayoutAttributes] = []
         let fromTime = GuideGridMath.viewport(forOffsetX: rect.minX - metrics.channelWidth, origin: origin, metrics: metrics)
         let toTime = GuideGridMath.viewport(forOffsetX: rect.maxX - metrics.channelWidth, origin: origin, metrics: metrics)
-        for section in GuideGridMath.rows(in: rect.minY, rect.maxY, count: sectionCount, metrics: metrics) {
+        for section in GuideGridMath.rows(in: rect.minY, rect.maxY, count: sectionCount, metrics: metrics)
+        where section < revealedRows {
             let items = collectionView.numberOfItems(inSection: section)
             result.append(tileAttributes(section))
             if store.programmes(in: section).isEmpty {
