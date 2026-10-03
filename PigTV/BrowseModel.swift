@@ -553,6 +553,8 @@ final class BrowseModel: ObservableObject {
 
     /// Sport events, only used with the server's `sportsEvents` flag.
     private(set) lazy var sport = SportModel(client: client)
+    /// Moves when a Sport card's logo may have changed (see `SportLogoRevision`).
+    private(set) lazy var sportLogos = SportLogoRevision(following: self)
     var sportEnabled: Bool { client.info?.features.sportsEvents == true }
 
     /// The Channel the player needs for one of an event's channels: its

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // C-I (build 30): the Sport tab (Home · TV Guide · Sport · Recordings ·
 // Settings) and the event card Home's "Sport now & next" shelf shares. Shown
@@ -42,8 +43,12 @@ enum SportMetrics {
 // MARK: The tab
 
 struct SportView: View {
-    @ObservedObject var app: AppModel
-    @ObservedObject var browse: BrowseModel
+    // Not observed: `AppModel` and `BrowseModel` publish dozens of
+    // properties the Sport tab never draws. It observes the sport snapshot,
+    // and the two small observers below (the pending-watch banner, each
+    // shelf's logo revision) take what they need (audit R04).
+    let app: AppModel
+    let browse: BrowseModel
     @ObservedObject var sport: SportModel
     /// The chosen league chip (nil: All).
     @State private var league: String?
@@ -54,15 +59,16 @@ struct SportView: View {
         let leagues = sport.leagues
         // A league that no longer has events falls back to All.
         let chosen = league.flatMap { leagues.contains($0) ? $0 : nil }
-        let shown = SportRows.filter(buckets, league: chosen)
+        // Precomputed per league with the snapshot, not filtered per render.
+        let shown = sport.rows(league: chosen)
         NavigationStack {
             ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: SportMetrics.sectionSpacing) {
+                // Lazy: with 200+ events (most of them replays) only the
+                // shelves near the screen are built.
+                LazyVStack(alignment: .leading, spacing: SportMetrics.sectionSpacing) {
                     header
-                    if let pending = app.pendingWatch {
-                        PendingWatchBanner(pending: pending) { app.cancelPendingWatch() }
-                    }
+                    SportPendingBanner(app: app)
                     if !leagues.isEmpty {
                         chips(leagues, chosen: chosen)
                     }
@@ -101,6 +107,9 @@ struct SportView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
+        // The event page and channel picker live here, not on each card:
+        // a recycled lazy cell cannot dismiss an open page.
+        .sportPages(app: app, browse: browse, clock: sport.clock)
         .task { await sport.keepFresh() }
     }
 
@@ -158,7 +167,7 @@ struct SportView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(SportMetrics.sectionTitle)
                     .accessibilityAddTraits(.isHeader)
-                SportShelf(events: events, app: app, browse: browse, clock: sport.clock)
+                SportShelf(events: events, browse: browse, clock: sport.clock)
             }
             .tvFocusSection()
             .id(title)
@@ -167,21 +176,38 @@ struct SportView: View {
 }
 
 /// A horizontal row of event cards (the Sport tab's sections and Home's
-/// "Sport now & next"), optionally ending with a "See all" card. Not lazy:
-/// at most a few dozen cards, and every card keeps its own pages.
+/// "Sport now & next"), optionally ending with a "See all" card. Lazy: the
+/// Replays shelf alone holds 150+ cards on a production feed, and only the
+/// few on screen need building.
 struct SportShelf: View {
     let events: [SportEvent]
-    @ObservedObject var app: AppModel
-    @ObservedObject var browse: BrowseModel
+    /// Not observed: cards read it for logos only, and `logos` says when
+    /// those may have changed.
+    let browse: BrowseModel
     let clock: Date
     var seeAll: (() -> Void)? = nil
+    @ObservedObject private var logos: SportLogoRevision
+    @Environment(\.sportPresenter) private var presenter
     @FocusState private var focused: String?
 
+    init(events: [SportEvent], browse: BrowseModel, clock: Date, seeAll: (() -> Void)? = nil) {
+        self.events = events
+        self.browse = browse
+        self.clock = clock
+        self.seeAll = seeAll
+        _logos = ObservedObject(wrappedValue: browse.sportLogos)
+    }
+
     var body: some View {
+        // Whole minutes, as the rows are bucketed: cards whose input is
+        // unchanged skip their body.
+        let minute = SportRows.minute(clock)
         ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: SportMetrics.cardSpacing) {
+            LazyHStack(alignment: .top, spacing: SportMetrics.cardSpacing) {
                 ForEach(events) { event in
-                    SportEventTile(event: event, app: app, browse: browse, clock: clock)
+                    SportEventTile(input: SportCardInput(event: event, clock: minute, logoRevision: logos.value),
+                                   browse: browse, presenter: presenter)
+                        .equatable()
                         .focused($focused, equals: event.id)
                 }
                 if let seeAll {
@@ -204,65 +230,142 @@ struct SportShelf: View {
 
 // MARK: Card and its pages
 
-/// An event card with its behaviour: Select plays (live) or opens the event
-/// page (upcoming); long press offers the channel picker and the page.
-struct SportEventTile: View {
+/// Everything a card draws that can change, as one value: the event, the
+/// minute it is drawn at, and the logo revision. Cards compare it and skip
+/// their body when it is unchanged, so a guide page or recordings refresh
+/// no longer re-evaluates 200 cards.
+nonisolated struct SportCardInput: Equatable, Sendable {
     let event: SportEvent
-    @ObservedObject var app: AppModel
-    @ObservedObject var browse: BrowseModel
     let clock: Date
-    @State private var page: SportPage?
-    /// Run once the page has closed (the player cannot present over it).
-    @State private var afterDismiss: (() -> Void)?
+    let logoRevision: Int
+}
 
-    enum SportPage: String, Identifiable {
-        case details, channels
-        var id: String { rawValue }
+enum SportPage: String, Sendable {
+    case details, channels
+}
+
+/// An open event page or channel picker.
+struct SportPresentation: Identifiable {
+    let event: SportEvent
+    let page: SportPage
+    var id: String { "\(event.id)|\(page.rawValue)" }
+}
+
+/// Owns the event page and channel picker for a whole screen (the Sport tab,
+/// Home), so a card scrolled away, or a lazy cell recycled, cannot take an
+/// open page with it. Cards call `open`/`play`; the screen's `sportPages`
+/// presents. `close(then:)` keeps the old behaviour: the action runs once the
+/// page has closed, since the player cannot present over a cover.
+@MainActor
+final class SportPresenter: ObservableObject {
+    @Published var presented: SportPresentation?
+    private var afterDismiss: (() -> Void)?
+    private let app: AppModel
+
+    init(app: AppModel) { self.app = app }
+
+    func open(_ event: SportEvent, _ page: SportPage) { presented = SportPresentation(event: event, page: page) }
+    func play(_ event: SportEvent) { app.playSportEvent(event) }
+
+    func close(then action: @escaping () -> Void) {
+        afterDismiss = action
+        presented = nil
     }
 
+    /// The cover's `onDismiss`.
+    func dismissed() {
+        let action = afterDismiss
+        afterDismiss = nil
+        action?()
+    }
+}
+
+private struct SportPresenterKey: EnvironmentKey {
+    static let defaultValue: SportPresenter? = nil
+}
+
+extension EnvironmentValues {
+    var sportPresenter: SportPresenter? {
+        get { self[SportPresenterKey.self] }
+        set { self[SportPresenterKey.self] = newValue }
+    }
+}
+
+private struct SportPages: ViewModifier {
+    let app: AppModel
+    let browse: BrowseModel
+    let clock: Date
+    @StateObject private var presenter: SportPresenter
+
+    init(app: AppModel, browse: BrowseModel, clock: Date) {
+        self.app = app
+        self.browse = browse
+        self.clock = clock
+        _presenter = StateObject(wrappedValue: SportPresenter(app: app))
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.sportPresenter, presenter)
+            .detailCover(item: $presenter.presented, onDismiss: presenter.dismissed) { presentation in
+                switch presentation.page {
+                case .details:
+                    SportEventDetails(event: presentation.event, app: app, browse: browse, play: presenter.close(then:))
+                case .channels:
+                    SportChannelPicker(event: presentation.event, app: app, browse: browse, clock: clock,
+                                       play: presenter.close(then:))
+                }
+            }
+    }
+}
+
+extension View {
+    /// Presents the Sport event page and channel picker for the cards below.
+    func sportPages(app: AppModel, browse: BrowseModel, clock: Date) -> some View {
+        modifier(SportPages(app: app, browse: browse, clock: clock))
+    }
+}
+
+/// An event card with its behaviour: Select plays (live) or opens the event
+/// page (upcoming); long press offers the channel picker and the page. It
+/// holds no model it observes and no pages of its own (see `SportPresenter`).
+struct SportEventTile: View, Equatable {
+    let input: SportCardInput
+    /// Read for the logo only; `input.logoRevision` says when it may differ.
+    let browse: BrowseModel
+    let presenter: SportPresenter?
+
+    nonisolated static func == (lhs: SportEventTile, rhs: SportEventTile) -> Bool { lhs.input == rhs.input }
+
     var body: some View {
-        let live = event.isLive(at: clock)
-        SportEventCard(event: event, browse: browse, clock: clock) {
-            if live { app.playSportEvent(event) } else { page = .details }
+        let event = input.event
+        let live = event.isLive(at: input.clock)
+        SportEventCard(input: input, logo: event.best.flatMap { browse.logo(for: $0) }, client: browse.client) {
+            if live { presenter?.play(event) } else { presenter?.open(event, .details) }
         }
         .contextMenu {
             if event.channels.count > 1 {
-                Button("Choose a channel", systemImage: "list.bullet") { page = .channels }
+                Button("Choose a channel", systemImage: "list.bullet") { presenter?.open(event, .channels) }
             }
             if live {
-                Button("Watch on \(event.best?.name ?? "the best channel")", systemImage: "play.fill") { app.playSportEvent(event) }
+                Button("Watch on \(event.best?.name ?? "the best channel")", systemImage: "play.fill") { presenter?.play(event) }
             }
-            Button("Event details", systemImage: "info.circle") { page = .details }
+            Button("Event details", systemImage: "info.circle") { presenter?.open(event, .details) }
         }
-        .detailCover(item: $page, onDismiss: {
-            let action = afterDismiss
-            afterDismiss = nil
-            action?()
-        }) { page in
-            switch page {
-            case .details:
-                SportEventDetails(event: event, app: app, browse: browse, play: close(then:))
-            case .channels:
-                SportChannelPicker(event: event, app: app, browse: browse, clock: clock, play: close(then:))
-            }
-        }
-    }
-
-    private func close(then action: @escaping () -> Void) {
-        afterDismiss = action
-        page = nil
     }
 }
 
 /// The card: league, title, time (and progress when live), the best
 /// channel's logo and how many more channels show it; LIVE when on now.
 struct SportEventCard: View {
-    let event: SportEvent
-    let browse: BrowseModel
-    let clock: Date
+    let input: SportCardInput
+    let logo: String?
+    let client: APIClient?
     let action: () -> Void
 
     var body: some View {
+        let event = input.event
+        let clock = input.clock
         let live = event.isLive(at: clock)
         let timing = SportRows.timing(event, now: clock)
         let replay = event.isReplay
@@ -293,8 +396,7 @@ struct SportEventCard: View {
                     .opacity(live ? 1 : 0)
                 if let best = event.best {
                     HStack(spacing: 14) {
-                        ChannelLogoTile(logo: browse.logo(for: best), client: browse.client, name: best.name,
-                                        size: SportMetrics.logo)
+                        ChannelLogoTile(logo: logo, client: client, name: best.name, size: SportMetrics.logo)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(best.name).font(SportMetrics.detail.weight(.semibold)).lineLimit(1)
                             Text(SportRows.moreChannels(event) ?? " ")
@@ -313,6 +415,17 @@ struct SportEventCard: View {
                              event.best.map { "on \($0.name)" }, SportRows.moreChannels(event)]
             .compactMap { $0 }.joined(separator: ", "))
         .accessibilityIdentifier("sport.event.\(event.id)")
+    }
+}
+
+/// The pending-watch banner, observing `AppModel` on its own so the rest of
+/// the Sport tab does not re-evaluate whenever the app model publishes.
+private struct SportPendingBanner: View {
+    @ObservedObject var app: AppModel
+    var body: some View {
+        if let pending = app.pendingWatch {
+            PendingWatchBanner(pending: pending) { app.cancelPendingWatch() }
+        }
     }
 }
 

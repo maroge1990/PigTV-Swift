@@ -151,7 +151,7 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Sport now & next").font(HomeMetrics.sectionTitle)
                                 .accessibilityAddTraits(.isHeader)
-                            SportShelf(events: content.sport, app: app, browse: model, clock: clock, seeAll: openSport)
+                            SportShelf(events: content.sport, browse: model, clock: clock, seeAll: openSport)
                         }
                         .tvFocusSection()
                         .id("Sport now & next")
@@ -189,6 +189,9 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
+        // The sport event page and channel picker belong to the screen, not
+        // to a card (a card can be scrolled away or recycled while open).
+        .sportPages(app: app, browse: model, clock: clock)
         .task {
             await load()
             // Kept current while Home is on screen: now/next, progress,

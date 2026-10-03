@@ -169,7 +169,40 @@ nonisolated struct SportDay: Equatable, Sendable {
     var events: [SportEvent]
 }
 
+/// Everything the Sport tab draws, built once per (events, minute): the
+/// buckets, the chips and each league's filtered rows. Equatable so an
+/// unchanged rebuild is not republished.
+nonisolated struct SportSnapshot: Equatable, Sendable {
+    /// The start of the minute the rows were built at.
+    var clock: Date
+    var buckets = SportBuckets()
+    var leagues: [String] = []
+    var leagueCounts: [String: Int] = [:]
+    var byLeague: [String: SportBuckets] = [:]
+
+    func rows(league: String?) -> SportBuckets {
+        guard let league else { return buckets }
+        return byLeague[league] ?? SportRows.filter(buckets, league: league)
+    }
+}
+
 nonisolated enum SportRows {
+    /// The start of `date`'s minute: the granularity the rows are drawn at.
+    static func minute(_ date: Date) -> Date {
+        Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60)
+    }
+
+    /// The buckets plus the chips and per-league rows, from one pass.
+    static func snapshot(_ events: [SportEvent], now: Date, calendar: Calendar = .current) -> SportSnapshot {
+        let buckets = buckets(events, now: now, calendar: calendar)
+        let all = buckets.all
+        let leagues = leagues(all)
+        var byLeague: [String: SportBuckets] = [:]
+        for league in leagues { byLeague[league] = filter(buckets, league: league) }
+        return SportSnapshot(clock: now, buckets: buckets, leagues: leagues, leagueCounts: leagueCounts(all),
+                             byLeague: byLeague)
+    }
+
     /// "Starting soon" looks this far ahead.
     static let soonWindow: TimeInterval = 3600
     /// "Watch when it starts" just plays when the event is this close.

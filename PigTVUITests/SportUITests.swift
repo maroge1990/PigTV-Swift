@@ -93,5 +93,59 @@ final class SportUITests: XCTestCase {
         XCTAssertTrue(app.buttons["sport.event.nfl-kc-buf"].waitForExistence(timeout: 5), "the event page did not close")
         XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5), "the pending-watch banner did not appear")
     }
+
+    // Audit R04/R05: the shelves are lazy now. On a production-sized feed
+    // (215 events, 153 of them replays) focus must keep moving along the long
+    // Replays shelf, come back to the first card, and return to the same card
+    // after an event page is opened and dismissed (the page belongs to the
+    // screen, not to a card that may be recycled).
+    @MainActor
+    func testFocusSurvivesScrollingALongLazyShelfAndAPageRoundTrip() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "sport"
+        app.launchEnvironment["PIGTV_UI_TEST_SPORT_EVENTS"] = "215"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        XCTAssertTrue(app.buttons["sport.league.All"].waitForExistence(timeout: 15), "the Sport tab did not open")
+        XCUIRemote.shared.press(.down)
+        XCTAssertTrue(focused(app).identifier.hasPrefix("sport.league."))
+        // Down through the shelves to the last one, Replays.
+        var presses = 0
+        while !focused(app).identifier.hasPrefix("sport.event.rp-") && presses < 20 {
+            XCUIRemote.shared.press(.down)
+            presses += 1
+        }
+        let first = focused(app).identifier
+        XCTAssertTrue(first.hasPrefix("sport.event.rp-"), "never reached the Replays shelf: \(first)")
+        attach(app, "sport-replays-first")
+
+        // Far along the shelf, then back to the start.
+        var seen: [String] = [first]
+        for _ in 0..<40 {
+            XCUIRemote.shared.press(.right)
+            let id = focused(app).identifier
+            XCTAssertTrue(id.hasPrefix("sport.event.rp-"), "focus left the shelf or was lost: \(id)")
+            XCTAssertNotEqual(id, seen.last, "focus stalled at \(id)")
+            seen.append(id)
+        }
+        attach(app, "sport-replays-far")
+        let far = try XCTUnwrap(seen.last)
+        for _ in 0..<40 { XCUIRemote.shared.press(.left) }
+        XCTAssertEqual(focused(app).identifier, first, "back at the first replay")
+
+        // An event page opened from far along the shelf and dismissed leaves
+        // focus on that same card. (The fixture's replays are all on now, so
+        // Select would play: long press → Event details instead.)
+        for _ in 0..<40 { XCUIRemote.shared.press(.right) }
+        XCTAssertEqual(focused(app).identifier, far)
+        XCUIRemote.shared.press(.select, forDuration: 1.5)
+        XCTAssertTrue(app.descendants(matching: .any)["Event details"].waitForExistence(timeout: 5), "no long-press menu")
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["sport.watch"].waitForExistence(timeout: 5), "the event page did not open")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(app.buttons[far].waitForExistence(timeout: 5))
+        XCTAssertEqual(focused(app).identifier, far, "focus returns to the card that opened the page")
+    }
 }
 #endif
