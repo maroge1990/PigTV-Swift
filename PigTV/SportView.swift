@@ -110,7 +110,7 @@ struct SportView: View {
         // The event page and channel picker live here, not on each card:
         // a recycled lazy cell cannot dismiss an open page.
         .sportPages(app: app, browse: browse, clock: sport.clock)
-        .task { await sport.keepFresh() }
+        .whileVisible { await sport.keepFresh() }
     }
 
     private var header: some View {
@@ -533,7 +533,7 @@ struct SportChannelRow: View {
 struct SportChannelPicker: View {
     let event: SportEvent
     @ObservedObject var app: AppModel
-    @ObservedObject var browse: BrowseModel
+    let browse: BrowseModel
     let clock: Date
     /// Closes the picker, then runs the action (playback or a wait).
     let play: (@escaping () -> Void) -> Void
@@ -561,12 +561,26 @@ struct SportChannelPicker: View {
 struct SportChannelList: View {
     let event: SportEvent
     @ObservedObject var app: AppModel
-    @ObservedObject var browse: BrowseModel
+    /// Not observed (audit R05): the list marks scheduled recordings and
+    /// draws the EPG logo fallback.
+    let browse: BrowseModel
+    @ObservedObject private var marks: ScheduleMarks
+    @ObservedObject private var artwork: ArtworkStore
     let clock: Date
     /// Closes the covering page, then runs the action (playback or a wait).
     let play: (@escaping () -> Void) -> Void
     @State private var choosing: SportEventChannel?
     @State private var recording: SportEventChannel?
+
+    init(event: SportEvent, app: AppModel, browse: BrowseModel, clock: Date, play: @escaping (@escaping () -> Void) -> Void) {
+        self.event = event
+        self.app = app
+        self.browse = browse
+        _marks = ObservedObject(wrappedValue: browse.marks)
+        _artwork = ObservedObject(wrappedValue: browse.artwork)
+        self.clock = clock
+        self.play = play
+    }
 
     var body: some View {
         let playsNow = SportRows.playsChannelNow(event, now: clock)
@@ -611,10 +625,25 @@ struct SportChannelList: View {
 struct SportEventDetails: View {
     let event: SportEvent
     @ObservedObject var app: AppModel
-    @ObservedObject var browse: BrowseModel
+    /// Not observed (audit R05): the page draws the schedule marks, the
+    /// action state and the EPG logo fallback.
+    let browse: BrowseModel
+    @ObservedObject private var marks: ScheduleMarks
+    @ObservedObject private var actions: ActionState
+    @ObservedObject private var artwork: ArtworkStore
     /// Closes the page, then runs the action (playback).
     let play: (@escaping () -> Void) -> Void
     @State private var recordSheet = false
+
+    init(event: SportEvent, app: AppModel, browse: BrowseModel, play: @escaping (@escaping () -> Void) -> Void) {
+        self.event = event
+        self.app = app
+        self.browse = browse
+        _marks = ObservedObject(wrappedValue: browse.marks)
+        _actions = ObservedObject(wrappedValue: browse.actions)
+        _artwork = ObservedObject(wrappedValue: browse.artwork)
+        self.play = play
+    }
     private enum Control: Hashable { case watch }
     @FocusState private var focus: Control?
 

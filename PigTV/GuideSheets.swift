@@ -5,7 +5,9 @@ import SwiftUI
 // stock Form rows on tvOS.
 
 struct GuideSearchSheet: View {
-    @ObservedObject var model: BrowseModel
+    /// Not observed (audit R05): the sheet searches the guide store.
+    let model: BrowseModel
+    @ObservedObject private var guideStore: GuideStore
     @Binding var search: String
     @Binding var programmeSearch: String
     /// Closes the sheet (the channel filter applies as typed).
@@ -13,6 +15,17 @@ struct GuideSearchSheet: View {
     /// A programme result was chosen: its details open once the sheet closes.
     let choose: (GuideChannel, GuideProgramme) -> Void
     let refresh: () -> Void
+
+    init(model: BrowseModel, search: Binding<String>, programmeSearch: Binding<String>, done: @escaping () -> Void,
+         choose: @escaping (GuideChannel, GuideProgramme) -> Void, refresh: @escaping () -> Void) {
+        self.model = model
+        _guideStore = ObservedObject(wrappedValue: model.guideStore)
+        _search = search
+        _programmeSearch = programmeSearch
+        self.done = done
+        self.choose = choose
+        self.refresh = refresh
+    }
 
     var body: some View {
         DetailPage(title: "Search") {
@@ -68,10 +81,19 @@ struct GuideSearchSheet: View {
 }
 
 private struct SearchResultRow: View {
-    @ObservedObject var model: BrowseModel
+    let model: BrowseModel
+    @ObservedObject private var artwork: ArtworkStore
     let channel: GuideChannel
     let programme: GuideProgramme
     let action: () -> Void
+
+    init(model: BrowseModel, channel: GuideChannel, programme: GuideProgramme, action: @escaping () -> Void) {
+        self.model = model
+        _artwork = ObservedObject(wrappedValue: model.artwork)
+        self.channel = channel
+        self.programme = programme
+        self.action = action
+    }
 
     var body: some View {
         let now = Date()

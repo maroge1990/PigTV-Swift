@@ -8,13 +8,30 @@ import SwiftUI
 // MARK: Programme
 
 struct ProgrammeDetails: View {
-    @ObservedObject var model: BrowseModel
+    /// Not observed (audit R05): the page draws the recordings and schedules,
+    /// the action state and the EPG logo fallback.
+    let model: BrowseModel
+    @ObservedObject private var store: RecordingsStore
+    @ObservedObject private var actions: ActionState
+    @ObservedObject private var artwork: ArtworkStore
     let channel: GuideChannel
     let programme: GuideProgramme
     let watch: () -> Void
     /// Opens the channel's schedule (the caller closes this page first);
     /// nil hides the button (e.g. when already inside the schedule).
     var openSchedule: (() -> Void)? = nil
+
+    init(model: BrowseModel, channel: GuideChannel, programme: GuideProgramme, watch: @escaping () -> Void,
+         openSchedule: (() -> Void)? = nil) {
+        self.model = model
+        _store = ObservedObject(wrappedValue: model.recordingStore)
+        _actions = ObservedObject(wrappedValue: model.actions)
+        _artwork = ObservedObject(wrappedValue: model.artwork)
+        self.channel = channel
+        self.programme = programme
+        self.watch = watch
+        self.openSchedule = openSchedule
+    }
     @State private var recordSheet = false
     @State private var scheduledHere = false
     private enum Control: Hashable { case watch, record }
@@ -149,10 +166,23 @@ struct ProgrammeDetails: View {
 /// Record a programme: start early / finish late, then schedule. Also used
 /// by the Sport tab (C-I) to record an event on its best channel.
 struct RecordSheet: View {
-    @ObservedObject var model: BrowseModel
+    /// Not observed (audit R05): the sheet draws the action state and the
+    /// EPG logo fallback.
+    let model: BrowseModel
+    @ObservedObject private var actions: ActionState
+    @ObservedObject private var artwork: ArtworkStore
     let channel: GuideChannel
     let programme: GuideProgramme
     let done: (Bool) -> Void
+
+    init(model: BrowseModel, channel: GuideChannel, programme: GuideProgramme, done: @escaping (Bool) -> Void) {
+        self.model = model
+        _actions = ObservedObject(wrappedValue: model.actions)
+        _artwork = ObservedObject(wrappedValue: model.artwork)
+        self.channel = channel
+        self.programme = programme
+        self.done = done
+    }
     @State private var before = 0
     @State private var after = 0
     @FocusState private var scheduleFocused: Bool
@@ -243,10 +273,20 @@ nonisolated enum ScheduleDays {
 // Every programme on one channel from now onwards, for picking something to
 // watch or record without steering through the grid.
 struct ChannelScheduleView: View {
-    @ObservedObject var model: BrowseModel
+    /// Not observed (audit R05): the page marks scheduled programmes.
+    let model: BrowseModel
+    @ObservedObject private var marks: ScheduleMarks
     let channel: GuideChannel
     let logo: String?
     let watch: () -> Void
+
+    init(model: BrowseModel, channel: GuideChannel, logo: String?, watch: @escaping () -> Void) {
+        self.model = model
+        _marks = ObservedObject(wrappedValue: model.marks)
+        self.channel = channel
+        self.logo = logo
+        self.watch = watch
+    }
     @State private var selection: ScheduleSelection?
     @FocusState private var watchFocused: Bool
 

@@ -289,10 +289,17 @@ struct DetailActions<Content: View>: View {
 /// Favourite toggle for detail screens: reads and writes BrowseModel's
 /// favourites (so the guide's Favourites filter and Home agree at once).
 struct FavouriteButton: View {
-    @ObservedObject var model: BrowseModel
+    let model: BrowseModel
+    @ObservedObject private var library: LibraryStore
     let channel: Channel
     @State private var busy = false
     @State private var failed = false
+
+    init(model: BrowseModel, channel: Channel) {
+        self.model = model
+        _library = ObservedObject(wrappedValue: model.library)
+        self.channel = channel
+    }
 
     var body: some View {
         let saved = model.isFavourite(channel)

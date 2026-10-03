@@ -3,30 +3,44 @@ import Combine
 
 @MainActor
 final class BrowseModel: ObservableObject {
-    @Published var guide: [GuideChannel] = [] { didSet { guideIndex = nil } }
-    // Channel id → position in `guide`, built lazily after each change. The
-    // full guide is ~18 000 channels, so per-render `first(where:)` scans in
-    // the guide header and player channel list were measurable work.
-    private var guideIndex: [String: Int]?
-    @Published var guideBusy = false
-    @Published var guideError: String?
-    @Published var guideHasMore = false
-    @Published var window = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970 / 1800) * 1800)
-    @Published var recordings: [Recording] = []
-    @Published var schedules: [ScheduledRecording] = []
-    @Published var recordingsBusy = false
-    @Published var recordingsError: String?
-    @Published var favourites: [Channel] = []
-    @Published var favouritesBusy = false
-    @Published var favouritesError: String?
-    // Home (build 28): `GET library/recent`, most recent first.
-    @Published var recent: [Channel] = []
+    // Audit R05: the published state lives in small stores (BrowseStores.swift)
+    // so a screen observes only what it draws. This model publishes nothing
+    // itself; its old properties forward to the stores.
+    let guideStore = GuideStore()
+    let recordingStore = RecordingsStore()
+    let library = LibraryStore()
+    let artwork = ArtworkStore()
+    let actions = ActionState()
+    let marks: ScheduleMarks
+
+    var guide: [GuideChannel] { get { guideStore.guide } set { guideStore.guide = newValue } }
+    var guideBusy: Bool { get { guideStore.guideBusy } set { guideStore.change(\.guideBusy, to: newValue) } }
+    var guideError: String? { get { guideStore.guideError } set { guideStore.change(\.guideError, to: newValue) } }
+    var guideHasMore: Bool { get { guideStore.guideHasMore } set { guideStore.change(\.guideHasMore, to: newValue) } }
+    var window: Date { get { guideStore.window } set { guideStore.change(\.window, to: newValue) } }
+    private(set) var guideTotal: Int { get { guideStore.guideTotal } set { guideStore.change(\.guideTotal, to: newValue) } }
+    private(set) var guideLoadedAt: Date? { get { guideStore.guideLoadedAt } set { guideStore.change(\.guideLoadedAt, to: newValue) } }
+    private(set) var fromCache: Bool { get { guideStore.fromCache } set { guideStore.change(\.fromCache, to: newValue) } }
+    private(set) var guideLoadedUntil: Date { get { guideStore.guideLoadedUntil } set { guideStore.change(\.guideLoadedUntil, to: newValue) } }
+    private(set) var guideEnded: Bool { get { guideStore.guideEnded } set { guideStore.change(\.guideEnded, to: newValue) } }
+    private(set) var guideProgrammesVersion: Int { get { guideStore.guideProgrammesVersion } set { guideStore.guideProgrammesVersion = newValue } }
+    var recordings: [Recording] { get { recordingStore.recordings } set { recordingStore.recordings = newValue } }
+    var schedules: [ScheduledRecording] { get { recordingStore.schedules } set { recordingStore.schedules = newValue } }
+    var recordingsBusy: Bool { get { recordingStore.recordingsBusy } set { recordingStore.change(\.recordingsBusy, to: newValue) } }
+    var recordingsError: String? { get { recordingStore.recordingsError } set { recordingStore.change(\.recordingsError, to: newValue) } }
+    var favourites: [Channel] { get { library.favourites } set { library.favourites = newValue } }
+    var favouritesBusy: Bool { get { library.favouritesBusy } set { library.favouritesBusy = newValue } }
+    var favouritesError: String? { get { library.favouritesError } set { library.favouritesError = newValue } }
+    var recent: [Channel] { get { library.recent } set { library.recent = newValue } }
+    var mutationBusy: Bool { get { actions.mutationBusy } set { actions.change(\.mutationBusy, to: newValue) } }
+    var actionMessage: String? { get { actions.actionMessage } set { actions.change(\.actionMessage, to: newValue) } }
+    var actionError: String? { get { actions.actionError } set { actions.change(\.actionError, to: newValue) } }
+    var artworkIndex: EPGArtworkIndex { artwork.artworkIndex }
+    var scheduledKeys: Set<String> { marks.scheduledKeys }
+    var recordingChannels: Set<String> { marks.recordingChannels }
     private var initialGuideLoad: Task<Void, Never>?
     /// Set only by the offline UI fixtures: Home then makes no requests.
     var isFixture = false
-    @Published var mutationBusy = false
-    @Published var actionMessage: String?
-    @Published var actionError: String?
     let client: APIClient
     private var guideGeneration = UUID()
     private var guideOffset = 0
@@ -44,36 +58,18 @@ final class BrowseModel: ObservableObject {
     private var guideCacheVersion: String?
     private var loadingVersion: String?
     private var guidePrefetch: Task<Void, Never>?
-    @Published private(set) var artworkIndex = EPGArtworkIndex()
-    @Published private(set) var artworkError: String?
-    @Published private(set) var guideTotal = 0
     private var artworkBusy = false
     private var artworkLoaded = false
     // Set during a refresh: the visible guide is kept until the first new page
     // arrives, then replaced, so a background refresh never blanks the grid.
     private var replacePending = false
-    @Published private(set) var guideLoadedAt: Date?
-    @Published private(set) var fromCache = false
-    // Build 33: how far ahead programme data actually reaches (initially
-    // `window + GuideNavigation.loadedDuration`, then pushed forward as
-    // `extendGuideForward()` merges in more slices). GuideGridLayout draws
-    // content this wide; GuideView compares the viewport against it instead
-    // of always assuming exactly one day is loaded.
-    @Published private(set) var guideLoadedUntil = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970 / 1800) * 1800)
-        .addingTimeInterval(GuideNavigation.loadedDuration)
-    // True once a forward slice came back with no programmes at all (the
-    // provider's guide has ended): stops further extension attempts.
-    @Published private(set) var guideEnded = false
     private var guideExtending = false
-    // Bumped whenever programmes are merged into (or trimmed from) existing
-    // rows in place: `guide.count`/first/last id do not change, so this is
-    // what tells GuideView's row-filter memoisation to recompute.
-    @Published private(set) var guideProgrammesVersion = 0
     // Private to this server and account (R14); retired on sign-out.
     private let guideCache: GuideCacheStore
 
     init(client: APIClient, accountID: Int? = nil, guideCacheDirectory: URL = GuideCacheStore.defaultDirectory) {
         self.client = client
+        marks = ScheduleMarks(following: recordingStore)
         guideCache = GuideCacheStore(scope: CacheScope(address: client.address, accountID: accountID), directory: guideCacheDirectory)
     }
 
@@ -154,7 +150,9 @@ final class BrowseModel: ObservableObject {
                 // id set, instead of rebuilding `Set(guide.map(\.id))` (and
                 // re-filtering into a fresh array) on every page.
                 let additions = page.channels.filter { loadedGuideIds.insert($0.id).inserted }
-                guide.append(contentsOf: additions)
+                // In place on the store: through the forwarding property it would
+                // copy the whole array for every page.
+                guideStore.guide.append(contentsOf: additions)
             }
             guideTotal = page.total
             fromCache = false
@@ -380,9 +378,6 @@ final class BrowseModel: ObservableObject {
         return Array(results.sorted { $0.programme.start < $1.programme.start }.prefix(limit))
     }
 
-    var scheduledKeys: Set<String> { Set(schedules.filter(\.isActive).map(\.guideKey)) }
-    var recordingChannels: Set<String> { Set(schedules.filter { $0.status == "recording" }.compactMap(\.channel_name)) }
-
     func loadArtworkIndex() async {
         guard client.info?.features.epgLogoFallback != true, !artworkBusy, !artworkLoaded else { return }
         // Build 31: after a failure, try again at most every 10 minutes
@@ -390,7 +385,7 @@ final class BrowseModel: ObservableObject {
         guard !isFresh("artwork", maxAge: 600) else { return }
         lastLoads["artwork"] = Date()
         artworkBusy = true
-        if artworkError != nil { artworkError = nil }
+        if artwork.artworkError != nil { artwork.artworkError = nil }
         defer { artworkBusy = false }
         do {
             let sources: [EPGSourceSummary] = try await client.request("sources")
@@ -400,16 +395,13 @@ final class BrowseModel: ObservableObject {
                 do { index.append(try await client.epgArtwork(sourceID: source.id).channels) }
                 catch { failed = true }
             }
-            artworkIndex = index
+            artwork.artworkIndex = index
             artworkLoaded = !failed
-            if failed { artworkError = "Some EPG channel artwork could not be loaded." }
-        } catch { artworkError = "Channel artwork is temporarily unavailable." }
+            if failed { artwork.artworkError = "Some EPG channel artwork could not be loaded." }
+        } catch { artwork.artworkError = "Channel artwork is temporarily unavailable." }
     }
     func guideChannel(id: String) -> GuideChannel? {
-        if guideIndex == nil {
-            guideIndex = Dictionary(guide.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        }
-        return guideIndex?[id].map { guide[$0] }
+        guideStore.channel(id: id)
     }
     func programmes(for channel: Channel) -> [GuideProgramme] {
         guideChannel(id: channel.id)?.programmes ?? []
@@ -454,6 +446,7 @@ final class BrowseModel: ObservableObject {
 
     static let appearMaxAge: TimeInterval = 60
     private var lastLoads: [String: Date] = [:]
+    private var recordingsLoading = false
 
     private func isFresh(_ key: String, maxAge: TimeInterval, now: Date = Date()) -> Bool {
         lastLoads[key].map { now.timeIntervalSince($0) < maxAge } ?? false
@@ -476,13 +469,17 @@ final class BrowseModel: ObservableObject {
         await loadRecent()
     }
 
-    func loadRecordings() async {
+    /// `quietly`: a refresh nobody asked for (Home's minute loop, the Guide's
+    /// periodic one) does not raise `recordingsBusy`, so the Recordings tab
+    /// is not re-rendered, twice, by a refresh that finds nothing new.
+    func loadRecordings(quietly: Bool = false) async {
         let sp = PigTVSignpost.begin("RecordingsLoad"); defer { PigTVSignpost.end("RecordingsLoad", sp) }
-        guard !recordingsBusy else { return }
+        guard !recordingsLoading else { return }
         lastLoads["recordings"] = Date()
-        recordingsBusy = true
+        recordingsLoading = true
+        if !quietly { recordingsBusy = true }
         if recordingsError != nil { recordingsError = nil }
-        defer { recordingsBusy = false }
+        defer { recordingsLoading = false; if !quietly { recordingsBusy = false } }
         do {
             let files: [Recording] = try await client.decodedOffMain("recordings")
             if files != recordings { recordings = files }
@@ -556,6 +553,12 @@ final class BrowseModel: ObservableObject {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: channel.logo,
                 category: channel.category, now: nil, next: nil, stableId: channel.stableId, number: channel.number)
     }
+
+    // MARK: Home
+
+    /// What Home draws, built from the stores and published only when it
+    /// differs (kept here so it survives the tab being left and re-entered).
+    private(set) lazy var home = HomeModel(browse: self)
 
     // MARK: Sport (C-I)
 

@@ -8,34 +8,6 @@ import SwiftUI
 // No live video here: the provider allows one stream and Home must never
 // take it.
 
-/// Everything Home draws, rebuilt on data changes and every minute rather
-/// than on each render (the guide has ~18 000 channels).
-private struct HomeContent: Equatable {
-    var hero: HomeChannel?
-    var recent: [HomeChannel] = []
-    var favouritesOnNow: [HomeChannel] = []
-    var startingSoon: [HomeSoonItem] = []
-    /// C-I: live sport events, then those starting within the hour.
-    var sport: [SportEvent] = []
-    var recordings: [Recording] = []
-    /// Recording id → its channel's logo (found by channel name in the guide).
-    var recordingLogos: [Int: String] = [:]
-
-    var isEmpty: Bool { hasNoHistory && sport.isEmpty }
-    /// First run: nothing watched, no favourites, no recordings yet.
-    var hasNoHistory: Bool {
-        hero == nil && recent.isEmpty && favouritesOnNow.isEmpty && startingSoon.isEmpty && recordings.isEmpty
-    }
-
-    static func == (lhs: HomeContent, rhs: HomeContent) -> Bool {
-        lhs.hero == rhs.hero && lhs.recent == rhs.recent && lhs.favouritesOnNow == rhs.favouritesOnNow
-            && lhs.startingSoon == rhs.startingSoon && lhs.sport == rhs.sport
-            && lhs.recordings.map(\.id) == rhs.recordings.map(\.id)
-            && lhs.recordings.map(\.status) == rhs.recordings.map(\.status)
-            && lhs.recordingLogos == rhs.recordingLogos
-    }
-}
-
 // Build 31 (Mark: "a very long screen … continue watching takes up about
 // 50% of the screen"): on the TV the hero is about a third of the screen
 // (~340 pt of 1080) and the cards are smaller, so the hero and two full
@@ -98,14 +70,18 @@ private enum HomeMetrics {
 
 struct HomeView: View {
     @ObservedObject var app: AppModel
-    @ObservedObject var model: BrowseModel
+    /// Not observed: Home redraws from `home`, which publishes only when
+    /// what Home shows changes (audit R05).
+    let model: BrowseModel
+    @ObservedObject private var home: HomeModel
     /// Switches to the TV Guide tab (first-run state).
     var openGuide: () -> Void = {}
     /// Switches to the Sport tab (Sport now & next → See all).
     var openSport: () -> Void = {}
-    @State private var content = HomeContent()
     @State private var clock = Date()
-    @State private var rebuild: Task<Void, Never>?
+    /// On screen (its tab selected, no cover over it): the minute loop and the
+    /// sport refresh run only then.
+    @State private var visible = false
     @State private var details: HomeDetails?
     @State private var schedule: GuideChannel?
     @State private var playingRecording: Recording?
@@ -113,6 +89,16 @@ struct HomeView: View {
     @State private var pendingWatch: Channel?
     @State private var pendingSchedule: GuideChannel?
     @Environment(\.colorScheme) private var scheme
+
+    init(app: AppModel, model: BrowseModel, openGuide: @escaping () -> Void = {}, openSport: @escaping () -> Void = {}) {
+        self.app = app
+        self.model = model
+        self.openGuide = openGuide
+        self.openSport = openSport
+        _home = ObservedObject(wrappedValue: model.home)
+    }
+
+    private var content: HomeContent { home.content }
 
     private struct HomeDetails: Identifiable {
         let channel: GuideChannel
@@ -132,7 +118,7 @@ struct HomeView: View {
                         HomeHero(channel: hero, model: model, clock: clock,
                                  watch: { play(hero, from: [hero]) },
                                  schedule: model.guideRow(id: hero.id, identityKey: hero.identityKey).map { row in { schedule = row } })
-                    } else if content.hasNoHistory && !(model.guideBusy && model.guide.isEmpty) {
+                    } else if content.hasNoHistory && !home.guideLoading {
                         HomeWelcome(openGuide: openGuide)
                     }
                     if model.sportEnabled, let pending = app.pendingWatch {
@@ -159,7 +145,7 @@ struct HomeView: View {
                     shelf("Recordings", content.recordings) { recording in
                         HomeRecordingCard(recording: recording, logo: content.recordingLogos[recording.id], model: model) { open(recording) }
                     }
-                    if model.guideBusy && model.guide.isEmpty && content.isEmpty {
+                    if home.guideLoading && content.isEmpty {
                         ProgressView("Loading your channels…").frame(maxWidth: .infinity)
                     }
                 }
@@ -192,34 +178,34 @@ struct HomeView: View {
         // The sport event page and channel picker belong to the screen, not
         // to a card (a card can be scrolled away or recycled while open).
         .sportPages(app: app, browse: model, clock: clock)
-        .task {
+        // Kept current while Home is on screen: now/next, progress,
+        // "in 12 min", history and recordings, once a minute. Not while the
+        // tab is hidden (`visible`); returning restarts it.
+        .task(id: visible) {
+            guard visible else { return }
             await load()
-            // Kept current while Home is on screen: now/next, progress,
-            // "in 12 min", history and recordings, once a minute.
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
                 clock = Date()
                 if !model.isFixture {
                     await model.loadRecent()
-                    await model.loadRecordings()
+                    await model.loadRecordings(quietly: true)
                 }
-                refresh()
+                home.rebuild()
             }
         }
-        .onAppear { clock = Date(); refresh() }
-        // Guide pages arrive in bursts; rebuild at most a few times a second.
-        .onChange(of: model.guide.count) { scheduleRefresh() }
-        // Whole-value equality, not id lists: a recording's status or
-        // `native_status` changing (same id) must rebuild Home, while an
-        // unrelated publish that leaves these arrays equal does not.
-        .onChange(of: model.favourites) { refresh() }
-        .onChange(of: model.recent) { refresh() }
-        .onChange(of: model.recordings) { refresh() }
-        .onChange(of: app.lastWatched) { refresh() }
-        // C-I: the sport events (refreshed every minute while Home shows).
-        .onReceive(model.sport.$events) { _ in scheduleRefresh() }
-        .task { if model.sportEnabled { await model.sport.keepFresh() } }
-        .onChange(of: app.playback == nil) { _, closed in if closed { clock = Date(); refresh() } }
+        .onAppear {
+            clock = Date()
+            visible = true
+            home.activate(lastWatched: app.lastWatched)
+        }
+        .onDisappear {
+            visible = false
+            home.deactivate()
+        }
+        .onChange(of: app.lastWatched) { home.lastWatched = app.lastWatched }
+        .task(id: visible) { if visible, model.sportEnabled { await model.sport.keepFresh() } }
+        .onChange(of: app.playback == nil) { _, closed in if closed { clock = Date(); home.refreshIfNeeded() } }
         .fullScreenCover(item: $details, onDismiss: finishCover) { item in
             ProgrammeDetails(model: model, channel: item.channel, programme: item.programme, watch: {
                 pendingWatch = model.asChannel(item.channel)
@@ -282,58 +268,17 @@ struct HomeView: View {
     // MARK: Data
 
     private func load() async {
-        guard !model.isFixture else { refresh(); return }
+        guard !model.isFixture else { home.refreshIfNeeded(); return }
         // Build 31: each appearance loads only what is older than a minute
         // (the loop below refreshes every minute while Home shows).
         async let guide: Void = model.loadInitialGuide()
         async let recent: Void = model.loadRecentIfStale()
         await model.loadFavouritesIfStale()
         await recent
-        refresh()
+        home.refreshIfNeeded()
         await model.loadRecordingsIfStale()
         await guide
-        refresh()
-    }
-
-    private func scheduleRefresh() {
-        guard rebuild == nil else { return }
-        rebuild = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(400))
-            rebuild = nil
-            refresh()
-        }
-    }
-
-    private func refresh() {
-        let sp = PigTVSignpost.begin("HomeRebuild"); defer { PigTVSignpost.end("HomeRebuild", sp) }
-        let now = Date()
-        let recent = model.recent.map(model.homeChannel)
-        let hero = HomeRows.continueWatching(last: app.lastWatched, recent: recent) { last in
-            model.guideRow(id: last.id, identityKey: last.identityKey).map(model.homeChannel)
-        }
-        let favourites = model.favourites.map(model.homeChannel)
-        var next = HomeContent()
-        next.hero = hero
-        next.recent = HomeRows.recentlyWatched(recent, excluding: hero)
-        next.favouritesOnNow = HomeRows.onNow(favourites, now: now)
-        next.startingSoon = HomeRows.startingSoon(favourites, now: now)
-        if model.sportEnabled {
-            next.sport = SportRows.nowAndNext(SportRows.buckets(model.sport.events, now: now))
-        }
-        next.recordings = HomeRows.recordings(model.recordings)
-        // One pass over the guide for the recordings' channel logos.
-        let names = Set(next.recordings.compactMap(\.channel_name))
-        if !names.isEmpty {
-            var logos: [String: String] = [:]
-            for row in model.guide where names.contains(row.name) && logos[row.name] == nil {
-                if let logo = model.logo(for: row) { logos[row.name] = logo }
-                if logos.count == names.count { break }
-            }
-            for recording in next.recordings {
-                if let name = recording.channel_name, let logo = logos[name] { next.recordingLogos[recording.id] = logo }
-            }
-        }
-        if next != content { content = next }
+        home.refreshIfNeeded()
     }
 
     // MARK: Actions
