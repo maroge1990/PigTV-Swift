@@ -12,7 +12,12 @@ import Combine
 final class RecordingPlayerModel: ObservableObject {
     let recording: Recording
     let player = AVPlayer()
+    /// The item is installed and the player view can replace the spinner.
     @Published private(set) var ready = false
+    /// The player has really begun playing (`timeControlStatus == .playing`
+    /// once). Stays true through pauses and stalls; `ready` only means the
+    /// item was handed to the player, so the spinner waits for this.
+    @Published private(set) var hasPlayed = false
     @Published private(set) var error: String?
     @Published private(set) var preparing = false
     @Published private(set) var canRetry = false
@@ -32,6 +37,10 @@ final class RecordingPlayerModel: ObservableObject {
     private var started = false
     private var stopped = false
     private var startupTask: Task<Void, Never>?
+    private var markersTask: Task<Void, Never>?
+    private var rateObservation: NSKeyValueObservation?
+    /// Break markers are a nicety: past this they are simply not offered.
+    var markersBudget: Duration = .seconds(3)
     private var lastSkipped: Int?
     private var generation = UUID()
 
@@ -59,6 +68,7 @@ final class RecordingPlayerModel: ObservableObject {
             MainActor.assumeIsolated { self?.tick(time.seconds) }
         }
         ready = true
+        hasPlayed = true
         player.play()
     }
     #endif
@@ -73,10 +83,7 @@ final class RecordingPlayerModel: ObservableObject {
         startupTask = Task { [self] in
             defer { preparing = false; startupTask = nil }
             do {
-                let markers: RecordingMarkers? = try? await client.request("recordings/\(recording.id)/markers")
-                try Task.checkCancellation()
-                guard !stopped else { return }
-                breaks = (markers?.markers ?? []).filter { $0.valid && $0.type == "ad" }.sorted { $0.startMs < $1.startMs }
+                loadMarkers(generation: generation)
                 let playback = try await client.recordingPlayback(id: recording.id, preparing: { self.preparing = true })
                 try Task.checkCancellation()
                 guard !stopped else { return }
@@ -127,6 +134,13 @@ final class RecordingPlayerModel: ObservableObject {
                         self.tick(time.seconds)
                     }
                 }
+                rateObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { @Sendable [weak self] player, _ in
+                    guard player.timeControlStatus == .playing else { return }
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.stopped, self.generation == generation else { return }
+                        self.hasPlayed = true
+                    }
+                }
                 ready = true
                 player.play()
             } catch {
@@ -136,6 +150,25 @@ final class RecordingPlayerModel: ObservableObject {
                     : error.localizedDescription
                 canRetry = true
             }
+        }
+    }
+
+    /// Markers load beside the playback request and never delay it: a hung
+    /// request costs `markersBudget`, then there are simply no breaks. An
+    /// answer after a cancel, back or retry (new `generation`) is dropped.
+    private func loadMarkers(generation: UUID) {
+        markersTask?.cancel()
+        let client = client, id = recording.id, budget = markersBudget
+        markersTask = Task { [weak self] in
+            let markers: RecordingMarkers? = await withTaskGroup(of: RecordingMarkers?.self) { group in
+                group.addTask { try? await client.request("recordings/\(id)/markers") }
+                group.addTask { try? await Task.sleep(for: budget); return nil }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            guard let self, !Task.isCancelled, !self.stopped, self.generation == generation, let markers else { return }
+            self.breaks = markers.markers.filter { $0.valid && $0.type == "ad" }.sorted { $0.startMs < $1.startMs }
         }
     }
 
@@ -192,6 +225,11 @@ final class RecordingPlayerModel: ObservableObject {
         generation = UUID()
         inBreak = nil
         ready = false
+        hasPlayed = false
+        breaks = []
+        markersTask?.cancel()
+        markersTask = nil
+        rateObservation = nil
         if let observer { player.removeTimeObserver(observer) }
         observer = nil
         statusObservation = nil
@@ -253,6 +291,13 @@ struct RecordingPlayerScreen: View {
                     ProgressView(model.preparing ? "Preparing recording…" : "Loading recording…")
                     Button("Cancel") { dismiss() }
                 }.foregroundStyle(.white)
+            }
+        }
+        .overlay {
+            // The player is installed but no picture yet (`ready` alone used
+            // to hide the spinner while the screen was still black).
+            if model.ready, model.error == nil, !model.hasPlayed {
+                ProgressView("Loading recording…").foregroundStyle(.white).allowsHitTesting(false)
             }
         }
         .environment(\.colorScheme, .dark)

@@ -186,6 +186,89 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    private func harnessRecording() throws -> Recording {
+        try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4242,"title":"Harness","status":"completed","duration_sec":6}"#.utf8))
+    }
+
+    private static let oneBreak = #"{"status":"completed","markers":[{"id":1,"startMs":1000,"endMs":2000,"type":"ad"}]}"#
+
+    /// Audit R07: a markers request that takes 10 s must not delay the picture,
+    /// and once the 3 s budget is spent there are simply no breaks.
+    func testRecordingStartsWhileMarkersAreStillHanging() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(markers: .init(status: 200, contentType: "application/json",
+                                                        body: Data(Self.oneBreak.utf8), delay: 10))
+        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
+        let began = Date()
+        playback.start()
+        try await waitFor("the recording to play", timeout: 6) { playback.hasPlayed }
+        let toPlay = Date().timeIntervalSince(began)
+        print("R07 timing: playing after \(String(format: "%.2f", toPlay)) s with markers delayed 10 s")
+        XCTAssertLessThan(toPlay, 3, "markers held the picture back")
+        XCTAssertTrue(playback.ready)
+        XCTAssertTrue(playback.breaks.isEmpty)
+        try await Task.sleep(for: .seconds(3.5))
+        XCTAssertTrue(playback.breaks.isEmpty, "markers past the budget are ignored")
+        XCTAssertNil(playback.error)
+        await playback.stop()
+        server.http.stop()
+    }
+
+    /// Markers that arrive after playback began are still applied.
+    func testLateMarkersAreStillApplied() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(markers: .init(status: 200, contentType: "application/json",
+                                                        body: Data(Self.oneBreak.utf8), delay: 2))
+        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
+        playback.autoSkip = false
+        let began = Date()
+        playback.start()
+        try await waitFor("the recording to play") { playback.hasPlayed }
+        let toPlay = Date().timeIntervalSince(began)
+        print("R07 timing: playing after \(String(format: "%.2f", toPlay)) s with markers delayed 2 s")
+        XCTAssertLessThan(toPlay, 2, "playback waited for the markers")
+        XCTAssertTrue(playback.breaks.isEmpty, "markers cannot have arrived yet")
+        try await waitFor("the late markers", timeout: 6) { playback.breaks.count == 1 }
+        await playback.stop()
+        server.http.stop()
+    }
+
+    /// A failing markers endpoint still plays, with no breaks.
+    func testRecordingPlaysWhenMarkersFail() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(markers: .json(#"{"error":"boom"}"#, status: 500))
+        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
+        playback.start()
+        try await waitFor("the recording to play") { playback.hasPlayed }
+        XCTAssertTrue(playback.breaks.isEmpty)
+        XCTAssertNil(playback.error)
+        await playback.stop()
+        server.http.stop()
+    }
+
+    /// Cancelling (Back) before the markers arrive installs nothing late.
+    func testStopBeforeMarkersArriveInstallsNothing() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(markers: .init(status: 200, contentType: "application/json",
+                                                        body: Data(Self.oneBreak.utf8), delay: 1))
+        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
+        playback.start()
+        await playback.stop()
+        try await Task.sleep(for: .seconds(1.5))
+        XCTAssertTrue(playback.breaks.isEmpty)
+        XCTAssertNil(playback.player.currentItem)
+        XCTAssertFalse(playback.ready)
+        server.http.stop()
+    }
+
     /// A recording (C-E HLS answer) through RecordingPlayerModel: the item
     /// status KVO observer and the periodic time observer (main queue,
     /// MainActor.assumeIsolated) both run; the time observer notices the
@@ -207,7 +290,8 @@ final class RealPlaybackTests: XCTestCase {
         try await waitFor("recording playing") {
             playback.player.timeControlStatus == .playing && playback.player.currentItem?.status == .readyToPlay
         }
-        XCTAssertEqual(playback.breaks.count, 1)
+        try await waitFor("the break markers") { playback.breaks.count == 1 }
+        XCTAssertTrue(playback.hasPlayed)
         try await waitFor("the periodic observer to see the break") { playback.inBreak != nil }
         XCTAssertNotNil(playback.timeline())
         XCTAssertNil(playback.error)

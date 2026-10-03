@@ -50,6 +50,9 @@ struct RecordingsView: View {
                                         Text(item.title).font(.headline)
                                         Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
                                         if let date = item.started { Text(date, style: .date).font(.caption) }
+                                        if item.isPreparingForPlayback {
+                                            Text("Preparing for playback…").font(.caption).foregroundStyle(.secondary)
+                                        }
                                     }
                                     Spacer()
                                     VStack(alignment: .trailing, spacing: 8) {
@@ -190,6 +193,9 @@ struct RecordingDetails: View {
                         PigProgressBar(fraction: resumeFraction, height: 6).frame(maxWidth: 640)
                         Text("Resumes where you left off").font(DetailType.meta).foregroundStyle(.secondary)
                     }
+                }
+                if item.isPreparingForPlayback {
+                    Text("Preparing for playback…").font(DetailType.meta).foregroundStyle(.secondary)
                 }
                 if item.is_partial == 1 {
                     HStack(spacing: 14) {

@@ -112,6 +112,16 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     let missed_start_ms: Double?
     let ad_detect_status: String?
     let compress_status: String?
+    /// The server's background preparation for the Apple client: nil (old
+    /// servers) | pending | preparing | ready | failed. Unknown values are
+    /// kept as given and treated as "nothing to show".
+    let native_status: String?
+    let native_error: String?
+    let native_attempts: Int?
+    /// Finished, but the server is still getting it ready to play.
+    var isPreparingForPlayback: Bool {
+        status == "completed" && (native_status == "pending" || native_status == "preparing")
+    }
     var started: Date? { started_at.map { Date(timeIntervalSince1970: $0 / 1000) } }
 }
 
