@@ -131,6 +131,7 @@ private struct PlayerTestScreen: View {
             let media = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"].map { URL(fileURLWithPath: $0) }
             let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"]
             model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media)
+            model.playback?.applyReviewState(screen ?? "")
         }
     }
 }
@@ -142,7 +143,7 @@ private struct PlayerTestScreen: View {
 // channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
     static let screens: Set<String> = ["programme", "programme-later", "record", "schedule", "channel", "recording",
-                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels"]
+                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "pairing", "recording-loading", "recording-preparing", "recording-error"]
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
@@ -162,6 +163,7 @@ private struct DesignTestScreen: View {
         .task {
             app.injectHomeFixture()
             app.serverText = "http://pigtv.local:3000"
+            if screen == "pairing" { app.injectPairingReview() }
             if let browse = app.browse { GuideFixtures.addSchedules(to: browse) }
             ready = true
         }
@@ -182,6 +184,10 @@ private struct DesignTestScreen: View {
             ChannelScheduleView(model: browse, channel: channel, logo: browse.logo(for: channel), watch: {})
         case "channel":
             ChannelDetails(channel: browse.asChannel(channel), browse: browse, watch: {}, openSchedule: {})
+        case "recordings":
+            RecordingsView(model: browse)
+        case "recording-player", "recording-loading", "recording-preparing", "recording-error":
+            RecordingPlayerScreen(recording: browse.recordings[1], client: browse.client)
         case "recording":
             RecordingDetails(model: browse, original: browse.recordings[1])
         case "search":

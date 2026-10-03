@@ -460,6 +460,22 @@ final class PlaybackModel: ObservableObject, Identifiable {
     #if DEBUG
     /// Player fixture only (build 29): plays a local file without a resolve,
     /// so the player's chrome can be checked in the simulator.
+    func applyReviewState(_ state: String) {
+        if state == "player-viewer-conflict" {
+            viewerConflict = "Another household device is using this stream."
+        } else if state == "player-recording-conflict" {
+            recordingConflict = RecordingConflict(type: "recording", scheduleId: 90, title: "Coastal stories", channelName: "Documentary", endsAt: Date().addingTimeInterval(1800).timeIntervalSince1970 * 1000)
+        } else if state == "player-recording-prompt" {
+            recordingPrompt = RecordingPrompt(scheduleId: 90, title: "Coastal stories", channelName: "Documentary", startsAt: Date().timeIntervalSince1970 * 1000, programEnd: Date().addingTimeInterval(1800).timeIntervalSince1970 * 1000)
+        } else if state == "player-error" {
+            error = "The local review stream is unavailable. Try again or return to channels."
+            canRetry = true
+        } else if state == "player-reconnecting" {
+            reconnecting = true
+            player.pause()
+        }
+    }
+
     func playFixtureMedia(_ url: URL) {
         installItem(url: url, strategy: "direct", mode: nil, assetCriteria: false, generation: itemGeneration)
     }

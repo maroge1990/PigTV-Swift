@@ -348,7 +348,7 @@ struct PlayerScreen: View {
                 VStack(spacing: 24) {
                     Text("Unable to play \(playback.channel.name)").font(.title2)
                     Text(error)
-                    if playback.canRetry { Button("Retry") { playback.retry() } }
+                    if playback.canRetry { Button("Retry") { playback.retry() }.pigPrimaryButton() }
                     Button("Back to channels") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
             } else if playback.reconnecting {
@@ -378,6 +378,10 @@ struct PlayerScreen: View {
                 #endif
             }
         }
+        .environment(\.colorScheme, .dark)
+        #if os(tvOS)
+        .buttonStyle(TVActionStyle())
+        #endif
         .alert("A recording needs the stream", isPresented: Binding(
             get: { playback.recordingPrompt != nil },
             set: { if !$0 { playback.recordingPrompt = nil } }
@@ -389,7 +393,7 @@ struct PlayerScreen: View {
         } message: { prompt in
             Text("\(prompt.title) on \(prompt.channelName) is due to record. Stop playback to allow it? If you keep watching, the recording will wait for the stream.")
         }
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: .top) {
             if let warning = playback.coordinationWarning {
                 Text(warning).font(.caption).padding()
                     .background(.black.opacity(0.8)).foregroundStyle(.white)

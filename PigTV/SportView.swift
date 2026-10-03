@@ -270,7 +270,7 @@ struct SportEventCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center) {
                     Text(event.league.uppercased()).font(SportMetrics.league).tracking(2)
-                        .foregroundStyle(Color.pigAccent).lineLimit(1)
+                        .foregroundStyle(Color.pigAccentText).lineLimit(1)
                     Spacer(minLength: 8)
                     // Kept (invisible) on upcoming cards so every title
                     // starts at the same height.
@@ -324,7 +324,7 @@ struct SportSeeAllCard: View {
         Button(action: action) {
             VStack(spacing: 14) {
                 Image(systemName: "sportscourt.fill").font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(Color.pigAccent)
+                    .foregroundStyle(Color.pigAccentText)
                 Text("See all sport").font(SportMetrics.title)
                 Text("Every event, by league").font(SportMetrics.detail).foregroundStyle(.secondary)
             }
@@ -595,7 +595,7 @@ struct PendingWatchBanner: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         HStack(spacing: 20) {
-            Image(systemName: "alarm.fill").foregroundStyle(Color.pigAccent)
+            Image(systemName: "alarm.fill").foregroundStyle(Color.pigAccentText)
             Text("Watching \(pending.channelName) at \(pending.at.formatted(date: .omitted, time: .shortened)): \(pending.title)")
                 .font(GuideTypography.body).lineLimit(1)
             Spacer(minLength: 12)
@@ -620,7 +620,7 @@ private struct SportEmptyState: View {
     var body: some View {
         VStack(spacing: 22) {
             Image(systemName: "sportscourt").font(.system(size: 64, weight: .semibold))
-                .foregroundStyle(Color.pigAccent)
+                .foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text(error == nil ? "No sport in the next three days" : "Sport is unavailable right now")
                 .font(DetailType.title).multilineTextAlignment(.center)

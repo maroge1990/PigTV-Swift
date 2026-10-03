@@ -161,7 +161,9 @@ struct PlayerChannelRow: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, PlayerMetrics.rowPadding.width).padding(.vertical, PlayerMetrics.rowPadding.height)
-        .background(highlighted ? Color.white.opacity(0.22) : Color.black.opacity(0.25),
+        .background(highlighted ? Color.pigMediaAccent.opacity(0.14) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
+        .background(Color.black.opacity(0.82),
                     in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
         .overlay {
             RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius)

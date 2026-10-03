@@ -54,6 +54,10 @@ struct RecordingPlayerView: View {
             }
         }
         .buttonStyle(BlankButtonStyle())
+        #if DEBUG
+        .accessibilityIdentifier("review.recordingPlayer")
+        .accessibilityValue("\(chrome); action=\(action); paused=\(model.paused); autoSkip=\(model.autoSkip); break=\(model.inBreak?.id ?? -1)")
+        #endif
         .focusEffectDisabled()
         .environment(\.colorScheme, .dark)
         .focused($focused)

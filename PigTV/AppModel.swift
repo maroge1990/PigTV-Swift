@@ -449,6 +449,10 @@ final class AppModel: ObservableObject {
     // third channel with a remembered last channel. `media` (a local movie
     // file) makes it ready at once; without it the player stays on the
     // tuning card (the resolve goes to a non-routable TEST-NET address).
+    func injectPairingReview() {
+        pairing = PairStart(code: "PIG482", expiresAt: Date().addingTimeInterval(600).timeIntervalSince1970 * 1000, expiresInSec: 600)
+    }
+
     func injectPlayerFixture(media: URL?) {
         injectHomeFixture()
         guard let browse, browse.guide.count > 3 else { return }

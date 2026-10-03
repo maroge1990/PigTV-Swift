@@ -43,6 +43,26 @@ final class RecordingPlayerModel: ObservableObject {
 
     private var resumeKey: String { "pigtv.resume.\(recording.id)" }
 
+    #if DEBUG
+    func showReviewStatus(_ state: String) {
+        started = true
+        if state == "recording-error" { error = "The recording could not be loaded. Try again or return to your library."; canRetry = true }
+        if state == "recording-preparing" { preparing = true }
+    }
+
+    func playReviewMedia(_ url: URL) {
+        started = true
+        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        breaks = (try? JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"completed","markers":[{"id":1,"startMs":10000,"endMs":20000,"type":"ad"}]}"#.utf8)))?.markers ?? []
+        autoSkip = false
+        observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 100), queue: .main) { @Sendable [weak self] time in
+            MainActor.assumeIsolated { self?.tick(time.seconds) }
+        }
+        ready = true
+        player.play()
+    }
+    #endif
+
     func start() {
         guard !started, !stopped else { return }
         started = true
@@ -209,7 +229,7 @@ struct RecordingPlayerScreen: View {
                 VStack(spacing: 20) {
                     Text("Unable to play \(model.recording.title)").font(.title2)
                     Text(error)
-                    if model.canRetry { Button("Retry") { model.retry() } }
+                    if model.canRetry { Button("Retry") { model.retry() }.pigPrimaryButton() }
                     Button("Back") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
             } else if model.ready {
@@ -235,7 +255,23 @@ struct RecordingPlayerScreen: View {
                 }.foregroundStyle(.white)
             }
         }
-        .onAppear { model.start() }
+        .environment(\.colorScheme, .dark)
+        #if os(tvOS)
+        .buttonStyle(TVActionStyle())
+        #endif
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "recording-player",
+               let path = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"] {
+                model.playReviewMedia(URL(fileURLWithPath: path))
+            } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
+                      ["recording-loading", "recording-preparing", "recording-error"].contains(screen) {
+                model.showReviewStatus(screen)
+            } else { model.start() }
+            #else
+            model.start()
+            #endif
+        }
         .onDisappear { Task { await model.stop() } }
         #if os(tvOS)
         // While playing, the player handles Back itself (hide chrome first).

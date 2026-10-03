@@ -436,7 +436,7 @@ private struct UpNextCard: View {
         HStack(alignment: .top, spacing: 28) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(programme.start.formatted(date: .omitted, time: .shortened)).font(DetailType.rowTitle.monospacedDigit())
-                Text(HomeRows.countdown(to: programme.start, now: now)).font(DetailType.rowDetail).foregroundStyle(Color.pigAccent)
+                Text(HomeRows.countdown(to: programme.start, now: now)).font(DetailType.rowDetail).foregroundStyle(Color.pigAccentText)
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text(programme.title).font(DetailType.rowTitle)

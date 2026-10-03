@@ -217,7 +217,7 @@ struct ChannelNumberText: View {
 /// Small uppercase label above a title ("ON NOW", "TOMORROW").
 struct Eyebrow: View {
     let text: String
-    var colour: Color = .pigAccent
+    var colour: Color = .pigAccentText
     var body: some View {
         Text(text.uppercased()).font(DetailType.eyebrow).tracking(2.5).foregroundStyle(colour)
     }

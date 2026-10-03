@@ -92,7 +92,7 @@ struct CustomPlayerView: View {
                         if chrome == .tracks { tracksPanel }
                         if chrome == .scrub { scrubBar(now: context.date) }
                         if let notice {
-                            Text(notice).font(.callout.weight(.semibold))
+                            Text(notice).font(.callout.weight(.semibold)).foregroundStyle(.white)
                                 .padding(.horizontal, 24).padding(.vertical, 12)
                                 .background(panelFill, in: Capsule())
                                 .frame(maxHeight: .infinity, alignment: .top).padding(.top, 60)
@@ -104,6 +104,10 @@ struct CustomPlayerView: View {
             }
         }
         .buttonStyle(BlankButtonStyle())
+        #if DEBUG
+        .accessibilityIdentifier("review.livePlayer")
+        .accessibilityValue("\(chrome); action=\(action); track=\(trackCursor); channel=\(cursor); selected=\(allTracks.filter { $0.selected }.map(\.id).joined(separator: ","))")
+        #endif
         .focusEffectDisabled()
         .environment(\.colorScheme, .dark)
         .focused($focused)
@@ -249,7 +253,7 @@ struct CustomPlayerView: View {
     // MARK: Info overlay
 
     private var panelFill: AnyShapeStyle {
-        reduceTransparency ? AnyShapeStyle(Color(white: 0.1)) : AnyShapeStyle(Color.black.opacity(0.55))
+        reduceTransparency ? AnyShapeStyle(Color(white: 0.1)) : AnyShapeStyle(Color.black.opacity(0.82))
     }
 
     private func infoOverlay(now: Date) -> some View {
@@ -300,7 +304,9 @@ struct CustomPlayerView: View {
         .padding(.horizontal, 90).padding(.bottom, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background(alignment: .bottom) {
-            LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.95 : 0.8)],
+            LinearGradient(stops: [.init(color: .clear, location: 0),
+                                   .init(color: .black.opacity(reduceTransparency ? 0.95 : 0.78), location: 0.22),
+                                   .init(color: .black.opacity(reduceTransparency ? 0.95 : 0.9), location: 1)],
                            startPoint: .top, endPoint: .bottom)
                 .frame(height: 620).ignoresSafeArea()
         }
@@ -607,7 +613,9 @@ private struct PlayerBottomShade: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(alignment: .bottom) {
-                LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.95 : opacity)],
+                LinearGradient(stops: [.init(color: .clear, location: 0),
+                                       .init(color: .black.opacity(reduceTransparency ? 0.95 : opacity), location: 0.22),
+                                       .init(color: .black.opacity(reduceTransparency ? 0.95 : max(opacity, 0.9)), location: 1)],
                                startPoint: .top, endPoint: .bottom)
                     .frame(height: height).ignoresSafeArea()
             }
