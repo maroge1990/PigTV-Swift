@@ -63,14 +63,23 @@ final class APIClient {
     let info: ServerInfo?
     private let token: String?
     private let session: URLSession
-    private let artworkCache: NSCache<NSURL, NSData> = {
-        let cache = NSCache<NSURL, NSData>()
+    // Keyed by the canonical artwork key (server-qualified, token removed).
+    private let artworkCache: NSCache<NSString, NSData> = {
+        let cache = NSCache<NSString, NSData>()
         cache.totalCostLimit = 16 * 1024 * 1024
         cache.countLimit = 200
         return cache
     }()
+    /// Largest artwork response accepted, enforced while it streams in.
+    var artworkMaxBytes = 4 * 1024 * 1024
+    private let artworkStore: ArtworkDiskStore
+    private let artworkProtocols: [AnyClass]?
+    // One task per logo: several cells asking for it share one fetch. The
+    // task is unstructured, so one awaiter being cancelled leaves the rest.
+    private var artworkFetches: [String: Task<Data?, any Error>] = [:]
     private lazy var artworkSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
+        if let artworkProtocols { configuration.protocolClasses = artworkProtocols }
         configuration.timeoutIntervalForRequest = 10
         configuration.timeoutIntervalForResource = 15
         configuration.httpMaximumConnectionsPerHost = 4
@@ -78,7 +87,12 @@ final class APIClient {
         return URLSession(configuration: configuration, delegate: ArtworkRedirects(address: address, token: token), delegateQueue: nil)
     }()
 
-    init(address: ServerAddress, token: String? = nil, session: URLSession? = nil, info: ServerInfo? = nil) {
+    init(address: ServerAddress, token: String? = nil, session: URLSession? = nil, info: ServerInfo? = nil,
+         artworkStore: ArtworkDiskStore = .shared) {
+        self.artworkStore = artworkStore
+        // A test's injected session carries its URLProtocol stubs; artwork
+        // goes through the same stubs.
+        self.artworkProtocols = session?.configuration.protocolClasses
         self.address = address
         self.info = info
         self.token = token
@@ -252,46 +266,50 @@ final class APIClient {
         return request
     }
 
-    @MainActor
-    // Logos persist on disk between launches, so the guide does not re-download
-    // every channel's artwork each cold start (only decoding is repeated).
-    private static let artworkDiskCache: URL? = {
-        guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let dir = base.appendingPathComponent("PigTVArtwork", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }()
-    private static func artworkDiskURL(for url: URL) -> URL? {
-        guard let dir = artworkDiskCache else { return nil }
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
-        return dir.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined())
-    }
+    /// The canonical cache key for a logo on this server.
+    func artworkKey(_ logo: String) -> String? { ArtworkKey.key(logo: logo, address: address) }
 
+    // Logos persist on disk between launches (bounded: see ArtworkDiskStore),
+    // so the guide does not re-download every channel's artwork each cold
+    // start (only decoding is repeated).
     func artworkData(_ logo: String) async throws -> Data? {
         guard let request = artworkRequest(logo), let url = request.url else { return nil }
-        if let cached = artworkCache.object(forKey: url as NSURL) { return cached as Data }
-        let diskURL = Self.artworkDiskURL(for: url)
-        if let diskURL, let data = await Task.detached(priority: .utility, operation: {
-            try? Data(contentsOf: diskURL)
-        }).value {
-            artworkCache.setObject(data as NSData, forKey: url as NSURL, cost: data.count)
+        let key = ArtworkKey.canonical(url)
+        if let cached = artworkCache.object(forKey: key as NSString) { return cached as Data }
+        if let pending = artworkFetches[key] { return try await pending.value }
+        let session = artworkSession, store = artworkStore, limit = artworkMaxBytes
+        let task = Task<Data?, any Error> {
+            defer { artworkFetches[key] = nil }
+            let data = try await Task.detached(priority: .utility) {
+                try await Self.loadArtwork(request, key: key, session: session, store: store, limit: limit)
+            }.value
+            if let data { artworkCache.setObject(data as NSData, forKey: key as NSString, cost: data.count) }
             return data
         }
-        let (file, response) = try await artworkSession.download(for: request)
+        artworkFetches[key] = task
+        return try await task.value
+    }
+
+    /// Disk first, else the network. Runs off the main actor: the body is
+    /// read incrementally and abandoned as soon as it passes `limit` (the
+    /// declared Content-Length is checked first), and the disk write happens
+    /// here, not on the caller.
+    private nonisolated static func loadArtwork(_ request: URLRequest, key: String, session: URLSession,
+                                               store: ArtworkDiskStore, limit: Int) async throws -> Data? {
+        if let data = store.read(key: key) { return data }
+        let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            try? FileManager.default.removeItem(at: file)
+            bytes.task.cancel()
             return nil
         }
-        let data: Data? = await Task.detached(priority: .utility) {
-            defer { try? FileManager.default.removeItem(at: file) }
-            guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-                  size <= 4 * 1024 * 1024 else { return nil }
-            return try? Data(contentsOf: file)
-        }.value
-        guard let data else { return nil }
-
-        artworkCache.setObject(data as NSData, forKey: url as NSURL, cost: data.count)
-        if let diskURL { try? data.write(to: diskURL, options: .atomic) }
+        if http.expectedContentLength > Int64(limit) { bytes.task.cancel(); return nil }
+        var data = Data()
+        if http.expectedContentLength > 0 { data.reserveCapacity(Int(http.expectedContentLength)) }
+        for try await byte in bytes {
+            data.append(byte)
+            if data.count > limit { bytes.task.cancel(); return nil }
+        }
+        store.write(data, key: key)
         return data
     }
 

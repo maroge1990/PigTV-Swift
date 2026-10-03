@@ -115,6 +115,7 @@ enum GuideFixtures {
             UIColor(red: 0.55, green: 0.12, blue: 0.40, alpha: 1), UIColor(red: 0.70, green: 0.55, blue: 0.10, alpha: 1),
             UIColor(red: 0.62, green: 0.08, blue: 0.08, alpha: 1), UIColor(red: 0.00, green: 0.40, blue: 0.60, alpha: 1),
             UIColor(red: 0.80, green: 0.10, blue: 0.12, alpha: 1), UIColor(red: 0.95, green: 0.60, blue: 0.10, alpha: 1)]
+        guard let address = try? ServerAddress("http://127.0.0.1:3000") else { return }
         let size = CGSize(width: 320, height: 180)
         for (index, entry) in names.enumerated() {
             let image = UIGraphicsImageRenderer(size: size).image { context in
@@ -133,7 +134,7 @@ enum GuideFixtures {
                                        width: rect.width - 24, height: bounds.height),
                           options: .usesLineFragmentOrigin, attributes: attributes, context: nil)
             }
-            ChannelArtwork.preload(image, for: logoKey(index))
+            ChannelArtwork.preload(image, for: logoKey(index), address: address)
         }
     }
 

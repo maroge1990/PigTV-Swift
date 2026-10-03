@@ -358,7 +358,7 @@ extension BrowseModel {
     /// plain URL, else the thumbnail already decoded for the guide.
     func topShelfLogoImage(_ logo: String) async -> UIImage? {
         #if DEBUG
-        if isFixture { return GuideFixtures.topShelfLogo(logo) ?? ChannelArtwork.cachedImage(for: logo) }
+        if isFixture { return GuideFixtures.topShelfLogo(logo) ?? ChannelArtwork.cachedImage(for: logo, address: client.address) }
         #endif
         var candidates: [String] = []
         if let full = Self.fullSizeLogo(logo, relativeTo: client.address.url) { candidates.append(full) }
@@ -368,7 +368,7 @@ extension BrowseModel {
             else { continue }
             if let image = await Task.detached(priority: .utility, operation: { Self.decodeLogo(data) }).value { return image }
         }
-        return ChannelArtwork.cachedImage(for: logo)
+        return ChannelArtwork.cachedImage(for: logo, address: client.address)
     }
 
     /// Decodes at native size (capped at 2048 px, never enlarged).
