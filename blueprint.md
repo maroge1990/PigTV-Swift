@@ -52,6 +52,7 @@ Implementation map · 6 Shared contracts · 7 Deferred choices and crash lessons
 | Item | Reference |
 |---|---|
 | Project | `PigTV.xcodeproj`, shared scheme `PigTV`; iOS/tvOS 26.5 targets; Xcode 27. Targets: `PigTV` (app, **Swift 6 language mode** since build 28, default MainActor isolation), `PigTVTopShelf` (tvOS extension, Swift 6 since build 28), `PigTVTests`, `PigTVUITests` (Swift 5). Synchronized folders: `PigTV/`, `Shared/` (app + extension), `PigTVTopShelf/`, tests. If Xcode is open while `project.pbxproj` is edited by hand, it may re-save the file: check `platformFilters = (tvos)` on the extension's dependency and embed entry survived (it dropped a singular `platformFilter = tvos` once). |
+| Baseline (4 Oct, build 37) | **165 tests pass** on the tvOS 26.5 "Apple TV" simulator (141 unit + 24 UI, 0 failures); the contract runner passes **212**. `TabSwitchUITests` (1,000 channels + the 215-event Sport fixture): worst stall **363 ms**, mean 97 ms, budget 500 ms (`PIGTV_TABSWITCH_BUDGET_MS`; 250 on the device). `ProviderFailoverTests.testRecoveryAllowanceRenewsAfterTwoMinutesOfGoodPlayback` can time out when the Mac is heavily loaded; it passes alone. |
 | Baseline (30 Sept, build 36) | **150 tests pass** on the tvOS 26.5 "Apple TV" simulator (133 unit + 17 UI); **130** unit tests pass on the iPad Pro 13-inch (M5) simulator; the contract runner passes **204**. `TabSwitchUITests`' 1,000 ms tab-switch limit can flake once under load (1,150 ms seen; the rerun passed). Per-build counts are in the commit messages. |
 | Contract runner | `sh Tools/test-contracts.sh` (synthetic, no server) |
 | Regression and device procedure | [TESTING.md](TESTING.md) |
@@ -318,6 +319,17 @@ Build 23 also moved the app target back to Swift 5 on a wrong diagnosis (the KVO
 Swift 6** (Mark approved) with every KVO/AVFoundation callback explicitly `@Sendable`/nonisolated (see §4 Swift 6) and the
 real-playback harness exercising them. Verified on the TV (R2.15: no crashes across live channels, switching, Last channel and
 a recording).
+
+## Build 37 (4 Oct): the audit's client work
+
+From the 3 Oct audit (`../PigTV/audit/ROADMAP.md`), with server 0192–0196:
+- **Sport is proportional to the screen (R04/R05).** Lazy page and shelves; each card is an `Equatable` view of plain values (`SportCardInput`) and no longer observes `AppModel`/`BrowseModel` (which republished every card on any guide or recordings change); logos follow a debounced `SportLogoRevision`. Details and the channel picker are owned by the screen (`SportPresenter`, `.sportPages`), so a recycled cell cannot close an open page. `SportModel` publishes one `SportSnapshot` (buckets, chips, per-league rows) rebuilt only when events change or the minute turns. Entering Sport on the 215-event fixture: 4.7–7.2 s stall before, ~0.1–0.4 s after (simulator).
+- **A recording starts without waiting for its break markers (R07).** Markers load beside the playback request with a 3 s budget and are applied when they arrive; "Loading recording…" stays until the player is actually playing (`hasPlayed`).
+- **Recordings show "Preparing for playback…"** while the server's background preparation (0193, `native_status` pending/preparing) has not finished.
+- **Measurement (R03).** `PigTVSignpost` (subsystem = bundle id, category "Responsiveness"): `TabSwitch`, `TabFirstFrame`, `GuideLoad`/`GuidePage`/`GuideExtend`, `SportLoad`/`SportBuckets`, `HomeRebuild`, `RecordingsLoad`, `Live*` and `Recording*` playback stages, `LogoDecoded`. `TabSwitchUITests` fails if the probe never reports or a number won't parse, checks the remote can act after each switch, and uses `GuideFixtures.largeSportEvents` (`PIGTV_UI_TEST_SPORT_EVENTS`). Device profiling steps: `TESTING.md` → "Measuring on the Apple TV".
+- **CI (R10).** `BrandDepthUITests`' focus helper waits for a press to land (it judged a stale snapshot and pressed back the other way); the offline Recordings fixture no longer tries the network. `Tools/bump-build.sh` bumps the build number; run it in every commit that changes the app.
+- Siri / App Shortcuts removed; the provider reminder no longer asks for dates to be typed.
+- **Next:** the first Home → TV Guide switch still stalls (~0.4–3.7 s in the simulator under load): the Guide's own grid, the next target. Instruments baseline on Mark's Apple TV (TESTING.md).
 
 ## Multi-provider failover, client side (build 36, work package A1)
 
