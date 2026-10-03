@@ -82,6 +82,7 @@ struct GuideView: View {
     @State private var gridFocus: GuideFocus?
     @State private var gridRequest: GuideGridRequest?
     @State private var rowsVersion = 0
+    @State private var gridReady = false
     @State private var lastRowsInput: GuideRowsInput?
     // Bumped when the player or a details cover closes (the UIKit grid
     // refocuses its last programme or tile).
@@ -106,7 +107,14 @@ struct GuideView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
+                #if os(tvOS)
+                // Never compact on the TV. The reader's first pass has zero
+                // size, which read as compact and built the phone menu only to
+                // throw it away (part of the first visit's stall).
+                let compact = false
+                #else
                 let compact = geometry.size.width < 700
+                #endif
                 VStack(alignment: .leading, spacing: 10) {
                     header(compact: compact)
                     filters(compact: compact)
@@ -180,7 +188,10 @@ struct GuideView: View {
                     await model.loadRecordings()
                 }
             }
-            .onAppear { refreshRows() }
+            .onAppear {
+                refreshRows()
+                if !gridReady { NextFrame.run { gridReady = true } }
+            }
             // Background paging adds 50 channels at a time; refresh at most a
             // few times a second rather than once per page.
             .onChange(of: model.guide.count) {
@@ -259,27 +270,32 @@ struct GuideView: View {
     @ViewBuilder
     private func gridView() -> some View {
         ZStack(alignment: .topLeading) {
-            GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window,
-                loadedDuration: model.guideLoadedUntil.timeIntervalSince(model.window), clock: clock,
-                scheduled: model.scheduledKeys, recording: model.recordingChannels,
-                request: gridRequest, resetToken: scrollToTop, focusRestoreToken: gridFocusRestore,
-                actions: GuideGridActions(
-                    select: { channel, programme in
-                        if programme.isLive(at: Date()) { play(channel) }
-                        else { selection = GuideSelection(channel: channel, programme: programme) }
-                    },
-                    play: { play($0) },
-                    details: { selection = GuideSelection(channel: $0, programme: $1) },
-                    channelOptions: { channelDetails = asChannel($0) },
-                    schedule: { schedule = $0 },
-                    focusChanged: { channel, start in
-                        let value = GuideFocus(channel: channel, start: start)
-                        gridFocus = value
-                        lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
-                    },
-                    viewportChanged: { setViewport($0) },
-                    leaveUp: { headerNowFocused = true }))
-                .focused($gridHasFocus)
+            // Not in the first frame: the shell (header, chips) is built and
+            // shown first, then the grid, so the first visit is several short
+            // frames instead of one long stall.
+            if gridReady {
+                GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window,
+                    loadedDuration: model.guideLoadedUntil.timeIntervalSince(model.window), clock: clock,
+                    scheduled: model.scheduledKeys, recording: model.recordingChannels,
+                    request: gridRequest, resetToken: scrollToTop, focusRestoreToken: gridFocusRestore,
+                    actions: GuideGridActions(
+                        select: { channel, programme in
+                            if programme.isLive(at: Date()) { play(channel) }
+                            else { selection = GuideSelection(channel: channel, programme: programme) }
+                        },
+                        play: { play($0) },
+                        details: { selection = GuideSelection(channel: $0, programme: $1) },
+                        channelOptions: { channelDetails = asChannel($0) },
+                        schedule: { schedule = $0 },
+                        focusChanged: { channel, start in
+                            let value = GuideFocus(channel: channel, start: start)
+                            gridFocus = value
+                            lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
+                        },
+                        viewportChanged: { setViewport($0) },
+                        leaveUp: { headerNowFocused = true }))
+                    .focused($gridHasFocus)
+            }
             if model.guideBusy && model.guide.isEmpty {
                 ProgressView("Loading guide…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
@@ -313,7 +329,21 @@ struct GuideView: View {
     }
 
     private func header(compact: Bool) -> some View {
-        ViewThatFits(in: .horizontal) {
+        Group {
+            #if os(tvOS)
+            // The TV is always wide enough, and ViewThatFits builds and
+            // measures both layouts: part of the first visit's stall.
+            regularHeader
+            #else
+            ViewThatFits(in: .horizontal) {
+                regularHeader
+                phoneHeader
+            }
+            #endif
+        }.padding(.horizontal, 24)
+    }
+
+    private var regularHeader: some View {
         HStack(spacing: 14) {
             PigBrandMark(width: 58, height: 48)
                 .accessibilityLabel("PigTV")
@@ -334,7 +364,11 @@ struct GuideView: View {
                 Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
             }
         }
-        // Phone layout: icon-only controls so nothing wraps.
+    }
+
+    #if !os(tvOS)
+    // Phone layout: icon-only controls so nothing wraps.
+    private var phoneHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 PigBrandMark(width: 36, height: 30)
@@ -356,8 +390,8 @@ struct GuideView: View {
             .buttonStyle(.bordered)
             .buttonBorderShape(.capsule)
         }
-        }.padding(.horizontal, 24)
     }
+    #endif
 
     // Filter chips: a strip clipped to the guide's own width with soft edges on
     // large screens; a compact menu on phones where a strip would be endless.
