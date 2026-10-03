@@ -69,13 +69,17 @@ final class BrowseModel: ObservableObject {
     // rows in place: `guide.count`/first/last id do not change, so this is
     // what tells GuideView's row-filter memoisation to recompute.
     @Published private(set) var guideProgrammesVersion = 0
-    private static var cacheURL: URL {
-        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        return directory.appendingPathComponent("pigtv-guide.json")
+    // Private to this server and account (R14); retired on sign-out.
+    private let guideCache: GuideCacheStore
+
+    init(client: APIClient, accountID: Int? = nil, guideCacheDirectory: URL = GuideCacheStore.defaultDirectory) {
+        self.client = client
+        guideCache = GuideCacheStore(scope: CacheScope(address: client.address, accountID: accountID), directory: guideCacheDirectory)
     }
 
-
-    init(client: APIClient) { self.client = client }
+    /// Sign-out or a server/account switch: delete this account's guide cache
+    /// and drop any save still in flight.
+    func retirePrivateCaches() { guideCache.retire() }
 
     // Loads the first page immediately, then keeps paging in the background
     // until every channel is present. Filters and search then work locally,
@@ -311,9 +315,9 @@ final class BrowseModel: ObservableObject {
     // version check (below) shows that load is unnecessary.
     func loadCachedGuide() async {
         guard guide.isEmpty else { return }
-        let url = Self.cacheURL
+        let store = guideCache
         let cached: GuideCache? = await Task.detached(priority: .userInitiated) {
-            guard let data = try? Data(contentsOf: url) else { return nil }
+            guard let data = store.load() else { return nil }
             return try? JSONDecoder().decode(GuideCache.self, from: data)
         }.value
         guard let cached, guide.isEmpty,
@@ -333,9 +337,9 @@ final class BrowseModel: ObservableObject {
 
     private func saveCache() {
         let snapshot = GuideCache(savedAt: Date(), window: window, channels: guide, version: guideCacheVersion)
-        let url = Self.cacheURL
+        let store = guideCache
         Task.detached(priority: .utility) {
-            if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: url, options: .atomic) }
+            if let data = try? JSONEncoder().encode(snapshot) { store.save(data) }
         }
     }
 

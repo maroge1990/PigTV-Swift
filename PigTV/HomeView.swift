@@ -209,9 +209,12 @@ struct HomeView: View {
         .onAppear { clock = Date(); refresh() }
         // Guide pages arrive in bursts; rebuild at most a few times a second.
         .onChange(of: model.guide.count) { scheduleRefresh() }
-        .onChange(of: model.favourites.map(\.id)) { refresh() }
-        .onChange(of: model.recent.map(\.id)) { refresh() }
-        .onChange(of: model.recordings.map(\.id)) { refresh() }
+        // Whole-value equality, not id lists: a recording's status or
+        // `native_status` changing (same id) must rebuild Home, while an
+        // unrelated publish that leaves these arrays equal does not.
+        .onChange(of: model.favourites) { refresh() }
+        .onChange(of: model.recent) { refresh() }
+        .onChange(of: model.recordings) { refresh() }
         .onChange(of: app.lastWatched) { refresh() }
         // C-I: the sport events (refreshed every minute while Home shows).
         .onReceive(model.sport.$events) { _ in scheduleRefresh() }

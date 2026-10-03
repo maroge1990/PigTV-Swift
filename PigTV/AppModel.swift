@@ -69,7 +69,8 @@ final class AppModel: ObservableObject {
             let authenticated = APIClient(address: address, token: token, info: info)
             self.client = authenticated
             self.serverInfo = info
-            self.browse = BrowseModel(client: authenticated)
+            browse?.retirePrivateCaches()
+            self.browse = BrowseModel(client: authenticated, accountID: user.id)
             self.user = user
             canRestore = false
             unreachable = nil
@@ -138,7 +139,8 @@ final class AppModel: ObservableObject {
         serverText = address.url.absoluteString
         self.client = candidate
         self.serverInfo = info
-        self.browse = BrowseModel(client: candidate)
+        browse?.retirePrivateCaches()
+        self.browse = BrowseModel(client: candidate, accountID: resolvedUser.id)
         self.user = resolvedUser
         password = ""
         pairing = nil
@@ -222,6 +224,7 @@ final class AppModel: ObservableObject {
         lastWatched = nil
         client = nil
         serverInfo = nil
+        browse?.retirePrivateCaches()
         browse = nil
         user = nil
         password = ""
