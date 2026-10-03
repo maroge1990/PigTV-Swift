@@ -556,11 +556,11 @@ enum ContractChecks {
         let trex = ProviderReminder(name: "Trex", expiresAt: 1_774_828_800_000) // Mon 30 Mar 2026 00:00 UTC
         try expect(ProviderReminderText.day(trex.expiry, timeZone: utc, locale: au) == "Mon 30 Mar", "C-K: the date reads weekday day month")
         let before = Date(timeIntervalSince1970: 1_774_000_000)
-        try expect(ProviderReminderText.message(for: [trex], now: before, timeZone: utc, locale: au) == "Trex expires Mon 30 Mar. Renew it, then update the dates in PigTV's web settings.", "C-K: the popup wording")
+        try expect(ProviderReminderText.message(for: [trex], now: before, timeZone: utc, locale: au) == "Trex expires Mon 30 Mar. Renew it with the provider; PigTV picks up the new date by itself.", "C-K: the popup wording")
         let gone = ProviderReminder(name: "Dream4K", expiresAt: 1_774_000_000_000 - 86_400_000 * 3)
         try expect(ProviderReminderText.message(for: [gone], now: before, timeZone: utc, locale: au)?.hasPrefix("Dream4K expired on ") == true, "C-K: past expiry says expired on")
         let both = ProviderReminderText.message(for: [trex, gone], now: before, timeZone: utc, locale: au) ?? ""
-        try expect(both.hasPrefix("Dream4K expired on ") && both.contains(" and Trex expires Mon 30 Mar. Renew them,"), "C-K: several providers are listed together")
+        try expect(both.hasPrefix("Dream4K expired on ") && both.contains(" and Trex expires Mon 30 Mar. Renew them with the provider;"), "C-K: several providers are listed together")
         try expect(ProviderReminderText.message(for: [], timeZone: utc) == nil, "C-K: nothing due, no text")
         let reminderDefaults = UserDefaults(suiteName: "pigtv.contract.reminders")!
         reminderDefaults.removePersistentDomain(forName: "pigtv.contract.reminders")

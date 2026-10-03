@@ -333,8 +333,8 @@ Spec: `../PigTV/docs/MULTI-PROVIDER-BRIEF.md` (§2.6, §2.8, C-J, C-K). Server f
   (`UserDefaults` `pigtv.providerReminderDay`, set only when a banner is actually shown; an empty answer or a failed request
   leaves the day unused). The banner is an **overlay** on the root view (no cover, so no nested-cover focus trap, W6) and is dismissed
   after 15 s, by its OK button (iOS/iPadOS) or when playback starts. **On tvOS it is deliberately not focusable** (no button):
-  it cannot take or trap focus and goes away by itself. Text: "Trex expires Mon 30 Mar. Renew it, then update the dates in PigTV's
-  web settings."; past expiry "expired on …"; several providers in one sentence.
+  it cannot take or trap focus and goes away by itself. Text: "Trex expires Mon 30 Mar. Renew it with the provider; PigTV picks up
+  the new date by itself."; past expiry "expired on …"; several providers in one sentence.
 - **Recovery allowance:** `PlaybackModel.recoveryUsed` is renewed when a failure arrives after `recoveryResetInterval` (120 s) of
   unbroken good playback since the last recovery (`goodPlaySince`, set in `playbackStarted` after a recovery, cleared by a stall,
   a failure and Retry; `clock` is injectable). Still at most one re-resolve per failure; a failure inside 2 min of a recovery ends in

@@ -113,7 +113,7 @@ final class ProviderFailoverTests: XCTestCase {
         await reminders.check(client: client, playing: { false })
         let text = try XCTUnwrap(reminders.message)
         XCTAssertTrue(text.hasPrefix("Trex expires "), text)
-        XCTAssertTrue(text.hasSuffix("Renew it, then update the dates in PigTV's web settings."), text)
+        XCTAssertTrue(text.hasSuffix("Renew it with the provider; PigTV picks up the new date by itself."), text)
         reminders.dismiss()
         XCTAssertNil(reminders.message)
         // Same day (foreground again): no second popup, and no second request.

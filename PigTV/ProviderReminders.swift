@@ -14,8 +14,8 @@ nonisolated enum ProviderReminderText {
         return formatter.string(from: date)
     }
 
-    /// "Trex expires Tue 30 Mar. Renew it, then update the dates in PigTV's
-    /// web settings." Several providers are listed in one sentence; one past
+    /// "Trex expires Tue 30 Mar. Renew it with the provider; PigTV picks up
+    /// the new date by itself." Several providers are listed in one sentence; one past
     /// its expiry reads "expired on …".
     static func message(for reminders: [ProviderReminder], now: Date = Date(),
                         timeZone: TimeZone = .current, locale: Locale = .current) -> String? {
@@ -27,7 +27,7 @@ nonisolated enum ProviderReminderText {
         let list: String
         if clauses.count == 1 { list = clauses[0] }
         else { list = clauses.dropLast().joined(separator: ", ") + " and " + clauses[clauses.count - 1] }
-        return "\(list). Renew \(reminders.count == 1 ? "it" : "them"), then update the dates in PigTV's web settings."
+        return "\(list). Renew \(reminders.count == 1 ? "it" : "them") with the provider; PigTV picks up the new date by itself."
     }
 }
 
