@@ -675,8 +675,12 @@ private struct CategoryContentFade: ViewModifier {
                         .init(color: .black, location: 1 - edge),
                         .init(color: trailing ? .clear : .black, location: 1)
                     ], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: width).offset(x: -origin)
-                } else { Color.black }
+                    .frame(width: width)
+                    // The focus ring extends 4 pt outside the chip. Fade only
+                    // horizontally; keep its top/bottom inside the mask.
+                    .padding(.vertical, -6)
+                    .offset(x: -origin)
+                } else { Color.black.padding(.vertical, -6) }
             }
     }
 }

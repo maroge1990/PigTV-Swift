@@ -182,6 +182,27 @@ final class BrandDepthUITests: XCTestCase {
     }
 
     @MainActor
+    func testGuideCategoryFocusWhileScrollingInBothAppearances() throws {
+        for mode in ["light", "dark"] {
+            let app = XCUIApplication()
+            app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "guide"
+            app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = mode
+            app.launchEnvironment["PIGTV_UI_TEST_LONG_CATEGORIES"] = "1"
+            app.launch()
+            focus(app, label: "All")
+            shot(app, "category-focus-start-\(mode)")
+            for _ in 0..<12 { XCUIRemote.shared.press(.right) }
+            let focused = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
+            XCTAssertTrue(focused.label.hasPrefix("Category "), focused.label)
+            shot(app, "category-focus-scrolled-\(mode)")
+            for _ in 0..<12 { XCUIRemote.shared.press(.left) }
+            XCTAssertTrue(app.buttons["All"].hasFocus)
+            shot(app, "category-focus-return-\(mode)")
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testPlaybackErrorFocusAndPairingCancellation() throws {
         try requireMedia()
         for mode in ["light", "dark"] {

@@ -6,10 +6,12 @@ import UIKit
 // no server in the simulator). Launch with PIGTV_UI_TEST_SCREEN=guide.
 enum GuideFixtures {
     static func categories() -> [Category] {
-        [Category(rawID: "sports", sourceId: 1, name: "Sports", channelCount: 6, sport: true),
+        let base = [Category(rawID: "sports", sourceId: 1, name: "Sports", channelCount: 6, sport: true),
          Category(rawID: "movies", sourceId: 1, name: "Movies", channelCount: 4),
          Category(rawID: "news", sourceId: 1, name: "News", channelCount: 3),
          Category(rawID: "kids", sourceId: 1, name: "Kids", channelCount: 1)]
+        guard ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LONG_CATEGORIES"] == "1" else { return base }
+        return base + (1...16).map { Category(rawID: "review-\($0)", sourceId: 1, name: "Category \($0)", channelCount: 0) }
     }
 
     // Build 33: how far past "now" the fixture's synthetic programmes reach
