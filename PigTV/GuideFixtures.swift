@@ -267,6 +267,120 @@ enum GuideFixtures {
         ]
     }
 
+    /// Production-sized sport fixture: `count` events (default 215) with ~71%
+    /// marked as replays, remaining spread across live, soon, later, and
+    /// future days. Uses 8 distinct leagues and reuses guide's sport channels.
+    /// Deterministic: no randomness. Selected when PIGTV_UI_TEST_SPORT_EVENTS
+    /// env var is set to a number.
+    static func largeSportEvents(from guide: [GuideChannel], count: Int = 215) -> [SportEvent] {
+        let now = (Date().timeIntervalSince1970 / 300).rounded(.down) * 300_000
+        let minute = 60_000.0
+        let leagues = ["NFL", "AFL", "NRL", "F1", "MLB", "NBA", "Cricket", "Rugby"]
+        let titles = ["Match", "Championship", "Final", "Playoff", "Quarter-Final", "Semi-Final",
+                     "Classic", "Special", "Live Coverage", "Qualifying", "Practice", "Sprint"]
+        let qualities: [SportQuality] = [.uhd, .hd, .sd]
+
+        func on(_ index: Int, _ quality: SportQuality?) -> SportEventChannel? {
+            guard guide.indices.contains(index) else { return nil }
+            let row = guide[index]
+            return SportEventChannel(sourceId: row.sourceId, rawID: row.rawID, stableId: row.stableId, name: row.name,
+                                     number: row.number, logo: row.logo, quality: quality)
+        }
+
+        func dayOffset(_ days: Int, hour: Double) -> Double {
+            let calendar = Calendar.current
+            let day = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: Date())) ?? Date()
+            return (day.addingTimeInterval(hour * 3600).timeIntervalSince1970 * 1000 - now) / minute
+        }
+
+        func event(_ id: String, _ title: String, _ league: String, from: Double, minutes: Double,
+                   _ channels: [SportEventChannel?], kind: SportEventKind = .event) -> SportEvent {
+            SportEvent(id: id, title: title, league: league, startTime: now + from * minute,
+                       endTime: now + (from + minutes) * minute, channels: channels.compactMap { $0 }, kind: kind)
+        }
+
+        var events: [SportEvent] = []
+        let replayCount = Int((Double(count) * 0.71).rounded())
+        let nonReplayCount = count - replayCount
+
+        // Distribute non-replay events across time buckets (count: 62 for 215 total)
+        let live = 3, soon = 7, later = 10, tomorrow = 15, day2 = 12, day3 = 10, day4plus = 5
+
+        // Generate live events
+        for i in 0..<live {
+            let minuteOffset = Double(i * 70 - 70)
+            let league = leagues[i % leagues.count]
+            let title = titles[i % titles.count]
+            let channels = [on(i % 6, qualities[i % qualities.count]), on((i + 1) % 6, .hd)]
+            events.append(event("live-\(i)", "\(league): \(title)", league, from: minuteOffset, minutes: 150, channels))
+        }
+
+        // Generate soon events (within 1 hour)
+        for i in 0..<soon {
+            let minuteOffset = Double(20 + i * 8)
+            let league = leagues[(i + live) % leagues.count]
+            let title = titles[(i + live) % titles.count]
+            let channels = [on((i + 2) % 6, qualities[(i + 1) % qualities.count])]
+            events.append(event("soon-\(i)", "\(league): \(title)", league, from: minuteOffset, minutes: 120, channels))
+        }
+
+        // Generate later today events
+        for i in 0..<later {
+            let minuteOffset = Double(3600 + i * 30)
+            let league = leagues[(i + live + soon) % leagues.count]
+            let title = titles[(i + live + soon) % titles.count]
+            let channels = [on((i + 3) % 6, qualities[i % qualities.count])]
+            events.append(event("later-\(i)", "\(league): \(title)", league, from: minuteOffset, minutes: 100, channels))
+        }
+
+        // Generate tomorrow events
+        for i in 0..<tomorrow {
+            let hour = Double(12 + (i % 12))
+            let league = leagues[(i + live + soon + later) % leagues.count]
+            let title = titles[(i + live + soon + later) % titles.count]
+            let channels = [on((i + 4) % 6, qualities[(i + 2) % qualities.count])]
+            events.append(event("tom-\(i)", "\(league): \(title)", league, from: dayOffset(1, hour: hour), minutes: 120, channels))
+        }
+
+        // Generate day+2 events
+        for i in 0..<day2 {
+            let hour = Double(12 + (i % 12))
+            let league = leagues[(i + live + soon + later + tomorrow) % leagues.count]
+            let title = titles[(i + live + soon + later + tomorrow) % titles.count]
+            let channels = [on((i + 5) % 6, qualities[i % qualities.count])]
+            events.append(event("day2-\(i)", "\(league): \(title)", league, from: dayOffset(2, hour: hour), minutes: 150, channels))
+        }
+
+        // Generate day+3 events
+        for i in 0..<day3 {
+            let hour = Double(14 + (i % 10))
+            let league = leagues[(i + live + soon + later + tomorrow + day2) % leagues.count]
+            let title = titles[(i + live + soon + later + tomorrow + day2) % titles.count]
+            let channels = [on(i % 6, qualities[(i + 1) % qualities.count])]
+            events.append(event("day3-\(i)", "\(league): \(title)", league, from: dayOffset(3, hour: hour), minutes: 100, channels))
+        }
+
+        // Generate day+4+ events
+        for i in 0..<day4plus {
+            let hour = Double(15 + (i % 9))
+            let league = leagues[(i + live + soon + later + tomorrow + day2 + day3) % leagues.count]
+            let title = titles[(i + live + soon + later + tomorrow + day2 + day3) % titles.count]
+            let channels = [on((i + 1) % 6, qualities[i % qualities.count])]
+            events.append(event("day4-\(i)", "\(league): \(title)", league, from: dayOffset(4, hour: hour), minutes: 110, channels))
+        }
+
+        // Generate replay events (remaining to reach `count`)
+        for i in 0..<replayCount {
+            let minuteOffset = Double(-2000 + i * 10)
+            let league = leagues[(i + nonReplayCount) % leagues.count]
+            let title = titles[(i + nonReplayCount) % titles.count]
+            let channels = [on((i % 6), qualities[(i + 2) % qualities.count])]
+            events.append(event("rp-\(i)", "\(league): \(title) Replay", league, from: minuteOffset, minutes: 120, channels, kind: .replay))
+        }
+
+        return events
+    }
+
     static func user() -> User {
         (try? JSONDecoder().decode(User.self, from: Data(#"{"id":1,"username":"tester","role":"user"}"#.utf8)))
             ?? (try! JSONDecoder().decode(User.self, from: Data(#"{"id":0,"username":"","role":""}"#.utf8)))

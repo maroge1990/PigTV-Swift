@@ -437,7 +437,14 @@ final class AppModel: ObservableObject {
             lastWatched = nil
         }
         GuideFixtures.preloadLogos()
-        model.sport.setFixture(firstRun ? [] : GuideFixtures.sportEvents(from: model.guide))
+        let sportFixture: [SportEvent]
+        if !firstRun, let countStr = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPORT_EVENTS"],
+           let count = Int(countStr), count > 0 {
+            sportFixture = GuideFixtures.largeSportEvents(from: model.guide, count: count)
+        } else {
+            sportFixture = firstRun ? [] : GuideFixtures.sportEvents(from: model.guide)
+        }
+        model.sport.setFixture(sportFixture)
         browse = model
         categories = GuideFixtures.categories()
         serverInfo = info
