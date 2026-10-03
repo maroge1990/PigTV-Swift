@@ -54,6 +54,7 @@ enum HLSFixture {
 ///   break 1–2 s, and `/api/recordings/<id>/<file>` → the fixture.
 /// - C-I: `GET /api/sports/events` → `sportEvents` (by default
 ///   `sportEventsJSON(now:)`, a realistic answer around the server's start).
+/// - `markers:` replaces the markers answer (e.g. with a `delay`, or a 500).
 /// Anything else is a 404, and every request is recorded.
 final class FakePigTVServer: @unchecked Sendable {
     let http: LocalHTTPServer
@@ -61,7 +62,8 @@ final class FakePigTVServer: @unchecked Sendable {
     /// `resolve(n)` builds the n-th resolve answer (1-based) as JSON.
     init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil,
          sportEvents: String? = nil,
-         reminders: String? = nil) throws {
+         reminders: String? = nil,
+         markers: LocalHTTPServer.Response? = nil) throws {
         let counter = Locked(0)
         let resolve = resolve ?? { count, _ in FakePigTVServer.decision(session: "s\(count)") }
         let sport = sportEvents ?? FakePigTVServer.sportEventsJSON(now: Date())
@@ -69,7 +71,7 @@ final class FakePigTVServer: @unchecked Sendable {
             if request.method == "GET", request.path == "/api/sports/events" { return .json(sport) }
             // C-K: `GET /api/providers/reminders` (404 when the fake has none).
             if request.method == "GET", request.path == "/api/providers/reminders", let reminders { return .json(reminders) }
-            return FakePigTVServer.route(request, counter: counter, resolve: resolve)
+            return FakePigTVServer.route(request, counter: counter, markers: markers, resolve: resolve)
         }
     }
 
@@ -135,7 +137,7 @@ final class FakePigTVServer: @unchecked Sendable {
         return .json(#"{"strategy":"transcode","url":"/api/transcode/\#(session)/\#(playlist)","sessionId":"\#(session)","container":"hls","videoMode":"copy","info":{\#(info.joined(separator: ","))}\#(provider.map { #","provider":"# + $0 } ?? "")}"#)
     }
 
-    private static func route(_ request: LocalHTTPServer.Request, counter: Locked<Int>,
+    private static func route(_ request: LocalHTTPServer.Request, counter: Locked<Int>, markers: LocalHTTPServer.Response?,
                               resolve: @Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response) -> LocalHTTPServer.Response {
         let path = request.path
         switch (request.method, path) {
@@ -159,6 +161,7 @@ final class FakePigTVServer: @unchecked Sendable {
             case "playback":
                 return .json(#"{"url":"/api/recordings/\#(id)/stream.m3u8","container":"hls","durationSec":6,"inProgress":false}"#)
             case "markers":
+                if let markers { return markers }
                 return .json(#"{"status":"completed","markers":[{"id":1,"startMs":1000,"endMs":2000,"type":"ad"}]}"#)
             default:
                 if let data = HLSFixture.contents[parts[3]] {

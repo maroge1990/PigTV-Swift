@@ -189,7 +189,7 @@ final class SportRowsTests: XCTestCase {
     // Production-sized fixture: 215 events with 153 replays (71%), and remaining
     // 62 spread across live, soon, later, tomorrow and future days. All non-replay
     // buckets must be non-empty.
-    func testLargeSportEventsFixtureFor215() {
+    @MainActor func testLargeSportEventsFixtureFor215() {
         let guide = GuideFixtures.channels()
         let events = GuideFixtures.largeSportEvents(from: guide, count: 215)
         let buckets = SportRows.buckets(events, now: now)
@@ -211,7 +211,7 @@ final class SportRowsTests: XCTestCase {
     }
 
     // Test that largeSportEvents scales proportionally: 600 events with ~71% replays.
-    func testLargeSportEventsScalesProportionally() {
+    @MainActor func testLargeSportEventsScalesProportionally() {
         let guide = GuideFixtures.channels()
         let events = GuideFixtures.largeSportEvents(from: guide, count: 600)
         let buckets = SportRows.buckets(events, now: now)
