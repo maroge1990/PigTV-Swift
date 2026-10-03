@@ -60,6 +60,7 @@ final class SportModel: ObservableObject {
     func advance(to now: Date) {
         let minute = SportRows.minute(now)
         guard builtVersion != eventsVersion || minute != snapshot.clock else { return }
+        let sp = PigTVSignpost.begin("SportBuckets"); defer { PigTVSignpost.end("SportBuckets", sp) }
         let new = SportRows.snapshot(events, now: minute)
         builtVersion = eventsVersion
         if new != snapshot { snapshot = new }
@@ -68,6 +69,7 @@ final class SportModel: ObservableObject {
     /// Fetches the events. Concurrent callers share one request; an older
     /// server without the route (404) simply has none.
     func load() async {
+        let sp = PigTVSignpost.begin("SportLoad"); defer { PigTVSignpost.end("SportLoad", sp) }
         if let inFlight { await inFlight.value; return }
         let now = Date()
         guard !isFixture else { loaded = true; return }

@@ -84,6 +84,7 @@ final class RecordingPlayerModel: ObservableObject {
             defer { preparing = false; startupTask = nil }
             do {
                 loadMarkers(generation: generation)
+                PigTVSignpost.event("RecordingPlaybackRequest")
                 let playback = try await client.recordingPlayback(id: recording.id, preparing: { self.preparing = true })
                 try Task.checkCancellation()
                 guard !stopped else { return }
@@ -96,6 +97,7 @@ final class RecordingPlayerModel: ObservableObject {
                 try Task.checkCancellation()
                 guard !stopped else { return }
                 let item = AVPlayerItem(url: url)
+                PigTVSignpost.event("RecordingItemCreated")
                 #if os(tvOS)
                 // The custom player's bare layer does not switch the TV to
                 // HDR/frame rate itself (AVPlayerViewController did). Applied
@@ -110,6 +112,7 @@ final class RecordingPlayerModel: ObservableObject {
                 // Swift 6: KVO may arrive on any queue; the handler is
                 // nonisolated (@Sendable) and hops to the main actor.
                 statusObservation = item.observe(\.status, options: [.new]) { @Sendable [weak self] item, _ in
+                    if item.status == .readyToPlay { PigTVSignpost.event("RecordingReadyToPlay") }
                     guard item.status == .failed else { return }
                     Task { @MainActor [weak self] in
                         guard let self, !self.stopped, self.generation == generation else { return }
@@ -119,6 +122,7 @@ final class RecordingPlayerModel: ObservableObject {
                     }
                 }
                 player.replaceCurrentItem(with: item)
+                PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
                 // "Watch from start (still recording)" starts at the start.
                 let resume = UserDefaults.standard.double(forKey: resumeKey)
                 if !inProgress, resume > 10, let duration = recording.duration_sec, resume < duration - 30 {

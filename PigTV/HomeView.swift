@@ -302,6 +302,7 @@ struct HomeView: View {
     }
 
     private func refresh() {
+        let sp = PigTVSignpost.begin("HomeRebuild"); defer { PigTVSignpost.end("HomeRebuild", sp) }
         let now = Date()
         let recent = model.recent.map(model.homeChannel)
         let hero = HomeRows.continueWatching(last: app.lastWatched, recent: recent) { last in
