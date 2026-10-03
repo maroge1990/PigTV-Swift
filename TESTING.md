@@ -75,7 +75,7 @@ The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restore
 - `HomeUITests`: Home opens first; Down reaches Watch, then a card.
 - `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page; build 33: an upcoming
   event's secondary channel offers Record/Watch when it starts instead of tuning immediately.
-- `TabSwitchUITests`: walks all five tabs twice on 1,000 channels; fails on a stall over 1 s (uses the tab probe).
+- `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, the stall must stay under `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms), and after each switch Down must move focus into the tab's content.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
 - `BrandSplashUITests`: the branded splash draws (`PIGTV_UI_TEST_SCREEN=splash`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
 - `TopShelfCardsUITests`: renders the Top Shelf cards through the real export, then focuses PigTV on the Home Screen.
@@ -108,3 +108,33 @@ on-device diagnostics: Settings → Diagnostics (tvOS, the Top Shelf), and Conso
 
 Checks that no simulator can settle, still open: an HEVC recording; audio/subtitle track selection; whether AVPlayer stops
 fetching while paused (C2 rests on it); everything behind the server's `PIGTV_TUNER=1`.
+
+## Measuring on the Apple TV
+
+The simulator cannot say how the tabs and playback feel; the device can. Audit R03 added signposts (`PigTV/PigTVSignpost.swift`,
+subsystem = the bundle id, category **Responsiveness**) so Instruments shows each stage.
+
+1. Build **Release** to the Apple TV from Xcode (Product → Profile, or Run with the Release configuration).
+2. Instruments: a blank template with **Time Profiler**, **Hangs**, **os_signpost** (filter the category to Responsiveness) and
+   **SwiftUI**. Record, then do: 100 switches Home ↔ Guide ↔ Sport (alternate Right/Left on the tab bar), one live channel play,
+   one recording play.
+3. Read off:
+   - `TabSwitch` (tab-bar selection → the new tab's first content; the end label names it), `TabFirstFrame` (→ its first frame;
+     focus stays in the bar during a switch, so this stands in for "focus ready"). Target: p95 under 250 ms.
+   - Model work behind them: `GuideLoad`, `GuidePage`, `GuideExtend`, `SportLoad`, `SportBuckets`, `HomeRebuild`, `RecordingsLoad`
+     (a long one on the main thread is the stall).
+   - Live play: events `LiveResolveRequest` → `LiveResolveResponse` → `LiveItemCreated` → `LiveReadyToPlay` → `LivePlaying`;
+     recording: `RecordingPlaybackRequest` → `RecordingItemCreated` → `RecordingReadyToPlay` → `RecordingPlaying`. The gaps between
+     them say whether the wait is the server, the player or the app.
+   - `LogoDecoded` (artwork, the file name only), and **Hangs** over 100 ms (the main-thread call tree in Time Profiler for the same
+     time range names the culprit).
+   Signposts carry only fixed names, tab names and a logo file name, never tokens, URLs or provider names.
+
+Stricter tab test on the simulator (the budget defaults to 500 ms because simulators on a busy Mac are noisy; the device target is 250 ms):
+
+```sh
+PIGTV_TABSWITCH_BUDGET_MS=250 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
+  -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5' -only-testing:PigTVUITests/TabSwitchUITests
+```
+
+(If the variable does not reach the test runner on your Xcode, set `TEST_RUNNER_PIGTV_TABSWITCH_BUDGET_MS=250` instead.)

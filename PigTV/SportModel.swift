@@ -41,6 +41,7 @@ final class SportModel: ObservableObject {
 
     /// Update the cached buckets and league counts when events or clock change.
     private func updateBuckets() {
+        let sp = PigTVSignpost.begin("SportBuckets"); defer { PigTVSignpost.end("SportBuckets", sp) }
         let newBuckets = SportRows.buckets(events, now: clock)
         if newBuckets != buckets { buckets = newBuckets }
         let newCounts = SportRows.leagueCounts(newBuckets.all)
@@ -50,6 +51,7 @@ final class SportModel: ObservableObject {
     /// Fetches the events. Concurrent callers share one request; an older
     /// server without the route (404) simply has none.
     func load() async {
+        let sp = PigTVSignpost.begin("SportLoad"); defer { PigTVSignpost.end("SportLoad", sp) }
         if let inFlight { await inFlight.value; return }
         let now = Date()
         guard !isFixture else { loaded = true; return }

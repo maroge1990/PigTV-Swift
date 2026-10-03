@@ -335,6 +335,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 }
                 guard !ended else { return }
                 resolveBegan = Date()
+                PigTVSignpost.event("LiveResolveRequest")
                 // A channel whose copied audio this device could not decode
                 // ('fmt?') asks for re-encoded audio straight away.
                 let audioEncode = AudioEncodeMemory.contains(channel.identityKey)
@@ -343,6 +344,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                     body: ResolveBody(sourceId: channel.sourceId, channelId: channel.rawID,
                         capabilities: PlaybackCapabilities.current(), force: force,
                         audioEncode: audioEncode ? true : nil))
+                PigTVSignpost.event("LiveResolveResponse")
                 sessionID = decision.sessionId
                 provider = decision.provider
                 guard !ended else { return }
@@ -394,6 +396,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // load finishes (a stale result is discarded).
     private func installItem(url: URL, strategy: String, mode: DisplayMode?, assetCriteria: Bool = true, generation: UUID) {
         let item = AVPlayerItem(url: url)
+        PigTVSignpost.event("LiveItemCreated")
         currentURL = url
         currentStrategy = strategy
         #if os(tvOS)
@@ -414,6 +417,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
         // this method's main-actor isolation would trap if AVFoundation ever
         // delivered the change on another queue (dynamic isolation check).
         observation = item.observe(\.status, options: [.initial, .new]) { @Sendable [weak self] item, _ in
+            if item.status == .readyToPlay { PigTVSignpost.event("LiveReadyToPlay") }
             guard item.status == .failed else { return }
             let failure = item.error as NSError?
             let diagnostic = Self.failureCodes(failure)
@@ -445,6 +449,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
         }
         playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] player, _ in
             let playing = player.timeControlStatus == .playing
+            if playing { PigTVSignpost.event("LivePlaying") }
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation, !self.ended else { return }
                 self.updateWatchTime(playing: playing)

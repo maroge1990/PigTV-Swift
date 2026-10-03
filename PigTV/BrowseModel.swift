@@ -81,6 +81,7 @@ final class BrowseModel: ObservableObject {
     // until every channel is present. Filters and search then work locally,
     // and a full day of programme data per channel is already in memory.
     func loadGuide(reset: Bool = true, keepVisible: Bool = false) async {
+        let sp = PigTVSignpost.begin("GuideLoad"); defer { PigTVSignpost.end("GuideLoad", sp) }
         if reset {
             guidePrefetch?.cancel()
             guidePrefetch = nil
@@ -119,6 +120,7 @@ final class BrowseModel: ObservableObject {
     }
 
     private func fetchGuidePage(generation: UUID) async {
+        let sp = PigTVSignpost.begin("GuidePage"); defer { PigTVSignpost.end("GuidePage", sp) }
         // A1.1: cursor paging (server flag `guideCursor`) pages 500 at a time
         // instead of 50; an older server keeps limit/offset exactly as before.
         let cursorPaging = client.info?.features.guideCursor == true
@@ -227,6 +229,7 @@ final class BrowseModel: ObservableObject {
     /// is simply left where it was and the next viewport move tries again.
     func extendGuideForward() async {
         guard !guideExtending, !guideEnded, !guideBusy, !guideHasMore, !guide.isEmpty else { return }
+        let sp = PigTVSignpost.begin("GuideExtend"); defer { PigTVSignpost.end("GuideExtend", sp) }
         guideExtending = true
         defer { guideExtending = false }
         let generation = guideGeneration
@@ -468,6 +471,7 @@ final class BrowseModel: ObservableObject {
     }
 
     func loadRecordings() async {
+        let sp = PigTVSignpost.begin("RecordingsLoad"); defer { PigTVSignpost.end("RecordingsLoad", sp) }
         guard !recordingsBusy else { return }
         lastLoads["recordings"] = Date()
         recordingsBusy = true

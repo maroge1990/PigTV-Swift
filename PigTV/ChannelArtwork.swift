@@ -77,6 +77,7 @@ struct ChannelArtwork: View {
             }.value
             guard !Task.isCancelled, let result else { return }
             Self.cache.setObject(LogoBox(result), forKey: logo as NSString)
+            PigTVSignpost.event("LogoDecoded", String(logo.split(separator: "/").last?.prefix(40) ?? ""))
             decoded = result
         }
     }

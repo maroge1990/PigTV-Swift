@@ -9,29 +9,34 @@ struct LibraryView: View {
         // Accent tint on the TabView so the selected tab reads pink — the
         // white selection was hard to distinguish from unselected tabs.
         TabView(selection: Binding(get: { tab ?? (model.browse == nil ? "settings" : initialTab) },
-                                   set: { tab = $0 })) {
+                                   set: { PigTVSignpost.tabSelected($0); tab = $0 })) {
             if let browse = model.browse {
                 // Build 28: Home opens with the app.
                 HomeView(app: model, model: browse, openGuide: { tab = "guide" }, openSport: { tab = "sport" })
                     .tabItem { Label("Home", systemImage: "house") }
                     .tag("home")
+                .onAppear { PigTVSignpost.tabContentAppeared("home") }
                 GuideView(app: model, model: browse)
                     .tabItem { Label("TV Guide", systemImage: "calendar") }
                     .tag("guide")
+                .onAppear { PigTVSignpost.tabContentAppeared("guide") }
                 // C-I (build 30): only when the server has sport events.
                 // Five tabs fit the iPhone's bar, so it is a tab there too.
                 if browse.sportEnabled {
                     SportView(app: model, browse: browse, sport: browse.sport)
                         .tabItem { Label("Sport", systemImage: "sportscourt") }
                         .tag("sport")
+                    .onAppear { PigTVSignpost.tabContentAppeared("sport") }
                 }
                 RecordingsView(model: browse)
                     .tabItem { Label("Recordings", systemImage: "record.circle") }
                     .tag("recordings")
+                .onAppear { PigTVSignpost.tabContentAppeared("recordings") }
             }
             LibrarySettings(model: model, isTab: true)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag("settings")
+                .onAppear { PigTVSignpost.tabContentAppeared("settings") }
         }
         .tint(Color("AccentColor"))
         #if DEBUG
