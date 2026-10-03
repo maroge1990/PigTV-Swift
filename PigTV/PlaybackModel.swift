@@ -40,7 +40,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private(set) var routeVideoMode: String?
     var stallCount: Int { stalls }
     var serverIdentity: String? { client.info?.identity }
-    private var hasPlayed = false
+    private(set) var hasPlayed = false
     private var recoveryUsed = false
     // Multi-provider failover: a recovery is only good for one re-resolve, but
     // after `recoveryResetInterval` of continuous good playback following it
@@ -48,7 +48,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // Evaluated lazily when a failure arrives; `clock` is injectable for tests.
     var clock: () -> Date = Date.init
     var recoveryResetInterval: TimeInterval = 120
-    private var goodPlaySince: Date?
+    private(set) var goodPlaySince: Date?
     // C-J: the provider serving the current play (nil on an older server).
     private(set) var provider: ResolveProvider?
     // Build 27 fallbacks: what the current item is playing, and whether its

@@ -195,17 +195,19 @@ final class ProviderFailoverTests: XCTestCase {
         let playback = PlaybackModel(channel: channel(), client: try server.client())
         playback.clock = { box.now }
         playback.start()
-        try await waitFor("first stream") { self.isPlaying(playback) }
+        // The model's own "it played" (playbackStarted), not just AVPlayer's: the KVO hops to
+        // the main actor, and a failure arriving before that hop is (correctly) not recovered.
+        try await waitFor("first stream") { self.isPlaying(playback) && playback.hasPlayed }
         // First failure: the ordinary single recovery.
         playback.playbackFailed(detail: "Synthetic 1")
         try await waitFor("second resolve") { server.resolves.count == 2 }
-        try await waitFor("second stream") { self.isPlaying(playback) && (playback.player.currentItem?.asset as? AVURLAsset)?.url.path.contains("/s2/") == true }
+        try await waitFor("second stream") { self.isPlaying(playback) && (playback.player.currentItem?.asset as? AVURLAsset)?.url.path.contains("/s2/") == true && playback.goodPlaySince != nil }
         // Two minutes of good playback later, another failure: one more re-resolve.
         box.now.addTimeInterval(121)
         playback.playbackFailed(detail: "Synthetic 2")
         try await waitFor("third resolve") { server.resolves.count == 3 }
         XCTAssertNil(playback.error)
-        try await waitFor("third stream") { self.isPlaying(playback) && (playback.player.currentItem?.asset as? AVURLAsset)?.url.path.contains("/s3/") == true }
+        try await waitFor("third stream") { self.isPlaying(playback) && (playback.player.currentItem?.asset as? AVURLAsset)?.url.path.contains("/s3/") == true && playback.goodPlaySince != nil }
         // A failure only 30 s after that recovery is not renewed: the error.
         box.now.addTimeInterval(30)
         playback.playbackFailed(detail: "Synthetic 3")
