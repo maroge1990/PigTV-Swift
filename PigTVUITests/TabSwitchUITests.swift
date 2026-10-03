@@ -14,6 +14,7 @@ final class TabSwitchUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "home"
         app.launchEnvironment["PIGTV_UI_TEST_CHANNELS"] = "1000"
+        app.launchEnvironment["PIGTV_UI_TEST_SPORT_EVENTS"] = "215"
         app.launchEnvironment["PIGTV_UI_TEST_TABPROBE"] = "1"
         app.launch()
         XCTAssertTrue(app.buttons["home.watch"].waitForExistence(timeout: 15))

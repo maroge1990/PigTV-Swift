@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import PigTV
 
 // C-I (build 30): sport events. The pure bucketing, league and text helpers
@@ -189,7 +190,7 @@ final class SportRowsTests: XCTestCase {
     // Production-sized fixture: 215 events with 153 replays (71%), and remaining
     // 62 spread across live, soon, later, tomorrow and future days. All non-replay
     // buckets must be non-empty.
-    func testLargeSportEventsFixtureFor215() {
+    @MainActor func testLargeSportEventsFixtureFor215() {
         let guide = GuideFixtures.channels()
         let events = GuideFixtures.largeSportEvents(from: guide, count: 215, now: now)
         let buckets = SportRows.buckets(events, now: now)
@@ -211,7 +212,7 @@ final class SportRowsTests: XCTestCase {
     }
 
     // Test that largeSportEvents scales proportionally: 600 events with ~71% replays.
-    func testLargeSportEventsScalesProportionally() {
+    @MainActor func testLargeSportEventsScalesProportionally() {
         let guide = GuideFixtures.channels()
         let events = GuideFixtures.largeSportEvents(from: guide, count: 600, now: now)
         let buckets = SportRows.buckets(events, now: now)
@@ -310,5 +311,102 @@ final class AppearLoadTests: XCTestCase {
         await browse.loadFavouritesIfStale(maxAge: 0)
         XCTAssertEqual(server.http.requests(path: "/api/library/favourites").count, 2, "stale data reloads")
         server.http.stop()
+    }
+}
+// Audit R04/R05: the Sport tab builds only what is on screen, and the model
+// republishes only when something a card shows can have changed.
+@MainActor
+final class SportSnapshotTests: XCTestCase {
+    private func model(count: Int = 215) throws -> SportModel {
+        let server = try FakePigTVServer()
+        let sport = SportModel(client: try server.client())
+        sport.setFixture(GuideFixtures.largeSportEvents(from: GuideFixtures.channels(), count: count))
+        return sport
+    }
+
+    func testAdvancingInsideTheSameMinuteRepublishesNothing() throws {
+        let sport = try model()
+        let base = sport.clock
+        var published = 0
+        let watch = sport.$snapshot.dropFirst().sink { _ in published += 1 }
+        defer { watch.cancel() }
+        for seconds in [0.0, 1, 29, 59.9] { sport.advance(to: base.addingTimeInterval(seconds)) }
+        XCTAssertEqual(published, 0, "keepFresh inside the freshness window must not republish")
+        XCTAssertEqual(sport.clock, base)
+    }
+
+    func testCrossingTheMinuteRecomputesTheRows() throws {
+        let sport = try model()
+        let base = sport.clock
+        var published = 0
+        let watch = sport.$snapshot.dropFirst().sink { _ in published += 1 }
+        defer { watch.cancel() }
+        // An hour later the "starting soon" and live rows have moved on.
+        sport.advance(to: base.addingTimeInterval(3600 + 5))
+        XCTAssertEqual(published, 1)
+        XCTAssertEqual(sport.clock, base.addingTimeInterval(3600))
+        XCTAssertEqual(sport.buckets, SportRows.buckets(sport.events, now: sport.clock))
+    }
+
+    func testRowsPerLeagueMatchTheFilter() throws {
+        let sport = try model()
+        XCTAssertGreaterThanOrEqual(sport.leagues.count, 8)
+        for league in sport.leagues {
+            XCTAssertEqual(sport.rows(league: league), SportRows.filter(sport.buckets, league: league), league)
+            XCTAssertEqual(sport.rows(league: league).all.count, sport.leagueCounts[league])
+        }
+        XCTAssertEqual(sport.rows(league: nil), sport.buckets)
+        XCTAssertEqual(sport.rows(league: "No such league").all.count, 0)
+    }
+
+    func testChangedEventsRepublishEvenInTheSameMinute() throws {
+        let sport = try model(count: 40)
+        let before = sport.buckets.all.count
+        sport.setFixture(Array(sport.events.dropLast(5)))
+        XCTAssertEqual(sport.buckets.all.count, before - 5)
+    }
+
+    // The Replays shelf is lazy now, but its data must still hold them all.
+    func testEveryReplayStaysReachableInTheReplaysRow() throws {
+        let sport = try model()
+        XCTAssertEqual(sport.replays.count, 153)
+        XCTAssertEqual(Set(sport.replays.map(\.id)).count, 153, "stable, distinct ids for the lazy ForEach")
+        XCTAssertEqual(sport.rows(league: nil).replays.count, 153)
+        let byLeague = sport.leagues.reduce(0) { $0 + sport.rows(league: $1).replays.count }
+        XCTAssertEqual(byLeague, 153, "the chips split the replays without losing any")
+    }
+
+    func testSnapshotIsCheap() {
+        let events = GuideFixtures.largeSportEvents(from: GuideFixtures.channels(), count: 600)
+        let start = ContinuousClock.now
+        for _ in 0..<20 { _ = SportRows.snapshot(events, now: SportRows.minute(Date())) }
+        let each = (ContinuousClock.now - start) / 20
+        print("SNAPSHOT 600 events: \(each)")
+        XCTAssertLessThan(each, .milliseconds(50))
+    }
+
+    func testCardInputEqualityIgnoresEverythingButWhatIsDrawn() throws {
+        let events = GuideFixtures.largeSportEvents(from: GuideFixtures.channels(), count: 10)
+        let minute = SportRows.minute(Date())
+        let a = SportCardInput(event: events[0], clock: minute, logoRevision: 1)
+        XCTAssertEqual(a, SportCardInput(event: events[0], clock: minute, logoRevision: 1))
+        XCTAssertNotEqual(a, SportCardInput(event: events[1], clock: minute, logoRevision: 1))
+        XCTAssertNotEqual(a, SportCardInput(event: events[0], clock: minute.addingTimeInterval(60), logoRevision: 1))
+        XCTAssertNotEqual(a, SportCardInput(event: events[0], clock: minute, logoRevision: 2))
+    }
+
+    func testPresenterRunsTheActionOnlyAfterThePageHasClosed() throws {
+        let sport = try model(count: 10)
+        let presenter = SportPresenter(app: AppModel())
+        let event = try XCTUnwrap(sport.events.first)
+        presenter.open(event, .details)
+        XCTAssertEqual(presenter.presented?.event.id, event.id)
+        var ran = false
+        presenter.close(then: { ran = true })
+        XCTAssertNil(presenter.presented)
+        XCTAssertFalse(ran, "not until the cover's onDismiss")
+        presenter.dismissed()
+        XCTAssertTrue(ran)
+        presenter.dismissed()
     }
 }
