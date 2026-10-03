@@ -119,6 +119,10 @@ final class BrandDepthUITests: XCTestCase {
             if abs(a.midY - b.midY) > max(25, b.height / 2) {
                 XCUIRemote.shared.press(a.midY < b.midY ? .down : .up)
             } else { XCUIRemote.shared.press(a.midX < b.midX ? .right : .left) }
+            // A press lands asynchronously (a segmented control reports its new
+            // focus late on a slow runner); judging the stale snapshot sent the
+            // next press back the way it came.
+            for _ in 0..<15 where !target.hasFocus { Thread.sleep(forTimeInterval: 0.1) }
         }
         XCTAssertTrue(target.hasFocus, "Could not focus \(label): \(app.debugDescription)")
     }

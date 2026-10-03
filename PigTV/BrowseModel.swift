@@ -456,7 +456,9 @@ final class BrowseModel: ObservableObject {
     }
 
     func loadRecordingsIfStale(maxAge: TimeInterval = appearMaxAge) async {
-        guard !isFresh("recordings", maxAge: maxAge) else { return }
+        // The offline fixture has no server: a failed load would only add a
+        // "Could not connect" banner (or, on a machine with a server, replace it).
+        guard !isFixture, !isFresh("recordings", maxAge: maxAge) else { return }
         await loadRecordings()
     }
 
