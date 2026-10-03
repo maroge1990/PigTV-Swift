@@ -135,8 +135,8 @@ final class SportLogoRevision: ObservableObject {
     private var cancellable: AnyCancellable?
 
     init(following browse: BrowseModel) {
-        cancellable = Publishers.Merge(browse.$guide.dropFirst().map { _ in () },
-                                       browse.$artworkIndex.dropFirst().map { _ in () })
+        cancellable = Publishers.Merge(browse.guideStore.$guide.dropFirst().map { _ in () },
+                                       browse.artwork.$artworkIndex.dropFirst().map { _ in () })
             .debounce(for: .milliseconds(400), scheduler: DispatchQueue.main)
             .sink { [weak self] in self?.value += 1 }
     }

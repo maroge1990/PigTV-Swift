@@ -108,7 +108,11 @@ private struct PlayerRowPressStyle: ButtonStyle {
 struct TouchPlayerChrome: View {
     @ObservedObject var playback: PlaybackModel
     @ObservedObject var app: AppModel
-    @ObservedObject var browse: BrowseModel
+    /// Not observed (audit R05): the controls draw the favourite heart and
+    /// the EPG logo fallback.
+    let browse: BrowseModel
+    @ObservedObject private var library: LibraryStore
+    @ObservedObject private var artwork: ArtworkStore
     let close: () -> Void
     /// Closes the player and shows the TV Guide tab.
     let openGuide: () -> Void
@@ -123,6 +127,21 @@ struct TouchPlayerChrome: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    init(playback: PlaybackModel, app: AppModel, browse: BrowseModel, close: @escaping () -> Void,
+         openGuide: @escaping () -> Void, openChannels: @escaping () -> Void, enterNumber: @escaping () -> Void,
+         touch: @escaping () -> Void) {
+        self.playback = playback
+        self.app = app
+        self.browse = browse
+        _library = ObservedObject(wrappedValue: browse.library)
+        _artwork = ObservedObject(wrappedValue: browse.artwork)
+        self.close = close
+        self.openGuide = openGuide
+        self.openChannels = openChannels
+        self.enterNumber = enterNumber
+        self.touch = touch
+    }
 
     /// iPad (both size classes regular): labels everywhere, bigger type.
     private var regular: Bool { sizeClass == .regular && verticalSizeClass == .regular }

@@ -30,7 +30,7 @@ nonisolated struct OnNowRow: Equatable, Sendable {
 #if os(iOS)
 struct OnNowList: View {
     let rows: [GuideChannel]
-    @ObservedObject var model: BrowseModel
+    let model: BrowseModel
     let clock: Date
     let play: (GuideChannel) -> Void
     let info: (GuideChannel) -> Void
@@ -49,10 +49,22 @@ struct OnNowList: View {
 
 private struct OnNowRowView: View {
     let channel: GuideChannel
-    @ObservedObject var model: BrowseModel
+    /// Not observed (audit R05): a row draws the EPG logo fallback and
+    /// nothing else that publishes, so only that store is watched.
+    let model: BrowseModel
+    @ObservedObject private var artwork: ArtworkStore
     let clock: Date
     let play: () -> Void
     let info: () -> Void
+
+    init(channel: GuideChannel, model: BrowseModel, clock: Date, play: @escaping () -> Void, info: @escaping () -> Void) {
+        self.channel = channel
+        self.model = model
+        _artwork = ObservedObject(wrappedValue: model.artwork)
+        self.clock = clock
+        self.play = play
+        self.info = info
+    }
 
     var body: some View {
         let row = OnNowRow.make(programmes: channel.programmes, now: clock)

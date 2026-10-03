@@ -46,13 +46,21 @@ private struct GuideRowsInput: Equatable {
 
 struct GuideView: View {
     @ObservedObject var app: AppModel
-    @ObservedObject var model: BrowseModel
+    /// Not observed itself (audit R05): the Guide draws from the guide
+    /// store, the favourites and the schedule marks, and from nothing else
+    /// BrowseModel holds, so a recordings refresh or a busy flag elsewhere
+    /// does not re-render it.
+    let model: BrowseModel
+    @ObservedObject private var guideStore: GuideStore
+    @ObservedObject private var library: LibraryStore
+    @ObservedObject private var marks: ScheduleMarks
     @AppStorage("pigtv.guide.filter") private var filter = "all"
     @AppStorage("pigtv.guide.channel") private var lastChannel = ""
     @State private var viewport = GuideNavigation.rounded(Date())
     @State private var programmeSearch = ""
     @State private var pendingSelection: GuideSelection?
     @State private var clock = Date()
+    @State private var lastPeriodicRefresh = Date()
     @State private var search = ""
     @State private var searching = false
     @State private var choosingDate = false
@@ -92,6 +100,14 @@ struct GuideView: View {
     // lands (the grid hands focus over through `leaveUp`).
     @FocusState private var headerNowFocused: Bool
     @Environment(\.horizontalSizeClass) private var sizeClass
+    init(app: AppModel, model: BrowseModel) {
+        self.app = app
+        self.model = model
+        _guideStore = ObservedObject(wrappedValue: model.guideStore)
+        _library = ObservedObject(wrappedValue: model.library)
+        _marks = ObservedObject(wrappedValue: model.marks)
+    }
+
     private var category: Category? { app.categories.first { $0.id == filter } }
     // The focused grid element.
     private var currentFocus: GuideFocus? { gridFocus }
@@ -156,7 +172,9 @@ struct GuideView: View {
             // The app's page behind the guide (build 28): tvOS otherwise
             // shows its blurred system backdrop in dark mode.
             .pigPageBackdrop()
-            .task {
+            .whileVisible {
+                // Back on screen after a while: the clock is stale at once.
+                clock = Date()
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                     clock = Date()
@@ -180,12 +198,16 @@ struct GuideView: View {
                 await model.loadRecordingsIfStale()
             }
             .task { await model.loadArtworkIndex() }
-            .task {
+            .whileVisible {
                 // Periodic refresh keeps the loaded day current during long sessions.
+                // Counted from the last one, not from each appearance, so
+                // visiting other tabs neither skips nor repeats it.
                 while !Task.isCancelled {
-                    do { try await Task.sleep(for: .seconds(15 * 60)) } catch { return }
+                    let wait = max(1, 15 * 60 - Date().timeIntervalSince(lastPeriodicRefresh))
+                    do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+                    lastPeriodicRefresh = Date()
                     await model.refreshGuideIfStale()
-                    await model.loadRecordings()
+                    await model.loadRecordings(quietly: true)
                 }
             }
             .onAppear {

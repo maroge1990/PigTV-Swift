@@ -65,7 +65,7 @@ The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restore
 - Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a
   slice and advances `guideLoadedUntil`, ends cleanly when a slice is empty, a failed page is retried before it surfaces,
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,
-  `HomeRowsTests`, `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `TimeshiftMathTests`,
+  `HomeRowsTests`, `ObservationTests` (audit R05: a guide page does not publish the recordings/favourites stores and vice versa, `HomeModel` publishes nothing for equal inputs and changes for a same-id status change; it also appends a per-screen publish count to `/tmp/pigtv-observation.txt`), `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `TimeshiftMathTests`,
   `DisplayModeTests`, `StreamInfoTests`, `SportTests` (buckets, days over 72 h, replays, tolerant decoding, the model against
   the fake server; build 33: `playsChannelNow`), `TopShelfTests` and `TopShelfCardTests`
   (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).

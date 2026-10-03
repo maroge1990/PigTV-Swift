@@ -1,11 +1,21 @@
 import SwiftUI
 
 struct RecordingsView: View {
-    @ObservedObject var model: BrowseModel
+    /// Not observed (audit R05): it draws the recordings store and the
+    /// action state, and nothing else BrowseModel holds.
+    let model: BrowseModel
+    @ObservedObject private var store: RecordingsStore
+    @ObservedObject private var actions: ActionState
     @State private var selected: Recording?
     @State private var cancellation: ScheduledRecording?
     @State private var section = "library"
     @State private var search = ""
+
+    init(model: BrowseModel) {
+        self.model = model
+        _store = ObservedObject(wrappedValue: model.recordingStore)
+        _actions = ObservedObject(wrappedValue: model.actions)
+    }
 
     private var filtered: [Recording] {
         model.recordings.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) ||
@@ -147,7 +157,13 @@ struct RecordingsView: View {
 }
 
 struct RecordingDetails: View {
-    @ObservedObject var model: BrowseModel
+    /// Not observed (audit R05): the stores this page draws from are below.
+    let model: BrowseModel
+    @ObservedObject private var store: RecordingsStore
+    @ObservedObject private var actions: ActionState
+    // The channel's logo comes from the guide row and the EPG artwork.
+    @ObservedObject private var guideStore: GuideStore
+    @ObservedObject private var artwork: ArtworkStore
     let original: Recording
     @State private var markers: RecordingMarkers?
     @State private var markerError: String?
@@ -156,6 +172,15 @@ struct RecordingDetails: View {
     @State private var playing = false
     @Environment(\.dismiss) private var dismiss
     @FocusState private var playFocused: Bool
+    init(model: BrowseModel, original: Recording) {
+        self.model = model
+        self.original = original
+        _store = ObservedObject(wrappedValue: model.recordingStore)
+        _actions = ObservedObject(wrappedValue: model.actions)
+        _guideStore = ObservedObject(wrappedValue: model.guideStore)
+        _artwork = ObservedObject(wrappedValue: model.artwork)
+    }
+
     private var item: Recording { model.recordings.first { $0.id == original.id } ?? original }
 
     /// The channel's logo, found by name in the loaded guide.
