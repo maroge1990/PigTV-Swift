@@ -32,6 +32,10 @@ xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
 
 # Synthetic API/model contract checks, no simulator and no server (30 Sept: 204 pass)
 sh Tools/test-contracts.sh
+
+# Increment the shipping build number in all four configurations (Debug/Release, app + Top Shelf)
+sh Tools/bump-build.sh     # 36 → 37
+sh Tools/bump-build.sh 42  # set to 42 (should be run in every commit that changes the app)
 ```
 
 Simulators by name (Xcode 27): **Apple TV** (tvOS 26.5, the one the tests use), Apple TV 4K (3rd generation) (tvOS 27.0);
