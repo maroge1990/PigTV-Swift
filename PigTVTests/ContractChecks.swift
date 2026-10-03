@@ -220,6 +220,16 @@ enum ContractChecks {
         try expect(scheduled.start == Date(timeIntervalSince1970: 1), "Recording dates use milliseconds")
         let rec = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":1,"title":"Show","status":"completed","is_partial":1}"#.utf8))
         try expect(rec.is_partial == 1 && rec.ad_detect_status == nil, "Older recording responses must decode without analysis fields")
+        // Audit R06: native_status is optional and unknown values are tolerated.
+        try expect(rec.native_status == nil && !rec.isPreparingForPlayback, "Old servers omit native_status")
+        for (value, preparing) in [("pending", true), ("preparing", true), ("ready", false), ("failed", false), ("someday", false)] {
+            let row = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":2,"title":"Show","status":"completed","native_status":"\#(value)","native_error":"x","native_attempts":2}"#.utf8))
+            try expect(row.native_status == value && row.native_attempts == 2 && row.isPreparingForPlayback == preparing, "native_status \(value) decodes (preparing label: \(preparing))")
+        }
+        let nullStatus = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":3,"title":"Show","status":"completed","native_status":null}"#.utf8))
+        try expect(nullStatus.native_status == nil && !nullStatus.isPreparingForPlayback, "A null native_status shows nothing")
+        let airing = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4,"title":"Show","status":"recording","native_status":"pending"}"#.utf8))
+        try expect(!airing.isPreparingForPlayback, "Only completed recordings show the preparing label")
         let markers = try JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"done","markers":[{"id":1,"startMs":0,"endMs":1000,"type":"ad"},{"id":2,"startMs":2000,"endMs":1000,"type":"ad"}]}"#.utf8))
         try expect(markers.markers.filter(\.valid).count == 1, "Malformed ad intervals must not be offered")
         FixtureProtocol.responseStatus = 201
