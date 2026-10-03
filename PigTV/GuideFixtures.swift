@@ -272,8 +272,9 @@ enum GuideFixtures {
     /// future days. Uses 8 distinct leagues and reuses guide's sport channels.
     /// Deterministic: no randomness. Selected when PIGTV_UI_TEST_SPORT_EVENTS
     /// env var is set to a number.
-    static func largeSportEvents(from guide: [GuideChannel], count: Int = 215) -> [SportEvent] {
-        let now = (Date().timeIntervalSince1970 / 300).rounded(.down) * 300_000
+    static func largeSportEvents(from guide: [GuideChannel], count: Int = 215, now date: Date = Date()) -> [SportEvent] {
+        // On the five minutes, as real kick-off times are; `date` lets a test fix the clock.
+        let now = (date.timeIntervalSince1970 / 300).rounded(.down) * 300_000
         let minute = 60_000.0
         let leagues = ["NFL", "AFL", "NRL", "F1", "MLB", "NBA", "Cricket", "Rugby"]
         let titles = ["Match", "Championship", "Final", "Playoff", "Quarter-Final", "Semi-Final",
@@ -289,7 +290,7 @@ enum GuideFixtures {
 
         func dayOffset(_ days: Int, hour: Double) -> Double {
             let calendar = Calendar.current
-            let day = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: Date())) ?? Date()
+            let day = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: date)) ?? date
             return (day.addingTimeInterval(hour * 3600).timeIntervalSince1970 * 1000 - now) / minute
         }
 
@@ -308,7 +309,7 @@ enum GuideFixtures {
 
         // Generate live events
         for i in 0..<live {
-            let minuteOffset = Double(i * 70 - 70)
+            let minuteOffset = Double(-10 - i * 20) // started, still on
             let league = leagues[i % leagues.count]
             let title = titles[i % titles.count]
             let channels = [on(i % 6, qualities[i % qualities.count]), on((i + 1) % 6, .hd)]
@@ -326,7 +327,7 @@ enum GuideFixtures {
 
         // Generate later today events
         for i in 0..<later {
-            let minuteOffset = Double(3600 + i * 30)
+            let minuteOffset = Double(90 + i * 6) // past the hour-long soon window, still today
             let league = leagues[(i + live + soon) % leagues.count]
             let title = titles[(i + live + soon) % titles.count]
             let channels = [on((i + 3) % 6, qualities[i % qualities.count])]
@@ -369,13 +370,23 @@ enum GuideFixtures {
             events.append(event("day4-\(i)", "\(league): \(title)", league, from: dayOffset(4, hour: hour), minutes: 110, channels))
         }
 
+        // The buckets above hold 62, the live feed's share at 215. Other sizes keep the
+        // ~71 % replay ratio: trim, or spread the extra over the following days.
+        if events.count > nonReplayCount { events.removeLast(events.count - nonReplayCount) }
+        for i in 0..<max(0, nonReplayCount - events.count) {
+            let league = leagues[i % leagues.count]
+            let title = titles[i % titles.count]
+            events.append(event("extra-\(i)", "\(league): \(title)", league,
+                                from: dayOffset(2 + i % 3, hour: Double(10 + i % 12)), minutes: 120, [on(i % 6, .hd)]))
+        }
+
         // Generate replay events (remaining to reach `count`)
         for i in 0..<replayCount {
-            let minuteOffset = Double(-2000 + i * 10)
+            let minuteOffset = Double(-1 - (i % 60)) // started, so listed under Replays
             let league = leagues[(i + nonReplayCount) % leagues.count]
             let title = titles[(i + nonReplayCount) % titles.count]
             let channels = [on((i % 6), qualities[(i + 2) % qualities.count])]
-            events.append(event("rp-\(i)", "\(league): \(title) Replay", league, from: minuteOffset, minutes: 120, channels, kind: .replay))
+            events.append(event("rp-\(i)", "\(league): \(title) Replay", league, from: minuteOffset, minutes: 240, channels, kind: .replay))
         }
 
         return events

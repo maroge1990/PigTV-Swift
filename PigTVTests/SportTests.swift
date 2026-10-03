@@ -191,7 +191,7 @@ final class SportRowsTests: XCTestCase {
     // buckets must be non-empty.
     func testLargeSportEventsFixtureFor215() {
         let guide = GuideFixtures.channels()
-        let events = GuideFixtures.largeSportEvents(from: guide, count: 215)
+        let events = GuideFixtures.largeSportEvents(from: guide, count: 215, now: now)
         let buckets = SportRows.buckets(events, now: now)
 
         XCTAssertEqual(buckets.all.count, 215, "215 total events")
@@ -213,7 +213,7 @@ final class SportRowsTests: XCTestCase {
     // Test that largeSportEvents scales proportionally: 600 events with ~71% replays.
     func testLargeSportEventsScalesProportionally() {
         let guide = GuideFixtures.channels()
-        let events = GuideFixtures.largeSportEvents(from: guide, count: 600)
+        let events = GuideFixtures.largeSportEvents(from: guide, count: 600, now: now)
         let buckets = SportRows.buckets(events, now: now)
 
         XCTAssertEqual(buckets.all.count, 600, "600 total events")
