@@ -357,38 +357,27 @@ nonisolated struct RecordingPlayback: Decodable, Sendable {
     let url: String
     let container: String?
     let durationSec: Double?
-    // C-E (`recordingHls`): an HLS answer plays directly; `inProgress` means
-    // an EVENT playlist that is still growing.
-    var inProgress: Bool? = nil
-    var isHLS: Bool { container == "hls" }
-    var isGrowing: Bool { isHLS && inProgress == true }
 }
 
 extension Recording {
-    /// The Play button's label, or nil when this recording cannot be played
-    /// yet. A recording still in progress plays only with `recordingHls`.
-    nonisolated func playLabel(recordingHls: Bool) -> String? {
-        switch status {
-        case "completed": return "Play recording"
-        case "recording" where recordingHls: return "Watch from start (still recording)"
-        default: return nil
-        }
+    /// The Play button's label, or nil when this recording cannot be played yet
+    /// (only a finished one can: the HLS recordings that played while recording
+    /// went with the server's tuner model in build 39).
+    nonisolated var playLabel: String? {
+        status == "completed" ? "Play recording" : nil
     }
 }
 
 /// Elapsed/remaining for the recording player's scrub bar (A4.3). `end` is
-/// the seekable end (the whole file, or how far a growing recording has got).
+/// the seekable end (the whole file).
 nonisolated struct RecordingTimeline: Equatable, Sendable {
     let elapsed: Double
     let end: Double
-    /// Still recording and within 20 s of the newest segment.
-    let atLiveEdge: Bool
 
-    init?(current: Double, end: Double, growing: Bool) {
+    init?(current: Double, end: Double) {
         guard current.isFinite, end.isFinite, end > 0 else { return nil }
         elapsed = min(max(0, current), end)
         self.end = end
-        atLiveEdge = growing && end - elapsed <= 20
     }
 
     var remaining: Double { max(0, end - elapsed) }

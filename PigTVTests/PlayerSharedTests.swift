@@ -44,7 +44,7 @@ final class PlayerSharedTests: XCTestCase {
     func testSeekWindowMapsPositionsFractionsAndReadouts() throws {
         XCTAssertNil(PlayerSeekWindow(start: 0, end: 4, current: 2), "under 5 s is not scrubbable")
         XCTAssertNil(PlayerSeekWindow(start: 0, end: .infinity, current: 2))
-        // A 3-hour timeshift window, the picture 30 min behind live.
+        // A 3-hour seekable window, the picture 30 min behind live.
         let window = try XCTUnwrap(PlayerSeekWindow(start: 100, end: 10_900, current: 9_100))
         XCTAssertEqual(window.fraction, 9_000.0 / 10_800, accuracy: 1e-9)
         XCTAssertEqual(window.time(at: 0.5), 5_500)

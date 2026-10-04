@@ -34,11 +34,6 @@ struct ServerInfo: Decodable {
         // server 0139 lists keep the provider's order). C-G: rows carry `health`.
         let channelNumbers: Bool?
         let channelHealth: Bool?
-        // C-E (server env PIGTV_TUNER=1): an hours-long live window with
-        // program dates (Start over), and HLS recordings that can be watched
-        // while still recording.
-        let timeshift: Bool?
-        let recordingHls: Bool?
         // C-I (server 0147): `GET sports/events` (the Sport tab and Home's
         // "Sport now & next"). C-H's `sportCategories` is no longer read.
         var sportsEvents: Bool? = nil

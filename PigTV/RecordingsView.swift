@@ -196,7 +196,7 @@ struct RecordingDetails: View {
     }
 
     var body: some View {
-        let playLabel = item.playLabel(recordingHls: model.client.info?.features.recordingHls == true)
+        let playLabel = item.playLabel
         DetailPage {
             DetailHero(logo: logo, client: model.client) {
                 HStack(alignment: .top) {

@@ -378,10 +378,9 @@ enum ContractChecks {
         let modernInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0094","display":"v3.7.0 · build 0094","apiVersion":1,"features":{"library":true,"playbackResolve":true,"viewerConflict":true,"epgLogoFallback":true,"clientEvents":true,"scheduledWaiting":true,"recordingPlaybackPolling":true,"playbackTerminalStatus":true}}"#.utf8))
         try expect(modernInfo.identity == "v3.7.0 · build 0094", "Settings must retain server display/build")
         try expect(info.features.recordingPlaybackPolling == nil && info.build == nil, "Legacy info must remain compatible")
-        // C-E: tuner flags are optional; absent means today's behaviour.
-        try expect(modernInfo.features.timeshift == nil && modernInfo.features.recordingHls == nil, "Tuner flags are absent without PIGTV_TUNER")
+        // Build 39: an older server's tuner flags (timeshift, recordingHls) are ignored.
         let tunerInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.8.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"timeshift":true,"recordingHls":true}}"#.utf8))
-        try expect(tunerInfo.features.timeshift == true && tunerInfo.features.recordingHls == true, "Tuner flags decode")
+        try expect(tunerInfo.features.library == true, "Info with the old tuner flags still decodes")
         let modern = APIClient(address: address, token: "fixture-token", session: URLSession(configuration: configuration), info: modernInfo)
         try expect(modern.info?.features.epgLogoFallback == true, "Authenticated client retains capabilities")
         FixtureProtocol.responseStatus = 200
@@ -487,33 +486,17 @@ enum ContractChecks {
             do { let _ = try await modern.recordingPlayback(id: 12); throw CheckFailure(description: "Recording error must stop") }
             catch is PigTVError { try expect(FixtureProtocol.requestCount == beforeFailure + 1, "Recording auth/not-found/conflict cannot poll") }
         }
-        // C-E (`recordingHls`): an HLS answer is returned at once (no
-        // preparation polling), keeps the token, and carries `inProgress`.
         FixtureProtocol.responseStatus = 200
         FixtureProtocol.responseHeaders = [:]
-        FixtureProtocol.responseData = Data(#"{"url":"/api/recordings/12/index.m3u8","container":"hls","durationSec":1800,"inProgress":true}"#.utf8)
-        let beforeHLS = FixtureProtocol.requestCount
-        let hlsRecording = try await modern.recordingPlayback(id: 12, sleep: { _ in throw CheckFailure(description: "HLS must not poll") })
-        try expect(FixtureProtocol.requestCount == beforeHLS + 1, "HLS recording playback is one request")
-        try expect(hlsRecording.isHLS && hlsRecording.isGrowing && hlsRecording.inProgress == true, "In-progress HLS recording decodes")
-        let hlsURL = try modern.playbackURL(hlsRecording.url)
-        try expect(hlsURL.path == "/api/recordings/12/index.m3u8" && hlsURL.query == "token=fixture-token", "HLS recording playlist carries the media token")
-        FixtureProtocol.responseData = Data(#"{"url":"/api/recordings/12/index.m3u8","container":"hls","durationSec":1800,"inProgress":false}"#.utf8)
-        let finishedHLS = try await modern.recordingPlayback(id: 12)
-        try expect(finishedHLS.isHLS && !finishedHLS.isGrowing, "A finished HLS recording is not growing")
         FixtureProtocol.responseData = readyRecording
         let mp4 = try await modern.recordingPlayback(id: 12)
-        try expect(!mp4.isHLS && !mp4.isGrowing && mp4.inProgress == nil, "MP4 answers keep working without inProgress")
+        try expect(mp4.container == "mp4", "An MP4 recording answer decodes")
         let inProgressRecording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":3,"title":"Live","status":"recording"}"#.utf8))
         let doneRecording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4,"title":"Done","status":"completed"}"#.utf8))
-        try expect(inProgressRecording.playLabel(recordingHls: false) == nil, "Without recordingHls an in-progress recording cannot play")
-        try expect(inProgressRecording.playLabel(recordingHls: true) == "Watch from start (still recording)", "recordingHls offers watching from the start")
-        try expect(doneRecording.playLabel(recordingHls: false) == "Play recording" && doneRecording.playLabel(recordingHls: true) == "Play recording", "Completed recordings always play")
-        let edge = RecordingTimeline(current: 590, end: 600, growing: true)
-        try expect(edge?.atLiveEdge == true && edge?.remaining == 10, "A growing recording near its end is live")
-        try expect(RecordingTimeline(current: 590, end: 600, growing: false)?.atLiveEdge == false, "A finished recording is never live")
-        try expect(RecordingTimeline(current: 30, end: 600, growing: true)?.atLiveEdge == false, "Watching from the start is not live")
-        try expect(RecordingTimeline(current: .nan, end: 600, growing: false) == nil, "No timeline before a position exists")
+        try expect(inProgressRecording.playLabel == nil, "A recording still in progress cannot play")
+        try expect(doneRecording.playLabel == "Play recording", "Completed recordings play")
+        try expect(RecordingTimeline(current: 590, end: 600)?.remaining == 10, "Remaining time")
+        try expect(RecordingTimeline(current: .nan, end: 600) == nil, "No timeline before a position exists")
         try expect(RecordingTimeline.skipTarget(current: 5, by: -15, end: 600) == 0 && RecordingTimeline.skipTarget(current: 595, by: 15, end: 600) == 600, "Skips stay inside the recording")
         try expect(RecordingTimeline.clock(3723) == "1:02:03" && RecordingTimeline.clock(125) == "2:05", "Recording clock")
         let waiting = try JSONDecoder().decode(ScheduledRecording.self, from: Data(#"{"id":7,"title":"Show","program_start":1000,"program_end":3000,"status":"waiting"}"#.utf8))

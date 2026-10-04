@@ -49,7 +49,7 @@ enum HLSFixture {
 /// - `GET /api/playback/conflict` → `null`;
 /// - `POST /api/playback/client-event`, `POST /api/playback/conflict/decline`,
 ///   `DELETE /api/playback/<session>` → `{"success":true}`;
-/// - recordings (C-E `recordingHls`): `GET /api/recordings/<id>/playback` →
+/// - recordings: `GET /api/recordings/<id>/playback` →
 ///   `{url: …/<id>/stream.m3u8, container: "hls"}`, `…/markers` → one ad
 ///   break 1–2 s, and `/api/recordings/<id>/<file>` → the fixture.
 /// - C-I: `GET /api/sports/events` → `sportEvents` (by default

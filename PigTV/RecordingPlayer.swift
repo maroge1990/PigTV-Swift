@@ -184,14 +184,8 @@ struct RecordingPlayerView: View {
             HStack {
                 Text(RecordingTimeline.clock(timeline?.elapsed ?? 0))
                 Spacer()
-                if timeline?.atLiveEdge == true {
-                    // A growing (EVENT) recording, watched at its newest part.
-                    HStack(spacing: 8) {
-                        Circle().fill(Color.red).frame(width: 12, height: 12)
-                        Text("LIVE").foregroundStyle(.red)
-                    }
-                } else if let timeline {
-                    Text("−\(RecordingTimeline.clock(timeline.remaining))\(model.inProgress ? "  ·  still recording" : "")")
+                if let timeline {
+                    Text("−\(RecordingTimeline.clock(timeline.remaining))")
                 }
             }
             .font(.system(size: 24, weight: .semibold).monospacedDigit())

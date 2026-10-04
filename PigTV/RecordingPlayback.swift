@@ -4,8 +4,6 @@ import Combine
 
 // Server playback contract: authenticated MP4 under /api/recordings/.
 // Capable servers prepare asynchronously; APIClient owns bounded polling.
-// C-E (`recordingHls`): the answer may instead be an HLS playlist, played
-// directly (a 200 needs no polling); `inProgress` = a growing EVENT playlist.
 // tvOS plays recordings in RecordingPlayerView (the custom player's parts,
 // A4.3); iOS keeps AVKit (RecordingNativePlayer) for touch scrubbing.
 @MainActor
@@ -23,8 +21,6 @@ final class RecordingPlayerModel: ObservableObject {
     @Published private(set) var canRetry = false
     @Published private(set) var inBreak: CommercialBreak?
     @Published private(set) var breaks: [CommercialBreak] = []
-    /// C-E: an in-progress HLS recording (EVENT playlist) that still grows.
-    @Published private(set) var inProgress = false
     #if os(tvOS)
     @Published private(set) var displayCriteria: AVDisplayCriteria?
     #endif
@@ -89,7 +85,6 @@ final class RecordingPlayerModel: ObservableObject {
                 try Task.checkCancellation()
                 guard !stopped else { return }
                 let url = try client.playbackURL(playback.url)
-                inProgress = playback.isGrowing
                 try await Task.detached(priority: .userInitiated) {
                     try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
                     try AVAudioSession.sharedInstance().setActive(true)
@@ -125,7 +120,7 @@ final class RecordingPlayerModel: ObservableObject {
                 PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
                 // "Watch from start (still recording)" starts at the start.
                 let resume = UserDefaults.standard.double(forKey: resumeKey)
-                if !inProgress, resume > 10, let duration = recording.duration_sec, resume < duration - 30 {
+                if resume > 10, let duration = recording.duration_sec, resume < duration - 30 {
                     await player.seek(to: CMTime(seconds: resume, preferredTimescale: 600))
                 }
                 try Task.checkCancellation()
@@ -202,14 +197,13 @@ final class RecordingPlayerModel: ObservableObject {
 
     // MARK: Transport (tvOS recording player)
 
-    /// Position and seekable end. A growing recording's end moves on as
-    /// segments arrive; it is "live" while its duration is indefinite.
+    /// Position and seekable end.
     func timeline() -> RecordingTimeline? {
         guard let item = player.currentItem else { return nil }
         let current = CMTimeGetSeconds(item.currentTime())
         let end = item.seekableTimeRanges.last.map { CMTimeGetSeconds(CMTimeRangeGetEnd($0.timeRangeValue)) }
             ?? CMTimeGetSeconds(item.duration)
-        return RecordingTimeline(current: current, end: end, growing: inProgress && item.duration.isIndefinite)
+        return RecordingTimeline(current: current, end: end)
     }
 
     func skip(_ seconds: Double) {

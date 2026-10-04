@@ -297,7 +297,7 @@ struct HomeView: View {
     }
 
     private func open(_ recording: Recording) {
-        if recording.playLabel(recordingHls: model.client.info?.features.recordingHls == true) != nil {
+        if recording.playLabel != nil {
             playingRecording = recording
         } else {
             recordingDetails = recording

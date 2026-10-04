@@ -458,7 +458,7 @@ final class AppModel: ObservableObject {
     // plus favourites, history, recordings, sport events and logos.
     func injectHomeFixture(firstRun: Bool = false) {
         guard let address = try? ServerAddress("http://127.0.0.1:3000"),
-              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true,"recordingHls":true}}"#.utf8)) else { return }
+              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true}}"#.utf8)) else { return }
         let client = APIClient(address: address, token: "fixture", info: info)
         let model = BrowseModel(client: client)
         model.isFixture = true

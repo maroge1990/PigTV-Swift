@@ -9,7 +9,7 @@ import AVFoundation
 // (`showsPlaybackControls = false`) and PigTV's are the only ones:
 // - `TouchPlayerChrome`: top bar (Close, channel, **Channels**, **TV Guide**),
 //   centre transport (−15 s, play/pause, +15 s), and one bottom panel with
-//   the programme, a draggable scrub bar over the seekable/timeshift window
+//   the programme, a draggable scrub bar over the seekable window
 //   (`PlayerSeekWindow`), Go to live, and the actions (Favourite, Record,
 //   Last channel, channel down/up, Go to number). All targets ≥ 44 pt, white
 //   glyphs on dark translucent circles and pills.
@@ -230,24 +230,23 @@ struct TouchPlayerChrome: View {
     // MARK: Bottom panel
 
     private func bottomPanel(now: Date, window: PlayerSeekWindow?) -> some View {
-        let watching = watchedDate(now: now)
-        let programme = playback.programme(at: watching)
-        let next = playback.nextProgramme(after: watching)
+        let programme = playback.programme(at: now)
+        let next = playback.nextProgramme(after: now)
         return VStack(alignment: .leading, spacing: regular ? 12 : 8) {
             // iPad landscape: the actions beside the programme; otherwise
             // (iPad upright, iPhone) on their own row below it.
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 14) {
-                    programmeInfo(programme: programme, next: next, watching: watching)
+                    programmeInfo(programme: programme, next: next, watching: now)
                     Spacer(minLength: 12)
                     if regular { actions }
                 }
                 VStack(alignment: .leading, spacing: regular ? 12 : 8) {
-                    programmeInfo(programme: programme, next: next, watching: watching)
+                    programmeInfo(programme: programme, next: next, watching: now)
                     if regular { ScrollView(.horizontal) { actions }.scrollIndicators(.hidden) }
                 }
             }
-            scrubRow(now: now, window: window, programme: programme, watching: watching)
+            scrubRow(now: now, window: window, programme: programme, watching: now)
             if !regular {
                 ScrollView(.horizontal) { actions }.scrollIndicators(.hidden)
             }
@@ -312,13 +311,10 @@ struct TouchPlayerChrome: View {
         }
     }
 
-    /// With timeshift: the picture's clock time; otherwise how far behind.
+    /// At the live edge the clock; otherwise how far behind.
     private func leftReadout(window: PlayerSeekWindow, fraction: Double, now: Date) -> String {
         if window.isLive(at: fraction) { return now.formatted(date: .omitted, time: .shortened) }
-        if playback.timeshift {
-            return now.addingTimeInterval(-window.behindLive(at: fraction)).formatted(date: .omitted, time: .shortened)
-        }
-        return "−\(TimeshiftMath.behindText(window.behindLive(at: fraction)))"
+        return "−\(PlayerTimeMath.behindText(window.behindLive(at: fraction)))"
     }
 
     @ViewBuilder
@@ -385,11 +381,6 @@ struct TouchPlayerChrome: View {
         .ignoresSafeArea()
     }
 
-    /// With timeshift, once rewound: the picture's time (as the TV).
-    private func watchedDate(now: Date) -> Date {
-        guard playback.behindLive, let date = playback.playbackDate(), date < now else { return now }
-        return date
-    }
 }
 
 /// A round control: white glyph on a dark translucent circle.

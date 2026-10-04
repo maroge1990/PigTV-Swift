@@ -38,7 +38,7 @@ nonisolated enum PlayerInfoText {
 
     /// Share of the programme elapsed at `now`, 0…1.
     static func progress(_ programme: GuideProgramme, at now: Date) -> Double {
-        TimeshiftMath.fraction(of: now, from: programme.start, to: programme.end)
+        PlayerTimeMath.fraction(of: now, from: programme.start, to: programme.end)
     }
 
     /// "29 min left" (at least one minute).
@@ -225,7 +225,7 @@ nonisolated enum PlayerChromeTimer {
     }
 }
 
-/// The seekable (timeshift or live buffer) window in the player item's
+/// The seekable (live buffer) window in the player item's
 /// seconds, for the touch scrub bar (build 31). Pure: position ↔ fraction
 /// mapping and the behind-live readout, tested in `PlayerSharedTests`.
 nonisolated struct PlayerSeekWindow: Equatable, Sendable {
@@ -258,7 +258,7 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
 
     /// "LIVE", or "2:15 behind live" / "1 h 05 min behind live".
     func readout(at fraction: Double) -> String {
-        isLive(at: fraction) ? "LIVE" : "\(TimeshiftMath.behindText(behindLive(at: fraction))) behind live"
+        isLive(at: fraction) ? "LIVE" : "\(PlayerTimeMath.behindText(behindLive(at: fraction))) behind live"
     }
 
     private static func clamp(_ value: Double) -> Double { value.isFinite ? min(1, max(0, value)) : 0 }
