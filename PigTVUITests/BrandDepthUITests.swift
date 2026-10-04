@@ -101,8 +101,7 @@ final class BrandDepthUITests: XCTestCase {
             expect(surface, "break=1")
             shot(app, "recorded-skip-break-prompt-\(mode)")
             XCUIRemote.shared.press(.select) // Hidden chrome: Select skips the current break.
-            sleep(1)
-            XCTAssertFalse(value(surface).contains("break=1"), "Skip break did not leave the break")
+            XCTAssertTrue(waitUntil { !value(surface).contains("break=1") }, "Skip break did not leave the break")
             expect(surface, "hidden")
             XCUIRemote.shared.press(.select)
             expect(surface, "info")

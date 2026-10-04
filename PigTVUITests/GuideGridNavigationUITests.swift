@@ -170,8 +170,9 @@ final class GuideGridNavigationUITests: XCTestCase {
         XCTAssertEqual(focusedLabel(app), "Later")
         var seen: [String] = [baseline]
         for _ in 0..<3 {
+            let before = viewport(app)
             XCUIRemote.shared.press(.select)
-            usleep(600_000)
+            _ = waitUntil { viewport(app) != before } // the grid moves; asserted below
             XCTAssertEqual(focusedLabel(app), "Later", "Later took focus away")
             seen.append(viewport(app))
         }
@@ -179,8 +180,9 @@ final class GuideGridNavigationUITests: XCTestCase {
         XCTAssertEqual(Set(seen).count, 4, "Later did not move the grid each time: \(seen)")
         XCUIRemote.shared.press(.left)
         XCTAssertEqual(focusedLabel(app), "Earlier")
+        let beforeEarlier = viewport(app)
         XCUIRemote.shared.press(.select)
-        usleep(600_000)
+        _ = waitUntil { viewport(app) != beforeEarlier }
         XCTAssertEqual(focusedLabel(app), "Earlier", "Earlier took focus away")
         XCTAssertEqual(viewport(app), seen[2], "Earlier did not step back half an hour")
         // Down returns to the grid.
@@ -241,9 +243,8 @@ final class GuideGridNavigationUITests: XCTestCase {
         attach(app, "New guide long-press menu")
         // The menu opens on its first item, Programme details.
         XCUIRemote.shared.press(.select)
-        sleep(2)
+        XCTAssertTrue(waitUntil { !app.otherElements["Channel and favourites"].exists }, "the menu did not close")
         attach(app, "Programme details cover")
-        XCTAssertFalse(app.otherElements["Channel and favourites"].exists, "the menu did not close")
         XCTAssertNotEqual(focusedLabel(app), programme, "no details cover opened")
         XCUIRemote.shared.press(.menu)
         let deadline = Date().addingTimeInterval(4)
@@ -266,7 +267,7 @@ final class GuideGridNavigationUITests: XCTestCase {
         XCTAssertEqual(focusedLabel(app), "Jump to…", "could not reach the Jump to… button")
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(app.buttons["Show guide"].waitForExistence(timeout: 5), "Jump to… did not open")
-        usleep(800_000)
+        _ = waitUntil { focusedLabel(app) == "Today" }
         attach(app, "Jump to page")
         XCTAssertEqual(focusedLabel(app), "Today", "the page did not open with focus on the selected day")
         XCTAssertTrue(app.buttons["Tomorrow"].isHittable, "the day chips are clipped")

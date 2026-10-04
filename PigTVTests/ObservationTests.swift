@@ -128,7 +128,8 @@ final class ObservationTests: XCTestCase {
                       browse.actions.objectWillChange, browse.artwork.objectWillChange].map { $0.sink { others += 1 } }
         let guide = await publishes(browse.guideStore.objectWillChange) {
             await browse.loadGuide()
-            try? await Task.sleep(for: .milliseconds(300))
+            // Until every page is in (not a fixed wait: a loaded simulator pages slower).
+            try? await eventually { browse.guide.count == 6 }
         }
         XCTAssertGreaterThan(guide, 0)
         XCTAssertEqual(browse.guide.count, 6)
@@ -139,7 +140,7 @@ final class ObservationTests: XCTestCase {
     func testRecordingsAndFavouritesLoadsDoNotPublishTheGuide() async throws {
         let browse = try makeBrowse()
         await browse.loadGuide()
-        try await Task.sleep(for: .milliseconds(300))
+        try await eventually { browse.guide.count == 6 }
         let guide = await publishes(browse.guideStore.objectWillChange) {
             await browse.loadRecordings()
             await browse.loadFavourites()
@@ -252,7 +253,7 @@ final class ObservationTests: XCTestCase {
     }
 
     private func eventually(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
-        for _ in 0..<200 {
+        for _ in 0..<1000 { // up to 10 s: generous for a loaded simulator, instant when it holds
             if condition() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
