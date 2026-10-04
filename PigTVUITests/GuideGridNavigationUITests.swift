@@ -244,8 +244,13 @@ final class GuideGridNavigationUITests: XCTestCase {
         // The menu opens on its first item, Programme details.
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(waitUntil { !app.otherElements["Channel and favourites"].exists }, "the menu did not close")
+        // The menu closes a moment before the details cover takes focus, and the cover takes focus
+        // while it is still sliding in (a Menu press then is ignored): wait until it has settled on
+        // its first button.
+        XCTAssertTrue(waitUntil { focusedLabel(app) != programme }, "no details cover opened")
+        _ = waitUntil { app.buttons["Record"].exists && app.buttons["Record"].hasFocus }
+        Thread.sleep(forTimeInterval: 0.5) // the end of the slide-in, which focus does not report
         attach(app, "Programme details cover")
-        XCTAssertNotEqual(focusedLabel(app), programme, "no details cover opened")
         XCUIRemote.shared.press(.menu)
         let deadline = Date().addingTimeInterval(4)
         while focusedLabel(app) != programme && Date() < deadline { usleep(200_000) }
