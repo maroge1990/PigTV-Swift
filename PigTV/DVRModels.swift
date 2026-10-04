@@ -157,9 +157,6 @@ nonisolated struct FavouriteBody: Encodable, Sendable {
     let itemType = "channel"
 }
 
-nonisolated struct FavouriteCheck: Decodable, Sendable {
-    let isFavorite: Bool
-}
 
 // Timeline geometry clips programmes to the requested window. Missing EPG
 // remains a real gap instead of stretching neighbouring programmes over it.

@@ -229,17 +229,6 @@ final class GuideGridLayout: UICollectionViewLayout {
         return hidden
     }
 
-    /// Unclipped frame, for scroll targets.
-    func fullFrame(of indexPath: IndexPath) -> CGRect? {
-        if indexPath.item == 0 { return tileAttributes(indexPath.section).frame }
-        if store.isPlaceholder(indexPath) {
-            return GuideGridMath.placeholderFrame(row: indexPath.section, duration: loadedDuration, metrics: metrics)
-        }
-        guard let programme = store.programme(at: indexPath) else { return nil }
-        return GuideGridMath.programmeFrame(start: programme.start, end: programme.end,
-                                            row: indexPath.section, origin: origin, metrics: metrics)
-    }
-
     /// Visible (clipped) width of an item right now.
     func visibleWidth(of indexPath: IndexPath) -> CGFloat {
         programmeAttributes(indexPath)?.frame.width ?? 0

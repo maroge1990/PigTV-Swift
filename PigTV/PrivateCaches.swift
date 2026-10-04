@@ -65,8 +65,6 @@ nonisolated final class GuideCacheStore: @unchecked Sendable {
         try? FileManager.default.removeItem(at: fileURL)
     }
 
-    var isRetired: Bool { lock.lock(); defer { lock.unlock() }; return retired }
-
     /// The old single `pigtv-guide.json` (one file for every server and
     /// account) is deleted once, the first time any store is created.
     private static let legacyRemoval: Void = {

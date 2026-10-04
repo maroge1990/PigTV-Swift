@@ -94,7 +94,4 @@ extension Color {
     static func logoTile(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color(white: 0.42).opacity(0.38) : Color(white: 0.22).opacity(0.42)
     }
-    static func pageBackground(_ scheme: ColorScheme) -> Color {
-        Color.pigCanvas
-    }
 }
