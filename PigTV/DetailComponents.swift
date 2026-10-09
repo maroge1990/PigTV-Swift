@@ -104,7 +104,7 @@ struct LogoWash: View {
 
     var body: some View {
         ZStack {
-            (scheme == .dark ? Color(white: 0.07) : Color(white: 0.97))
+            Color.pigSurface
             if !reduceTransparency {
                 if logo != nil {
                     ChannelArtwork(logo: logo, client: client, fill: true)
@@ -209,7 +209,7 @@ struct ChannelNumberText: View {
     /// hierarchy's tertiary style.
     var onDark = false
     var body: some View {
-        Text(verbatim: number).font(font).monospacedDigit()
+        Text(verbatim: number).font(font).monospacedDigit().fontDesign(.rounded)
             .foregroundStyle(onDark ? AnyShapeStyle(Color.white.opacity(0.5)) : AnyShapeStyle(.tertiary))
     }
 }

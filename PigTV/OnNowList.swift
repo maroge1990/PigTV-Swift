@@ -79,7 +79,7 @@ private struct OnNowRowView: View {
                             Text(channel.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             if let number { ChannelNumberText(number: number, font: .caption2) }
                             if model.isFlaky(channel) {
-                                Circle().fill(Color.orange).frame(width: 8, height: 8)
+                                Circle().fill(Color.pigWarning).frame(width: 8, height: 8)
                                     .accessibilityLabel("Unreliable channel")
                             }
                         }

@@ -123,7 +123,7 @@ struct ProgrammeDetails: View {
                     PigProgressBar(fraction: now.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start), height: 6)
                         .frame(maxWidth: 640)
                     Text("\(DetailText.duration(programme.end.timeIntervalSince(now).rounded(.up))) left")
-                        .font(DetailType.meta).foregroundStyle(.secondary).monospacedDigit()
+                        .font(DetailType.meta).foregroundStyle(.secondary).monospacedDigit().fontDesign(.rounded)
                 }
             }
         }
@@ -133,12 +133,12 @@ struct ProgrammeDetails: View {
     private func statusBadge(now: Date) -> some View {
         if let schedule {
             switch schedule.status {
-            case "recording": StatusBadge(text: "Recording now", systemImage: "record.circle.fill", colour: .red)
-            case "waiting": StatusBadge(text: "Waiting to record", systemImage: "hourglass", colour: .orange)
-            default: StatusBadge(text: "Recording scheduled", systemImage: "record.circle", colour: .red)
+            case "recording": StatusBadge(text: "Recording now", systemImage: "record.circle.fill", colour: .pigDanger)
+            case "waiting": StatusBadge(text: "Waiting to record", systemImage: "hourglass", colour: .pigWarning)
+            default: StatusBadge(text: "Recording scheduled", systemImage: "record.circle", colour: .pigDanger)
             }
         } else if scheduledHere {
-            StatusBadge(text: "Recording scheduled", systemImage: "record.circle", colour: .red)
+            StatusBadge(text: "Recording scheduled", systemImage: "record.circle", colour: .pigDanger)
         } else if recorded != nil {
             StatusBadge(text: "Recorded", systemImage: "checkmark.circle.fill")
         }
@@ -364,7 +364,7 @@ private struct ScheduleRow: View {
             HStack(alignment: .top, spacing: 28) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(programme.start.formatted(date: .omitted, time: .shortened))
-                        .font(DetailType.rowTitle.monospacedDigit())
+                        .font(DetailType.rowTitle.monospacedDigit()).fontDesign(.rounded)
                     Text(programme.durationText).font(DetailType.rowDetail).foregroundStyle(.secondary)
                 }
                 #if os(tvOS)
@@ -376,7 +376,7 @@ private struct ScheduleRow: View {
                     HStack(spacing: 14) {
                         Text(programme.title).font(DetailType.rowTitle).lineLimit(1)
                         if live { StatusBadge(text: "On now") }
-                        if scheduled { StatusBadge(text: "REC", systemImage: "record.circle.fill", colour: .red) }
+                        if scheduled { StatusBadge(text: "REC", systemImage: "record.circle.fill", colour: .pigDanger) }
                     }
                     if let description = programme.description, !description.isEmpty {
                         Text(description).font(DetailType.rowDetail).foregroundStyle(.secondary).lineLimit(2)
@@ -475,7 +475,7 @@ private struct UpNextCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 28) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(programme.start.formatted(date: .omitted, time: .shortened)).font(DetailType.rowTitle.monospacedDigit())
+                Text(programme.start.formatted(date: .omitted, time: .shortened)).font(DetailType.rowTitle.monospacedDigit()).fontDesign(.rounded)
                 Text(HomeRows.countdown(to: programme.start, now: now)).font(DetailType.rowDetail).foregroundStyle(Color.pigAccentText)
             }
             VStack(alignment: .leading, spacing: 6) {

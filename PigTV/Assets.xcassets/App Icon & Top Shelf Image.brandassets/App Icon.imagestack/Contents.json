@@ -1,11 +1,14 @@
 {
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "Pig family",
+    "version": 1
   },
-  "layers" : [
-    { "filename" : "Front.imagestacklayer" },
-    { "filename" : "Middle.imagestacklayer" },
-    { "filename" : "Back.imagestacklayer" }
+  "layers": [
+    {
+      "filename": "Front.imagestacklayer"
+    },
+    {
+      "filename": "Back.imagestacklayer"
+    }
   ]
 }

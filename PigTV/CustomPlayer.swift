@@ -514,6 +514,7 @@ private struct StreamInfoLine: View {
     var body: some View {
         Text(stats?.line ?? " ")
             .font(.system(size: 18, weight: .medium).monospacedDigit())
+            .fontDesign(.rounded)
             .foregroundStyle(.white.opacity(0.8))
             .lineLimit(1).minimumScaleFactor(0.7)
             .frame(maxWidth: 1100, alignment: .leading)

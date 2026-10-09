@@ -42,7 +42,7 @@ struct RetryBanner: View {
             Text(message).font(.callout)
             Spacer()
             Button("Retry", action: retry)
-        }.padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal)
+        }.padding().background(Color.pigRaised, in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal)
     }
 }
 
@@ -92,6 +92,6 @@ extension Color {
     // Neutral translucent logo backing: darker in light mode so the tile is
     // clearly separated from the page, lighter grey in dark mode and over video.
     static func logoTile(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(white: 0.42).opacity(0.38) : Color(white: 0.22).opacity(0.42)
+        Color.pigSecondary.opacity(scheme == .dark ? 0.38 : 0.42)
     }
 }

@@ -66,10 +66,10 @@ struct SportEventCard: View {
                     // starts at the same height.
                     // A replay says so instead (build 31).
                     if replay {
-                        CardBadge(text: "REPLAY", systemImage: "arrow.counterclockwise", colour: Color(white: 0.4))
+                        CardBadge(text: "REPLAY", systemImage: "arrow.counterclockwise", colour: Color.pigSecondary)
                             .accessibilityHidden(true)
                     } else {
-                        CardBadge(text: "LIVE", colour: .red).opacity(live ? 1 : 0)
+                        CardBadge(text: "LIVE", colour: .pigDanger).opacity(live ? 1 : 0)
                             .accessibilityHidden(true)
                     }
                 }
@@ -77,7 +77,7 @@ struct SportEventCard: View {
                     .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                 Text(timing).font(SportMetrics.detail).foregroundStyle(live ? Color.primary : Color.secondary)
-                    .monospacedDigit().lineLimit(1)
+                    .monospacedDigit().fontDesign(.rounded).lineLimit(1)
                 // The bar keeps its space on upcoming cards so rows line up.
                 PigProgressBar(fraction: SportRows.progress(event, now: clock))
                     .opacity(live ? 1 : 0)

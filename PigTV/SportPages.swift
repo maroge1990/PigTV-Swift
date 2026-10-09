@@ -300,7 +300,7 @@ struct SportEventDetails: View {
                 HStack(alignment: .top) {
                     Eyebrow(text: "\(event.league) · \(live ? "Live" : DetailText.day(event.start, now: now))")
                     Spacer(minLength: 20)
-                    if live { StatusBadge(text: "LIVE", colour: .red) }
+                    if live { StatusBadge(text: "LIVE", colour: .pigDanger) }
                     else if let best, browse.isScheduled(event, on: best) {
                         StatusBadge(text: "Recording scheduled", systemImage: "record.circle")
                     }
@@ -308,7 +308,7 @@ struct SportEventDetails: View {
                 Text(event.title).font(DetailType.title).lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("\(event.programme.timeRange) · \(live ? SportRows.endsIn(event, now: now) : SportRows.startsIn(event, now: now))")
-                    .font(DetailType.meta).foregroundStyle(.secondary).monospacedDigit()
+                    .font(DetailType.meta).foregroundStyle(.secondary).monospacedDigit().fontDesign(.rounded)
                 if live {
                     PigProgressBar(fraction: SportRows.progress(event, now: now), height: 6).frame(maxWidth: 640)
                 }

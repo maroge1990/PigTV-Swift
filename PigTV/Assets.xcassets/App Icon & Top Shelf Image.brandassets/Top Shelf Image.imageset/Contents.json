@@ -1,18 +1,18 @@
 {
   "images": [
     {
-      "filename": "shelf@1x.png",
       "idiom": "tv",
-      "scale": "1x"
+      "scale": "1x",
+      "filename": "shelf@1x.png"
     },
     {
-      "filename": "shelf@2x.png",
       "idiom": "tv",
-      "scale": "2x"
+      "scale": "2x",
+      "filename": "shelf@2x.png"
     }
   ],
   "info": {
-    "author": "xcode",
+    "author": "Pig family",
     "version": 1
   }
 }

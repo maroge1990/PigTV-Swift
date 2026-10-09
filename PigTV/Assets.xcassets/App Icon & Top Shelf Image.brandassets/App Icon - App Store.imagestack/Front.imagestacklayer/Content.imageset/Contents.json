@@ -1,13 +1,13 @@
 {
-  "images" : [
+  "images": [
     {
-      "filename" : "front@1x.png",
-      "idiom" : "tv",
-      "scale" : "1x"
+      "idiom": "tv",
+      "scale": "1x",
+      "filename": "front@1x.png"
     }
   ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "Pig family",
+    "version": 1
   }
 }

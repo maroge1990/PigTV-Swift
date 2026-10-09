@@ -78,7 +78,7 @@ extension View {
         #if os(tvOS)
         self.buttonStyle(PigPrimaryButtonStyle())
         #else
-        self.buttonStyle(.borderedProminent).foregroundStyle(Color.pigOnAccent)
+        self.buttonStyle(.glassProminent).tint(Color.pigAccent).foregroundStyle(Color.pigOnAccent)
         #endif
     }
 }
@@ -107,24 +107,49 @@ struct GuideFilterStyle: ButtonStyle {
     }
 }
 
+/// The in-app canvas (brand 1.6): the canvas colour with one rose radial gradient from the top leading corner
+/// (mirrored for right-to-left layouts), fading out by 0.62 of the canvas diagonal. Plain canvas with Reduce
+/// Transparency. Cards, bars and controls sit opaque above it. `PageBackdrop` paints the same gradient into UIKit
+/// containers' layers, so a UIKit-hosted screen shows this canvas too (see PageBackdrop.swift).
 struct PigPageBackground: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var body: some View {
-        Color.pigCanvas.ignoresSafeArea()
+        GeometryReader { geometry in
+            let diagonal = hypot(geometry.size.width, geometry.size.height)
+            ZStack {
+                Color.pigCanvas
+                if !reduceTransparency {
+                    RadialGradient(stops: BrandLayout.cornerBloom(dark: scheme == .dark).gradientStops,
+                                   center: layoutDirection == .rightToLeft ? .topTrailing : .topLeading,
+                                   startRadius: 0, endRadius: diagonal * BrandLayout.cornerBloomRadiusOfDiagonal)
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 
+extension [BrandLayout.Stop] {
+    /// The stops as SwiftUI gradient stops (sRGB).
+    var gradientStops: [Gradient.Stop] {
+        map { Gradient.Stop(color: Color(.sRGB, red: $0.r / 255, green: $0.g / 255, blue: $0.b / 255, opacity: $0.a), location: $0.at) }
+    }
+}
 
-/// The measured alpha centre, inside the same footprint as the former image.
+/// The pig mark (the PigTV product pig, vector). `width` x `height` is the footprint the pig's ink used to fill (the old
+/// raster was ink-wide, 1000:797); mark.svg is a 1024 square with the pig optically centred, ink about 65% of its width,
+/// so the square is sized by the ink fraction and centred: the pig stays the same size on screen.
 struct PigBrandMark: View {
     var width: CGFloat
     var height: CGFloat
     var body: some View {
-        let drawnWidth = min(width, height * 1000 / 797)
-        let drawnHeight = drawnWidth * 797 / 1000
-        Image("PigLogo").resizable().scaledToFit().frame(width: width, height: height)
-            .offset(x: (0.5 - BrandLayout.pigCentroidX) * drawnWidth,
-                    y: (0.5 - BrandLayout.pigCentroidY) * drawnHeight)
+        let inkWidth = min(width, height * 1000 / 797)
+        let side = inkWidth / BrandLayout.markInkFraction
+        Image("PigLogo").resizable().scaledToFit().frame(width: side, height: side)
+            .frame(width: width, height: height)
             .accessibilityHidden(true)
     }
 }
@@ -138,26 +163,30 @@ struct PigWordmark: View {
     #endif
     var body: some View {
         Image("BrandWordmark").resizable().scaledToFit()
-            .frame(width: height * 1552 / 528, height: height)
+            .frame(width: height * BrandLayout.wordmarkAspect, height: height)
             .accessibilityLabel("PigTV")
     }
 }
 
-/// A quiet, non-interactive halo centred behind the existing sign-in pig.
+/// Sign-in brand block: a static halo (the splash's values) centred on the pig mark only, on top of the page's
+/// corner-bloom canvas (OnboardingView sits on `PigPageBackground`). No card fill, and nothing behind the text fields:
+/// radiance stays off forms. The mark is `PigBrandMark(width: 150, ...)` at the block's top leading padding.
 struct PigIdentityBackdrop: View {
+    static let markInkWidth: CGFloat = 150
+    @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.pigSurface
-                if !reduceTransparency {
-                    RadialGradient(colors: [Color.pigMediaAccent.opacity(0.24), .clear],
-                                   center: UnitPoint(x: (DetailMetrics.heroPadding + 75) / max(1, geometry.size.width),
-                                                     y: (DetailMetrics.heroPadding + 60) / max(1, geometry.size.height)),
-                                   startRadius: 0, endRadius: max(geometry.size.width, geometry.size.height) * 0.65)
-                }
+        ZStack(alignment: .topLeading) {
+            if !reduceTransparency {
+                let r = BrandLayout.haloRadius / BrandLayout.pigInkWidth * Self.markInkWidth
+                RadialGradient(stops: BrandLayout.halo(dark: scheme == .dark).gradientStops,
+                               center: .center, startRadius: 0, endRadius: r)
+                    .frame(width: 2 * r, height: 2 * r)
+                    .offset(x: DetailMetrics.heroPadding + Self.markInkWidth / 2 - r,
+                            y: DetailMetrics.heroPadding + 60 - r)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false).accessibilityHidden(true)
     }
 }

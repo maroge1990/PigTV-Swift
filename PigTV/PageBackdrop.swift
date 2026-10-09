@@ -11,7 +11,7 @@ import UIKit
 // frame; see blueprint.md build 32) as a grey veil in both appearances.
 //
 // Every UIKit layer that can be seen during a switch is painted the page
-// colour, which is dynamic (plum in dark, warm paper in light) so it follows the
+// colour, which is dynamic (dark violet in dark, warm paper in light) so it follows the
 // window's appearance override as well as the system's:
 // - the window (PigTVApp's scene: `WindowBackdrop`);
 // - every view controller from a tab's page up to the window (tab root
@@ -19,12 +19,13 @@ import UIKit
 //   hosting controller) and the tab bar controller's other loaded children,
 //   when a page enters the window (`PageBackdropPainter`, placed behind each
 //   tab's page by `pigPageBackdrop()`), before it is first drawn;
-// - the guide grid's UIKit controller and collection view
-//   (GuideGridViewController.viewDidLoad);
+// - the guide grid's UIKit controller and collection view are clear (brand 1.6) over the page's SwiftUI background
+//   (PigPageBackground: the same opaque canvas plus the corner bloom), so the grid shows that canvas too;
 // - the tab bar's own background (TabBarStyle).
 
 extension UIColor {
-    /// PigPageBackground's colour: plum in dark appearance, warm paper in light.
+    /// PigPageBackground's colour: near-black violet in dark appearance, warm paper in light. The UIKit layers behind a page
+    /// are flat (no bloom); the SwiftUI page background above them carries the corner bloom.
     static let pigPage = UIColor(named: "PigCanvas")!
 }
 

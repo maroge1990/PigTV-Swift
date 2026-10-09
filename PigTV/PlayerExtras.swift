@@ -287,7 +287,7 @@ struct TouchPlayerChrome: View {
                 let fraction = dragFraction ?? window.fraction
                 let live = window.isLive(at: fraction)
                 Text(leftReadout(window: window, fraction: fraction, now: now))
-                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .font(.footnote.weight(.semibold).monospacedDigit()).fontDesign(.rounded)
                     .frame(minWidth: regular ? 96 : 64, alignment: .leading)
                     .lineLimit(1)
                 TouchScrubBar(fraction: fraction, changed: { value in
@@ -304,7 +304,7 @@ struct TouchPlayerChrome: View {
             } else if let programme {
                 // No buffer to scrub: the programme's progress, live.
                 Text(now.formatted(date: .omitted, time: .shortened))
-                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .font(.footnote.weight(.semibold).monospacedDigit()).fontDesign(.rounded)
                 PigProgressBar(fraction: PlayerInfoText.progress(programme, at: watching), height: 6)
                 liveControl(live: true)
             }

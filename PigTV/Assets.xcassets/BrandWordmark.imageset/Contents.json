@@ -1,9 +1,8 @@
 {
   "images" : [
     {
-      "filename" : "light.png",
-      "idiom" : "universal",
-      "scale" : "1x"
+      "filename" : "wordmark-light.svg",
+      "idiom" : "universal"
     },
     {
       "appearances" : [
@@ -12,13 +11,15 @@
           "value" : "dark"
         }
       ],
-      "filename" : "dark.png",
-      "idiom" : "universal",
-      "scale" : "1x"
+      "filename" : "wordmark-dark.svg",
+      "idiom" : "universal"
     }
   ],
   "info" : {
     "author" : "xcode",
     "version" : 1
+  },
+  "properties" : {
+    "preserves-vector-representation" : true
   }
 }

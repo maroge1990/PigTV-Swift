@@ -54,7 +54,7 @@ struct GuideGridProgrammeView: View {
                     if let caption = info.caption { Text(caption).lineLimit(1).layoutPriority(1) }
                     Text(programme.start, style: .time)
                     if info.scheduled {
-                        Image(systemName: "record.circle.fill").foregroundStyle(Color.red)
+                        Image(systemName: "record.circle.fill").foregroundStyle(Color.pigDanger)
                     }
                 }
                 .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(1)
@@ -89,8 +89,8 @@ struct GuideGridTileView: View {
         ChannelTile(name: channel.name, logo: logo, client: client)
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 4) {
-                    if flaky { Circle().fill(Color.orange).frame(width: 12, height: 12) }
-                    if recording { Circle().fill(Color.red).frame(width: 12, height: 12) }
+                    if flaky { Circle().fill(Color.pigWarning).frame(width: 12, height: 12) }
+                    if recording { Circle().fill(Color.pigDanger).frame(width: 12, height: 12) }
                 }
                 .padding(6)
             }
@@ -199,15 +199,27 @@ final class GuideGridTimeHeader: UIView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// The system font's rounded design with monospaced digits (a figure, never running text).
+    private static func roundedMonospacedDigits(ofSize size: CGFloat) -> UIFont {
+        let base = UIFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)
+        guard let rounded = base.fontDescriptor.withDesign(.rounded) else { return base }
+        // Keep the monospaced-digit feature explicitly: a new design can start from a fresh descriptor.
+        let digits = rounded.addingAttributes([.featureSettings: [[
+            UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+            UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+        ]]])
+        return UIFont(descriptor: digits, size: size)
+    }
+
     /// Rebuilds the labels for a loaded day (origin or width changed).
     func configure(origin: Date, duration: TimeInterval, metrics: GuideGridMetrics) {
         labels.forEach { $0.removeFromSuperview() }
         labels = GuideGridMath.headerMarks(origin: origin, duration: duration).map { mark in
             let label = UILabel()
             #if os(tvOS)
-            label.font = UIFont.monospacedDigitSystemFont(ofSize: 20, weight: .regular)
+            label.font = Self.roundedMonospacedDigits(ofSize: 20)
             #else
-            label.font = UIFont.monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+            label.font = Self.roundedMonospacedDigits(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize)
             #endif
             label.textColor = .secondaryLabel
             label.text = Self.formatter.string(from: mark)

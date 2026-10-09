@@ -80,7 +80,7 @@ The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restore
   event's secondary channel offers Record/Watch when it starts instead of tuning immediately.
 - `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, the stall must stay under `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms), and after each switch Down must move focus into the tab's content.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
-- `BrandSplashUITests`: the branded splash draws (`PIGTV_UI_TEST_SCREEN=splash`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
+- `BrandSplashUITests`: the 1.6 splash draws in light and dark and stays up through a breathing half-cycle (`PIGTV_UI_TEST_SCREEN=splash`, `PIGTV_UI_TEST_APPEARANCE`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
 - `TopShelfCardsUITests`: renders the Top Shelf cards through the real export, then focuses PigTV on the Home Screen.
 
 ## Offline fixtures (DEBUG builds only)

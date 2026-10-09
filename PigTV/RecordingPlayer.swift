@@ -189,6 +189,7 @@ struct RecordingPlayerView: View {
                 }
             }
             .font(.system(size: 24, weight: .semibold).monospacedDigit())
+            .fontDesign(.rounded)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 90).padding(.bottom, 50)

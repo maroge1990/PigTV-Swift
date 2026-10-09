@@ -75,8 +75,14 @@ struct RecordingsView: View {
                             }
                             .buttonStyle(PigSurfaceButtonStyle())
                             .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
+                            #if os(iOS)
+                            .listRowBackground(Color.clear).listRowSeparator(.hidden) // cards sit straight on the canvas
+                            #endif
                         }
                     }
+                    #if !os(tvOS)
+                    .scrollContentBackground(.hidden) // brand 1.6: rows sit on the page canvas and corner bloom
+                    #endif
                     if filtered.isEmpty && !model.recordingsBusy {
                         Text(search.isEmpty ? "No recordings yet. Choose a programme in Guide to schedule one." : "No matching recordings.")
                             .foregroundStyle(.secondary).padding()
@@ -101,6 +107,9 @@ struct RecordingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
                             .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
+                            #if os(iOS)
+                            .listRowBackground(Color.clear).listRowSeparator(.hidden) // cards sit straight on the canvas
+                            #endif
                         }
                         if !problems.isEmpty {
                             Section("Recent problems") {
@@ -110,7 +119,7 @@ struct RecordingsView: View {
                                             Text(item.title).font(.headline)
                                             Spacer()
                                             Text(item.status.capitalized).font(.caption.bold())
-                                                .foregroundStyle(item.status == "missed" ? .orange : .red)
+                                                .foregroundStyle(item.status == "missed" ? Color.pigWarning : Color.pigDanger)
                                         }
                                         Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
                                         Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
@@ -127,10 +136,16 @@ struct RecordingsView: View {
                                     .focusable()
                                     #endif
                                     .listRowInsets(EdgeInsets(top: 6, leading: 32, bottom: 6, trailing: 32))
+                                    #if os(iOS)
+                                    .listRowBackground(Color.clear).listRowSeparator(.hidden) // cards sit straight on the canvas
+                                    #endif
                                 }
                             }
                         }
                     }
+                    #if !os(tvOS)
+                    .scrollContentBackground(.hidden) // brand 1.6: rows sit on the page canvas and corner bloom
+                    #endif
                     if !model.schedules.contains(where: \.isActive) && !model.recordingsBusy {
                         Text("Nothing scheduled. Browse Guide to choose a programme.")
                             .foregroundStyle(.secondary).padding()
@@ -224,7 +239,7 @@ struct RecordingDetails: View {
                 }
                 if item.is_partial == 1 {
                     HStack(spacing: 14) {
-                        StatusBadge(text: "Partial recording", systemImage: "clock.badge.exclamationmark", colour: .orange)
+                        StatusBadge(text: "Partial recording", systemImage: "clock.badge.exclamationmark", colour: .pigWarning)
                         Text("The beginning of the programme may be missing.").font(DetailType.meta).foregroundStyle(.secondary)
                     }
                 }
@@ -246,7 +261,7 @@ struct RecordingDetails: View {
                 }
                 .disabled(loading || model.recordingsBusy)
                 Button(role: .destructive) { deleting = true } label: {
-                    Label("Delete", systemImage: "trash").foregroundStyle(.red)
+                    Label("Delete", systemImage: "trash").foregroundStyle(Color.pigDanger)
                 }
                 .disabled(model.mutationBusy)
             }
@@ -291,7 +306,7 @@ struct RecordingDetails: View {
     @ViewBuilder
     private var statusBadge: some View {
         switch item.status {
-        case "recording": StatusBadge(text: "Recording now", systemImage: "record.circle.fill", colour: .red)
+        case "recording": StatusBadge(text: "Recording now", systemImage: "record.circle.fill", colour: .pigDanger)
         case "completed": StatusBadge(text: "Recorded", systemImage: "checkmark.circle.fill")
         case "failed": StatusBadge(text: "Failed", systemImage: "exclamationmark.triangle.fill", colour: .gray)
         default: StatusBadge(text: item.status.capitalized, colour: .gray)
@@ -332,7 +347,7 @@ private struct BreakList: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 14, alignment: .leading)], alignment: .leading, spacing: 14) {
             ForEach(breaks) { marker in
                 Text("\(RecordingTimeline.clock(marker.startMs / 1000)) – \(RecordingTimeline.clock(marker.endMs / 1000))")
-                    .font(DetailType.rowDetail.monospacedDigit())
+                    .font(DetailType.rowDetail.monospacedDigit()).fontDesign(.rounded)
                     .padding(.horizontal, 18).padding(.vertical, 10)
                     .background(Color.guideCell(scheme), in: Capsule())
             }

@@ -29,7 +29,7 @@ Implementation map · 6 Shared contracts · 7 Deferred choices and crash lessons
   runs the tvOS tests on an Apple TV simulator it finds or creates. It cannot be exercised locally; treat a red run on
   GitHub as equivalent to a local test failure.
 - **Bump the build number** (`CURRENT_PROJECT_VERSION`, both app targets in `project.pbxproj`) once per session that changes
-  app code, so Settings → Version identifies the installed copy. Current: **36**; next: **37**.
+  app code, so Settings → Version identifies the installed copy. Current: **40**; next: **41**.
 - **Crash lessons (builds 21–25, §7):** never call an AVKit-only API (a category on an AVFoundation class, e.g.
   `AVPlayerItem.externalMetadata`, `UIWindow.avDisplayManager`) on tvOS without checking it exists (AVKit is linked explicitly
   for tvOS); **nothing may await before `replaceCurrentItem`/`play()` except the resolve and the audio session**; every
@@ -239,25 +239,37 @@ earlier one where they differ.
 - **Design rules:** page background `PigPageBackground` (tab roots use `.pigPageBackdrop()`, build 32) (set explicitly on every page — Guide, Recordings and Settings gained it in build 28; without it tvOS shows its blurred grey system backdrop in dark mode); surfaces `Color.guideCell` + `PigSurfaceButtonStyle` (pink accent outline on focus); selection chips `GuideFilterStyle` (now internal, in `TVActionStyle.swift`); tvOS type scale in `GuideTypography` (guide) and `DetailType` (detail pages); player overlays force dark scheme and provide an opaque fallback for Reduce Transparency. **Pink is `Color.pigAccent`** (the asset colour), never `Color.accentColor`: on tvOS `accentColor` resolved to white outside a NavigationStack, which is why the unreachable screen's Try again was a blank white capsule (fixed in build 28). `PigPrimaryButtonStyle` is 26 pt semibold on tvOS (was `.headline`, 38 pt, which dwarfed the capsules beside it). New screens reuse these rather than defining new styles.
 - **Detail pages (build 28 consistency pass, `DetailComponents.swift`, `DetailScreens.swift`, `GuideSheets.swift`).** Shared parts: `DetailPage` (page background, scroll view, TVActionStyle applied explicitly because covers do not always inherit it; iOS Done button), `DetailHero` over `LogoWash` (the Home hero's blurred logo colours, pink glow without a logo, solid with Reduce Transparency), `ChannelLine` (logo tile, `NumberCapsule`, name), `Eyebrow`, `StatusBadge`, `PigProgressBar`, `PigSectionHeader`, `DetailActions` (a focus-section row of the app's buttons), `FavouriteButton` (BrowseModel favourites, so the guide filter and Home update at once), `pigField()` (a guideCell well for tvOS text fields, which draw unfocused as bare text), `detailCover` (full-screen cover on tvOS — a tvOS `.sheet` is a narrow panel — sheet on iOS). **ProgrammeDetails** (moved out of GuideView): hero with channel line and status badge (Recording scheduled / Recording now / Waiting to record / Recorded), eyebrow (On now · Starts in 12 min · Today/Tomorrow/day · Ended), title 52 pt, time range and duration, live progress and minutes left; description at reading width; actions Watch live (when on now) · Record (opens `RecordSheet`: Start early / Finish late chips, the one-stream note, Schedule recording — the sheet replaces the old pickers and confirmation dialog) · Channel schedule (`openSchedule`, shown when the caller can open it after closing the page) · Favourite. **ChannelScheduleView:** hero with what is on now, Watch live and Favourite, then programmes grouped by day (`ScheduleDays.group`, pure, tests `DetailTextTests`) as surface rows (time and duration column, title, On now/REC badges, description, progress). **ChannelDetails** (the grid's "Channel and favourites"): now/next from the loaded guide (it used to read the Channel's own now/next, which the guide never fills, so it always said "Programme information unavailable"), Watch live · Favourite · Channel schedule, an Up next card. **RecordingDetails:** hero (channel logo found by name, status badge, date eyebrow, title, duration · size, resume bar, partial badge), actions Play/Resume · Find breaks · Refresh · Delete (red), breaks as time chips. **Search** and **Jump to…** are `GuideSearchSheet`/`GuideJumpSheet`: section headings, field wells, programme results as rows with the channel's logo tile; Jump to… uses day chips and a 24-hour chip grid on tvOS (DatePicker on iOS). **Unreachable** and **Onboarding** use the page background, the pink wash and the shared parts (onboarding is two columns on tvOS). **Settings:** page background, `PigSectionHeader`, a red Sign out with an icon; system confirmation dialogs (sign out, cancel recording, delete) keep the system look (not customisable on tvOS) but now show their title and a cancel choice. **Fixtures:** `PIGTV_UI_TEST_SCREEN=programme | programme-later | record | schedule | channel | recording | search | jump | unreachable | onboarding` (`DesignTestScreen`, Home fixture data), each with `PIGTV_UI_TEST_APPEARANCE`; the settings fixture now honours the appearance variable too. Screenshots: `docs/evidence/2026-09-25-details-*.jpg`.
 
-## Branding ("Spotlight", build 35)
+## Branding (Pig family brand 1.6.0, build 40)
 
-Mark chose direction A. **`PigLogo.png` is never altered** (only scaled uniformly; the tinted iOS icon is Apple's required greyscale form).
-Layers: **back** plum radial `#3A1834` → `#1A1117` at 55% → `#0E090D`; **middle** pink halo `#FF2E94` (55% alpha at the centre, 18% at 22%,
-0 at 42% of the glow radius, smooth spline with zero end slope so it never shows an edge; it ends well inside every canvas so tvOS
-parallax cannot expose one); **front** the pig with a soft shadow (0, 8, 10 px blur, 35% black at 400×240). Wordmark (Top Shelf and
-splash only): "Pig" white + "TV" `#FF6FB2`, rendered in the **system rounded semibold** (the design called for Fredoka SemiBold; it was never downloaded, see below). Gradients are dithered (no banding).
-**Optical centre:** PigLogo.png's alpha-weighted centroid is **x = 0.4997, y = 0.4053** of its 1000×797 bitmap (the bitmap has ~80 empty
-rows under the chin, so the mass sits above the bitmap middle; bitmap centring put the pig high). The pig is placed with that centroid at the
-canvas centre (Top Shelf: group centred by extents horizontally, pig centroid on the vertical centre, wordmark cap band on the same row; splash:
-the pig+wordmark group lifts so its ink-mass centroid is centred), and plum and glow are centred on the same point.
-**Regenerate everything** (tvOS icon + App Store layers, Top Shelf ×2, iOS light/dark/tinted, launch/splash images, `PigTV/BrandLayout.swift`,
-`docs/evidence/branding/`, small copies; the script writes full-size previews to a temporary folder): `swiftc -O Tools/make-brand-assets.swift -o /tmp/mba && /tmp/mba` from the repo root; tweak the constants at the top of
-the script. Put `Fredoka-SemiBold.ttf` and its OFL licence in `Tools/brand/` (the script falls back to the system rounded semibold, with a
-printed note, until it is there; the wordmark is a bitmap so the font is not bundled in the app).
-**Launch screen:** `UILaunchScreen` in `AppConfiguration.plist` (colour `LaunchEdge` + image `LaunchBrand`, centred at natural size); works on
-tvOS 26.5 and iOS (checked in the simulator). **Splash:** `BrandSplashView` (`ContentView` while `!initialRestoreFinished`); first frame equals the
-launch screen, then the glow blooms, the pig pops, the wordmark rises and the group lifts; progress spinner after 2 s; Reduce Motion shows the
-final static composition; it never delays the app (cross-fade out when start-up ends). Fixture: `PIGTV_UI_TEST_SCREEN=splash`.
+The "Spotlight" look (plum plate, `#FF2E94` halo, generated bitmaps, `Tools/make-brand-assets.swift`) is **retired**. Every brand image
+now comes from the kit (`../Pig-Branding`, product `assets/products/pigtv`; rules in its `docs/integration.md` "Apple and Apple TV" and
+`docs/pig-family-brand-guide.md` §8 and §10). The app uses the **PigTV product pig** (pig-shaped screen) everywhere.
+**Sync:** `sh Tools/sync-brand.sh [path to Pig-Branding]` (default `../Pig-Branding`; idempotent, running it twice changes nothing).
+It copies `mark.svg` → `PigLogo.imageset` (vector), `wordmark-light/-dark.svg` → `BrandWordmark.imageset` (vector, any + dark), the kit's
+`AppleTV/dark` brandassets → `App Icon & Top Shelf Image.brandassets` (tvOS icon + Top Shelf; one appearance only, asset names are shared),
+the Icon Composer layers → `PigTV/AppIcon.icon/Assets` (`background-*.png` → `halo-*.png`, `layer-1-body.svg` → `body.svg`, `layer-2-face.svg`
+→ `face.svg`, `mono/*` → `body-mono.svg`/`face-mono.svg`), and renders `LaunchBrand.imageset` with `Tools/render-launch.swift` (compiled
+with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in Icon Composer and is never touched. The Top Shelf extension
+(dynamic content) references no brand asset.
+- **iOS icon:** `PigTV/AppIcon.icon` (Icon Composer; iOS only, `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`). There is no `AppIcon.appiconset`.
+  The tvOS build is unaffected by it.
+- **`BrandLayout.swift` is hand-maintained** and shared by the render helper and SwiftUI: pig size (0.42 S wide; S = 1080 pt on tvOS, 600 pt
+  elsewhere), halo radius (1.35 × the pig's visible size), wordmark placement, and the radiance stops from the kit's `pig-radiance.css`
+  (halo, bloom core and wide, corner bloom). mark.svg is a 1024 square with the pig optically centred (ink 669.5 wide), so the optical
+  centre is the square's centre; `PigBrandMark` sizes its square frame by the ink fraction so the pig keeps its on-screen size.
+- **Launch screen:** `UILaunchScreen` in `AppConfiguration.plist` (colour `LaunchEdge` = the PigCanvas colours, `#FBF8FA` / `#15111A`, + image
+  `LaunchBrand`): a **transparent** PNG (any/dark; tv @2x, phone @2x/@3x) holding the static halo as an alpha radial gradient and the mark. No text.
+  (The kit's square icon art is not canvas-coloured at its edges, which would seam.)
+- **Splash:** `BrandSplashView` (`ContentView` while `!initialRestoreFinished`). First frame = launch screen (halo at full opacity, no bloom, no
+  wordmark). Then the wordmark fades in over 250 ms and the halo breathes: halo opacity 1 → 0.25, bloom (core 0.75 r + wide 1.6 r radial
+  gradients) opacity 0 → 1 and scale 0.9 → 1.12, `.easeInOut(duration: 4).repeatForever(autoreverses: true)`. The pig never moves or scales.
+  It ends exactly when start-up ends (never waits for a cycle); progress spinner after 2 s. Reduce Motion: static halo, wordmark shown, no
+  animation. Reduce Transparency: plain canvas, no glow. Fixture: `PIGTV_UI_TEST_SCREEN=splash` (+ `PIGTV_UI_TEST_APPEARANCE`).
+- **Canvas:** `PigPageBackground` = canvas colour + one rose (`#EF7AAE`) radial gradient from the top **leading** corner (mirrored for
+  right-to-left), alpha 0.16 → 0.067 at 27.9% → 0 at 62% of the diagonal (light; 0.13/0.055 dark); plain canvas with Reduce Transparency. The
+  UIKit guide grid (`GuideGridViewController` view and collection view) is clear over that SwiftUI background; the UIKit containers painted by
+  `PageBackdrop` stay flat canvas behind it.
+- **Onboarding/sign-in:** radiance never sits behind forms. `PigIdentityBackdrop` is a static halo behind the pig mark only, over the page canvas.
 
 ## 5. Implementation map and constraints
 
@@ -385,8 +397,6 @@ Spec: `../PigTV/docs/MULTI-PROVIDER-BRIEF.md` (§2.6, §2.8, C-J, C-K). Server f
 
 - **Next for this client:** Mark's minor bugs from build 35 (he is collecting them for the next build); W6 below when he names
   a screen; the tuner features (below) when he tests `PIGTV_TUNER=1`.
-- **Wordmark font:** the Top Shelf and splash wordmark use the system rounded semibold. To switch to Fredoka SemiBold (the
-  design's choice; SIL OFL), download it with Mark's OK into `Tools/brand/` with its licence and rerun the brand script.
 - **W6: stacked full-screen covers can strand tvOS focus (parked; Mark reported "some menus need Back before anything is selectable" on 28 Sept, screen not yet named).** A `fullScreenCover`/`detailCover` presented from
   inside another one (e.g. `RecordSheet` over `SportEventDetails`/`ProgrammeDetails`, already shipped) sometimes needs Back
   before anything is focusable — a SwiftUI/tvOS focus-engine quirk, not specific to one screen. Known workaround: prefer an

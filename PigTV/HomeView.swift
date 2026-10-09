@@ -421,7 +421,7 @@ private struct HomeHero: View {
             }
             if let next = row.next {
                 (Text("NEXT  ").font(HomeMetrics.eyebrow).foregroundColor(.secondary)
-                 + Text("\(next.start.formatted(date: .omitted, time: .shortened))  ").font(HomeMetrics.heroDetail.monospacedDigit())
+                 + Text("\(next.start.formatted(date: .omitted, time: .shortened))  ").font(HomeMetrics.heroDetail.monospacedDigit()).fontDesign(.rounded)
                  + Text(next.title).font(HomeMetrics.heroDetail))
                     .lineLimit(1)
             }
@@ -650,7 +650,7 @@ private struct HomeRecordingCard: View {
                 CardText(title: recording.title, progress: resume,
                          detail: ([recording.channel_name].compactMap { $0 } + [detail(resuming: resume != nil)])
                             .filter { !$0.isEmpty }.joined(separator: " · "),
-                         accent: recordingNow ? ("● REC", Color.red) : nil)
+                         accent: recordingNow ? ("● REC", Color.pigDanger) : nil)
             }
         }
         .buttonStyle(HomeCardButtonStyle())

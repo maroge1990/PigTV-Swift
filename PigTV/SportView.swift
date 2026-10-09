@@ -151,7 +151,7 @@ struct SportView: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text(title)
-                Text(verbatim: String(count)).foregroundStyle(.secondary).monospacedDigit()
+                Text(verbatim: String(count)).foregroundStyle(.secondary).monospacedDigit().fontDesign(.rounded)
             }
             .fixedSize(horizontal: true, vertical: false)
         }

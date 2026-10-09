@@ -146,7 +146,7 @@ struct LibrarySettings: View {
                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                         #if os(tvOS)
                         .font(.system(size: 24))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color.pigDanger)
                         .padding(.horizontal, 24).padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         #endif

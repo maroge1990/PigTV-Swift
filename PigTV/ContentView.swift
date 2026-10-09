@@ -104,13 +104,13 @@ struct ProviderReminderBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
                 #if !os(tvOS)
                 Button("OK") { reminders.dismiss() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
                     .accessibilityIdentifier("providerReminder.dismiss")
                 #endif
             }
             .padding(.horizontal, 28).padding(.vertical, 18)
             .frame(maxWidth: 1100)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .reminderBackground()
             .padding(.top, bannerTop).padding(.horizontal, 16)
             .transition(.move(edge: .top).combined(with: .opacity))
             .accessibilityElement(children: .contain)
@@ -129,6 +129,17 @@ struct ProviderReminderBanner: View {
         true
         #else
         false
+        #endif
+    }
+}
+
+private extension View {
+    /// The provider reminder floats over the content, so on iOS it is Liquid Glass; tvOS keeps its material.
+    @ViewBuilder func reminderBackground() -> some View {
+        #if os(tvOS)
+        background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        #else
+        glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         #endif
     }
 }
@@ -218,7 +229,7 @@ struct OnboardingView: View {
         }
     }
 
-    /// The pig, the name and what PigTV is, over the pink wash.
+    /// The pig, the name and what PigTV is, with a static halo behind the pig only.
     private var brand: some View {
         VStack(alignment: .leading, spacing: 20) {
             PigBrandMark(width: 150, height: 120)
@@ -230,10 +241,7 @@ struct OnboardingView: View {
         }
         .padding(DetailMetrics.heroPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            PigIdentityBackdrop()
-                .clipShape(RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous))
-        }
+        .background { PigIdentityBackdrop() }
     }
 
     private var form: some View {
@@ -398,7 +406,7 @@ struct PlayerScreen: View {
         }
         #if os(iOS)
         // Build 29: iPhone (compact width) opens the channel list as a
-        // translucent bottom sheet; iPad uses the side panel (touchPlayer).
+        // bottom sheet (the system Liquid Glass sheet: no custom background); iPad uses the side panel (touchPlayer).
         .sheet(isPresented: Binding(get: { showingGuide && sizeClass != .regular },
                                     set: { if !$0 { showingGuide = false } })) {
             NavigationStack {
@@ -408,7 +416,6 @@ struct PlayerScreen: View {
                     .toolbar { Button("Done") { showingGuide = false } }
             }
             .presentationDetents([.medium, .large])
-            .presentationBackground(.ultraThinMaterial)
             .environment(\.colorScheme, .dark)
         }
         #endif
