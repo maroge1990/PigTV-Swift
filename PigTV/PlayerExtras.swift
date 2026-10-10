@@ -111,6 +111,8 @@ struct TouchPlayerChrome: View {
     /// Not observed (audit R05): the controls draw the favourite heart and
     /// the EPG logo fallback.
     let browse: BrowseModel
+    /// Starts Picture in Picture (nil: no button).
+    let pip: PiPHandle?
     @ObservedObject private var library: LibraryStore
     @ObservedObject private var artwork: ArtworkStore
     let close: () -> Void
@@ -128,12 +130,13 @@ struct TouchPlayerChrome: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    init(playback: PlaybackModel, app: AppModel, browse: BrowseModel, close: @escaping () -> Void,
+    init(playback: PlaybackModel, app: AppModel, browse: BrowseModel, pip: PiPHandle? = nil, close: @escaping () -> Void,
          openGuide: @escaping () -> Void, openChannels: @escaping () -> Void, enterNumber: @escaping () -> Void,
          touch: @escaping () -> Void) {
         self.playback = playback
         self.app = app
         self.browse = browse
+        self.pip = pip
         _library = ObservedObject(wrappedValue: browse.library)
         _artwork = ObservedObject(wrappedValue: browse.artwork)
         self.close = close
@@ -181,6 +184,10 @@ struct TouchPlayerChrome: View {
                 PlayerCircleButton(icon: "xmark", label: "Close player", size: 44, action: close)
                 if regular || short { channelTitle }
                 Spacer(minLength: 8)
+                if let pip, pip.supported {
+                    PlayerCircleButton(icon: "pip.enter", label: "Picture in Picture", size: 44) { touch(); pip.start() }
+                        .accessibilityIdentifier("player.pip")
+                }
                 PlayerPillButton(title: "Channels", icon: "list.bullet.rectangle", prominent: true) {
                     touch(); openChannels()
                 }

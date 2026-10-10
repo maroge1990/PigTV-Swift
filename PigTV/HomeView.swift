@@ -222,7 +222,7 @@ struct HomeView: View {
             }
         }
         .fullScreenCover(item: $playingRecording) { recording in
-            RecordingPlayerScreen(recording: recording, client: model.client)
+            RecordingPlayerScreen(recording: recording, client: model.client) { Task { await model.loadRecordings() } }
         }
         .fullScreenCover(item: $recordingDetails) { recording in
             RecordingDetails(model: model, original: recording)
@@ -641,8 +641,7 @@ private struct HomeRecordingCard: View {
 
     var body: some View {
         let recordingNow = recording.status == "recording"
-        let resume = HomeRows.resumeFraction(position: UserDefaults.standard.double(forKey: "pigtv.resume.\(recording.id)"),
-                                             duration: recording.duration_sec)
+        let resume = model.progress(for: recording).fraction
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
                 CardArt(logo: logo, name: recording.channel_name ?? recording.title, client: model.client,

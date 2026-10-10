@@ -27,6 +27,11 @@ struct PigTVApp: App {
     }
     #endif
 
+    #if os(iOS)
+    // Orientation lock for full-screen playback on iPhone (PlaybackWindow.swift).
+    @UIApplicationDelegateAdaptor(PigTVAppDelegate.self) private var appDelegate
+    #endif
+
     // Appearance is owned by ContentView (a View), where an @AppStorage change
     // re-renders immediately; the Settings test screen sets its own.
     var body: some Scene {
@@ -48,6 +53,9 @@ struct PigTVApp: App {
         } else if ["sport", "sport-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             HomeTestScreen(firstRun: false, initialTab: "sport",
                            noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
+        } else if ["tab-guide", "tab-recordings"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+            // The Home fixture inside the tab bar, opened on that tab (design checks).
+            HomeTestScreen(firstRun: false, initialTab: String((ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").dropFirst(4)))
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "splash" {
             BrandSplashView()
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "topshelf-cards" {
@@ -109,6 +117,7 @@ private struct HomeTestScreen: View {
             #endif
             .task {
                 model.injectHomeFixture(firstRun: firstRun)
+                if initialTab == "recordings", let browse = model.browse { GuideFixtures.addSchedules(to: browse) }
                 if noSport { model.browse?.sport.setFixture([]) }
             }
             .preferredColorScheme(fixtureScheme)
@@ -143,7 +152,7 @@ private struct PlayerTestScreen: View {
 // channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
     static let screens: Set<String> = ["programme", "programme-later", "record", "schedule", "channel", "recording",
-                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "pairing", "recording-loading", "recording-preparing", "recording-error"]
+                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume"]
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
@@ -186,7 +195,7 @@ private struct DesignTestScreen: View {
             ChannelDetails(channel: browse.asChannel(channel), browse: browse, watch: {}, openSchedule: {})
         case "recordings":
             RecordingsView(model: browse)
-        case "recording-player", "recording-loading", "recording-preparing", "recording-error":
+        case "recording-player", "recording-loading", "recording-preparing", "recording-error", "recording-resume":
             RecordingPlayerScreen(recording: browse.recordings[1], client: browse.client)
         case "recording":
             RecordingDetails(model: browse, original: browse.recordings[1])

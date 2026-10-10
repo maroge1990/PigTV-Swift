@@ -5,7 +5,11 @@ import Combine
 // Server playback contract: authenticated MP4 under /api/recordings/.
 // Capable servers prepare asynchronously; APIClient owns bounded polling.
 // tvOS plays recordings in RecordingPlayerView (the custom player's parts,
-// A4.3); iOS keeps AVKit (RecordingNativePlayer) for touch scrubbing.
+// A4.3); iOS uses PigTV's own touch chrome over an AVPlayerLayer
+// (RecordingTouchPlayer): AVPlayerViewController's controls put a full-screen
+// button on an embedded player that blanks the screen when tapped, and cannot
+// be hidden, so the one close button, Skip break, the scrubber and Picture in
+// Picture are all PigTV's.
 @MainActor
 final class RecordingPlayerModel: ObservableObject {
     let recording: Recording
@@ -21,6 +25,8 @@ final class RecordingPlayerModel: ObservableObject {
     @Published private(set) var canRetry = false
     @Published private(set) var inBreak: CommercialBreak?
     @Published private(set) var breaks: [CommercialBreak] = []
+    /// Seconds to offer "Resume from" before anything plays (nil: no question).
+    @Published private(set) var resumePrompt: Double?
     #if os(tvOS)
     @Published private(set) var displayCriteria: AVDisplayCriteria?
     #endif
@@ -39,6 +45,9 @@ final class RecordingPlayerModel: ObservableObject {
     var markersBudget: Duration = .seconds(3)
     private var lastSkipped: Int?
     private var generation = UUID()
+    /// Server 0207: positions are saved to and read from the server.
+    private var positionsOn: Bool { client.info?.features.recordingPositions == true }
+    private var lastServerSave: Double?
 
     init(recording: Recording, client: APIClient) {
         self.recording = recording
@@ -53,10 +62,14 @@ final class RecordingPlayerModel: ObservableObject {
         started = true
         if state == "recording-error" { error = "The recording could not be loaded. Try again or return to your library."; canRetry = true }
         if state == "recording-preparing" { preparing = true }
+        if state == "recording-resume" { resumePrompt = 3909; ready = true }
     }
 
     func playReviewMedia(_ url: URL) {
         started = true
+        // As a real start does (PiP is only "supported" under the playback category).
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         breaks = (try? JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"completed","markers":[{"id":1,"startMs":10000,"endMs":20000,"type":"ad"}]}"#.utf8)))?.markers ?? []
         autoSkip = false
@@ -76,6 +89,9 @@ final class RecordingPlayerModel: ObservableObject {
         canRetry = false
         let generation = UUID()
         self.generation = generation
+        resumePrompt = nil
+        let client = client, id = recording.id, featureOn = positionsOn
+        let positionTask = Task { featureOn ? await client.recordingPosition(id: id) : nil }
         startupTask = Task { [self] in
             defer { preparing = false; startupTask = nil }
             do {
@@ -118,30 +134,21 @@ final class RecordingPlayerModel: ObservableObject {
                 }
                 player.replaceCurrentItem(with: item)
                 PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
-                // "Watch from start (still recording)" starts at the start.
-                let resume = UserDefaults.standard.double(forKey: resumeKey)
-                if resume > 10, let duration = recording.duration_sec, resume < duration - 30 {
-                    await player.seek(to: CMTime(seconds: resume, preferredTimescale: 600))
-                }
+                // Where to resume: the server's position (0207) or this
+                // device's key; the viewer chooses before anything plays.
+                let featureOn = positionsOn
+                let server = featureOn ? await positionTask.value : nil
                 try Task.checkCancellation()
                 guard !stopped, error == nil else { return }
-                // Delivered on the main queue (queue: .main), so the main
-                // actor can be assumed rather than hopped to.
-                observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1, preferredTimescale: 10), queue: .main) { @Sendable [weak self] time in
-                    MainActor.assumeIsolated {
-                        guard let self, !self.stopped, self.generation == generation else { return }
-                        self.tick(time.seconds)
-                    }
+                let local = UserDefaults.standard.double(forKey: resumeKey)
+                let known = RecordingResume.source(featureOn: featureOn, server: server, local: local)
+                if let at = RecordingResume.prompt(position: known.position, watched: known.watched,
+                                                   duration: recording.duration_sec, featureOn: featureOn) {
+                    resumePrompt = at
+                    ready = true
+                    return
                 }
-                rateObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { @Sendable [weak self] player, _ in
-                    guard player.timeControlStatus == .playing else { return }
-                    Task { @MainActor [weak self] in
-                        guard let self, !self.stopped, self.generation == generation else { return }
-                        self.hasPlayed = true
-                    }
-                }
-                ready = true
-                player.play()
+                await beginPlayback(resumeAt: nil, generation: generation)
             } catch {
                 guard !stopped, !Task.isCancelled else { return }
                 self.error = error as? PigTVError == .http(404)
@@ -150,6 +157,50 @@ final class RecordingPlayerModel: ObservableObject {
                 canRetry = true
             }
         }
+    }
+
+    /// The viewer's answer to the resume question.
+    func chooseResume(_ resume: Bool) {
+        guard let at = resumePrompt, !stopped else { return }
+        resumePrompt = nil
+        let generation = generation
+        Task { await beginPlayback(resumeAt: resume ? at : nil, generation: generation) }
+    }
+
+    /// Seeks (when resuming), watches the clock and the play state, and plays.
+    private func beginPlayback(resumeAt: Double?, generation: UUID) async {
+        guard !stopped, self.generation == generation, player.currentItem != nil else { return }
+        if let resumeAt { await player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600)) }
+        guard !stopped, self.generation == generation, error == nil else { return }
+        // Delivered on the main queue (queue: .main), so the main
+        // actor can be assumed rather than hopped to.
+        observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1, preferredTimescale: 10), queue: .main) { @Sendable [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self, !self.stopped, self.generation == generation else { return }
+                self.tick(time.seconds)
+            }
+        }
+        rateObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { @Sendable [weak self] player, _ in
+            let status = player.timeControlStatus
+            guard status != .waitingToPlayAtSpecifiedRate else { return }
+            Task { @MainActor [weak self] in
+                guard let self, !self.stopped, self.generation == generation else { return }
+                if status == .playing { self.hasPlayed = true }
+                else if self.hasPlayed { self.savePositionNow() } // paused
+            }
+        }
+        ready = true
+        player.play()
+    }
+
+    /// Saves the current time (local key and, with 0207, the server). Never 0.
+    private func savePositionNow() {
+        guard let seconds = player.currentItem?.currentTime().seconds, RecordingResume.shouldSave(seconds) else { return }
+        UserDefaults.standard.set(seconds, forKey: resumeKey)
+        lastServerSave = seconds
+        guard positionsOn else { return }
+        let client = client, id = recording.id
+        Task { await client.saveRecordingPosition(id: id, seconds: seconds) }
     }
 
     /// Markers load beside the playback request and never delay it: a hung
@@ -173,7 +224,10 @@ final class RecordingPlayerModel: ObservableObject {
 
     func retry() {
         guard canRetry, !stopped, startupTask == nil else { return }
-        clearPlayer()
+        if let final = clearPlayer(), positionsOn {
+            let client = client, id = recording.id
+            Task { await client.saveRecordingPosition(id: id, seconds: final) }
+        }
         started = false
         lastSkipped = nil
         start()
@@ -182,6 +236,11 @@ final class RecordingPlayerModel: ObservableObject {
     private func tick(_ seconds: Double) {
         guard seconds.isFinite else { return }
         if Int(seconds) % 5 == 0 { UserDefaults.standard.set(seconds, forKey: resumeKey) }
+        if positionsOn, RecordingResume.dueForPeriodicSave(now: seconds, lastSaved: lastServerSave) {
+            lastServerSave = seconds
+            let client = client, id = recording.id
+            Task { await client.saveRecordingPosition(id: id, seconds: seconds) }
+        }
         let milliseconds = seconds * 1000
         let current = breaks.first { $0.startMs <= milliseconds && milliseconds < $0.endMs }
         if current?.id != inBreak?.id { inBreak = current }
@@ -206,6 +265,12 @@ final class RecordingPlayerModel: ObservableObject {
         return RecordingTimeline(current: current, end: end)
     }
 
+    func seek(toFraction fraction: Double) {
+        guard let timeline = timeline() else { return }
+        player.seek(to: CMTime(seconds: timeline.end * min(1, max(0, fraction)), preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
     func skip(_ seconds: Double) {
         guard let timeline = timeline() else { return }
         let target = RecordingTimeline.skipTarget(current: timeline.elapsed, by: seconds, end: timeline.end)
@@ -219,8 +284,13 @@ final class RecordingPlayerModel: ObservableObject {
         objectWillChange.send()
     }
 
-    private func clearPlayer() {
+    /// Releases the item. Returns the position it was at (never 0 or junk),
+    /// which is also saved to the local key.
+    @discardableResult
+    private func clearPlayer() -> Double? {
         generation = UUID()
+        resumePrompt = nil
+        lastServerSave = nil
         inBreak = nil
         ready = false
         hasPlayed = false
@@ -231,19 +301,23 @@ final class RecordingPlayerModel: ObservableObject {
         if let observer { player.removeTimeObserver(observer) }
         observer = nil
         statusObservation = nil
-        if let time = player.currentItem?.currentTime().seconds, time.isFinite, time > 0 {
+        var final: Double?
+        if let time = player.currentItem?.currentTime().seconds, RecordingResume.shouldSave(time) {
             UserDefaults.standard.set(time, forKey: resumeKey)
+            final = time
         }
         player.pause()
         player.replaceCurrentItem(with: nil)
+        return final
     }
 
     func stop() async {
         stopped = true
         let pending = startupTask
         pending?.cancel()
-        clearPlayer()
+        let final = clearPlayer()
         await pending?.value
+        if positionsOn, let final { await client.saveRecordingPosition(id: recording.id, seconds: final) }
         await Task.detached(priority: .utility) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }.value
@@ -253,9 +327,14 @@ final class RecordingPlayerModel: ObservableObject {
 struct RecordingPlayerScreen: View {
     @StateObject private var model: RecordingPlayerModel
     @Environment(\.dismiss) private var dismiss
+    /// Runs after the player has stopped and saved its position (the caller
+    /// refreshes its recordings list so tiles show the new progress).
+    private let onClose: (() -> Void)?
+    @FocusState private var resumeFocused: Bool
 
-    init(recording: Recording, client: APIClient) {
+    init(recording: Recording, client: APIClient, onClose: (() -> Void)? = nil) {
         _model = StateObject(wrappedValue: RecordingPlayerModel(recording: recording, client: client))
+        self.onClose = onClose
     }
 
     var body: some View {
@@ -268,21 +347,24 @@ struct RecordingPlayerScreen: View {
                     if model.canRetry { Button("Retry") { model.retry() }.pigPrimaryButton() }
                     Button("Back") { dismiss() }
                 }.padding(48).foregroundStyle(.white)
+            } else if let position = model.resumePrompt {
+                VStack(spacing: 24) {
+                    Text(model.recording.title).font(.title2.bold()).multilineTextAlignment(.center)
+                    Button("Resume from \(RecordingResume.clock(position))", systemImage: "play.fill") { model.chooseResume(true) }
+                        .pigPrimaryButton()
+                        .focused($resumeFocused)
+                    Button("Start over", systemImage: "arrow.counterclockwise") { model.chooseResume(false) }
+                    Button("Cancel") { dismiss() }
+                }
+                .padding(48).foregroundStyle(.white)
+                .tvFocusSection()
+                .defaultFocus($resumeFocused, true)
+                .onAppear { resumeFocused = true }
             } else if model.ready {
                 #if os(tvOS)
                 RecordingPlayerView(model: model) { dismiss() }
                 #else
-                RecordingNativePlayer(model: model).ignoresSafeArea()
-                    .overlay(alignment: .topTrailing) {
-                        HStack {
-                            if model.inBreak != nil {
-                                Button("Skip break", systemImage: "forward.end.fill") { model.skipBreak() }
-                                    .buttonStyle(.borderedProminent)
-                            }
-                            Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").font(.largeTitle) }
-                                .foregroundStyle(.white, .black.opacity(0.6))
-                        }.padding()
-                    }
+                RecordingTouchPlayer(model: model, close: { dismiss() })
                 #endif
             } else {
                 VStack(spacing: 24) {
@@ -294,7 +376,7 @@ struct RecordingPlayerScreen: View {
         .overlay {
             // The player is installed but no picture yet (`ready` alone used
             // to hide the spinner while the screen was still black).
-            if model.ready, model.error == nil, !model.hasPlayed {
+            if model.ready, model.error == nil, !model.hasPlayed, model.resumePrompt == nil {
                 ProgressView("Loading recording…").foregroundStyle(.white).allowsHitTesting(false)
             }
         }
@@ -308,33 +390,18 @@ struct RecordingPlayerScreen: View {
                let path = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"] {
                 model.playReviewMedia(URL(fileURLWithPath: path))
             } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
-                      ["recording-loading", "recording-preparing", "recording-error"].contains(screen) {
+                      ["recording-loading", "recording-preparing", "recording-error", "recording-resume"].contains(screen) {
                 model.showReviewStatus(screen)
             } else { model.start() }
             #else
             model.start()
             #endif
         }
-        .onDisappear { Task { await model.stop() } }
+        .onDisappear { Task { await model.stop(); onClose?() } }
+        .forcesLandscapeOnPhone()
         #if os(tvOS)
         // While playing, the player handles Back itself (hide chrome first).
-        .onExitCommand(perform: model.ready && model.error == nil ? nil : { dismiss() })
+        .onExitCommand(perform: model.ready && model.error == nil && model.resumePrompt == nil ? nil : { dismiss() })
         #endif
     }
 }
-
-#if os(iOS)
-// iOS keeps AVKit for recordings: touch scrubbing is its strength.
-struct RecordingNativePlayer: UIViewControllerRepresentable {
-    @ObservedObject var model: RecordingPlayerModel
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = model.player
-        controller.allowsPictureInPicturePlayback = false
-        return controller
-    }
-
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {}
-}
-#endif

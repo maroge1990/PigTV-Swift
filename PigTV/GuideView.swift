@@ -100,12 +100,23 @@ struct GuideView: View {
     // lands (the grid hands focus over through `leaveUp`).
     @FocusState private var headerNowFocused: Bool
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     init(app: AppModel, model: BrowseModel) {
         self.app = app
         self.model = model
         _guideStore = ObservedObject(wrappedValue: model.guideStore)
         _library = ObservedObject(wrappedValue: model.library)
         _marks = ObservedObject(wrappedValue: model.marks)
+    }
+
+    /// iPhone in landscape (compact height): one slim bar replaces the header,
+    /// the filters and the details row, and the tab bar hides.
+    private var slim: Bool {
+        #if os(iOS)
+        verticalSizeClass == .compact
+        #else
+        false
+        #endif
     }
 
     private var category: Category? { app.categories.first { $0.id == filter } }
@@ -131,10 +142,14 @@ struct GuideView: View {
                 #else
                 let compact = geometry.size.width < 700
                 #endif
-                VStack(alignment: .leading, spacing: 10) {
-                    header(compact: compact)
-                    filters(compact: compact)
-                    if !compact {
+                VStack(alignment: .leading, spacing: slim ? 4 : 10) {
+                    if slim {
+                        slimBar
+                    } else {
+                        header(compact: compact)
+                        filters(compact: compact)
+                    }
+                    if !compact && !slim {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(focusedProgramme?.title ?? focusedChannel?.name ?? "Choose a programme to watch")
@@ -166,8 +181,13 @@ struct GuideView: View {
                     } else {
                         gridView()
                     }
-                }.padding(.vertical, 12)
+                }.padding(.vertical, slim ? 4 : 12)
             }
+            #if os(iOS)
+            // Landscape iPhone: the grid gets the height (every control is in
+            // the slim bar); rotate to portrait to reach the other tabs.
+            .toolbar(slim ? .hidden : .automatic, for: .tabBar)
+            #endif
             .buttonStyle(GuideFilterStyle())
             // The app's page behind the guide (build 28): tvOS otherwise
             // shows its blurred system backdrop in dark mode.
@@ -388,6 +408,36 @@ struct GuideView: View {
         }
     }
 
+    /// Landscape phone: title, date, the category menu and icon-only controls
+    /// in a single row.
+    private var slimBar: some View {
+        HStack(spacing: 10) {
+            Text("TV Guide").font(.headline)
+            Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            filterMenu
+            Group {
+                if usesGridView {
+                    Button("Now", systemImage: "location.fill") { goTo(Date()) }
+                }
+                if !usesOnNowList {
+                    Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
+                    Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
+                }
+                Button("Search", systemImage: "magnifyingglass") { searching = true }
+                if !usesOnNowList {
+                    Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
+                }
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 24)
+    }
+
     #if !os(tvOS)
     // Phone layout: icon-only controls so nothing wraps.
     private var phoneHeader: some View {
@@ -420,17 +470,7 @@ struct GuideView: View {
     @ViewBuilder
     private func filters(compact: Bool) -> some View {
         if compact {
-            Menu {
-                Picker("Category", selection: $filter) {
-                    Text("All").tag("all")
-                    Text("Favourites").tag("favourites")
-                    ForEach(app.categories) { category in Text(category.name).tag(category.id) }
-                }
-            } label: {
-                Label(filterTitle, systemImage: "line.3.horizontal.decrease.circle")
-                    .font(.subheadline).lineLimit(1)
-            }
-            .padding(.horizontal, 24)
+            filterMenu.padding(.horizontal, 24)
         } else {
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
@@ -452,6 +492,19 @@ struct GuideView: View {
                 filterStripMetrics = metrics
             }
             .padding(.horizontal, 12)
+        }
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            Picker("Category", selection: $filter) {
+                Text("All").tag("all")
+                Text("Favourites").tag("favourites")
+                ForEach(app.categories) { category in Text(category.name).tag(category.id) }
+            }
+        } label: {
+            Label(filterTitle, systemImage: "line.3.horizontal.decrease.circle")
+                .font(.subheadline).lineLimit(1)
         }
     }
 

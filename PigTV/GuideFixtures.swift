@@ -199,7 +199,7 @@ enum GuideFixtures {
 
     @MainActor static func addSchedules(to model: BrowseModel) {
         let target = scheduledProgramme(in: model.guide)
-        let json = #"[{"id":90,"title":"\#(target.programme.title)","channel_name":"\#(target.channel.name)","program_start":\#(Int64(target.programme.startTime)),"program_end":\#(Int64(target.programme.endTime)),"status":"scheduled"}]"#
+        let json = #"[{"id":90,"title":"\#(target.programme.title)","channel_name":"\#(target.channel.name)","program_start":\#(Int64(target.programme.startTime)),"program_end":\#(Int64(target.programme.endTime)),"status":"scheduled"},{"id":91,"title":"Evening Match","channel_name":"Fox Footy 504","program_start":\#(Int64(target.programme.startTime) - 86_400_000),"program_end":\#(Int64(target.programme.endTime) - 86_400_000),"status":"failed","error":"No signal from the provider."}]"#
         model.schedules = (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
     }
 
@@ -211,12 +211,18 @@ enum GuideFixtures {
         let now = Date().timeIntervalSince1970 * 1000
         let hour = 3_600_000.0
         let rows = [
-            #"{"id":31,"title":"Grand Final Replay","channel_name":"Fox Footy 504","started_at":\#(now - 0.6 * hour),"status":"recording","duration_sec":2100}"#,
-            #"{"id":30,"title":"The Headlines","channel_name":"BBC News","started_at":\#(now - 20 * hour),"status":"completed","duration_sec":1800,"file_size_bytes":1288490188,"ad_detect_status":"completed"}"#,
-            #"{"id":29,"title":"Feature Film: The Long Way Home","channel_name":"HBO","started_at":\#(now - 30 * hour),"status":"completed","duration_sec":6900}"#,
-            #"{"id":28,"title":"Documentary: Deep Oceans","channel_name":"Sky News","started_at":\#(now - 52 * hour),"status":"completed","duration_sec":3300}"#,
+            #"{"id":31,"title":"Grand Final Replay","channel_name":"Fox Footy 504","channel_logo":"\#(logoKey(0))","started_at":\#(now - 0.6 * hour),"status":"recording","duration_sec":2100}"#,
+            #"{"id":30,"title":"The Headlines","channel_name":"BBC News","channel_logo":"\#(logoKey(1))","started_at":\#(now - 20 * hour),"status":"completed","duration_sec":1800,"file_size_bytes":1288490188,"ad_detect_status":"completed","position_sec":600}"#,
+            #"{"id":29,"title":"Feature Film: The Long Way Home","channel_name":"HBO","channel_logo":"\#(logoKey(6))","started_at":\#(now - 30 * hour),"status":"completed","duration_sec":6900,"position_sec":4100}"#,
+            #"{"id":28,"title":"Documentary: Deep Oceans","channel_name":"Sky News","channel_logo":"\#(logoKey(2))","started_at":\#(now - 52 * hour),"status":"completed","duration_sec":3300,"watched":true}"#,
             #"{"id":27,"title":"Classic Replay","channel_name":"Sky Sports Main Event","started_at":\#(now - 75 * hour),"status":"completed","duration_sec":5400}"#,
-            #"{"id":26,"title":"Weekend Special","channel_name":"TCM","started_at":\#(now - 4 * hour),"status":"scheduled"}"#]
+            #"{"id":26,"title":"Weekend Special","channel_name":"TCM","started_at":\#(now - 4 * hour),"status":"scheduled"}"#,
+            #"{"id":25,"title":"Late Movie","channel_name":"HBO","channel_logo":"\#(logoKey(6))","started_at":\#(now - 100 * hour),"status":"failed","native_error":"The recording could not be prepared."}"#]
+        // The fixture server has no `recordingPositions`, so progress comes
+        // from this device's saved positions (as on an older server).
+        for (id, seconds) in [(30, 600.0), (29, 4100.0), (28, 3290.0)] {
+            UserDefaults.standard.set(seconds, forKey: Recording.localResumeKey(id))
+        }
         return rows.compactMap { try? JSONDecoder().decode(Recording.self, from: Data($0.utf8)) }
     }
 

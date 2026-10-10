@@ -118,6 +118,16 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     let native_status: String?
     let native_error: String?
     let native_attempts: Int?
+    /// Server 0207 (`features.recordingPositions`): this login's saved
+    /// position in seconds and whether it counts as watched. Absent on older
+    /// servers, where the client keeps its own per-device position.
+    var position_sec: Double? = nil
+    var watched: Bool? = nil
+    /// The channel's logo URL as stored with the recording (the poster tile).
+    var channel_logo: String? = nil
+    /// The schedule this recording came from (server 0207). A failed schedule
+    /// and its failed recording are one failure, and one delete removes both.
+    var scheduled_id: Int? = nil
     /// Finished, but the server is still getting it ready to play.
     var isPreparingForPlayback: Bool {
         status == "completed" && (native_status == "pending" || native_status == "preparing")

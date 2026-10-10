@@ -441,6 +441,17 @@ final class AppModel: ObservableObject {
         cancelPairing()
         // Returning to the foreground never starts playback by itself.
         cancelPendingWatch()
+        #if os(iOS)
+        // Picture in Picture keeps playing until its window is closed (which
+        // ends the playback). Auto-PiP starts as the app is left, a moment
+        // before or after the background phase: wait for it, then decide.
+        if let currentPlayback, PictureInPictureState.shared.armed || PictureInPictureState.shared.active {
+            if !PictureInPictureState.shared.active { try? await Task.sleep(for: .seconds(1.5)) }
+            if PictureInPictureState.shared.active { return }
+            if let current = self.currentPlayback, current === currentPlayback { await endPlayback(current) }
+            return
+        }
+        #endif
         if let currentPlayback { await endPlayback(currentPlayback) }
     }
 

@@ -311,6 +311,8 @@ struct PlayerHost: View {
                 PlayerScreen(playback: playback, app: app).id(playback.id)
             }
         }
+        // iPhone: full-screen playback is landscape (the host outlives channel switches).
+        .forcesLandscapeOnPhone()
     }
 }
 
@@ -328,6 +330,7 @@ struct PlayerScreen: View {
     // on the picture shows/hides them, see PlayerChromeTimer.
     @State private var chromeVisible = true
     @State private var lastInput = Date()
+    @StateObject private var pip = PiPHandle()
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
@@ -457,7 +460,8 @@ struct PlayerScreen: View {
     /// over it (build 31); the channel side panel on iPad.
     private var touchPlayer: some View {
         ZStack {
-            NativePlayer(playback: playback).ignoresSafeArea()
+            NativePlayer(player: playback.player, pip: pip, onClosed: { Task { await app.endPlayback(playback) } })
+                .ignoresSafeArea()
             // A tap on the picture (anywhere not on a control) shows or hides
             // the controls.
             Color.clear
@@ -470,7 +474,7 @@ struct PlayerScreen: View {
                 .accessibilityLabel("Video")
                 .accessibilityHint("Shows or hides the player controls")
             if chromeVisible, let browse = app.browse {
-                TouchPlayerChrome(playback: playback, app: app, browse: browse,
+                TouchPlayerChrome(playback: playback, app: app, browse: browse, pip: pip,
                                   close: { dismiss() },
                                   openGuide: {
                                       app.requestedTab = "guide"
@@ -504,29 +508,83 @@ struct PlayerScreen: View {
 }
 
 #if os(iOS)
-// iPhone/iPad picture: AVPlayerViewController with its playback controls
-// off (build 31), so PigTV's touch controls are the only ones on screen.
-// AirPlay and Picture in Picture stay out of scope. Apple TV uses the
-// PigTV-owned CustomPlayerView instead.
-struct NativePlayer: UIViewControllerRepresentable {
-    @ObservedObject var playback: PlaybackModel
+// iPhone/iPad picture (live and recordings): a bare AVPlayerLayer view (PigTV's
+// controls are the only ones on screen). It replaces AVPlayerViewController (build 31) so PigTV's own
+// button can start Picture in Picture: AVPlayerViewController has no API for
+// that. The PiP controller starts by itself when the app is left (auto-PiP),
+// closing the PiP window ends playback (`onClosed`), and expanding it returns
+// to this still-presented full-screen player. Apple TV uses CustomPlayerView.
+struct NativePlayer: UIViewRepresentable {
+    let player: AVPlayer
+    var pip: PiPHandle?
+    /// The PiP window was closed (not expanded): end the playback.
+    var onClosed: () -> Void = {}
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = playback.player
-        controller.showsPlaybackControls = false
-        controller.allowsPictureInPicturePlayback = false
-        controller.videoGravity = .resizeAspect
-        return controller
+    final class LayerView: UIView {
+        override static var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        if controller.player !== playback.player { controller.player = playback.player }
+    func makeCoordinator() -> Coordinator { Coordinator(onClosed: onClosed) }
+
+    func makeUIView(context: Context) -> LayerView {
+        let view = LayerView()
+        view.backgroundColor = .black
+        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.player = player
+        context.coordinator.attachPiP(to: view.playerLayer, handle: pip)
+        return view
     }
 
-    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: ()) {
-        controller.player?.pause()
-        controller.player = nil
+    func updateUIView(_ view: LayerView, context: Context) {
+        context.coordinator.onClosed = onClosed
+        context.coordinator.attachPiP(to: view.playerLayer, handle: pip) // early in a launch PiP may not be supported yet
+        if view.playerLayer.player !== player { view.playerLayer.player = player }
+    }
+
+    static func dismantleUIView(_ view: LayerView, coordinator: Coordinator) {
+        coordinator.controller?.delegate = nil
+        coordinator.controller = nil
+        PictureInPictureState.shared.set(active: false)
+        PictureInPictureState.shared.armed = false
+        view.playerLayer.player?.pause()
+        view.playerLayer.player = nil
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, AVPictureInPictureControllerDelegate {
+        var onClosed: () -> Void
+        var controller: AVPictureInPictureController?
+        private var restoring = false
+        init(onClosed: @escaping () -> Void) { self.onClosed = onClosed }
+
+        func attachPiP(to layer: AVPlayerLayer, handle: PiPHandle?) {
+            guard controller == nil, AVPictureInPictureController.isPictureInPictureSupported(),
+                  let made = AVPictureInPictureController(playerLayer: layer) else { return }
+            made.canStartPictureInPictureAutomaticallyFromInline = true
+            made.delegate = self
+            controller = made
+            handle?.controller = made
+            PictureInPictureState.shared.armed = true
+        }
+
+        func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+            restoring = false
+            PictureInPictureState.shared.set(active: true)
+        }
+
+        func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+            // The full-screen player was never dismissed, so it is already there.
+            restoring = true
+            completionHandler(true)
+        }
+
+        func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+            PictureInPictureState.shared.set(active: false)
+            if !restoring { onClosed() }
+            restoring = false
+        }
     }
 }
 #endif

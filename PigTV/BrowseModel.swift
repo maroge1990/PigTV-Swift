@@ -655,6 +655,32 @@ final class BrowseModel: ObservableObject {
         } catch { actionError = error.localizedDescription }
     }
 
+    /// Deletes a failed or missed schedule (server 0207 also removes its
+    /// partial files). The reply body is not needed, so any 2xx counts.
+    func deleteSchedule(_ item: ScheduledRecording) async {
+        guard !mutationBusy else { return }
+        mutationBusy = true
+        actionError = nil
+        actionMessage = nil
+        defer { mutationBusy = false }
+        do {
+            _ = try await client.response("recordings/scheduled/\(item.id)", method: "DELETE")
+            actionMessage = "Schedule deleted."
+            await loadRecordings()
+        } catch { actionError = error.localizedDescription }
+    }
+
+    /// Server 0207: saved positions come with the recordings list.
+    var usesServerPositions: Bool { client.info?.features.recordingPositions == true }
+
+    /// Resume fraction and watched state: the server's values when it has
+    /// them, else this device's saved position.
+    func progress(for recording: Recording) -> RecordingProgress {
+        recording.progress(serverPositions: usesServerPositions) {
+            UserDefaults.standard.double(forKey: Recording.localResumeKey($0))
+        }
+    }
+
     func delete(_ item: Recording) async {
         await mutate("recordings/\(item.id)", method: "DELETE", success: "Recording deleted.")
     }
