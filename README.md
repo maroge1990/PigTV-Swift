@@ -1,7 +1,7 @@
 # PigTV Apple client
 
 The native client for [PigTV](https://github.com/maroge1990/PigTV) (a self-hosted live TV server) on **Apple TV**, **iPad** and
-**iPhone**: SwiftUI with a UIKit guide grid and AVFoundation playback. Build **1.0 (32)**, for server build 0154.
+**iPhone**: SwiftUI with a UIKit guide grid and AVFoundation playback. Build **1.0 (40)**, for server build 0207.
 
 What it has: a Home screen (continue watching and shelves), the TV guide (a UIKit grid on Apple TV and iPad, an "On now" list on
 iPhone), a Sport tab (events across channels for the next 72 hours, with replays), recordings (scheduling, playback with
@@ -10,7 +10,7 @@ deep links. It needs a PigTV server on the local network or VPN.
 
 ## Build and run
 
-Requirements: Xcode 27 with the iOS/tvOS 26.5 SDKs; physical devices need development signing, and the App Group
+Requirements: Xcode 27 (deployment targets iOS/tvOS 26.5; tests run on the tvOS 27 simulator); physical devices need development signing, and the App Group
 `group.au.markrogers.PigTV` registered for both the `PigTV` and `PigTVTopShelf` targets (Signing & Capabilities).
 
 Open `PigTV.xcodeproj`, choose the shared **PigTV** scheme and an Apple TV, iPad or iPhone destination, and run. From the command
@@ -18,7 +18,7 @@ line (on the development Mac `xcode-select` points at the Command Line Tools, so
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-xcodebuild test  -project PigTV.xcodeproj -scheme PigTV -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
+xcodebuild test  -project PigTV.xcodeproj -scheme PigTV -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0'
 xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'
 sh Tools/test-contracts.sh    # synthetic API/model checks, no server
 ```
@@ -32,10 +32,9 @@ Work happens on `main`; pushes run CI (`.github/workflows/ci.yml`: iOS build, tv
 
 | Document | For |
 |---|---|
-| [`blueprint.md`](blueprint.md) | Start here: rules, architecture screen by screen, device-verification state, known issues |
-| [`TESTING.md`](TESTING.md) | Test commands, what the suites cover, UI fixtures, the device checklist |
-| [`docs/SERVER-REQUESTS.md`](docs/SERVER-REQUESTS.md) | Requests from this client to the server (none open) |
-| `../PigTV/blueprint.md` §6 | The joint roadmap and its status |
-| `../PigTV/docs/SWIFT-CLIENT-HANDOFF.md` | The server contract, the `/api/info` flags, and every client-visible server change |
-| `../PigTV/docs/TEST-BLOCK.md` | Mark's device test rounds and results |
-| [`docs/archive/`](docs/archive/README.md) | Frozen history (old handovers, the old blueprint, old test evidence) |
+| [`AGENTS.md`](AGENTS.md) | Start here when working on the code: commands, how changes ship, the rules |
+| [`blueprint.md`](blueprint.md) | Architecture screen by screen, implementation constraints, crash lessons, known limitations |
+| [`TESTING.md`](TESTING.md) | What the suites cover, UI fixtures, measuring on the Apple TV |
+| [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md) | What the server promises: `/api/info` flags, frozen shapes, contracts C-A…C-K |
+| `../PigTV/blueprint.md` §4 | The joint roadmap |
+| [`docs/archive/`](docs/archive/README.md) | Frozen history (old handovers, blueprints, test evidence, server requests) |

@@ -1,49 +1,13 @@
 # PigTV client: testing
 
-Current state and rules: [blueprint.md](blueprint.md). The device checklist is the server repo's
-`../PigTV/docs/TEST-BLOCK.md`. The old per-build evidence (builds 3–16) is frozen in
-[docs/archive/TESTING-2026-09-23.md](docs/archive/TESTING-2026-09-23.md).
+Commands and the rules for running them are in [AGENTS.md](AGENTS.md); the architecture is in [blueprint.md](blueprint.md).
+This file says what each suite covers, how to put a screen up with fixture data, and how to measure on the Apple TV. Mark's
+device rounds and results (complete to build 40) are frozen in `../PigTV/docs/archive/TEST-BLOCK-2026-10-13.md`; the old
+per-build evidence (builds 3–16) in [docs/archive/TESTING-2026-09-23.md](docs/archive/TESTING-2026-09-23.md).
 
 Who tests what: the agent runs builds and simulator tests; Mark runs the physical Apple TV, iPad and iPhone checks. A simulator
 pass is not a device pass, and nothing becomes *Verified* until Mark reports it. Ask Mark before contacting the deployed
 server or driving the simulator UI by hand.
-
-## Commands
-
-`xcode-select` on the development Mac points at the Command Line Tools, so every command needs `DEVELOPER_DIR`:
-
-```sh
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-
-# Before every push: all tests on the tvOS simulator (30 Sept, build 36: 150 pass, 133 unit + 17 UI, ~10 min)
-xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
-  -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
-
-# When shared code changed: the iOS build
-xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'
-
-# iPad: the unit tests that aren't tvOS-only
-xcodebuild test -project PigTV.xcodeproj -scheme PigTV -only-testing:PigTVTests \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=26.5'
-
-# One suite or test
-xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
-  -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5' -only-testing:PigTVTests/RealPlaybackTests
-
-# Synthetic API/model contract checks, no simulator and no server (30 Sept: 204 pass)
-sh Tools/test-contracts.sh
-
-# Increment the shipping build number in all four configurations (Debug/Release, app + Top Shelf)
-sh Tools/bump-build.sh     # 36 → 37
-sh Tools/bump-build.sh 42  # set to 42 (should be run in every commit that changes the app)
-```
-
-Simulators by name (Xcode 27): **Apple TV** (tvOS 26.5, the one the tests use), Apple TV 4K (3rd generation) (tvOS 27.0);
-**iPad Pro 13-inch (M5)** and the other iPads, iPhone 17 / 17 Pro Max / Air (iOS 26.5; iOS 27.0 variants too). Use names, not
-UDIDs: the UDIDs differ per Mac. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on the newest Apple TV
-simulator it finds.
-
-The scheme sets `PIGTV_SYNTHETIC_TESTS=1` for the test host, so it never restores a saved real-server session.
 
 ## What the suites cover
 
@@ -101,16 +65,12 @@ data, not the real feed.
 
 `Tools/analyse-tab-flash.py` measures a `simctl io recordVideo` capture frame by frame (how the build 32 flash was found).
 
-## Device checklist
+## Device checks
 
-The checklist and results live in **`../PigTV/docs/TEST-BLOCK.md`** (rounds 1–4 with a status summary at the top, and
-the next round's checks). For a device run, note the app build (Settings → Version), the server build (`/api/version`), the
-device and OS, and for a fault the channel and roughly when; keep provider URLs and tokens out of anything shared. Useful
-on-device diagnostics: Settings → Diagnostics (tvOS, the Top Shelf), and Console on the Mac filtered to subsystem
-`au.markrogers.PigTV.TopShelf` (the Top Shelf).
-
-Checks that no simulator can settle, still open: an HEVC recording; audio/subtitle track selection; whether AVPlayer stops
-fetching while paused (C2 rests on it); everything behind the server's `PIGTV_TUNER=1`.
+For a device run, note the app build (Settings → Version), the server build (`/api/version`), the device and OS, and for a
+fault the channel and roughly when; keep provider URLs and tokens out of anything shared. On-device diagnostics: Settings →
+Diagnostics (tvOS, the Top Shelf), and Console on the Mac filtered to subsystem `au.markrogers.PigTV.TopShelf`. Checks no
+simulator can settle are listed in blueprint §8.
 
 ## Measuring on the Apple TV
 
@@ -137,7 +97,7 @@ Stricter tab test on the simulator (the budget defaults to 500 ms because simula
 
 ```sh
 PIGTV_TABSWITCH_BUDGET_MS=250 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
-  -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5' -only-testing:PigTVUITests/TabSwitchUITests
+  -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0' -only-testing:PigTVUITests/TabSwitchUITests
 ```
 
 (If the variable does not reach the test runner on your Xcode, set `TEST_RUNNER_PIGTV_TABSWITCH_BUDGET_MS=250` instead.)

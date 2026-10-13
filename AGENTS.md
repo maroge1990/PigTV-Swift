@@ -1,0 +1,67 @@
+# PigTV Apple client: agent guide
+
+The native PigTV client for Apple TV (first), iPad and iPhone: SwiftUI, a UIKit guide grid, AVFoundation playback, a Top Shelf
+extension. The server is `../PigTV`. Read [`blueprint.md`](blueprint.md) for the architecture and
+[`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md) for what the server promises; the joint roadmap is
+`../PigTV/blueprint.md` §4. What each suite covers and the UI fixtures are in [`TESTING.md`](TESTING.md). `docs/archive/` is
+frozen history, not instructions.
+
+## Commands
+
+`xcode-select` on the MacBook points at the Command Line Tools, so every Xcode command needs `DEVELOPER_DIR` (don't change the
+system setting). Simulators are named, not UDIDs (they differ per Mac); the 26.5 runtimes are gone, so tests run on tvOS 27.
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+TV='platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0'
+
+sh Tools/test-contracts.sh                                                        # API/model contracts, no simulator (seconds)
+xcodebuild test -project PigTV.xcodeproj -scheme PigTV -destination "$TV"        # everything, unit + UI (~13 min)
+xcodebuild test -project PigTV.xcodeproj -scheme PigTV -destination "$TV" -only-testing:PigTVTests/RealPlaybackTests   # one suite
+xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'                  # iOS build
+xcodebuild test -project PigTV.xcodeproj -scheme PigTV -only-testing:PigTVTests \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=27.0'        # iPad unit tests
+sh Tools/bump-build.sh                                                            # next build number, all four configurations
+xcrun simctl shutdown all                                                         # afterwards: a booted tvOS simulator left running crash-loops and loads the Mac
+```
+
+## How changes ship
+
+**Push-to-main (Mark, 23 Sept).** Work on `main`; Claude may `git pull --rebase` and push to `origin/main` without asking each
+time. Never force-push.
+
+1. Before every push: the contract runner and the tvOS tests pass, plus the iOS build when shared code changed. If something
+   can't be run, say so and don't push.
+2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets), so Settings →
+   Version identifies the installed copy. Current: **40**.
+3. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push and PR; a red run counts as a local
+   failure.
+4. Device-dependent work ends with numbered test steps for Mark; nothing is *Verified* until he reports it. A simulator pass is
+   not a device pass.
+
+## Rules
+
+- **Never call an AVKit-only API on tvOS without checking it exists** (a category on an AVFoundation class, e.g.
+  `AVPlayerItem.externalMetadata`, `UIWindow.avDisplayManager`); AVKit is linked explicitly for tvOS (blueprint §7).
+- **Nothing may await before `replaceCurrentItem`/`play()` except the resolve and the audio session.**
+- Every AVFoundation/KVO/notification callback is `@Sendable`/nonisolated and hops to the main actor (Swift 6). Keep pure
+  helpers `nonisolated` so the Swift 5 test targets can call them.
+- **New playback code gets a test in the real-playback harness** (`PigTVTests/RealPlaybackTests.swift`).
+- A view that reads a `BrowseModel` property must observe the store that holds it (blueprint §3).
+- Never send `force: true` automatically: a takeover needs an explicit choice. Browsing and focus must never acquire a provider
+  stream. Preserve same-origin auth, media URL allow-listing, capability negotiation and release-before-switch.
+- Ask Mark before browsing, downloading SDKs or dependencies, or contacting the deployed server. Drive the simulator UI
+  (attach, screenshots, input) only when Mark asks in that message; routine checks are `xcodebuild` runs.
+- Server changes are made in `../PigTV` under its `AGENTS.md`; a new endpoint this client calls needs an entry in the server's
+  `APPLE_CLIENT_ROUTES`.
+- The lead session may delegate to sub-agents (never Haiku) and reviews every diff before it's pushed.
+- At the end of a session update `blueprint.md` with any durable fact; the story goes in the commit message.
+
+## Gotchas
+
+- Physical devices need development signing and the App Group `group.au.markrogers.PigTV` registered for both `PigTV` and
+  `PigTVTopShelf`; without it the Top Shelf shows the static image.
+- If Xcode re-saves `project.pbxproj` while you edit it by hand, check `platformFilters = (tvos)` survived on the extension's
+  dependency and embed entries (the iOS build fails without it).
+- The scheme sets `PIGTV_SYNTHETIC_TESTS=1`, so the test host never restores a saved real-server session.
+- No secrets live in this repo; the server address and pairing are entered in the app.

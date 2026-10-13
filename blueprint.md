@@ -1,94 +1,29 @@
 # PigTV Apple client: blueprint
 
-**Last updated:** 30 September 2026 · app **1.0 (36)** (committed locally, not pushed; multi-provider client A1, build 35 was the pushed handover state) · server build **0167** · roadmap
-contracts C-A…C-I in `../PigTV/docs/ROADMAP-CONTRACTS.md`
+**State:** app **1.0 (40)** with server **0207** (13 Oct 2026). Everything built so far is verified on Mark's Apple TV, iPad and
+iPhone, and there are no open bugs. The joint roadmap (Plan B: the Dispatcharr gaps, mostly server-side) is in
+[`../PigTV/blueprint.md`](../PigTV/blueprint.md) §4.
 
-Read this at the start of every session, **together with the joint roadmap in
-[`../PigTV/blueprint.md`](../PigTV/blueprint.md) §6**, which is where A-items (Apple) and X-items (both products) are
-tracked. This file holds the client's durable facts and rules. It replaced the earlier blueprint on 23 September 2026 after an
-independent review; the full U01–U11 and R01–R20 history is frozen in `docs/archive/blueprint-2026-09-23.md`.
+How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
+[`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
+and known limits. What the server promises is in [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
+What shipped and why is in the commit messages. The full blueprint as it stood before this trim (with the per-build notes
+for builds 21–39) is `docs/archive/blueprint-2026-10-13.md`; everything in `docs/archive/` is history, not instructions.
 
-**Sections:** 1 Working rules · 2 Orientation · 3 Device verification state · 4 Architecture (screen by screen) · 5
-Implementation map · 6 Shared contracts · 7 Deferred choices and crash lessons · 8 Known issues. How to build and test:
-[TESTING.md](TESTING.md). Mark's device test rounds and their results: `../PigTV/docs/TEST-BLOCK.md`.
+**Sections:** 1 Orientation · 2 Architecture (screen by screen) · 3 Performance, warming and providers · 4 Branding ·
+5 Implementation map · 6 Using the server contract · 7 Deferred choices and crash lessons · 8 Known limitations.
 
-## 1. Working rules
-
-- **Push-to-main (Mark, 23 Sept).** Work on `main` in this folder. Claude may `git pull --rebase` and **push to `origin/main`**
-  without asking each time. Before every push: the tvOS build and tests pass, plus an iOS build when shared code changed.
-  **`xcode-select` on the MacBook points at the Command Line Tools, so every Xcode command needs `DEVELOPER_DIR`** (don't change
-  the system setting):
-  ```bash
-  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-  xcodebuild test -project PigTV.xcodeproj -scheme PigTV -destination 'platform=tvOS Simulator,name=Apple TV,OS=26.5'
-  xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'
-  ```
-  Never force-push. `.gitignore` keeps Xcode and Finder user state out of commits.
-- **CI (A0.3).** `.github/workflows/ci.yml` runs on every push to `main` and on pull requests: it selects the runner's
-  newest Xcode (failing with a clear message if it is older than the client's minimum), builds for the iOS Simulator, and
-  runs the tvOS tests on an Apple TV simulator it finds or creates. It cannot be exercised locally; treat a red run on
-  GitHub as equivalent to a local test failure.
-- **Bump the build number** (`CURRENT_PROJECT_VERSION`, both app targets in `project.pbxproj`) once per session that changes
-  app code, so Settings → Version identifies the installed copy. Current: **40**; next: **41**.
-- **Crash lessons (builds 21–25, §7):** never call an AVKit-only API (a category on an AVFoundation class, e.g.
-  `AVPlayerItem.externalMetadata`, `UIWindow.avDisplayManager`) on tvOS without checking it exists (AVKit is linked explicitly
-  for tvOS); **nothing may await before `replaceCurrentItem`/`play()` except the resolve and the audio session**; every
-  AVFoundation/KVO/notification callback is `@Sendable`/nonisolated and hops to the main actor (Swift 6).
-- **New playback code gets a test in the real-playback harness** (`PigTVTests/RealPlaybackTests.swift`, §4): two crashes reached
-  the TV because no test played a stream through the app's own code.
-- **Swift 6 language mode** for the app and the Top Shelf extension (Mark: on); keep pure helpers `nonisolated` so the Swift 5
-  test targets can call them.
-- **Organisation:** the lead Claude session delegates implementation to sub-agents and reviews every diff before it's pushed.
-  Device-dependent items end with numbered test steps for Mark and become *Verified* only on his report.
-- Other internet use still needs Mark's approval: browsing, SDK or dependency downloads, and **contacting the deployed server**.
-  Driving the simulator UI (attach, screenshots, input) only when Mark asks in that message; routine checks are `xcodebuild` runs.
-- Never send `force: true` automatically: viewer or recording takeover needs an explicit choice. Browsing and focus must never
-  acquire a provider stream. Preserve same-origin auth, media URL allow-listing, capability negotiation and release-before-switch.
-- Server changes are made in the server repo under its blueprint §2; client-visible server changes appear in
-  `../PigTV/docs/SWIFT-CLIENT-HANDOFF.md` §5, so read it at each session start.
-
-## 2. Orientation
+## 1. Orientation
 
 | Item | Reference |
 |---|---|
-| Project | `PigTV.xcodeproj`, shared scheme `PigTV`; iOS/tvOS 26.5 targets; Xcode 27. Targets: `PigTV` (app, **Swift 6 language mode** since build 28, default MainActor isolation), `PigTVTopShelf` (tvOS extension, Swift 6 since build 28), `PigTVTests`, `PigTVUITests` (Swift 5). Synchronized folders: `PigTV/`, `Shared/` (app + extension), `PigTVTopShelf/`, tests. If Xcode is open while `project.pbxproj` is edited by hand, it may re-save the file: check `platformFilters = (tvos)` on the extension's dependency and embed entry survived (it dropped a singular `platformFilter = tvos` once). |
-| Baseline (4 Oct, build 38) | **210 tests pass** on the tvOS 26.5 "Apple TV" simulator (186 unit + 24 UI, 0 failures); **183** unit tests on the iPad Pro 13-inch (M5); the contract runner passes **227**. `TabSwitchUITests`: worst stall **138 ms**, mean 86 ms, every switch held to 500 ms (the first-Guide-visit allowance is gone). |
-| Baseline (4 Oct, build 37) | **165 tests pass** on the tvOS 26.5 "Apple TV" simulator (141 unit + 24 UI, 0 failures); the contract runner passes **212**. `TabSwitchUITests` (1,000 channels + the 215-event Sport fixture): worst stall **363 ms**, mean 97 ms, budget 500 ms (`PIGTV_TABSWITCH_BUDGET_MS`; 250 on the device). `ProviderFailoverTests.testRecoveryAllowanceRenewsAfterTwoMinutesOfGoodPlayback` can time out when the Mac is heavily loaded; it passes alone. |
-| Baseline (30 Sept, build 36) | **150 tests pass** on the tvOS 26.5 "Apple TV" simulator (133 unit + 17 UI); **130** unit tests pass on the iPad Pro 13-inch (M5) simulator; the contract runner passes **204**. `TabSwitchUITests`' 1,000 ms tab-switch limit can flake once under load (1,150 ms seen; the rerun passed). Per-build counts are in the commit messages. |
-| Contract runner | `sh Tools/test-contracts.sh` (synthetic, no server) |
-| Regression and device procedure | [TESTING.md](TESTING.md) |
-| Server requests | [docs/SERVER-REQUESTS.md](docs/SERVER-REQUESTS.md) |
+| Project | `PigTV.xcodeproj`, shared scheme `PigTV`; iOS/tvOS 26.5 deployment targets; Xcode 27. Targets: `PigTV` (app, **Swift 6 language mode**, default MainActor isolation), `PigTVTopShelf` (tvOS extension, Swift 6), `PigTVTests`, `PigTVUITests` (Swift 5). Synchronized folders: `PigTV/`, `Shared/` (app + extension), `PigTVTopShelf/`, tests. If Xcode is open while `project.pbxproj` is edited by hand, it may re-save the file: check `platformFilters = (tvos)` on the extension's dependency and embed entry survived (it dropped a singular `platformFilter = tvos` once). |
+| Contract runner | `sh Tools/test-contracts.sh` (synthetic API/model fixtures, no simulator, no server) |
+| Server requests | Raised in the server repo, described by what the screen needs (`../PigTV/AGENTS.md`). The old request log is `docs/archive/SERVER-REQUESTS-2026-09-26.md` (SR-1, SR-2, both resolved). |
 
-## 3. Device verification state (Mark's reports, 29 Sept)
+## 2. Architecture
 
-Mark ran six test rounds (`../PigTV/docs/TEST-BLOCK.md`: app 22, 28, 30, 31, 32, 34 with server 0138, 0146, 0149, 0151,
-0154, 0166). **Everything on the Apple TV passed**, apart from the round 5 bugs (fixed in builds 33–35) and the items below.
-
-- **Verified on the TV:** the UIKit guide (2.1–2.7; the only guide), channel numbers as labels (1.4, R3.10), favourites (1.5),
-  cached guide (1.6), amber flaky dot (1.7), tuning card (1.8), faster repeat starts (1.9), Last channel (1.10), player controls
-  (1.11), 50 Hz (1.12), **HDR on the HDR TV (1.13)**, clear resolve errors (1.14), recordings in the custom player with resume
-  (1.15, 1.17), stream info overlay (2.8), HE-AAC passthrough always on (2.9, R2.9), the -11868 fallback on the non-HDR TV
-  (R2.4), the tab bar (R2.7), Home (R2.11, R4.5), programme page and detail screens (R2.13, R2.14), Swift 6 (R2.15), Sport tab,
-  event page, channel picker and Home row (R3.3–R3.7), Replays (R4.2, R4.3), **Top Shelf working** (R4.4), tab switching
-  without reloads (R4.6). Earlier: U02 two-device takeover, R07/R08 custom player and side list, R17 scrub bar, R18 fast
-  category switching.
-- **Verified in round 5 (build 32, 28 Sept):** the tab-switch flash fix, the Top Shelf rendered cards, the 72 h Sport sections.
-- **Verified in round 6 (builds 33–34, 29 Sept):** the sport channel Record / Watch-when-it-starts choice (R6.10–R6.12), the
-  guide's forward extension (R6.13, R6.15), the Recordings screen's Recent problems section (R6.2).
-- **Build 35 (29 Sept):** Jump to… and Search as full-screen pages (R6.14 had failed on 34) and the Spotlight branding. Mark:
-  "looking good", with a few minor bugs saved for the next build (not yet reported in detail).
-- **iPad/iPhone:** the build 29–31 changes came from Mark's iPad/iPhone reports; R4.7 (touch controls) and R4.8 (Siri, since
-  removed) were never reported one by one; Mark's 28 Sept round covered "all features except the tuner".
-- **Deferred:** 1.16 Skip break / Auto-skip (no recording with breaks yet); R3.8 the Sport empty state (needs a quiet moment).
-  (The tuner features, Start over, timeshift scrubbing and watch while recording, were removed in build 39 with the server's
-  tuner model.)
-- **Never checked on a device:** an HEVC recording; R09 audio and subtitle track selection (no suitable channel); whether
-  AVPlayer stops fetching while paused (C2 assumes it). Superseded: R14/R16/R19 (the SwiftUI grid is gone); R20 (light mode
-  after the player) has not recurred.
-
-## 4. Architecture
-
-**At a glance (build 32).** Tabs: **Home** (opens first) · **TV Guide** · **Sport** (with the server's `sportsEvents`) ·
+**At a glance.** Tabs: **Home** (opens first) · **TV Guide** · **Sport** (with the server's `sportsEvents`) ·
 **Recordings** · **Settings**, on tvOS, iPad and iPhone.
 
 | Surface | tvOS | iPad | iPhone |
@@ -97,7 +32,7 @@ Mark ran six test rounds (`../PigTV/docs/TEST-BLOCK.md`: app 22, 28, 30, 31, 32,
 | Guide | UIKit grid (`GuideGrid*`), remote focus | the same grid, free touch scrolling | **On now list** (`OnNowList`) |
 | Sport | On now · Starting soon · Later today · Tomorrow · weekdays · Replays, league chips, event page | same | same |
 | Live player | `CustomPlayerView` (no AVKit UI): info/scrub/channels/tracks overlays | `NativePlayer` (AVPlayerViewController, controls off) + PigTV's `TouchPlayerChrome` | same, bottom-sheet channel list |
-| Recording player | `RecordingPlayerView` (custom; Skip break, Auto-skip, HLS while recording) | AVKit (`RecordingNativePlayer`) | AVKit |
+| Recording player | `RecordingPlayerView` (custom; Skip break, Auto-skip) | AVKit (`RecordingNativePlayer`) | AVKit |
 | Top Shelf | `PigTVTopShelf` extension: favourites as rendered 16:9 cards, `pigtv://play` links | — | — |
 | Settings | server, Version, appearance, **Labs** (Stream info overlay), **Diagnostics** (Top Shelf) | Labs; no Diagnostics section | same |
 
@@ -148,7 +83,7 @@ earlier one where they differ.
 - **Player layering:** conflict/error/reconnecting states replace the player. **tvOS:** `CustomPlayerView` (`CustomPlayer.swift`) is the only player — `PlayerLayerView` video + one overlay switching between hidden / info / scrub / channels / tracks chrome, driven by in-view remote handlers, no AVKit. **iOS/iPadOS:** `NativePlayer` (AVPlayerViewController with **`showsPlaybackControls = false`** since build 31, so it only draws the picture) + PigTV's touch controls (`TouchPlayerChrome`, below). A1.2: the "Preparing…"/reconnecting states in `ContentView.swift`'s `PlayerScreen` show a `TuningCard` (channel `LogoTile`, name, current/next programme from cached guide data, a "Tuning…"/"Reconnecting…" spinner), not a bare `ProgressView` — **on iOS too since build 29**.
 - **iPhone/iPad player parity (build 29; Mark on iPad: no "Tuning…", the old channel sheet). The AVKit-controls and `TouchInfoOverlay` parts of this paragraph are superseded by build 31's touch controls (next bullet); the shared pieces remain.** Shared pieces live in `PlayerShared.swift` (both platforms, sizes in `PlayerMetrics`): `LogoTile` and `TuningCard` (moved out of `CustomPlayer.swift`/`ContentView.swift`), `PlayerChannelRow` (the TV side list's row: logo tile, name + muted number, now title, progress, pink outline on the current channel — the tvOS `channelRow` now draws it), `PlayerCommands` (Favourite and Record-now with their notices, used by the TV action row and iOS), `PlayerInfoText` (time range, progress, minutes left, "Next: …"; pure) and `AppModel.playerChannels` (zap list, else the guide). iOS-only in `PlayerExtras.swift` (the old `QuickGuidePanel` sheet is gone): `PlayerChannelPanel` (current channel highlighted and scrolled to; a tap calls `switchPlayback`), shown as `PlayerSidePanel` on iPad (regular width: 420 pt translucent panel from the leading edge, header with close, tap beside it closes) or as a bottom sheet on iPhone (`.medium`/`.large` detents, ultra-thin material, dark); and `TouchInfoOverlay` (logo, channel and muted number, programme, times · minutes left, progress with LIVE/BEHIND LIVE, next, **Favourite**, **Record**, **Last channel**), bottom-leading above AVKit's transport bar. **Chrome visibility:** AVKit has no public signal for its controls' visibility on iOS, so the top controls and the info overlay show/hide together on the same taps: `NativePlayer` adds an observe-only tap recogniser (`cancelsTouchesInView = false`, simultaneous) reporting whether the touch landed on a `UIControl` (AVKit's buttons/scrubber → keep up) or the picture (toggle), and they hide after 4 idle seconds unless paused, the panel or Go to number is open, or VoiceOver is running (`PlayerChromeTimer`, pure; the first tap after a channel starts keeps them up, since AVKit's controls are hidden then). The top row no longer repeats the channel name (the overlay has it). Tests `PlayerSharedTests`. **Fixture:** `PIGTV_UI_TEST_SCREEN=player` (with `PIGTV_UI_TEST_MEDIA=<local movie path>`, played via the DEBUG `PlaybackModel.playFixtureMedia`) · `player-channels` (panel open) · `player-tuning` (resolve to TEST-NET 192.0.2.1, so it stays on the card); `AppModel.injectPlayerFixture`. Screenshots `docs/evidence/2026-09-25-b29-{ipad,iphone}-*.jpg`.
 - **iOS/iPadOS touch controls (build 31; Mark: "clashing between the new player and avkit, there are controls for both on screen … the new player controls are a bit small … (tv guide in particular)").** AVKit's controls are off; `TouchPlayerChrome` (`PlayerExtras.swift`) is the only control layer, shown and hidden as a whole: a tap on the picture (a clear tap layer under the controls in `PlayerScreen.touchPlayer`) toggles it, and it hides after 4 idle seconds unless paused, the channel panel or Go to number is open, or VoiceOver runs (`PlayerChromeTimer`, simplified to `afterTap(visible:)` = toggle; the old AVKit tap watcher is gone). Layout: **top bar** — Close (44 pt circle), channel name and muted number (own line on an upright iPhone), and two prominent labelled pills **Channels** (the channel panel: side panel on iPad, sheet on iPhone) and **TV Guide** (before, the only "guide" in the iOS player was the list icon that opened the channel panel; now TV Guide closes the player and switches to the Guide tab via `AppModel.requestedTab`, which LibraryView applies); **centre** — −15 s / play-pause (92 pt on iPad) / +15 s circles (the skips only when there is a seekable window); **bottom panel** (replaces the separate floating `TouchInfoOverlay`, deleted) — logo, programme, times · minutes left, Next, a **draggable scrub bar** (`TouchScrubBar`: 44 pt touch height, 6 pt track, 22 pt knob; drag follows the finger and seeks on release via `PlaybackModel.seek(toFraction:)`; VoiceOver adjusts ±15 s) over the seekable window (`PlaybackModel.seekWindow()` → `PlayerSeekWindow`, pure: fraction ↔ time, behind-live, "LIVE" within 20 s, readout "30:00 behind live"), a left readout (clock time when live; else "−2:15"), LIVE or a **Go to live** pill; without a window, the programme's progress with LIVE. Actions: Favourite, Record, Last channel, channel down/up, Go to number (labels on iPad, 44 pt icon circles on iPhone; beside the programme on iPad landscape, their own row otherwise via `ViewThatFits`). White glyphs on dark translucent circles/pills, gradient shades top and bottom, opaque with Reduce Transparency. AirPlay/PiP stay out of scope. Tests: `testSeekWindowMapsPositionsFractionsAndReadouts`, updated `testChromeFollowsTapsAndHidesWhenIdle`. Screenshots `docs/evidence/2026-09-25-b31-{ipad-player-landscape,ipad-player-portrait,ipad-player-channels,iphone-player-portrait,iphone-player-landscape}.jpg` (fixture `player` with a local 5-minute test movie, so the window reads "−4:57 · Go to live"; the "Recording notifications are temporarily unavailable" line is the fixture's offline coordination warning).
-- **Recordings on tvOS (A4.3, build 21): one player.** `RecordingPlayerScreen` shows `RecordingPlayerView` (`RecordingPlayer.swift`) once ready: `PlayerLayerView` video plus a recording overlay built from the live player's shared parts in `PlayerControls.swift` (`PlayerActionRow`, `PlayerScrubTrack`, `playerBottomShade`, `BlankButtonStyle`): channel and date, title, scrub bar with elapsed and remaining, Left/Right ±15 s, Play/Pause, a **Skip break** pill while inside a break (Select skips; also first in the action row), an **Auto-skip breaks** toggle in the action row (only when the recording has breaks), Back hides chrome then closes. `RecordingPlayerModel` keeps lifecycle, resume and markers, and gains `timeline()` (`RecordingTimeline`, pure, in `DVRModels.swift`), `skip`, `togglePause` and display criteria (from the asset's `preferredDisplayCriteria`, applied whenever that load finishes and never awaited before playing — build 27 — since a bare layer does not switch HDR/frame rate). The tvOS `AVPlayerViewController` path (contextual action / transport-bar menu) is deleted. **iOS keeps AVKit** (`RecordingNativePlayer`, iOS only) for recordings, because touch scrubbing is AVKit's strength. **C-E `recordingHls`:** a playback answer with `container == "hls"` is played directly (a 200 is returned at once by `APIClient.recordingPlayback`; only 202 polls); `inProgress == true` marks a growing EVENT playlist — no resume (it starts from the start), the scrub bar grows with the seekable end and shows **LIVE** within 20 s of the newest segment while the item's duration is indefinite. `Recording.playLabel(recordingHls:)` decides the details screen's Play button: completed → "Play recording"; status `recording` with the flag → "Watch from start (still recording)"; otherwise none.
+- **Recordings on tvOS (A4.3, build 21): one player.** `RecordingPlayerScreen` shows `RecordingPlayerView` (`RecordingPlayer.swift`) once ready: `PlayerLayerView` video plus a recording overlay built from the live player's shared parts in `PlayerControls.swift` (`PlayerActionRow`, `PlayerScrubTrack`, `playerBottomShade`, `BlankButtonStyle`): channel and date, title, scrub bar with elapsed and remaining, Left/Right ±15 s, Play/Pause, a **Skip break** pill while inside a break (Select skips; also first in the action row), an **Auto-skip breaks** toggle in the action row (only when the recording has breaks), Back hides chrome then closes. `RecordingPlayerModel` keeps lifecycle, resume and markers, and gains `timeline()` (`RecordingTimeline`, pure, in `DVRModels.swift`), `skip`, `togglePause` and display criteria (from the asset's `preferredDisplayCriteria`, applied whenever that load finishes and never awaited before playing — build 27 — since a bare layer does not switch HDR/frame rate). The tvOS `AVPlayerViewController` path (contextual action / transport-bar menu) is deleted. **iOS keeps AVKit** (`RecordingNativePlayer`, iOS only) for recordings, because touch scrubbing is AVKit's strength. Only a completed recording plays (`Recording.playLabel`).
 - **Timeshift / Start over (C-E, build 21): removed in build 39** with the server's tuner model; `PlayerTimeMath` (`PlayerTimeMath.swift`) keeps the programme fraction and the behind-live readout (`m:ss` under an hour, `h h mm min` from an hour).
 - **Labs (C-F, build 19):** Settings has a "Labs" section (`LabsToggleRow` in `LibraryView.swift`) of persistent `@AppStorage` switches, all off by default. Keys and wording live only in the `Labs` enum (`Labs.swift`): `pigtv.labs.streamInfo` (A4.2 stream info overlay) is the only one left (`pigtv.labs.newGuide` and `pigtv.labs.heaac` were removed in build 27). Later work reads `Labs.isOn(…)`; add new switches to `Labs.toggles`. **HE-AAC passthrough (C-C) left Labs in build 27:** `PlaybackCapabilities.current()` always sends `"heaac": true` (Mark accepted it); the 'fmt?' → `audioEncode` fallback is the safety net.
 - **Stream info overlay (A4.2, build 22, Labs → Stream info overlay, tvOS):** with the switch on, the custom player's info overlay adds one line (`StreamInfoLine` in `CustomPlayer.swift`, refreshed every second only while the overlay is up): codec from the video track's format description (H.264/HEVC/…; Dolby Vision from a `dvh1`/`dvhe` entry or a `dvcC`/`dvvC` box, else HDR10/HLG from the transfer function), `presentationSize` @ `nominalFrameRate` (else `currentVideoFrameRate`), indicated bitrate (observed) from the access log's last event, dropped frames summed over access-log events, stalls this session, the resolve route (strategy · video copy/encode) and `ServerInfo.identity`. Gathering is `PlaybackModel.streamStats()`; naming/formatting is pure (`StreamInfo.swift`, tests `StreamInfoTests`). `play-end` events also carry `droppedFrames` and `observedBitrate` (the server's client-event route logs named fields and ignores unknown ones, checked in `routes/playback.js`).
@@ -239,7 +174,53 @@ earlier one where they differ.
 - **Design rules:** page background `PigPageBackground` (tab roots use `.pigPageBackdrop()`, build 32) (set explicitly on every page — Guide, Recordings and Settings gained it in build 28; without it tvOS shows its blurred grey system backdrop in dark mode); surfaces `Color.guideCell` + `PigSurfaceButtonStyle` (pink accent outline on focus); selection chips `GuideFilterStyle` (now internal, in `TVActionStyle.swift`); tvOS type scale in `GuideTypography` (guide) and `DetailType` (detail pages); player overlays force dark scheme and provide an opaque fallback for Reduce Transparency. **Pink is `Color.pigAccent`** (the asset colour), never `Color.accentColor`: on tvOS `accentColor` resolved to white outside a NavigationStack, which is why the unreachable screen's Try again was a blank white capsule (fixed in build 28). `PigPrimaryButtonStyle` is 26 pt semibold on tvOS (was `.headline`, 38 pt, which dwarfed the capsules beside it). New screens reuse these rather than defining new styles.
 - **Detail pages (build 28 consistency pass, `DetailComponents.swift`, `DetailScreens.swift`, `GuideSheets.swift`).** Shared parts: `DetailPage` (page background, scroll view, TVActionStyle applied explicitly because covers do not always inherit it; iOS Done button), `DetailHero` over `LogoWash` (the Home hero's blurred logo colours, pink glow without a logo, solid with Reduce Transparency), `ChannelLine` (logo tile, `NumberCapsule`, name), `Eyebrow`, `StatusBadge`, `PigProgressBar`, `PigSectionHeader`, `DetailActions` (a focus-section row of the app's buttons), `FavouriteButton` (BrowseModel favourites, so the guide filter and Home update at once), `pigField()` (a guideCell well for tvOS text fields, which draw unfocused as bare text), `detailCover` (full-screen cover on tvOS — a tvOS `.sheet` is a narrow panel — sheet on iOS). **ProgrammeDetails** (moved out of GuideView): hero with channel line and status badge (Recording scheduled / Recording now / Waiting to record / Recorded), eyebrow (On now · Starts in 12 min · Today/Tomorrow/day · Ended), title 52 pt, time range and duration, live progress and minutes left; description at reading width; actions Watch live (when on now) · Record (opens `RecordSheet`: Start early / Finish late chips, the one-stream note, Schedule recording — the sheet replaces the old pickers and confirmation dialog) · Channel schedule (`openSchedule`, shown when the caller can open it after closing the page) · Favourite. **ChannelScheduleView:** hero with what is on now, Watch live and Favourite, then programmes grouped by day (`ScheduleDays.group`, pure, tests `DetailTextTests`) as surface rows (time and duration column, title, On now/REC badges, description, progress). **ChannelDetails** (the grid's "Channel and favourites"): now/next from the loaded guide (it used to read the Channel's own now/next, which the guide never fills, so it always said "Programme information unavailable"), Watch live · Favourite · Channel schedule, an Up next card. **RecordingDetails:** hero (channel logo found by name, status badge, date eyebrow, title, duration · size, resume bar, partial badge), actions Play/Resume · Find breaks · Refresh · Delete (red), breaks as time chips. **Search** and **Jump to…** are `GuideSearchSheet`/`GuideJumpSheet`: section headings, field wells, programme results as rows with the channel's logo tile; Jump to… uses day chips and a 24-hour chip grid on tvOS (DatePicker on iOS). **Unreachable** and **Onboarding** use the page background, the pink wash and the shared parts (onboarding is two columns on tvOS). **Settings:** page background, `PigSectionHeader`, a red Sign out with an icon; system confirmation dialogs (sign out, cancel recording, delete) keep the system look (not customisable on tvOS) but now show their title and a cancel choice. **Fixtures:** `PIGTV_UI_TEST_SCREEN=programme | programme-later | record | schedule | channel | recording | search | jump | unreachable | onboarding` (`DesignTestScreen`, Home fixture data), each with `PIGTV_UI_TEST_APPEARANCE`; the settings fixture now honours the appearance variable too. Screenshots: `docs/evidence/2026-09-25-details-*.jpg`.
 
-## Branding (Pig family brand 1.6.0, build 40)
+## 3. Performance, warming and providers (builds 36–39)
+
+From the 3 Oct audit (`../PigTV/docs/archive/audit-2026-10-03/ROADMAP.md`) and the multi-provider work.
+
+- **Screens observe only what they show (R05).** `BrowseModel` publishes nothing itself; its state lives in small stores
+  (`BrowseStores.swift`): `GuideStore` (channels, window, paging), `RecordingsStore`, `LibraryStore` (favourites, recent),
+  `ArtworkStore`, `ScheduleMarks` (republished only when the sets change) and `ActionState`. The old `BrowseModel` properties
+  forward to them, so **each view lists the stores it observes in its `init`**: a view that reads `model.guide` without
+  observing `guideStore` never updates. Home draws from `HomeModel`, which publishes only a different `HomeContent`.
+  `.whileVisible` (`WhileVisible.swift`) runs Home's minute loop, the Guide's clocks and refresh and Sport's `keepFresh` only
+  while on screen. Background recordings refreshes are `quietly:`. `ObservationTests` counts publishes per screen.
+- **The first TV Guide visit doesn't stall (R03).** The shell shows first and the grid is made a frame later (`gridReady`,
+  `NextFrame`); programme lists are ordered off the main actor (`GuideGridStore.orderedLists`); rows are revealed 0–2, 0–5,
+  then all (`GuideGridLayout.revealedRows`); tvOS skips the header's `ViewThatFits`. `GuideGridStore` keys its lists by
+  `GuideGridRevision` (`guideProgrammesVersion` + `guideLoadedAt`), so a same-shape EPG correction is not served stale.
+  Simulator, 1,000 channels: first visit ~170–180 ms (was 0.5–1.6 s).
+- **Sport is proportional to the screen (R04).** Lazy page and shelves; each card is an `Equatable` view of plain values
+  (`SportCardInput`) that observes no model; logos follow a debounced `SportLogoRevision`; details and the channel picker are
+  owned by the screen (`SportPresenter`, `.sportPages`) so a recycled cell can't close an open page; `SportModel` publishes one
+  `SportSnapshot`, rebuilt only when events change or the minute turns.
+- **Caches are per server and account (R14).** Guide cache `Caches/PigTVGuide/guide-v2-<sha256(v2|server|user)>.json`, deleted
+  on sign-out or when another session replaces it (`retirePrivateCaches()`). Artwork keyed by canonical absolute URL (token
+  removed); one fetch per logo in flight; decoded cache 32 MB; disk `PigTVArtwork-v2/` LRU 50 MB / 30 days; responses over
+  4 MB refused; disk work off the main actor.
+- **Recordings** start without waiting for break markers (loaded beside playback with a 3 s budget, applied on arrival;
+  "Loading recording…" until actually playing). "Preparing for playback…" shows while the server's background preparation
+  (`native_status` pending/preparing) runs. Resume positions are per login with server 0207 (`recordingPositions`).
+- **Warming the next channel (R11; the server's switch, off by default).** `ChannelWarmer`: one target at a time after 1.5 s
+  of settled focus: while watching, the channel channel-up/down would most likely go to (the previous one after a switch,
+  else the next), refreshed every 60 s; a focused live Sport card (`event.best`); Home's hero while Watch has focus. Never
+  Guide focus; cancelled by a real play's start, a new target, leaving or backgrounding; silent on 204 and errors. A play that
+  adopts a warm stream sends `warm: true` on `play-start`.
+- **Measurement (R03).** `PigTVSignpost` (subsystem = bundle id, category "Responsiveness"): `TabSwitch`, `TabFirstFrame`,
+  `GuideLoad`/`GuidePage`/`GuideExtend`, `SportLoad`/`SportBuckets`, `HomeRebuild`, `RecordingsLoad`, `Live*` and
+  `Recording*` playback stages, `LogoDecoded`. Device profiling: `TESTING.md` → "Measuring on the Apple TV".
+- **Provider on resolve (C-J).** `ResolveProvider` decodes tolerantly (malformed → nil). The Labs stream info line adds
+  "Provider: Trex (backup)" for a backup and "switched from primary" when `failover` is true; a primary play adds nothing.
+- **Licence reminders (C-K).** `AppModel.checkProviderReminders()` runs once signed in, on `scenePhase == .active` and when the
+  player closes; needs `providerReminders`, never runs while `playerPresented`, at most one banner per local day per device
+  (`pigtv.providerReminderDay`, set only when one is shown). The banner is an **overlay** on the root view (no cover, so no
+  W6 focus trap), dismissed after 15 s, by OK (iOS) or when playback starts; **on tvOS it is deliberately not focusable**.
+- **Recovery allowance.** `PlaybackModel.recoveryUsed` is renewed after 120 s (`recoveryResetInterval`) of unbroken good
+  playback since the last recovery (`goodPlaySince`; `clock` injectable). Still at most one re-resolve per failure.
+- **Removed with the server's tuner model (build 39):** Start over, the dated timeshift scrub, growing recordings. An older
+  server's `timeshift` and `recordingHls` flags are ignored. Siri / App Shortcuts were removed in build 37.
+
+## 4. Branding (Pig family brand 1.6.0, build 40)
 
 The "Spotlight" look (plum plate, `#FF2E94` halo, generated bitmaps, `Tools/make-brand-assets.swift`) is **retired**. Every brand image
 now comes from the kit (`../Pig-Branding`, product `assets/products/pigtv`; rules in its `docs/integration.md` "Apple and Apple TV" and
@@ -288,33 +269,23 @@ C2 recovery uses actual playing evidence, allows one automatic attempt per user-
 
 C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A terminal 500 must stop polling because another request starts a new transcode attempt. Continue using the recording list's duration for resume bounds; playback `durationSec` is wall-clock length.
 
-## 6. Shared contracts and coordination
+## 6. Using the server contract
 
-- Guide rows use `id/sourceId/name/logo/category/tvgId/programmes`, with programme `startTime/endTime` in **milliseconds**. Marker `startMs/endMs` also use milliseconds.
-- Favourites writes use bare channel IDs; source-qualified IDs remain useful for local UI identity. Read favourites from `library/favourites`.
-- **Resolve errors (C-B, A1.3):** a non-2xx `playback/resolve` whose `error` starts with `The provider refused this channel`, `The provider did not respond` or `This channel is not available` becomes `PigTVError.message` (trimmed to 300 characters; shown by the player's error screen). Any other text, any text containing `://`, and any non-resolve path keep the generic mapping (`APIClient.displayableResolveError`). No flag: a text match.
-- Resolve sends `capabilities.segmentedDelivery = true`. “transcode” strategy can mean video/audio copy into HLS, not re-encoding.
-- Approved media paths: `/api/proxy/stream`, `/api/transcode/…`, `/api/recordings/…` (`/api/remux` was retired by server 0103 and removed from the client's allow-list and strategy lists in A0.1); tokens on approved media URLs, bearer on session DELETE. Do not broaden URL acceptance to fix playback.
-- Recording playback: bearer-authenticated `/api/recordings/{id}/playback`; MP4 response with same-server `media.mp4`, token query and byte-range seeking. Async preparation is additive and opt-in. Only a completed recording plays (`Recording.playLabel`); the HLS recording answers went with the tuner model in build 39.
-- Flags: the server's `/api/info` flags and what this client does with each are tabled in
-  `../PigTV/docs/SWIFT-CLIENT-HANDOFF.md` §0. Read: `viewerConflict` (409 handled by type regardless), `epgLogoFallback`,
-  `clientEvents`, `recordingPlaybackPolling`, `playbackTerminalStatus`, `guideCursor`, `guideVersion`, `channelNumbers` (C-A),
-  `channelHealth` (C-G), `sportsEvents` (C-I), `warming` (R11). (`timeshift` and `recordingHls` are no longer read, build 39.) Decoded or
-  ignored: `scheduledWaiting`, `logoCache` (the Top Shelf asks `?size=full` for any `/api/logo/` path), `playbackHandles` (same
-  path), `sportCategories` (C-H, no longer read; `Category.sport` still decodes). A missing flag means off; the C1/C2 paths also
-  handle servers whose behaviour predates the flags.
-- The client always sends `capabilities.heaac = true` (build 27) and, once per channel after a `'fmt?'` failure, `audioEncode`.
-- Adding a client endpoint requires a coordinated addition to server `test/api-404.test.js` → `APPLE_CLIENT_ROUTES` (it
-  already lists `GET /api/sports/events`).
-- Read server hand-off §5 at the start of each integration session (it is complete to server 0154). Describe any server
-  request by the user-visible behaviour needed; client requests live in [docs/SERVER-REQUESTS.md](docs/SERVER-REQUESTS.md)
-  (SR-1 and SR-2 are both resolved; none open).
+The contract itself (flags, frozen shapes, C-A…C-K) is [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
+How this client applies it:
+- **Gate on flags**, and treat a missing flag as off; the C1/C2 paths also handle servers whose behaviour predates the flags.
+  `ServerInfo` requires `apiVersion == 1`, `library` and `playbackResolve`.
+- **Resolve errors (C-B):** a non-2xx resolve whose `error` starts with a C-B prefix becomes `PigTVError.message` (trimmed to
+  300 characters); any other text, any text containing `://`, and any non-resolve path keep the generic mapping
+  (`APIClient.displayableResolveError`).
+- **Media URLs:** only `/api/proxy/stream`, `/api/transcode/…` and `/api/recordings/…`, token as `?token=`, bearer on session
+  DELETE. Do not broaden URL acceptance to fix playback. `APIClient.requestURL` rejects `?` in paths: use query items.
+- Resolve always sends `capabilities.segmentedDelivery = true` and `heaac = true`; once per channel after a `'fmt?'` failure,
+  `audioEncode`. A "transcode" strategy usually means a copy into HLS, not a re-encode.
+- Guide and marker times are **milliseconds**; favourites are written with the bare id and read from `library/favourites`.
+- A new endpoint this client calls needs a matching entry in the server's `test/api-404.test.js` → `APPLE_CLIENT_ROUTES`.
 
 ## 7. Deferred choices and crash lessons
-
-Testing ownership: the client agent runs `xcodebuild` builds and simulator tests; Mark runs physical Apple TV, iPad, iPhone and
-multi-device checks (Xcode installs on the downstairs TV). Simulator results do not establish real-provider playback or
-hardware behaviour. Contacting the deployed server needs Mark's approval.
 
 - No session keep-alive planned: recovery is needed regardless and idle reclamation protects recordings. Revisit only if actual pause usage requires it.
 - HEVC recording playback remains unverified on hardware. Old server `.native.mp4` sidecars may carry `hev1`; any cleanup is a separate approved server operation, not a client workaround.
@@ -330,89 +301,21 @@ crash on the old code. Build 25 also **links AVKit explicitly for tvOS** (`OTHER
 missed this because no test started a real player item.
 
 Build 23 also moved the app target back to Swift 5 on a wrong diagnosis (the KVO-isolation theory). **Build 28 returned to
-Swift 6** (Mark approved) with every KVO/AVFoundation callback explicitly `@Sendable`/nonisolated (see §4 Swift 6) and the
+Swift 6** (Mark approved) with every KVO/AVFoundation callback explicitly `@Sendable`/nonisolated (see §2 Swift 6) and the
 real-playback harness exercising them. Verified on the TV (R2.15: no crashes across live channels, switching, Last channel and
 a recording).
 
-## Build 39 (4 Oct): the simplification build (with server 0204)
+## 8. Known limitations
 
-No behaviour change apart from what the server no longer offers:
-- **Removed with the server's tuner model:** Start over, the dated timeshift scrub position, the recording player's growing
-  recordings ("Watch from start (still recording)", the LIVE edge). `Recording.playLabel` is a property: only a completed
-  recording plays. `TimeshiftMath` is `PlayerTimeMath` (programme fraction, behind-live text). An older server's `timeshift`
-  and `recordingHls` flags are ignored.
-- **The guide** no longer lists a provider's linked "(Backup)" feeds (server 0204), so warming warms the real next channel.
-- **Files split by type** (nothing else changed): `SportView` + `SportCards` + `SportPages`; `GuideView` + `GuideStyle`;
-  `CustomPlayer` + `PlayerControls`; `PlaybackModel` + `PlaybackFallback`; `GuideGridView` + `GuideGridSupport`. Unused
-  code removed (`fullFrame`, `FavouriteCheck`, `isRetired`, `pageBackground`).
-- **Tests wait for state, not a fixed time:** the guide-paging observation test, the observation tests' wait (up to 10 s), and
-  UI tests that slept then asserted a change (`PigTVUITests/Waiting.swift`, `waitUntil`).
-
-## Build 38 (4 Oct): the audit's Phase 3 (with server 0197–0202)
-
-- **The TV Guide opens without a first-visit pause.** The shell shows first and the grid is created a frame later (`NextFrame`); programme lists are ordered off the main actor for the first fill, then rows are revealed in three steps (0–2, 0–5, all). tvOS skips the header's `ViewThatFits`. First Home → Guide: ~170–180 ms (was 520–1,580 ms in the simulator). `GuideGridStore` caches ordered programmes per `GuideGridRevision` (`guideProgrammesVersion` + `guideLoadedAt`), so a same-shape EPG correction is no longer stale.
-- **Screens observe only what they show (R05).** `BrowseModel` publishes nothing itself; it owns `GuideStore`, `RecordingsStore`, `LibraryStore`, `ArtworkStore`, `ScheduleMarks`, `ActionState` (`BrowseStores.swift`) and forwards its old properties. Each view lists the stores it reads in its `init` (a view reading `model.guide` without observing `guideStore` would never update). `HomeModel` builds Home's content and publishes only when it differs; `.whileVisible` (`WhileVisible.swift`) runs Home's minute loop, the Guide's clocks/refresh and Sport's `keepFresh` only while on screen. Background recordings refreshes are `quietly:` (no "Refreshing recordings…" flash).
-- **Caches are per server and account (R14).** Guide cache `Caches/PigTVGuide/guide-v2-<sha256(v2|server|user)>.json`, deleted on sign-out or when another session replaces it (`retirePrivateCaches()`). Artwork keyed by canonical absolute URL (token removed); one fetch/decode per logo in flight; decoded cache 32 MB by bytes; disk `PigTVArtwork-v2/` LRU 50 MB / 30 days; responses over 4 MB refused; disk work off the main actor.
-- **Warming the next channel (R11; the server's "Warm the next channel" switch, off by default).** `ChannelWarmer`: one target at a time after 1.5 s of settled focus — while watching, the channel channel-up/down would most likely go to (the previous one after a switch, else the next), refreshed every 60 s; a focused live Sport card (`event.best`); Home's hero while Watch has focus. Never Guide focus; cancelled by a real play's start, a new target, leaving, or backgrounding; silent on 204/errors. A play that adopts a warm stream sends `warm: true` on `play-start` and signposts `LiveWarmAdopted`.
-
-## Build 37 (4 Oct): the audit's client work
-
-From the 3 Oct audit (`../PigTV/audit/ROADMAP.md`), with server 0192–0196:
-- **Sport is proportional to the screen (R04/R05).** Lazy page and shelves; each card is an `Equatable` view of plain values (`SportCardInput`) and no longer observes `AppModel`/`BrowseModel` (which republished every card on any guide or recordings change); logos follow a debounced `SportLogoRevision`. Details and the channel picker are owned by the screen (`SportPresenter`, `.sportPages`), so a recycled cell cannot close an open page. `SportModel` publishes one `SportSnapshot` (buckets, chips, per-league rows) rebuilt only when events change or the minute turns. Entering Sport on the 215-event fixture: 4.7–7.2 s stall before, ~0.1–0.4 s after (simulator).
-- **A recording starts without waiting for its break markers (R07).** Markers load beside the playback request with a 3 s budget and are applied when they arrive; "Loading recording…" stays until the player is actually playing (`hasPlayed`).
-- **Recordings show "Preparing for playback…"** while the server's background preparation (0193, `native_status` pending/preparing) has not finished.
-- **Measurement (R03).** `PigTVSignpost` (subsystem = bundle id, category "Responsiveness"): `TabSwitch`, `TabFirstFrame`, `GuideLoad`/`GuidePage`/`GuideExtend`, `SportLoad`/`SportBuckets`, `HomeRebuild`, `RecordingsLoad`, `Live*` and `Recording*` playback stages, `LogoDecoded`. `TabSwitchUITests` fails if the probe never reports or a number won't parse, checks the remote can act after each switch, and uses `GuideFixtures.largeSportEvents` (`PIGTV_UI_TEST_SPORT_EVENTS`). Device profiling steps: `TESTING.md` → "Measuring on the Apple TV".
-- **CI (R10).** `BrandDepthUITests`' focus helper waits for a press to land (it judged a stale snapshot and pressed back the other way); the offline Recordings fixture no longer tries the network. `Tools/bump-build.sh` bumps the build number; run it in every commit that changes the app.
-- Siri / App Shortcuts removed; the provider reminder no longer asks for dates to be typed.
-- **The first TV Guide visit no longer stalls (R03).** It was one 0.5 s main-thread block (1.6 s under load): ~100 ms building the header and chips (first-use cost; the header's `ViewThatFits` and a phone menu built on the reader's zero-size first pass were pure waste on the TV), a few re-evaluations, then ~120 ms laying out ~27 SwiftUI-hosted cells and ~190 ms inserting the other thousand sections. The model side (row filter, `reloadData`) was under 1 ms. Now: the shell shows first, the grid is made one frame later (`gridReady`), the programme lists are ordered off the main actor (`GuideGridStore.orderedLists`) before the sections go in, and the layout reveals rows 0-2, 0-5, then all (`GuideGridLayout.revealedRows`), each after a real frame (`NextFrame`). Simulator, 1,000 channels: first visit 167-183 ms (was 523-1580); later visits unchanged (65-90 ms). `TabSwitchUITests` no longer has a first-visit allowance.
-- **Guide store cache (audit R14).** `GuideGridStore` keys its ordered programme lists by `GuideGridRevision` (the model's `guideProgrammesVersion` and `guideLoadedAt`), so a same-shape EPG correction (same count and first start, new title or end) is no longer served stale.
-- **Screens observe only what they show (audit R05).** `BrowseModel` no longer publishes anything itself; its state lives in small stores (`BrowseStores.swift`): `GuideStore` (channels, window, paging), `RecordingsStore` (recordings, schedules, busy/error), `LibraryStore` (favourites, recent; their busy/error are plain, nothing draws them), `ArtworkStore`, `ScheduleMarks` (scheduled keys and recording channels, republished only when those sets change) and `ActionState` (`mutationBusy`, `actionMessage`, `actionError`). The old `BrowseModel` properties forward to them, so only views changed: each spells out the stores it observes in its `init`, and a view that reads `model.guide` must observe `guideStore`. Home draws from `HomeModel` (owned by `BrowseModel`): it builds `HomeContent`, marks it stale when favourites/recent/recordings (whole values), the guide count, sport events or the last-watched channel change, and publishes only a different result. It keeps its content while hidden: returning with unchanged inputs and content under a minute old rebuilds nothing; nothing is rebuilt while hidden. `.whileVisible` (`WhileVisible.swift`) runs Home's minute loop, the Guide's clock and periodic refresh and Sport's `keepFresh` only while their screen is on screen. Background recordings refreshes (`loadRecordings(quietly:)`) do not raise `recordingsBusy`. `ObservationTests` counts publishes per screen.
-
-## Multi-provider failover, client side (build 36, work package A1)
-
-Spec: `../PigTV/docs/MULTI-PROVIDER-BRIEF.md` (§2.6, §2.8, C-J, C-K). Server flags `providers` and `providerReminders` in
-`ServerInfo.Features`; everything is additive and absent flags change nothing.
-
-- **C-J (`ResolveProvider`, `PlaybackDecision.provider`):** decoded tolerantly (a malformed object is just nil). `PlaybackModel.provider`
-  is set at each resolve; `StreamStats.parts` (the Labs stream info line, tvOS) adds "Provider: Trex (backup)" for a backup and
-  "switched from primary" when `failover` is true. The ordinary primary play adds nothing (matches the line's density).
-- **C-K (`ProviderReminders.swift`, `ProviderReminderModel.swift`, `ProviderReminderBanner` in `ContentView.swift`):**
-  `AppModel.checkProviderReminders()` runs once signed in, on `scenePhase == .active` and when the player closes; needs
-  `providerReminders`, never runs while `playerPresented`, and shows at most one banner per local day per device
-  (`UserDefaults` `pigtv.providerReminderDay`, set only when a banner is actually shown; an empty answer or a failed request
-  leaves the day unused). The banner is an **overlay** on the root view (no cover, so no nested-cover focus trap, W6) and is dismissed
-  after 15 s, by its OK button (iOS/iPadOS) or when playback starts. **On tvOS it is deliberately not focusable** (no button):
-  it cannot take or trap focus and goes away by itself. Text: "Trex expires Mon 30 Mar. Renew it with the provider; PigTV picks up
-  the new date by itself."; past expiry "expired on …"; several providers in one sentence.
-- **Recovery allowance:** `PlaybackModel.recoveryUsed` is renewed when a failure arrives after `recoveryResetInterval` (120 s) of
-  unbroken good playback since the last recovery (`goodPlaySince`, set in `playbackStarted` after a recovery, cleared by a stall,
-  a failure and Retry; `clock` is injectable). Still at most one re-resolve per failure; a failure inside 2 min of a recovery ends in
-  the error as before.
-- **Tests:** `ProviderFailoverTests` (8: provider shown/absent, line formats, reminders once a day / not during playback / flag absent /
-  empty and failing answers / auto-dismiss and "expired", the recovery renewal against real playback), contract checks.
-  `FakePigTVServer` gained `reminders:`, `client(extraFeatures:)` and `decision(provider:)`.
-- **Not verified:** the banner's look and placement on a real TV, iPad and iPhone (no visual check made).
-
-## 8. Known issues and open items (29 Sept, build 35)
-
-- **Next for this client:** Mark's minor bugs from build 35 (he is collecting them for the next build); W6 below when he names
-  a screen; the tuner features (below) when he tests `PIGTV_TUNER=1`.
-- **W6: stacked full-screen covers can strand tvOS focus (parked; Mark reported "some menus need Back before anything is selectable" on 28 Sept, screen not yet named).** A `fullScreenCover`/`detailCover` presented from
-  inside another one (e.g. `RecordSheet` over `SportEventDetails`/`ProgrammeDetails`, already shipped) sometimes needs Back
-  before anything is focusable — a SwiftUI/tvOS focus-engine quirk, not specific to one screen. Known workaround: prefer an
-  in-page choice (`confirmationDialog`, or the page switching its own state) over adding another cover layer, as build 33's
-  sport channel choice does; a genuinely new cover (Record) only stacks to the same one level already shipped elsewhere.
-  Revisit if Mark reports it live; no repro outside a device so far.
-- **Top Shelf card progress is only as fresh as the app's last refresh.** Cards are rendered by the app (after guide and
-  favourites loads, in 5 % progress steps; now and next per channel) and the extension never uses the network, so a card can
-  show an old programme or progress until PigTV is opened again.
-- **The iOS player overlay clashing with AVKit's controls is resolved** (build 31: AVKit's controls are off; `TouchPlayerChrome`
-  is the only control layer).
-- **Channel health** (the amber dot) depends on this client sending `play-end` when a play of 10 s or more stops; a killed app
-  sends nothing, so stalls are under-counted.
-- Provider behaviour the client can't fix (details in the server blueprint §10): the provider cuts some channels ~38 s in and
-  resends ~19 s (a short repeat on screen); a refused channel may still fail during a provider outage after the server's
-  retries and this client's one recovery.
-- Recordings on iPad/iPhone use AVKit (`RecordingNativePlayer`), not the custom player; HEVC recordings are unchecked on a device.
-- `docs/evidence` screenshots use **offline fixture data** (made-up channels, programmes and logos), not the real feed.
-- A0.2 (a SwiftUI "Environment accessed outside a View" runtime warning seen only in an accessibility-heavy UI test) is parked.
+- **Never checked on a device:** an HEVC recording (iPad/iPhone recordings use AVKit, `RecordingNativePlayer`); audio and
+  subtitle track selection (no suitable channel); whether AVPlayer stops fetching while paused (C2 assumes it).
+- **W6: stacked full-screen covers can strand tvOS focus** (Mark, 28 Sept, screen never named). A `fullScreenCover`/
+  `detailCover` presented from inside another sometimes needs Back before anything is focusable: a SwiftUI/tvOS focus-engine
+  quirk. Prefer an in-page choice (`confirmationDialog`, or the page switching its own state) over another cover layer.
+- **Top Shelf cards are only as fresh as the app's last refresh**: the app renders them (5 % progress steps) and the extension
+  never uses the network.
+- **Channel health** depends on `play-end` for plays of 10 s or more; a killed app sends nothing, so stalls are under-counted.
+- Provider behaviour the client can't fix (server blueprint §6): some channels are cut ~38 s in and ~19 s resent (a short
+  repeat); a channel may still fail during an outage after the server's retries and this client's one recovery.
+- `docs/evidence` screenshots use offline fixture data, not the real feed.
+- A0.2 (a SwiftUI "Environment accessed outside a View" warning seen only in an accessibility-heavy UI test) is parked.
