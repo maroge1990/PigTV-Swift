@@ -13,24 +13,31 @@ system setting). Simulators are named, not UDIDs (they differ per Mac); the 26.5
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-TV='platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0'
 
-sh Tools/test-contracts.sh                                                        # API/model contracts, no simulator (seconds)
-xcodebuild test -project PigTV.xcodeproj -scheme PigTV -destination "$TV"        # everything, unit + UI (~13 min)
-xcodebuild test -project PigTV.xcodeproj -scheme PigTV -destination "$TV" -only-testing:PigTVTests/RealPlaybackTests   # one suite
-xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'                  # iOS build
+sh Tools/test.sh fast      # contract checks, then the unit tests: while developing (~1 min after the build)
+sh Tools/test.sh push      # fast, then the regression UI tests: before every push
+sh Tools/test.sh visual    # screenshot/appearance UI tests: before a release or a brand change (CI runs them on every push)
+sh Tools/test.sh all       # everything, as CI does
+
+xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
+  -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0' \
+  -only-testing:PigTVTests/RealPlaybackTests                                      # one suite
+xcodebuild build -project PigTV.xcodeproj -scheme PigTV -destination 'generic/platform=iOS Simulator'   # iOS build
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV -only-testing:PigTVTests \
   -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=27.0'        # iPad unit tests
 sh Tools/bump-build.sh                                                            # next build number, all four configurations
-xcrun simctl shutdown all                                                         # afterwards: a booted tvOS simulator left running crash-loops and loads the Mac
 ```
+
+`Tools/test.sh` builds once, runs the tiers cheapest first (stopping at the first failure) and shuts the simulator down at
+the end: a booted tvOS simulator left running crash-loops its daemons and loads the Mac. Do the same (`xcrun simctl shutdown
+all`) after a plain `xcodebuild test`. A new UI suite runs in the push tier unless it is listed in `VISUAL` in the script.
 
 ## How changes ship
 
 **Push-to-main (Mark, 23 Sept).** Work on `main`; Claude may `git pull --rebase` and push to `origin/main` without asking each
 time. Never force-push.
 
-1. Before every push: the contract runner and the tvOS tests pass, plus the iOS build when shared code changed. If something
+1. Before every push: `sh Tools/test.sh push` passes, plus the iOS build when shared code changed. If something
    can't be run, say so and don't push.
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets), so Settings →
    Version identifies the installed copy. Current: **40**.

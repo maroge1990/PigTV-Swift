@@ -34,7 +34,11 @@ server or driving the simulator UI by hand.
   the fake server; build 33: `playsChannelNow`), `TopShelfTests` and `TopShelfCardTests`
   (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).
 
-**UI tests (`PigTVUITests`, tvOS)**
+**UI tests (`PigTVUITests`, tvOS).** Two tiers in `Tools/test.sh`: **push** (regression: `GuideGridNavigationUITests`,
+`HomeUITests`, `SportUITests`, `RecordingsUITests`, `TabSwitchUITests`, and any new suite) and **visual** (screenshots and
+appearance: `BrandDepthUITests`, `TabFlashUITests`, `BrandSplashUITests`, `TopShelfCardsUITests`, `PigTVUITests`,
+`PigTVUITestsLaunchTests`). `BrandDepthUITests`' two player checks need `Tools/generate-brand-review-media.sh` (ffmpeg); the
+visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI).
 - `PigTVUITests`: Settings appearance switching. `PigTVUITestsLaunchTests`: launch screenshot.
 - `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details;
   build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h
