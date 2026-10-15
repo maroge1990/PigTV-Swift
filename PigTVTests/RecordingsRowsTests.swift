@@ -13,9 +13,28 @@ final class RecordingsRowsTests: XCTestCase {
         return try! JSONDecoder().decode(Recording.self, from: JSONSerialization.data(withJSONObject: json))
     }
 
-    private func schedule(_ id: Int, _ status: String) -> ScheduledRecording {
-        let json = #"{"id":\#(id),"title":"S","channel_name":"C","program_start":1,"program_end":2,"status":"\#(status)"}"#
+    private func schedule(_ id: Int, _ status: String, start: Double = 1, end: Double = 2) -> ScheduledRecording {
+        let json = #"{"id":\#(id),"title":"S","channel_name":"C","program_start":\#(start),"program_end":\#(end),"status":"\#(status)"}"#
         return try! JSONDecoder().decode(ScheduledRecording.self, from: Data(json.utf8))
+    }
+
+    // Review F6: the page on screen refreshes often while something is changing, rarely otherwise.
+    func testRefreshIntervalFollowsWhatIsChanging() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let ms = now.timeIntervalSince1970 * 1000
+        func interval(_ recordings: [Recording] = [], _ schedules: [ScheduledRecording] = []) -> TimeInterval {
+            RecordingsRows.refreshInterval(recordings: recordings, schedules: schedules, now: now)
+        }
+        XCTAssertEqual(interval(), RecordingsRows.idleRefresh)
+        XCTAssertEqual(interval([recording(1)], [schedule(1, "completed")]), RecordingsRows.idleRefresh)
+        XCTAssertEqual(interval([], [schedule(2, "scheduled", start: ms + 3 * 3_600_000, end: ms + 4 * 3_600_000)]),
+                       RecordingsRows.idleRefresh, "a schedule hours away")
+        XCTAssertEqual(interval([], [schedule(3, "scheduled", start: ms + 120_000, end: ms + 3_600_000)]),
+                       RecordingsRows.busyRefresh, "due within five minutes")
+        XCTAssertEqual(interval([], [schedule(4, "recording")]), RecordingsRows.busyRefresh)
+        XCTAssertEqual(interval([], [schedule(5, "waiting")]), RecordingsRows.busyRefresh)
+        XCTAssertEqual(interval([recording(6, status: "recording")]), RecordingsRows.busyRefresh)
+        XCTAssertLessThan(RecordingsRows.busyRefresh, RecordingsRows.idleRefresh)
     }
 
     func testServerValuesWinWhenTheFeatureIsOn() {

@@ -27,6 +27,15 @@ final class PlayerSharedTests: XCTestCase {
         XCTAssertTrue(PlayerInfoText.timeRange(current).contains(" – "))
     }
 
+    // 16 Oct: a start that takes longer than usual explains itself instead of only spinning.
+    func testTuningExplainsALongWait() {
+        XCTAssertNil(TuningText.hint(elapsed: 0))
+        XCTAssertNil(TuningText.hint(elapsed: TuningText.slowAfter - 0.5))
+        let hint = try? XCTUnwrap(TuningText.hint(elapsed: TuningText.slowAfter))
+        XCTAssertTrue(hint?.contains("recording") == true)
+        XCTAssertTrue(hint?.contains("cancel") == true)
+    }
+
     func testChromeFollowsTapsAndHidesWhenIdle() {
         // Build 31: PigTV's controls are the only ones; a tap on the picture toggles them.
         XCTAssertFalse(PlayerChromeTimer.afterTap(visible: true))

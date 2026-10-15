@@ -114,14 +114,7 @@ struct SportView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            PigBrandMark(width: 58, height: 48)
-                .accessibilityHidden(true)
-            Text("Sport").font(GuideTypography.title)
-            Text(sport.clock, format: .dateTime.weekday(.wide).day().month(.wide))
-                .font(GuideTypography.body).foregroundStyle(.secondary)
-            Spacer()
-        }
+        PigPageHeader(title: "Sport", subtitle: Text(sport.clock, format: .dateTime.weekday(.wide).day().month(.wide)))
     }
 
     /// All + one chip per league (most events first), the guide's chips.

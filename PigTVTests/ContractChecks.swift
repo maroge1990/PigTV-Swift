@@ -55,6 +55,13 @@ enum ContractChecks {
             } catch PigTVError.invalidServerURL { count += 1 }
         }
 
+        // 16 Oct: a cancelled request is never shown as an error ("cancelled" on every tvOS screen).
+        try expect(UserMessage.text(for: URLError(.cancelled)) == nil, "URLError.cancelled is not a user-facing error")
+        try expect(UserMessage.text(for: CancellationError()) == nil, "CancellationError is not a user-facing error")
+        try expect(UserMessage.text(for: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)) == nil, "NSURLErrorCancelled is not a user-facing error")
+        try expect(UserMessage.text(for: URLError(.timedOut)) != nil, "A real failure still has a message")
+        try expect(UserMessage.text(for: PigTVError.forbidden) == PigTVError.forbidden.localizedDescription, "PigTV errors keep their text")
+
         let address = try ServerAddress(" HTTPS://EXAMPLE.invalid:443/ ")
         try expect(address.url.absoluteString == "https://example.invalid/", "Origin must canonicalize default port and case")
         for invalid in ["file:///etc/passwd", "https://user:pass@example.invalid", "https://example.invalid/pigtv",

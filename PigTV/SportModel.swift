@@ -84,7 +84,7 @@ final class SportModel: ObservableObject {
             } catch {
                 if error as? PigTVError == .http(404) {
                     if !self.events.isEmpty { self.events = [] }
-                } else { self.error = error.localizedDescription }
+                } else { self.error = UserMessage.text(for: error) }
             }
             self.advance(to: now)
             self.loaded = true

@@ -203,10 +203,6 @@ enum GuideFixtures {
         model.schedules = (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
     }
 
-    static func markers() -> RecordingMarkers? {
-        try? JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"completed","markers":[{"id":1,"startMs":612000,"endMs":795000,"type":"ad"},{"id":2,"startMs":1420000,"endMs":1590000,"type":"ad"},{"id":3,"startMs":2210000,"endMs":2365000,"type":"ad"}]}"#.utf8))
-    }
-
     static func recordings() -> [Recording] {
         let now = Date().timeIntervalSince1970 * 1000
         let hour = 3_600_000.0

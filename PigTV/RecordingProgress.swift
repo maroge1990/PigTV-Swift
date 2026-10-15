@@ -42,6 +42,27 @@ nonisolated extension Recording {
 
 /// What the Recordings page lists, as pure functions (`RecordingsRowsTests`).
 nonisolated enum RecordingsRows {
+    /// Review F6: how often the Recordings page refreshes itself while it is on screen (it stops when it isn't).
+    /// Often while something is changing (a recording running or due within five minutes, or a file being
+    /// prepared, analysed or compressed), rarely otherwise. The TV has no pull-to-refresh.
+    static let busyRefresh: TimeInterval = 15
+    static let idleRefresh: TimeInterval = 60
+
+    static func refreshInterval(recordings: [Recording], schedules: [ScheduledRecording], now: Date) -> TimeInterval {
+        let soon = now.addingTimeInterval(5 * 60)
+        let changingSchedule = schedules.contains { item in
+            ["recording", "waiting"].contains(item.status)
+                || (item.status == "scheduled" && item.start <= soon)
+        }
+        let changingFile = recordings.contains { item in
+            item.status == "recording"
+                || ["pending", "preparing"].contains(item.native_status ?? "")
+                || ["pending", "running"].contains(item.ad_detect_status ?? "")
+                || ["pending", "running"].contains(item.compress_status ?? "")
+        }
+        return changingSchedule || changingFile ? busyRefresh : idleRefresh
+    }
+
     /// Partly watched, newest first.
     static func continueWatching(_ recordings: [Recording], progress: (Recording) -> RecordingProgress) -> [Recording] {
         recordings

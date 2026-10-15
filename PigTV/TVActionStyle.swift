@@ -155,6 +155,44 @@ struct PigBrandMark: View {
 }
 
 
+/// The one page header every tab draws (16 Oct: Home, Guide, Sport, Recordings and Settings each had their own, so
+/// the pig and the title changed size, font or vanished between tabs). Pig mark, title, an optional secondary line
+/// (Home's and Guide's date), then trailing controls. Same mark and type on every tab of a platform.
+struct PigPageHeader<Trailing: View>: View {
+    let title: String
+    var subtitle: Text? = nil
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: PigPageHeaderMetrics.spacing) {
+            PigBrandMark(width: PigPageHeaderMetrics.markWidth, height: PigPageHeaderMetrics.markHeight)
+            Text(title).font(GuideTypography.title).lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+            if let subtitle {
+                subtitle.font(GuideTypography.body).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            trailing
+        }
+    }
+}
+
+extension PigPageHeader where Trailing == EmptyView {
+    init(title: String, subtitle: Text? = nil) {
+        self.init(title: title, subtitle: subtitle) { EmptyView() }
+    }
+}
+
+nonisolated enum PigPageHeaderMetrics {
+    static let markWidth: CGFloat = 58
+    static let markHeight: CGFloat = 48
+    #if os(tvOS)
+    static let spacing: CGFloat = 14
+    #else
+    static let spacing: CGFloat = 10
+    #endif
+}
+
 struct PigWordmark: View {
     #if os(tvOS)
     private let height: CGFloat = 52

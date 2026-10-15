@@ -172,7 +172,7 @@ final class BrowseModel: ObservableObject {
             if isFirstPage || !guideHasMore { exportTopShelf() }
         } catch {
             guard generation == guideGeneration, !(error is CancellationError) else { return }
-            guideError = error.localizedDescription
+            guideError = UserMessage.text(for: error)
         }
     }
 
@@ -488,7 +488,7 @@ final class BrowseModel: ObservableObject {
                 : []
             let planned: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled", query: query)
             if planned != schedules { schedules = planned }
-        } catch { recordingsError = error.localizedDescription }
+        } catch { recordingsError = UserMessage.text(for: error) }
     }
 
     func loadFavourites() async {
@@ -502,7 +502,7 @@ final class BrowseModel: ObservableObject {
             if loaded != favourites { favourites = loaded }
             exportTopShelf()
         }
-        catch { favouritesError = error.localizedDescription }
+        catch { favouritesError = UserMessage.text(for: error) }
     }
 
     /// Home: what this user watched last (server `library/recent`). An
@@ -652,7 +652,7 @@ final class BrowseModel: ObservableObject {
             }
             actionMessage = "Schedule cancelled or recording stopped."
             await loadRecordings()
-        } catch { actionError = error.localizedDescription }
+        } catch { actionError = UserMessage.text(for: error) }
     }
 
     /// Deletes a failed or missed schedule (server 0207 also removes its
@@ -667,7 +667,7 @@ final class BrowseModel: ObservableObject {
             _ = try await client.response("recordings/scheduled/\(item.id)", method: "DELETE")
             actionMessage = "Schedule deleted."
             await loadRecordings()
-        } catch { actionError = error.localizedDescription }
+        } catch { actionError = UserMessage.text(for: error) }
     }
 
     /// Server 0207: saved positions come with the recordings list.
@@ -700,7 +700,7 @@ final class BrowseModel: ObservableObject {
             guard result.success else { throw PigTVError.message("The server did not confirm the change.") }
             actionMessage = success
             await loadRecordings()
-        } catch { actionError = error.localizedDescription }
+        } catch { actionError = UserMessage.text(for: error) }
     }
 
     #if DEBUG

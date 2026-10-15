@@ -69,11 +69,7 @@ struct LibrarySettings: View {
         // the guide's header style and its cell surfaces for every row.
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                HStack(spacing: 14) {
-                    PigBrandMark(width: 58, height: 48)
-                        .accessibilityHidden(true)
-                    Text("Settings").font(.system(size: 34, weight: .bold))
-                }
+                PigPageHeader(title: "Settings")
                 settingsContent
             }
             .frame(maxWidth: 1100, alignment: .leading)
@@ -90,8 +86,11 @@ struct LibrarySettings: View {
         }
         #else
         NavigationStack {
-            Form { settingsContent }
-                .navigationTitle("Settings")
+            VStack(alignment: .leading, spacing: 0) {
+                PigPageHeader(title: "Settings").padding(.horizontal, 20).padding(.top, 8)
+                Form { settingsContent }
+            }
+                .toolbar(.hidden, for: .navigationBar)
                 .scrollContentBackground(.hidden)
                 .pigPageBackdrop()
                 .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut) {

@@ -72,10 +72,23 @@ struct LogoTile: View {
 // media or reconnecting, so a channel change reads as "tuning to something"
 // rather than a blank wait. Built entirely from cached guide data
 // (`playback.programme()`/`nextProgramme()`), so there is no network wait.
+/// What the tuning card says while a start takes longer than usual (16 Oct: the iPhone sat on "Tuning…" with no
+/// explanation while the provider was busy with a recording). The server answers a known conflict with a 409 and the
+/// player asks; this covers the cases where it can't tell yet.
+nonisolated enum TuningText {
+    static let slowAfter: TimeInterval = 20
+
+    static func hint(elapsed: TimeInterval) -> String? {
+        guard elapsed >= slowAfter else { return nil }
+        return "This is taking longer than usual. The provider may be busy with a recording or another device. You can cancel and try again."
+    }
+}
+
 struct TuningCard: View {
     @ObservedObject var playback: PlaybackModel
     let browse: BrowseModel?
     let message: String
+    @State private var shownAt = Date()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -109,6 +122,11 @@ struct TuningCard: View {
                     Text(message).font(.system(size: PlayerMetrics.tuningNext, weight: .medium)).foregroundStyle(.white.opacity(0.8))
                 }
                 .padding(.top, 6)
+                if let hint = TuningText.hint(elapsed: context.date.timeIntervalSince(shownAt)) {
+                    Text(hint).font(.system(size: PlayerMetrics.tuningNext)).foregroundStyle(.white.opacity(0.75))
+                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("tuning.slow")
+                }
             }
         }
         .foregroundStyle(.white)

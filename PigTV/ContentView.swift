@@ -78,7 +78,9 @@ struct ContentView: View {
         // A4.1: Top Shelf items open pigtv://play.
         .onOpenURL { model.open($0) }
         .alert("PigTV", isPresented: Binding(
-            get: { model.error != nil }, set: { if !$0 { model.error = nil } }
+            // Not while the player is up: an alert under a full-screen cover can't take
+            // the tvOS focus, so it could not be dismissed. It shows once the player closes.
+            get: { model.error != nil && !model.playerPresented }, set: { if !$0 { model.error = nil } }
         )) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }

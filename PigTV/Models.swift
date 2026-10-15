@@ -367,6 +367,23 @@ enum PigTVError: LocalizedError, Equatable {
 }
 
 
+/// What to show the person for an error, or nil when there is nothing to say (16 Oct). A request cancelled because the
+/// view or task that asked for it went away is not a failure: URLError's text for it is literally "cancelled", which
+/// reached the app-wide alert on tvOS and could not be dismissed under a full-screen cover. Every catch that shows an
+/// error goes through this.
+nonisolated enum UserMessage {
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        let ns = error as NSError
+        return ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled
+    }
+
+    static func text(for error: Error) -> String? {
+        isCancellation(error) ? nil : error.localizedDescription
+    }
+}
+
 // Immutable API data must also support Error equality outside the UI actor.
 nonisolated struct RecordingConflict: Decodable, Equatable, Sendable {
     let type: String

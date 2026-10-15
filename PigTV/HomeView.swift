@@ -11,8 +11,9 @@ import SwiftUI
 // Build 31 (Mark: "a very long screen … continue watching takes up about
 // 50% of the screen"): on the TV the hero is about a third of the screen
 // (~340 pt of 1080) and the cards are smaller, so the hero and two full
-// shelves fit on one 1080p screen. The page header (pig, "Home", date) is
-// not drawn on the TV: the tab bar already says Home.
+// shelves fit on one 1080p screen. 16 Oct (Mark: the header should be the
+// same on every tab): the TV draws the shared page header too, and the hero
+// gave up the header's 50 pt so the two shelves still fit.
 private enum HomeMetrics {
     #if os(tvOS)
     static let pagePadding: CGFloat = 0
@@ -24,7 +25,7 @@ private enum HomeMetrics {
     static let cardTextSpacing: CGFloat = 6
     /// Vertical room around a shelf's cards for the focus lift.
     static let shelfPadding: CGFloat = 14
-    static let heroHeight: CGFloat = 320
+    static let heroHeight: CGFloat = 270
     static let heroPadding = CGSize(width: 56, height: 26)
     static let heroSpacing: CGFloat = 6
     static let heroRadius: CGFloat = 32
@@ -111,9 +112,7 @@ struct HomeView: View {
             ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: HomeMetrics.sectionSpacing) {
-                    #if os(iOS)
                     header
-                    #endif
                     if let hero = content.hero {
                         HomeHero(channel: hero, model: model, clock: clock,
                                  watch: { play(hero, from: [hero]) },
@@ -230,14 +229,7 @@ struct HomeView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            PigBrandMark(width: 58, height: 48)
-                .accessibilityHidden(true)
-            Text("Home").font(GuideTypography.title)
-            Text(clock, format: .dateTime.weekday(.wide).day().month(.wide))
-                .font(GuideTypography.body).foregroundStyle(.secondary)
-            Spacer()
-        }
+        PigPageHeader(title: "Home", subtitle: Text(clock, format: .dateTime.weekday(.wide).day().month(.wide)))
     }
 
     // MARK: Shelves

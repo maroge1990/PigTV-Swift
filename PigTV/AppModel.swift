@@ -83,6 +83,9 @@ final class AppModel: ObservableObject {
             await loadCategories()
             openPendingLink()
         } catch {
+            // A cancelled restore (the app went to the background) is retried
+            // on the next launch; it is not "unreachable" and not an alert.
+            if UserMessage.isCancellation(error) { return }
             if error as? PigTVError == .unauthorised {
                 if let address = try? ServerAddress(serverText) { try? keychain.remove(for: address) }
                 canRestore = false
@@ -92,7 +95,7 @@ final class AppModel: ObservableObject {
                 // dedicated screen rather than a generic alert.
                 unreachable = Self.describe(urlError)
             } else {
-                self.error = error.localizedDescription
+                self.error = UserMessage.text(for: error)
             }
         }
     }
@@ -218,7 +221,7 @@ final class AppModel: ObservableObject {
         do {
             if let client { try keychain.remove(for: client.address) }
             clearSession()
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = UserMessage.text(for: error) }
     }
 
     private func clearSession() {
@@ -241,7 +244,7 @@ final class AppModel: ObservableObject {
     private func loadCategories() async {
         guard let client else { return }
         do { categories = try await client.request("library/categories") }
-        catch { self.error = error.localizedDescription }
+        catch { self.error = UserMessage.text(for: error) }
     }
 
     // MARK: Deep links (A4.1 Top Shelf)

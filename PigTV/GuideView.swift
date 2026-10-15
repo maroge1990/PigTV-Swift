@@ -120,6 +120,9 @@ struct GuideView: View {
     }
 
     private var category: Category? { app.categories.first { $0.id == filter } }
+    /// Favourite membership by identity (review F5): a list with the same
+    /// count but different channels must still refresh the rows.
+    private var favouriteKeys: [String] { model.favourites.map(\.identityKey) }
     // The focused grid element.
     private var currentFocus: GuideFocus? { gridFocus }
     private var focusedChannel: GuideChannel? {
@@ -242,8 +245,17 @@ struct GuideView: View {
                 if rows.isEmpty { refreshRows() }
                 else if rowsRefresh == nil { scheduleRowsRefresh(after: .milliseconds(400)) }
             }
-            .onChange(of: model.favourites.count) { refreshRows() }
+            .onChange(of: favouriteKeys) { refreshRows() }
             .onChange(of: search) { refreshRows() }
+            // Every layout (16 Oct): this was on the iPad/tvOS grid only, so the
+            // iPhone's On now list ignored a category change until the Guide
+            // reappeared. Coalesced (R18); the grid returns to the top row and
+            // the live baseline once taps settle.
+            .onChange(of: filter) {
+                gridFocus = nil
+                filterResetPending = true
+                scheduleRowsRefresh(after: .milliseconds(250))
+            }
             // Build 33: a forward extension merged more programmes in place.
             .onChange(of: model.guideProgrammesVersion) { refreshRows() }
             .onChange(of: app.playback == nil) { _, closed in
@@ -348,13 +360,6 @@ struct GuideView: View {
             }
         }
         .padding(.horizontal, 24)
-        .onChange(of: filter) {
-            // As the SwiftUI grid (R18): coalesced; the grid returns to the
-            // top row and the live baseline once taps settle.
-            gridFocus = nil
-            filterResetPending = true
-            scheduleRowsRefresh(after: .milliseconds(250))
-        }
     }
 
     private var focusedDetail: String {
@@ -386,13 +391,8 @@ struct GuideView: View {
     }
 
     private var regularHeader: some View {
-        HStack(spacing: 14) {
-            PigBrandMark(width: 58, height: 48)
-                .accessibilityLabel("PigTV")
-            Text("TV Guide").font(GuideTypography.title)
-            Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
-                .font(GuideTypography.body).foregroundStyle(.secondary)
-            Spacer()
+        PigPageHeader(title: "TV Guide",
+                      subtitle: Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))) {
             if usesGridView {
                 Button("Now", systemImage: "location.fill") { goTo(Date()) }
                     .focused($headerNowFocused)
@@ -442,12 +442,9 @@ struct GuideView: View {
     // Phone layout: icon-only controls so nothing wraps.
     private var phoneHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                PigBrandMark(width: 36, height: 30)
-                Text("TV Guide").font(.headline)
-                Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
+            // The shared header (16 Oct); the controls go icon-only so nothing wraps.
+            PigPageHeader(title: "TV Guide",
+                          subtitle: Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))) {
                 // The On now list (A4.4) has no time axis to move.
                 if !usesOnNowList {
                     Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
@@ -564,7 +561,7 @@ struct GuideView: View {
     private var rowsInput: GuideRowsInput {
         GuideRowsInput(count: model.guide.count, first: model.guide.first?.id, last: model.guide.last?.id,
                        loadedAt: model.guideLoadedAt, fromCache: model.fromCache, filter: filter, search: search,
-                       favourites: model.favourites.map(\.id), categories: app.categories.count,
+                       favourites: model.favourites.map { "\($0.identityKey)|\($0.id)" }, categories: app.categories.count,
                        programmesVersion: model.guideProgrammesVersion)
     }
 

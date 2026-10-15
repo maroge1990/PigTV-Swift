@@ -85,6 +85,7 @@ struct RecordingsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
+                PigPageHeader(title: "Recordings").padding(.horizontal, RecordingsMetrics.pagePadding)
                 #if !os(tvOS)
                 sectionPicker
                 #endif
@@ -98,7 +99,9 @@ struct RecordingsView: View {
                 if section == "library" { library } else { scheduled }
                 if model.recordingsBusy { ProgressView("Refreshing recordings…") }
             }
-            .navigationTitle("Recordings")
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
             .pigPageBackdrop()
             // Build 31: only when older than a minute. The tvOS remote has no
             // pull-to-refresh, so there it reloads on every appearance
@@ -108,6 +111,17 @@ struct RecordingsView: View {
             #else
             .task { await model.loadRecordingsIfStale() }
             #endif
+            // Review F6: while the page is on screen it keeps itself current, so a
+            // recording that starts, finishes or fails shows without a remote press.
+            // Quiet (no spinner, unchanged rows are not republished); it stops when
+            // the page is not visible.
+            .whileVisible {
+                while !Task.isCancelled {
+                    let wait = RecordingsRows.refreshInterval(recordings: model.recordings, schedules: model.schedules, now: Date())
+                    do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+                    await model.loadRecordings(quietly: true)
+                }
+            }
             .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }
             .sheet(isPresented: $reviewing) { RecordingAttentionSheet(model: model) }
             .confirmationDialog("Cancel this recording?", isPresented: Binding(
@@ -503,9 +517,6 @@ struct RecordingDetails: View {
     @ObservedObject private var guideStore: GuideStore
     @ObservedObject private var artwork: ArtworkStore
     let original: Recording
-    @State private var markers: RecordingMarkers?
-    @State private var markerError: String?
-    @State private var loading = false
     @State private var deleting = false
     @State private var playing = false
     @Environment(\.dismiss) private var dismiss
@@ -573,14 +584,14 @@ struct RecordingDetails: View {
                 }
                 if item.status == "completed" {
                     Button("Find breaks", systemImage: "wand.and.stars") {
-                        Task { await model.detectAds(item); await loadMarkers() }
+                        Task { await model.detectAds(item) }
                     }
                     .disabled(model.mutationBusy || item.ad_detect_status == "running" || item.ad_detect_status == "pending")
                 }
                 Button("Refresh", systemImage: "arrow.clockwise") {
-                    Task { await model.loadRecordings(); await loadMarkers() }
+                    Task { await model.loadRecordings() }
                 }
-                .disabled(loading || model.recordingsBusy)
+                .disabled(model.recordingsBusy)
                 Button(role: .destructive) { deleting = true } label: {
                     Label("Delete", systemImage: "trash").foregroundStyle(Color.pigDanger)
                 }
@@ -592,24 +603,10 @@ struct RecordingDetails: View {
             }
             if let message = model.actionMessage { Text(message).font(DetailType.meta).foregroundStyle(.secondary) }
             if let error = model.actionError { Text(error).font(DetailType.meta).foregroundStyle(.secondary) }
-            VStack(alignment: .leading, spacing: 14) {
-                PigSectionHeader(title: "Commercial breaks")
-                Text("Analysis: \((markers?.status ?? item.ad_detect_status ?? "not analysed").capitalized)")
-                    .font(DetailType.meta).foregroundStyle(.secondary)
-                if loading { ProgressView("Loading break information…") }
-                if let error = markerError { Text(error).font(DetailType.meta).foregroundStyle(.secondary) }
-                if let markers {
-                    let valid = markers.markers.filter { $0.valid && $0.type == "ad" }
-                    if valid.isEmpty {
-                        Text("No detected breaks.").font(DetailType.meta).foregroundStyle(.secondary)
-                    } else {
-                        BreakList(breaks: valid)
-                    }
-                }
-            }
+            // 16 Oct (Mark): the break times are not listed here. Breaks are
+            // still detected, skipped in the player and marked on its scrub bar.
         }
         .interactiveDismissDisabled(model.mutationBusy)
-        .task { await loadMarkers() }
         .fullScreenCover(isPresented: $playing) { RecordingPlayerScreen(recording: item, client: model.client) { Task { await model.loadRecordings() } } }
         .confirmationDialog("Delete this recording?", isPresented: $deleting, titleVisibility: .visible) {
             Button("Delete recording and file", role: .destructive) {
@@ -642,39 +639,5 @@ struct RecordingDetails: View {
         }
         return parts.joined(separator: " · ")
     }
-
-    private func loadMarkers() async {
-        guard !loading else { return }
-        #if DEBUG
-        if model.isFixture { markers = GuideFixtures.markers(); return }
-        #endif
-        loading = true
-        markerError = nil
-        defer { loading = false }
-        do { markers = try await model.client.request("recordings/\(original.id)/markers") }
-        catch {
-            markerError = error as? PigTVError == .http(404)
-                ? "Break information is unavailable on this server or this recording no longer exists."
-                : error.localizedDescription
-        }
-    }
 }
 
-/// Detected breaks as time-range chips on the guide's surface.
-private struct BreakList: View {
-    let breaks: [CommercialBreak]
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 14, alignment: .leading)], alignment: .leading, spacing: 14) {
-            ForEach(breaks) { marker in
-                Text("\(RecordingTimeline.clock(marker.startMs / 1000)) – \(RecordingTimeline.clock(marker.endMs / 1000))")
-                    .font(DetailType.rowDetail.monospacedDigit()).fontDesign(.rounded)
-                    .padding(.horizontal, 18).padding(.vertical, 10)
-                    .background(Color.guideCell(scheme), in: Capsule())
-            }
-        }
-        .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(breaks.count) breaks")
-    }
-}
