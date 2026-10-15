@@ -34,14 +34,15 @@ all`) after a plain `xcodebuild test`. A new UI suite runs in the push tier unle
 
 ## How changes ship
 
-**Push-to-main (Mark, 23 Sept).** Work on `main`; Claude may `git pull --rebase` and push to `origin/main` without asking each
-time. Never force-push.
+**Commit to `main`, never push** (Mark, 16 Oct; replaces the 23 Sept push-to-main rule). Work on `main`; Claude may
+`git pull --rebase` but leaves every commit local for Mark to review and push (`git log origin/main..main`). Never
+force-push.
 
-1. Before every push: `sh Tools/test.sh push` passes, plus the iOS build when shared code changed. If something
-   can't be run, say so and don't push.
+1. Before every commit: `sh Tools/test.sh push` passes, plus the iOS build when shared code changed. If something
+   can't be run, say so in the commit message and to Mark.
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets), so Settings →
    Version identifies the installed copy. Current: **40**.
-3. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push and PR; a red run counts as a local
+3. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push (Mark's) and PR; a red run counts as a local
    failure.
 4. Device-dependent work ends with numbered test steps for Mark; nothing is *Verified* until he reports it. A simulator pass is
    not a device pass.
@@ -61,7 +62,7 @@ time. Never force-push.
   (attach, screenshots, input) only when Mark asks in that message; routine checks are `xcodebuild` runs.
 - Server changes are made in `../PigTV` under its `AGENTS.md`; a new endpoint this client calls needs an entry in the server's
   `APPLE_CLIENT_ROUTES`.
-- The lead session may delegate to sub-agents (never Haiku) and reviews every diff before it's pushed.
+- The lead session may delegate to sub-agents (never Haiku) and reviews every diff before it's committed.
 - At the end of a session update `blueprint.md` with any durable fact; the story goes in the commit message.
 
 ## Gotchas

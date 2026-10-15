@@ -1,7 +1,8 @@
 # PigTV Apple client: blueprint
 
-**State:** app **1.0 (40)** with server **0207** (13 Oct 2026). Everything built so far is verified on Mark's Apple TV, iPad and
-iPhone, and there are no open bugs. The joint roadmap (Plan B: the Dispatcharr gaps, mostly server-side) is in
+**State:** app **1.0 (40)** with server **0207** (13 Oct 2026 device baseline). The 15 Oct
+[consistency and responsiveness review](../PigTV/docs/reviews/2026-10-15/REVIEW.md) records open guide-invalidation and
+recordings-freshness findings; no fixes have shipped from that review. The joint roadmap (Plan B: the Dispatcharr gaps, mostly server-side) is in
 [`../PigTV/blueprint.md`](../PigTV/blueprint.md) §4.
 
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
