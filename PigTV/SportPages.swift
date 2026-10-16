@@ -259,6 +259,9 @@ struct SportEventDetails: View {
     /// Closes the page, then runs the action (playback).
     let play: (@escaping () -> Void) -> Void
     @State private var recordSheet = false
+    /// C-M: choosing what "Record every game" follows.
+    @State private var ruleChoices = false
+    @State private var ruleAdded = false
 
     init(event: SportEvent, app: AppModel, browse: BrowseModel, play: @escaping (@escaping () -> Void) -> Void) {
         self.event = event
@@ -280,6 +283,16 @@ struct SportEventDetails: View {
             }
         }
         .onAppear { browse.actionError = nil; browse.actionMessage = nil }
+        .confirmationDialog("Record every game of", isPresented: $ruleChoices, titleVisibility: .visible) {
+            ForEach(RuleChoices.sport(title: event.title, league: event.league), id: \.self) { choice in
+                Button(choice) {
+                    Task { ruleAdded = await browse.addRule(RuleBody(kind: "sport", match: choice)) }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Live games only, never replays, on the best channel showing them.")
+        }
         .detailCover(isPresented: $recordSheet) {
             if let best = event.best {
                 RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme) { _ in
@@ -342,8 +355,19 @@ struct SportEventDetails: View {
                             .disabled(browse.mutationBusy)
                             .accessibilityIdentifier("sport.record")
                     }
+                    if browse.rulesAvailable && !ruleAdded && !RuleChoices.sport(title: event.title, league: event.league).isEmpty {
+                        Button("Record every game", systemImage: "repeat.circle") { ruleChoices = true }
+                            .disabled(browse.mutationBusy)
+                            .accessibilityIdentifier("sport.recordEvery")
+                    }
                 }
                 .defaultFocus($focus, .watch)
+                if ruleAdded, let message = browse.actionMessage {
+                    Text(message).font(DetailType.meta).foregroundStyle(.secondary)
+                }
+                if let error = browse.actionError {
+                    Text(error).font(DetailType.meta).foregroundStyle(.secondary)
+                }
                 if pending {
                     Text("PigTV will start \(best.name) at \(event.start.formatted(date: .omitted, time: .shortened)) while the app stays open.")
                         .font(DetailType.meta).foregroundStyle(.secondary)

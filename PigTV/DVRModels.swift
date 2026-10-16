@@ -81,6 +81,10 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     /// The recording this schedule is making (while `recording`), for
     /// "Watch from start" (C-L). Present on every server; decoded tolerantly.
     var recording_id: Int? = nil
+    /// C-M: the rule that made this schedule (nil for a one-off).
+    var rule_id: Int? = nil
+    /// C-N: the programme's artwork (`/api/logo/<key>`), or nil.
+    var image: String? = nil
     var start: Date { Date(timeIntervalSince1970: program_start / 1000) }
     var end: Date { Date(timeIntervalSince1970: program_end / 1000) }
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }
@@ -134,6 +138,9 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     /// C-L (server 0218): a segmented recording in progress that can be played
     /// from its start. Absent (nil) on older servers and other recordings.
     var watch_live: Bool? = nil
+    /// C-N (server 0220): the programme's artwork from the guide
+    /// (`/api/logo/<key>`), or nil; the tile falls back to the channel logo.
+    var image: String? = nil
     /// "Watch from start" applies: still recording, and the server says so.
     var canWatchFromStart: Bool { status == "recording" && watch_live == true }
     /// Finished, but the server is still getting it ready to play.
@@ -167,6 +174,66 @@ nonisolated struct ScheduleBody: Encodable, Sendable {
     let programEnd: Double
     let preBufferMin: Int
     let postBufferMin: Int
+}
+
+/// C-M: a recording rule ("record every game of", "record this series").
+nonisolated struct RecordingRule: Decodable, Identifiable, Equatable, Sendable {
+    let id: Int
+    let kind: String
+    let match: String
+    var sourceId: Int? = nil
+    var channelId: String? = nil
+    var channelName: String? = nil
+    var newOnly: Bool? = nil
+    var enabled: Bool? = nil
+    var upcoming: Int? = nil
+    /// Only in POST's answer: how many it scheduled at once.
+    var scheduled: Int? = nil
+
+    var isOn: Bool { enabled != false }
+    var summary: String {
+        kind == "series" ? "Series: \(match)\(channelName.map { " on \($0)" } ?? "")\(newOnly == true ? " (new episodes only)" : "")"
+            : "Every game: \(match)"
+    }
+    var detail: String {
+        guard isOn else { return "Off" }
+        let n = upcoming ?? 0
+        return n == 1 ? "1 recording scheduled" : "\(n) recordings scheduled"
+    }
+}
+
+nonisolated struct RuleBody: Encodable, Sendable {
+    let kind: String
+    let match: String
+    var sourceId: Int? = nil
+    var channelId: String? = nil
+    var channelName: String? = nil
+    var preBufferMin: Int? = nil
+    var postBufferMin: Int? = nil
+}
+
+nonisolated struct RuleEnabledBody: Encodable, Sendable { let enabled: Bool }
+
+nonisolated enum RuleChoices {
+    /// "Record every game" choices for a Sport event: its league (when it is a
+    /// real one) and the two sides of an "A v B" title. Pure; tested.
+    static func sport(title: String, league: String) -> [String] {
+        var out: [String] = []
+        let leagueName = league.trimmingCharacters(in: .whitespaces)
+        if !leagueName.isEmpty, leagueName.lowercased() != "sport" { out.append(leagueName) }
+        var body = title
+        if let colon = body.range(of: ": ") { body = String(body[colon.upperBound...]) }
+        for separator in [" vs. ", " vs ", " v. ", " v ", " @ "] {
+            let parts = body.components(separatedBy: separator)
+            guard parts.count == 2 else { continue }
+            for side in parts {
+                let name = side.components(separatedBy: " - ").first?.trimmingCharacters(in: .whitespaces) ?? ""
+                if name.count >= 3, !out.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { out.append(name) }
+            }
+            break
+        }
+        return out
+    }
 }
 
 nonisolated struct FavouriteBody: Encodable, Sendable {

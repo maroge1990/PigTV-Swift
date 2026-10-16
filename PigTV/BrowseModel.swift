@@ -685,6 +685,56 @@ final class BrowseModel: ObservableObject {
         await mutate("recordings/\(item.id)", method: "DELETE", success: "Recording deleted.")
     }
 
+    // MARK: C-M recording rules
+
+    /// The server can keep recording rules.
+    var rulesAvailable: Bool { client.info?.features.recordingRules == true }
+
+    func loadRules() async throws -> [RecordingRule] {
+        try await client.request("recordings/rules")
+    }
+
+    /// Adds a rule; the message says how many it scheduled. False on failure.
+    @discardableResult
+    func addRule(_ body: RuleBody) async -> Bool {
+        guard !mutationBusy else { return false }
+        mutationBusy = true
+        actionError = nil
+        actionMessage = nil
+        defer { mutationBusy = false }
+        do {
+            let rule: RecordingRule = try await client.request("recordings/rules", method: "POST", body: body)
+            let n = rule.scheduled ?? 0
+            actionMessage = "\(rule.summary). \(n == 1 ? "1 recording" : "\(n) recordings") scheduled for now; more as the guide fills in."
+            await loadRecordings()
+            return true
+        } catch {
+            actionError = "Could not add the rule. \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func setRule(_ rule: RecordingRule, enabled: Bool) async {
+        do {
+            let _: RecordingRule = try await client.request("recordings/rules/\(rule.id)", method: "PUT", body: RuleEnabledBody(enabled: enabled))
+            await loadRecordings()
+        } catch {
+            actionError = "Could not change the rule. \(error.localizedDescription)"
+        }
+    }
+
+    func deleteRule(_ rule: RecordingRule) async {
+        struct Deleted: Decodable { let cancelled: Int? }
+        do {
+            let result: Deleted = try await client.request("recordings/rules/\(rule.id)", method: "DELETE")
+            let n = result.cancelled ?? 0
+            actionMessage = n == 0 ? "Rule deleted." : "Rule deleted; \(n) upcoming recording\(n == 1 ? "" : "s") cancelled."
+            await loadRecordings()
+        } catch {
+            actionError = "Could not delete the rule. \(error.localizedDescription)"
+        }
+    }
+
     func detectAds(_ item: Recording) async {
         await mutate("recordings/\(item.id)/detect-ads", method: "POST", success: "Commercial-break analysis queued.")
     }

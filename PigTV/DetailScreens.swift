@@ -34,6 +34,8 @@ struct ProgrammeDetails: View {
     }
     @State private var recordSheet = false
     @State private var scheduledHere = false
+    /// C-M: a series rule was added from this page (its message is shown).
+    @State private var ruleAdded = false
     private enum Control: Hashable { case watch, record }
     @FocusState private var focus: Control?
 
@@ -91,6 +93,17 @@ struct ProgrammeDetails: View {
                                 .focused($focus, equals: .record)
                                 .accessibilityIdentifier("details.record")
                         }
+                        if programme.end > now && model.rulesAvailable && !ruleAdded {
+                            // C-M: every airing of this title on this channel.
+                            Button("Record series", systemImage: "repeat.circle") {
+                                Task {
+                                    ruleAdded = await model.addRule(RuleBody(kind: "series", match: programme.title, sourceId: channel.sourceId,
+                                                                             channelId: channel.rawID, channelName: channel.name))
+                                }
+                            }
+                            .disabled(model.mutationBusy)
+                            .accessibilityIdentifier("details.recordSeries")
+                        }
                         if let openSchedule {
                             Button("Channel schedule", systemImage: "list.bullet.rectangle", action: openSchedule)
                         }
@@ -101,8 +114,11 @@ struct ProgrammeDetails: View {
                         Text("This programme has ended. Catch-up playback is not available.")
                             .font(DetailType.meta).foregroundStyle(.secondary)
                     }
-                    if let message = model.actionMessage, scheduledHere {
+                    if let message = model.actionMessage, scheduledHere || ruleAdded {
                         Text(message).font(DetailType.meta).foregroundStyle(.secondary)
+                    }
+                    if let error = model.actionError {
+                        Text(error).font(DetailType.meta).foregroundStyle(.secondary)
                     }
                 }
             }

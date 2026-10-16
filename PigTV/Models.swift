@@ -53,6 +53,10 @@ struct ServerInfo: Decodable {
         // carry `watch_live` (a segmented recording in progress can be played
         // from its start).
         var recordingWatchLive: Bool? = nil
+        // C-M (server 0219, R5): `recordings/rules`; schedules carry `rule_id`.
+        var recordingRules: Bool? = nil
+        // C-N (server 0220, R6): recording and schedule rows carry `image`.
+        var recordingArtwork: Bool? = nil
     }
 
     func validate() throws {

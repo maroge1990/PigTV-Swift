@@ -47,6 +47,8 @@ struct RecordingsView: View {
     @State private var section = "library"
     @State private var search = ""
     @State private var reviewing = false
+    /// C-M: the recording rules sheet.
+    @State private var showingRules = false
     @Environment(\.colorScheme) private var scheme
 
     init(model: BrowseModel) {
@@ -124,6 +126,7 @@ struct RecordingsView: View {
             }
             .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }
             .sheet(isPresented: $reviewing) { RecordingAttentionSheet(model: model) }
+            .sheet(isPresented: $showingRules) { RecordingRulesSheet(model: model) }
             .confirmationDialog("Cancel this recording?", isPresented: Binding(
                 get: { cancellation != nil }, set: { if !$0 { cancellation = nil } }
             ), presenting: cancellation) { item in
@@ -220,9 +223,20 @@ struct RecordingsView: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             #endif
+            if model.rulesAvailable {
+                // C-M: the rules that make schedules on their own.
+                Button { showingRules = true } label: {
+                    Label("Recording rules", systemImage: "repeat.circle")
+                }
+                .accessibilityIdentifier("recordings.rules")
+                .scheduleSurface(scheme)
+            }
             ForEach(model.schedules.filter { $0.isActive }) { item in
                 VStack(alignment: .leading, spacing: 12) {
                     Text(item.title).font(.headline)
+                    if item.rule_id != nil {
+                        Text("From a rule").font(.caption).foregroundStyle(.secondary)
+                    }
                     Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
                     Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
                         .font(.caption.monospacedDigit()).fontDesign(.rounded)
@@ -348,7 +362,10 @@ private struct RecordingTile: View {
             .aspectRatio(RecordingsMetrics.artRatio, contentMode: .fit)
             .overlay {
                 Group {
-                    if item.channel_logo != nil {
+                    if item.image != nil {
+                        // C-N: the programme's own artwork, filling the tile.
+                        ChannelArtwork(logo: item.image, client: client, fill: true)
+                    } else if item.channel_logo != nil {
                         ChannelArtwork(logo: item.channel_logo, client: client).padding(.horizontal, 24).padding(.vertical, 14)
                     } else {
                         Image(systemName: "play.fill").font(.system(size: 34, weight: .semibold))
@@ -657,3 +674,69 @@ struct RecordingDetails: View {
     }
 }
 
+
+// MARK: Recording rules (C-M)
+
+/// The rules that make schedules ("every game of", "series"), each with an
+/// on/off switch and Delete. Loaded when shown.
+private struct RecordingRulesSheet: View {
+    let model: BrowseModel
+    @ObservedObject private var actions: ActionState
+    @State private var rules: [RecordingRule] = []
+    @State private var loading = true
+    @State private var error: String?
+    @State private var deleting: RecordingRule?
+    @Environment(\.dismiss) private var dismiss
+
+    init(model: BrowseModel) {
+        self.model = model
+        _actions = ObservedObject(wrappedValue: model.actions)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let error { Text(error).foregroundStyle(.secondary) }
+                if !loading && rules.isEmpty && error == nil {
+                    Text("No rules yet. Choose Record series on a programme, or Record every game on a Sport event.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(rules) { rule in
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(rule.summary).font(.headline)
+                        Text(rule.detail).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 20) {
+                            Button(rule.isOn ? "Turn off" : "Turn on") {
+                                Task { await model.setRule(rule, enabled: !rule.isOn); await reload() }
+                            }
+                            Button("Delete", role: .destructive) { deleting = rule }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                if let message = model.actionMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
+            }
+            .navigationTitle("Recording rules")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+            .overlay { if loading { ProgressView() } }
+            .task { await reload() }
+            .confirmationDialog("Delete this rule?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                                titleVisibility: .visible, presenting: deleting) { rule in
+                Button("Delete rule", role: .destructive) { Task { await model.deleteRule(rule); await reload() } }
+                Button("Keep it", role: .cancel) {}
+            } message: { _ in
+                Text("Its recordings that have not started are cancelled. Anything recorded is kept.")
+            }
+        }
+    }
+
+    private func reload() async {
+        do {
+            rules = try await model.loadRules()
+            error = nil
+        } catch {
+            self.error = "Could not load the rules. \(error.localizedDescription)"
+        }
+        loading = false
+    }
+}

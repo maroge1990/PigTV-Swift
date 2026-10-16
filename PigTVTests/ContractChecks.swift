@@ -248,6 +248,18 @@ enum ContractChecks {
         let watchAnswer = try JSONDecoder().decode(RecordingWatch.self, from: Data(#"{"url":"/api/recordings/5/live/master.m3u8","container":"hls","recording":true,"videoRange":"PQ","fps":"50/1","durationSec":1260}"#.utf8))
         try expect(watchAnswer.recording == true && watchAnswer.videoRange == "PQ" && watchAnswer.fps == "50/1" && watchAnswer.durationSec == 1260,
                    "The watch answer decodes")
+        // C-M / C-N (server 0219, 0220): rules, rule_id and image.
+        let rule = try JSONDecoder().decode(RecordingRule.self, from: Data(#"{"id":3,"kind":"series","match":"Gardening Australia","sourceId":1,"channelId":"pos_3","stableId":"abc","channelName":"ABC","preBufferMin":null,"postBufferMin":null,"newOnly":true,"enabled":true,"createdAt":1,"upcoming":2,"scheduled":2}"#.utf8))
+        try expect(rule.summary == "Series: Gardening Australia on ABC (new episodes only)" && rule.detail == "2 recordings scheduled", "A series rule reads plainly")
+        let sportRule = try JSONDecoder().decode(RecordingRule.self, from: Data(#"{"id":4,"kind":"sport","match":"AFL","enabled":false}"#.utf8))
+        try expect(sportRule.summary == "Every game: AFL" && sportRule.detail == "Off" && !sportRule.isOn, "A sport rule that is off says so")
+        try expect(RuleChoices.sport(title: "AFL: Collingwood v Carlton", league: "AFL") == ["AFL", "Collingwood", "Carlton"], "League and both sides")
+        try expect(RuleChoices.sport(title: "Kansas City Chiefs vs Buffalo Bills - Week 7", league: "NFL") == ["NFL", "Kansas City Chiefs", "Buffalo Bills"], "vs, and a suffix dropped")
+        try expect(RuleChoices.sport(title: "Golf: The Open, Round 2", league: "Sport") == [], "Nothing to follow: no choices")
+        let ruled = try JSONDecoder().decode(ScheduledRecording.self, from: Data(#"{"id":8,"title":"Show","program_start":1,"program_end":2,"status":"scheduled","rule_id":3,"image":"/api/logo/abc"}"#.utf8))
+        try expect(ruled.rule_id == 3 && ruled.image == "/api/logo/abc", "Schedules carry rule_id and image")
+        let art = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":9,"title":"Show","status":"completed","image":"/api/logo/abc"}"#.utf8))
+        try expect(art.image == "/api/logo/abc", "Recordings carry image")
         let minimalWatch = try JSONDecoder().decode(RecordingWatch.self, from: Data(#"{"url":"/api/recordings/5/live/master.m3u8","fps":null}"#.utf8))
         try expect(minimalWatch.fps == nil && minimalWatch.videoRange == nil, "Missing watch fields decode as nil")
         let markers = try JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"done","markers":[{"id":1,"startMs":0,"endMs":1000,"type":"ad"},{"id":2,"startMs":2000,"endMs":1000,"type":"ad"}]}"#.utf8))
