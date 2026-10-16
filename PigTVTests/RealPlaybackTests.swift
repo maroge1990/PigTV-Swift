@@ -300,6 +300,108 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    // MARK: C-L watch a recording from its start while it records (server 0218)
+
+    private static let liveWatch = #"{"url":"/api/recordings/4243/master.m3u8","container":"hls","recording":true,"videoRange":"SDR","fps":"25/1","durationSec":6}"#
+
+    private func inProgressRecording() throws -> Recording {
+        try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4243,"title":"Early Start","status":"recording","watch_live":true}"#.utf8))
+    }
+
+    private func recordingItemPath(_ playback: RecordingPlayerModel) -> String? {
+        (playback.player.currentItem?.asset as? AVURLAsset)?.url.path
+    }
+
+    /// "Watch from start": the server's 202 is polled, then the live master
+    /// playlist plays from the beginning, with no resume question even when a
+    /// position is saved, and the display mode comes from the answer.
+    func testWatchFromStartPlaysTheLivePlaylistFromTheBeginning() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(watch: { n in
+            n == 1 ? .json(#"{"status":"preparing","retryAfterSec":1}"#, status: 202) : .json(Self.liveWatch)
+        })
+        UserDefaults.standard.set(3.0, forKey: "pigtv.resume.4243")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        let playback = RecordingPlayerModel(recording: try inProgressRecording(),
+                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
+        playback.start()
+        try await waitFor("the live recording to play", timeout: 12) { playback.hasPlayed }
+        XCTAssertNil(playback.resumePrompt, "from the start means no resume question")
+        XCTAssertTrue(playback.watchingLive)
+        XCTAssertEqual(recordingItemPath(playback), "/api/recordings/4243/master.m3u8")
+        XCTAssertEqual(server.http.requests(path: "/api/recordings/4243/watch").count, 2, "the 202 was polled once")
+        XCTAssertTrue(server.http.requests(path: "/api/recordings/4243/playback").isEmpty, "the file was not asked for")
+        XCTAssertLessThan(playback.player.currentTime().seconds, 2.5, "it starts at the beginning")
+        #if os(tvOS)
+        XCTAssertNotNil(playback.displayCriteria, "the TV's display mode comes from the answer")
+        #endif
+        XCTAssertNil(playback.error)
+        await playback.stop()
+        XCTAssertNil(playback.player.currentItem)
+        server.http.stop()
+    }
+
+    /// Finished meanwhile (409 finished): the file plays from its start, still
+    /// without asking where to resume.
+    func testWatchFromStartOfAFinishedRecordingPlaysTheFile() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(watch: { _ in .json(#"{"error":"Recording is finished: play it instead","finished":true}"#, status: 409) })
+        UserDefaults.standard.set(3.0, forKey: "pigtv.resume.4243")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        let playback = RecordingPlayerModel(recording: try inProgressRecording(),
+                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
+        playback.start()
+        try await waitFor("the finished file to play", timeout: 12) { playback.hasPlayed }
+        XCTAssertNil(playback.resumePrompt)
+        XCTAssertFalse(playback.watchingLive)
+        XCTAssertEqual(recordingItemPath(playback), "/api/recordings/4243/stream.m3u8", "the playback route's answer")
+        await playback.stop()
+        server.http.stop()
+    }
+
+    /// The live playlist goes away (the recording finished and its segments
+    /// were removed): the player asks again and carries on in the file.
+    func testLivePlaylistEndingSwitchesToTheFinishedFile() async throws {
+        try requireFixture()
+        let finished = Locked(false)
+        let server = try FakePigTVServer(watch: { _ in
+            finished.value ? .json(#"{"error":"Recording is finished: play it instead","finished":true}"#, status: 409) : .json(Self.liveWatch)
+        })
+        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        let playback = RecordingPlayerModel(recording: try inProgressRecording(),
+                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
+        playback.start()
+        try await waitFor("the live recording to play", timeout: 12) { playback.hasPlayed }
+        XCTAssertTrue(playback.watchingLive)
+        finished.value = true
+        playback.handleLiveStreamEnded()
+        try await waitFor("the file to play", timeout: 12) {
+            self.recordingItemPath(playback) == "/api/recordings/4243/stream.m3u8" && playback.hasPlayed
+        }
+        XCTAssertFalse(playback.watchingLive)
+        XCTAssertNil(playback.resumePrompt, "carrying on is not a resume question")
+        XCTAssertNil(playback.error)
+        await playback.stop()
+        server.http.stop()
+    }
+
+    /// An older server (no `recordingWatchLive`): the ordinary playback route,
+    /// and the watch route is never called.
+    func testWithoutTheFlagFromStartUsesThePlaybackRoute() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(watch: { _ in .json(Self.liveWatch) })
+        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243")
+        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        let playback = RecordingPlayerModel(recording: try inProgressRecording(), client: try server.client(), fromStart: true)
+        playback.start()
+        try await waitFor("the file to play", timeout: 12) { playback.hasPlayed }
+        XCTAssertTrue(server.http.requests(path: "/api/recordings/4243/watch").isEmpty)
+        XCTAssertFalse(playback.watchingLive)
+        await playback.stop()
+        server.http.stop()
+    }
+
     /// C-I: selecting a sport event plays its best channel (the first in
     /// `channels`) with the event's channels as the zap list, for real.
     func testSelectingASportEventPlaysItsBestChannel() async throws {

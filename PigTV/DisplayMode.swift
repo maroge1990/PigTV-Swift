@@ -102,3 +102,11 @@ nonisolated struct DisplayMode: Equatable, Sendable {
     }
     #endif
 }
+
+extension RecordingWatch {
+    /// C-L: the TV's display mode for a recording watched from its start (a
+    /// copy of the source: its range and rate, as a resolve's `info`).
+    nonisolated var displayMode: DisplayMode? {
+        DisplayMode.make(videoMode: "copy", info: ResolveStreamInfo(fps: fps, videoRange: videoRange == "SDR" ? nil : videoRange))
+    }
+}

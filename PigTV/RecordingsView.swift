@@ -519,6 +519,8 @@ struct RecordingDetails: View {
     let original: Recording
     @State private var deleting = false
     @State private var playing = false
+    /// C-L: playing the in-progress recording from its start.
+    @State private var watchingFromStart = false
     @Environment(\.dismiss) private var dismiss
     @FocusState private var playFocused: Bool
     init(model: BrowseModel, original: Recording) {
@@ -540,6 +542,11 @@ struct RecordingDetails: View {
 
     private var resumeFraction: Double? {
         model.progress(for: item).fraction
+    }
+
+    /// C-L: still recording, and the server can play it from its start.
+    private var canWatchFromStart: Bool {
+        item.canWatchFromStart && model.client.info?.features.recordingWatchLive == true
     }
 
     var body: some View {
@@ -581,6 +588,11 @@ struct RecordingDetails: View {
                     Button(resumeFraction == nil ? playLabel : "Resume", systemImage: "play.fill") { playing = true }
                         .pigPrimaryButton()
                         .focused($playFocused)
+                } else if canWatchFromStart {
+                    Button("Watch from start", systemImage: "play.fill") { watchingFromStart = true }
+                        .pigPrimaryButton()
+                        .focused($playFocused)
+                        .accessibilityIdentifier("recording.watchFromStart")
                 }
                 if item.status == "completed" {
                     Button("Find breaks", systemImage: "wand.and.stars") {
@@ -599,7 +611,8 @@ struct RecordingDetails: View {
             }
             .defaultFocus($playFocused, true)
             if playLabel == nil {
-                Text("Playback is available once the recording has finished.").font(DetailType.meta).foregroundStyle(.secondary)
+                Text(canWatchFromStart ? "Still recording: watch it from the start while the rest records."
+                     : "Playback is available once the recording has finished.").font(DetailType.meta).foregroundStyle(.secondary)
             }
             if let message = model.actionMessage { Text(message).font(DetailType.meta).foregroundStyle(.secondary) }
             if let error = model.actionError { Text(error).font(DetailType.meta).foregroundStyle(.secondary) }
@@ -608,6 +621,9 @@ struct RecordingDetails: View {
         }
         .interactiveDismissDisabled(model.mutationBusy)
         .fullScreenCover(isPresented: $playing) { RecordingPlayerScreen(recording: item, client: model.client) { Task { await model.loadRecordings() } } }
+        .fullScreenCover(isPresented: $watchingFromStart) {
+            RecordingPlayerScreen(recording: item, client: model.client, fromStart: true) { Task { await model.loadRecordings() } }
+        }
         .confirmationDialog("Delete this recording?", isPresented: $deleting, titleVisibility: .visible) {
             Button("Delete recording and file", role: .destructive) {
                 Task {

@@ -49,6 +49,10 @@ struct ServerInfo: Decodable {
         var providerReminders: Bool? = nil
         // R11 (server 0198): `POST playback/warm` exists.
         var warming: Bool? = nil
+        // C-L (server 0218, R3): `GET recordings/{id}/watch`; recording rows
+        // carry `watch_live` (a segmented recording in progress can be played
+        // from its start).
+        var recordingWatchLive: Bool? = nil
     }
 
     func validate() throws {

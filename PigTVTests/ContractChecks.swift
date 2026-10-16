@@ -237,6 +237,19 @@ enum ContractChecks {
         try expect(nullStatus.native_status == nil && !nullStatus.isPreparingForPlayback, "A null native_status shows nothing")
         let airing = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4,"title":"Show","status":"recording","native_status":"pending"}"#.utf8))
         try expect(!airing.isPreparingForPlayback, "Only completed recordings show the preparing label")
+        // C-L (server 0218): watch_live is additive; only a recording in progress with it true offers "Watch from start".
+        try expect(airing.watch_live == nil && !airing.canWatchFromStart, "Older servers omit watch_live: nothing offered")
+        let liveRecording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":5,"title":"Show","status":"recording","watch_live":true,"work_dir":"/app/data/recordings-work/rec-5","segment_state":"capturing"}"#.utf8))
+        try expect(liveRecording.canWatchFromStart, "A segmented recording in progress can be watched from the start")
+        let finishedLive = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":6,"title":"Show","status":"completed","watch_live":true}"#.utf8))
+        try expect(!finishedLive.canWatchFromStart && finishedLive.playLabel != nil, "A finished one plays the usual way")
+        let recordingSchedule = try JSONDecoder().decode(ScheduledRecording.self, from: Data(#"{"id":7,"title":"Show","program_start":1000,"program_end":3000,"status":"recording","recording_id":5}"#.utf8))
+        try expect(recordingSchedule.recording_id == 5, "A recording schedule names its recording")
+        let watchAnswer = try JSONDecoder().decode(RecordingWatch.self, from: Data(#"{"url":"/api/recordings/5/live/master.m3u8","container":"hls","recording":true,"videoRange":"PQ","fps":"50/1","durationSec":1260}"#.utf8))
+        try expect(watchAnswer.recording == true && watchAnswer.videoRange == "PQ" && watchAnswer.fps == "50/1" && watchAnswer.durationSec == 1260,
+                   "The watch answer decodes")
+        let minimalWatch = try JSONDecoder().decode(RecordingWatch.self, from: Data(#"{"url":"/api/recordings/5/live/master.m3u8","fps":null}"#.utf8))
+        try expect(minimalWatch.fps == nil && minimalWatch.videoRange == nil, "Missing watch fields decode as nil")
         let markers = try JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"done","markers":[{"id":1,"startMs":0,"endMs":1000,"type":"ad"},{"id":2,"startMs":2000,"endMs":1000,"type":"ad"}]}"#.utf8))
         try expect(markers.markers.filter(\.valid).count == 1, "Malformed ad intervals must not be offered")
         FixtureProtocol.responseStatus = 201
@@ -430,6 +443,30 @@ enum ContractChecks {
         FixtureProtocol.responseHeaders = [:]
         do { let _: User = try await modern.request("auth/login"); throw CheckFailure(description: "429 must throw") }
         catch PigTVError.rateLimited(let seconds) { try expect(seconds == 60, "429 missing delay gets safe fallback") }
+
+        // C-L: GET recordings/{id}/watch polls a 202, returns the live answer, and reads a 409's `finished`.
+        FixtureProtocol.responseStatus = 202
+        FixtureProtocol.responseData = Data(#"{"status":"preparing","retryAfterSec":2}"#.utf8)
+        var watchDelays: [Double] = []
+        let watched = try await modern.recordingWatch(id: 5, sleep: { seconds in
+            watchDelays.append(seconds)
+            FixtureProtocol.responseStatus = 200
+            FixtureProtocol.responseData = Data(#"{"url":"/api/recordings/5/live/master.m3u8","container":"hls","recording":true}"#.utf8)
+        })
+        try expect(watchDelays == [2], "The watch 202 waits as told")
+        try expect(FixtureProtocol.capturedRequest?.url?.path == "/api/recordings/5/watch", "Watch asks the watch route")
+        if case .watch(let answer) = watched {
+            try expect(answer.url == "/api/recordings/5/live/master.m3u8", "The live URL comes back")
+            let liveURL = try modern.playbackURL(answer.url)
+            try expect(liveURL.path == "/api/recordings/5/live/master.m3u8", "The live URL is an allowed media URL")
+        } else { throw CheckFailure(description: "Watch must return the live answer") }
+        FixtureProtocol.responseStatus = 409
+        FixtureProtocol.responseData = Data(#"{"error":"Recording is finished: play it instead","finished":true}"#.utf8)
+        let finishedAnswer = try await modern.recordingWatch(id: 5)
+        try expect(finishedAnswer == .finished, "A finished recording says so")
+        FixtureProtocol.responseData = Data(#"{"error":"This recording cannot be watched while it records","finished":false}"#.utf8)
+        do { _ = try await modern.recordingWatch(id: 5); throw CheckFailure(description: "Not watchable must throw") }
+        catch PigTVError.message(let text) { try expect(!text.isEmpty && !text.contains("://"), "Not watchable gets a plain message") }
 
         let readyRecording = Data(#"{"url":"/api/recordings/12/media.mp4","container":"mp4","durationSec":3600}"#.utf8)
         FixtureProtocol.responseStatus = 202

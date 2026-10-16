@@ -42,6 +42,18 @@ struct ProgrammeDetails: View {
         return model.schedules.first { $0.isActive && $0.guideKey == key }
     }
 
+    /// C-L: the recording this programme's schedule is making, when it can be
+    /// watched from its start.
+    private var recordingInProgress: Recording? {
+        guard model.client.info?.features.recordingWatchLive == true,
+              let schedule, schedule.status == "recording" else { return nil }
+        return model.recordings.first { item in
+            item.canWatchFromStart && (schedule.recording_id.map { $0 == item.id }
+                ?? (item.channel_name == channel.name && item.title == programme.title))
+        }
+    }
+    @State private var watchingFromStart: Recording?
+
     private var recorded: Recording? {
         model.recordings.first { item in
             item.status == "completed" && item.title == programme.title && item.channel_name == channel.name
@@ -68,6 +80,11 @@ struct ProgrammeDetails: View {
                                 .pigPrimaryButton()
                                 .focused($focus, equals: .watch)
                         }
+                        if let recordingInProgress {
+                            // C-L: missed the start? It is being recorded: play it from there.
+                            Button("Watch from start", systemImage: "backward.end.fill") { watchingFromStart = recordingInProgress }
+                                .accessibilityIdentifier("details.watchFromStart")
+                        }
                         if programme.end > now && schedule == nil && !scheduledHere {
                             Button("Record", systemImage: "record.circle") { recordSheet = true }
                                 .disabled(model.mutationBusy)
@@ -92,6 +109,9 @@ struct ProgrammeDetails: View {
         }
         .interactiveDismissDisabled(model.mutationBusy)
         .onAppear { model.actionError = nil; model.actionMessage = nil }
+        .fullScreenCover(item: $watchingFromStart) { recording in
+            RecordingPlayerScreen(recording: recording, client: model.client, fromStart: true) { Task { await model.loadRecordings() } }
+        }
         .detailCover(isPresented: $recordSheet) {
             RecordSheet(model: model, channel: channel, programme: programme) { scheduled in
                 if scheduled { scheduledHere = true }

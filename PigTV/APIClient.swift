@@ -168,6 +168,9 @@ final class APIClient {
             retryAfter: response.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init))
         case 401: throw PigTVError.unauthorised
         case 403: throw PigTVError.forbidden
+        // C-L: "not watchable" says whether it has finished; recordingWatch reads it.
+        case 409 where path.hasPrefix("recordings/") && path.hasSuffix("/watch"):
+            return Response(status: 409, data: data, retryAfter: nil)
         default:
             // Parse only known, actionable server errors. Never display raw
             // upstream errors, which may contain subscription URLs/passwords.
@@ -242,6 +245,40 @@ final class APIClient {
             let rawDelay = pending.retryAfterSec ?? result.retryAfter ?? 3
             let delay = rawDelay.isFinite && rawDelay > 0 ? max(1, rawDelay) : 3
             try await sleep(min(delay, max(0, deadline.timeIntervalSince(now()))))
+        }
+    }
+
+    /// C-L: watch an in-progress (segmented) recording from its start. Polls
+    /// the server's 202 while the first piece is made, like `recordingPlayback`;
+    /// a 409 that says it has finished is `.finished` (play it the usual way).
+    func recordingWatch(id: Int, timeout: TimeInterval = 60,
+                        now: () -> Date = Date.init,
+                        sleep: (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }) async throws -> RecordingWatchAnswer {
+        let deadline = now().addingTimeInterval(timeout)
+        let tooLong = PigTVError.message("The recording could not be opened from the start. Try again in a moment.")
+        while true {
+            try Task.checkCancellation()
+            let remaining = deadline.timeIntervalSince(now())
+            guard remaining > 0 else { throw tooLong }
+            let result = try await response("recordings/\(id)/watch", timeout: min(35, remaining))
+            try Task.checkCancellation()
+            switch result.status {
+            case 200:
+                guard let watch = try? JSONDecoder().decode(RecordingWatch.self, from: result.data) else { throw PigTVError.decoding }
+                return .watch(watch)
+            case 409:
+                struct NotWatchable: Decodable { let finished: Bool? }
+                if (try? JSONDecoder().decode(NotWatchable.self, from: result.data))?.finished == true { return .finished }
+                throw PigTVError.message("This recording can only be played once it has finished.")
+            case 202:
+                let pending = try? JSONDecoder().decode(RecordingPreparing.self, from: result.data)
+                let rawDelay = pending?.retryAfterSec ?? result.retryAfter ?? 2
+                let delay = rawDelay.isFinite && rawDelay > 0 ? max(1, rawDelay) : 2
+                guard now() < deadline else { throw tooLong }
+                try await sleep(min(delay, max(0, deadline.timeIntervalSince(now()))))
+            default:
+                throw PigTVError.http(result.status)
+            }
         }
     }
 

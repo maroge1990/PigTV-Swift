@@ -78,6 +78,9 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     let status: String
     // Server 0156: missed/failed schedules carry an error message.
     var error: String? = nil
+    /// The recording this schedule is making (while `recording`), for
+    /// "Watch from start" (C-L). Present on every server; decoded tolerantly.
+    var recording_id: Int? = nil
     var start: Date { Date(timeIntervalSince1970: program_start / 1000) }
     var end: Date { Date(timeIntervalSince1970: program_end / 1000) }
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }
@@ -128,6 +131,11 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     /// The schedule this recording came from (server 0207). A failed schedule
     /// and its failed recording are one failure, and one delete removes both.
     var scheduled_id: Int? = nil
+    /// C-L (server 0218): a segmented recording in progress that can be played
+    /// from its start. Absent (nil) on older servers and other recordings.
+    var watch_live: Bool? = nil
+    /// "Watch from start" applies: still recording, and the server says so.
+    var canWatchFromStart: Bool { status == "recording" && watch_live == true }
     /// Finished, but the server is still getting it ready to play.
     var isPreparingForPlayback: Bool {
         status == "completed" && (native_status == "pending" || native_status == "preparing")
@@ -364,6 +372,25 @@ nonisolated struct RecordingPlayback: Decodable, Sendable {
     let url: String
     let container: String?
     let durationSec: Double?
+}
+
+/// C-L: `GET recordings/{id}/watch` - an in-progress recording from its start:
+/// a master playlist URL and what the TV's display mode needs (as resolve `info`).
+nonisolated struct RecordingWatch: Decodable, Equatable, Sendable {
+    let url: String
+    var container: String? = nil
+    /// Still recording (false: the programme has ended and the MP4 is being made).
+    var recording: Bool? = nil
+    var videoRange: String? = nil
+    var fps: String? = nil
+    var durationSec: Double? = nil
+}
+
+/// What the server answered to "watch from the start".
+nonisolated enum RecordingWatchAnswer: Equatable, Sendable {
+    case watch(RecordingWatch)
+    /// It has finished meanwhile: play it the ordinary way.
+    case finished
 }
 
 extension Recording {

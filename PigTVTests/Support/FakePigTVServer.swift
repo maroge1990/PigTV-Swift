@@ -52,6 +52,8 @@ enum HLSFixture {
 /// - recordings: `GET /api/recordings/<id>/playback` →
 ///   `{url: …/<id>/stream.m3u8, container: "hls"}`, `…/markers` → one ad
 ///   break 1–2 s, and `/api/recordings/<id>/<file>` → the fixture.
+/// - C-L: `GET /api/recordings/<id>/watch` → `watch(n)` for the n-th request
+///   (404 when nil); its live URL can point at the same fixture files.
 /// - C-I: `GET /api/sports/events` → `sportEvents` (by default
 ///   `sportEventsJSON(now:)`, a realistic answer around the server's start).
 /// - R11: `POST /api/playback/warm` → `warm` (default 204, "nothing warmed"; pass a
@@ -69,8 +71,10 @@ final class FakePigTVServer: @unchecked Sendable {
          sportEvents: String? = nil,
          reminders: String? = nil,
          markers: LocalHTTPServer.Response? = nil,
-         warm: LocalHTTPServer.Response = .init(status: 204, contentType: "application/json", body: Data())) throws {
+         warm: LocalHTTPServer.Response = .init(status: 204, contentType: "application/json", body: Data()),
+         watch: (@Sendable (Int) -> LocalHTTPServer.Response)? = nil) throws {
         let counter = Locked(0)
+        let watchCount = Locked(0)
         let warmed = Locked<Set<String>>([])
         let resolve = resolve ?? { count, request in
             FakePigTVServer.decision(session: "s\(count)", warm: warmed.value.contains(FakePigTVServer.channelKey(request.body)))
@@ -84,6 +88,11 @@ final class FakePigTVServer: @unchecked Sendable {
             }
             // C-K: `GET /api/providers/reminders` (404 when the fake has none).
             if request.method == "GET", request.path == "/api/providers/reminders", let reminders { return .json(reminders) }
+            if request.method == "GET", request.path.hasPrefix("/api/recordings/"), request.path.hasSuffix("/watch") {
+                guard let watch else { return .notFound }
+                watchCount.value += 1
+                return watch(watchCount.value)
+            }
             return FakePigTVServer.route(request, counter: counter, markers: markers, resolve: resolve)
         }
     }

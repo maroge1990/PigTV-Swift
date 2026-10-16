@@ -48,10 +48,22 @@ final class RecordingPlayerModel: ObservableObject {
     /// Server 0207: positions are saved to and read from the server.
     private var positionsOn: Bool { client.info?.features.recordingPositions == true }
     private var lastServerSave: Double?
+    /// C-L: play a recording that is still being made from its start (its
+    /// live HLS playlist), switching to the finished file when that goes.
+    private let fromStart: Bool
+    /// Playing the in-progress recording's live playlist (not its file).
+    @Published private(set) var watchingLive = false
+    /// Where to carry on after a switch (live playlist ended → the file); no
+    /// resume question is asked then.
+    private var continueAt: Double?
+    private var liveRestarts = 0
+    private var liveEndObserver: NSObjectProtocol?
+    static let maxLiveRestarts = 3
 
-    init(recording: Recording, client: APIClient) {
+    init(recording: Recording, client: APIClient, fromStart: Bool = false) {
         self.recording = recording
         self.client = client
+        self.fromStart = fromStart
         player.allowsExternalPlayback = false
     }
 
@@ -92,10 +104,23 @@ final class RecordingPlayerModel: ObservableObject {
         resumePrompt = nil
         let client = client, id = recording.id, featureOn = positionsOn
         let positionTask = Task { featureOn ? await client.recordingPosition(id: id) : nil }
+        let watchLive = fromStart && client.info?.features.recordingWatchLive == true
         startupTask = Task { [self] in
             defer { preparing = false; startupTask = nil }
             do {
                 loadMarkers(generation: generation)
+                if watchLive {
+                    // C-L: the live playlist while it is being recorded; once it
+                    // has finished, the file below (from the start, or where
+                    // the live playlist left off).
+                    if case .watch(let watch) = try await client.recordingWatch(id: recording.id) {
+                        try Task.checkCancellation()
+                        guard !stopped else { return }
+                        try await installLive(watch, generation: generation)
+                        return
+                    }
+                    continueAt = continueAt ?? 0
+                }
                 PigTVSignpost.event("RecordingPlaybackRequest")
                 let playback = try await client.recordingPlayback(id: recording.id, preparing: { self.preparing = true })
                 try Task.checkCancellation()
@@ -136,6 +161,12 @@ final class RecordingPlayerModel: ObservableObject {
                 PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
                 // Where to resume: the server's position (0207) or this
                 // device's key; the viewer chooses before anything plays.
+                if let at = continueAt {
+                    // Carrying on from the live playlist (or "from start"): no question.
+                    continueAt = nil
+                    await beginPlayback(resumeAt: at > 1 ? at : nil, generation: generation)
+                    return
+                }
                 let featureOn = positionsOn
                 let server = featureOn ? await positionTask.value : nil
                 try Task.checkCancellation()
@@ -157,6 +188,60 @@ final class RecordingPlayerModel: ObservableObject {
                 canRetry = true
             }
         }
+    }
+
+    /// C-L: the in-progress recording's live playlist. The display mode comes
+    /// from the answer (never awaited from the asset, build 27); a failure, or
+    /// the playlist going away when the recording is finished, asks the server
+    /// again and carries on at the same position (`liveEnded`).
+    private func installLive(_ watch: RecordingWatch, generation: UUID) async throws {
+        let url = try client.playbackURL(watch.url)
+        try await Task.detached(priority: .userInitiated) {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try AVAudioSession.sharedInstance().setActive(true)
+        }.value
+        try Task.checkCancellation()
+        guard !stopped, self.generation == generation else { return }
+        let item = AVPlayerItem(url: url)
+        #if os(tvOS)
+        displayCriteria = watch.displayMode?.criteria()
+        #endif
+        statusObservation = item.observe(\.status, options: [.new]) { @Sendable [weak self] item, _ in
+            guard item.status == .failed else { return }
+            Task { @MainActor [weak self] in self?.liveEnded(generation: generation) }
+        }
+        liveEndObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification,
+                                                                 object: item, queue: .main) { @Sendable [weak self] _ in
+            MainActor.assumeIsolated { self?.liveEnded(generation: generation) }
+        }
+        watchingLive = true
+        player.replaceCurrentItem(with: item)
+        PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
+        let at = continueAt
+        continueAt = nil
+        await beginPlayback(resumeAt: (at ?? 0) > 1 ? at : nil, generation: generation)
+    }
+
+    /// What AVPlayer's failure handlers call; also the seam RealPlaybackTests
+    /// drives (a fixture cannot make AVPlayer fail on cue).
+    func handleLiveStreamEnded() { liveEnded(generation: generation) }
+
+    /// The live playlist stopped (finished and removed, or failed): start again
+    /// at the same position, which plays the file once the server says it has
+    /// finished. A few times at most, then an error with Retry.
+    private func liveEnded(generation: UUID) {
+        guard watchingLive, !stopped, self.generation == generation else { return }
+        let position = clearPlayer()
+        watchingLive = false
+        liveRestarts += 1
+        guard liveRestarts <= Self.maxLiveRestarts else {
+            error = "The recording stopped playing. Try again in a moment."
+            canRetry = true
+            return
+        }
+        continueAt = position ?? 0
+        started = false
+        start()
     }
 
     /// The viewer's answer to the resume question.
@@ -224,6 +309,8 @@ final class RecordingPlayerModel: ObservableObject {
 
     func retry() {
         guard canRetry, !stopped, startupTask == nil else { return }
+        liveRestarts = 0
+        watchingLive = false
         if let final = clearPlayer(), positionsOn {
             let client = client, id = recording.id
             Task { await client.saveRecordingPosition(id: id, seconds: final) }
@@ -301,6 +388,8 @@ final class RecordingPlayerModel: ObservableObject {
         if let observer { player.removeTimeObserver(observer) }
         observer = nil
         statusObservation = nil
+        if let liveEndObserver { NotificationCenter.default.removeObserver(liveEndObserver) }
+        liveEndObserver = nil
         var final: Double?
         if let time = player.currentItem?.currentTime().seconds, RecordingResume.shouldSave(time) {
             UserDefaults.standard.set(time, forKey: resumeKey)
@@ -332,8 +421,9 @@ struct RecordingPlayerScreen: View {
     private let onClose: (() -> Void)?
     @FocusState private var resumeFocused: Bool
 
-    init(recording: Recording, client: APIClient, onClose: (() -> Void)? = nil) {
-        _model = StateObject(wrappedValue: RecordingPlayerModel(recording: recording, client: client))
+    /// `fromStart` (C-L): a recording still in progress, played from its start.
+    init(recording: Recording, client: APIClient, fromStart: Bool = false, onClose: (() -> Void)? = nil) {
+        _model = StateObject(wrappedValue: RecordingPlayerModel(recording: recording, client: client, fromStart: fromStart))
         self.onClose = onClose
     }
 
