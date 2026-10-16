@@ -1,9 +1,10 @@
 # PigTV Apple client: blueprint
 
-**State:** app **1.0 (40)** with server **0207** (13 Oct 2026 device baseline). The 15 Oct
-[consistency and responsiveness review](../PigTV/docs/reviews/2026-10-15/REVIEW.md) records open guide-invalidation and
-recordings-freshness findings; no fixes have shipped from that review. The joint roadmap (Plan B: the Dispatcharr gaps, mostly server-side) is in
-[`../PigTV/blueprint.md`](../PigTV/blueprint.md) §4.
+**State:** app **1.0 (40)** with server **0207** is the 13 Oct device baseline. Builds **42–45** are committed for Mark to
+push, matching server 0208–0222: the 15 Oct review's fixes and Mark's 16 Oct bugs (42), the larger tvOS icon (43), watch a
+recording from the start while it records (44, C-L), recording rules and programme artwork (45, C-M, C-N). None is
+device-verified yet. The joint roadmap is [`../PigTV/blueprint.md`](../PigTV/blueprint.md) §4 and
+[`../PigTV/docs/reviews/2026-10-16/ROADMAP.md`](../PigTV/docs/reviews/2026-10-16/ROADMAP.md) (Wave 4 device checks).
 
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
 [`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
@@ -260,10 +261,10 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
 | `Models.swift`, `APIClient.swift` | Info/errors/resolve payloads, status decoding, URL/auth rules. Optional conflict envelope preserves the strict recording type. Status-aware responses support bounded recording polling. Diagnostics strip queries and retain bearer authentication. |
 | `AppModel.swift` | Auth and model construction, channel switching. Validated info is retained on the authenticated APIClient through restore/login/pairing and exposed in Settings; logout clears it. Rate-limit cooldown stops immediate repeat auth attempts. |
 | `PlaybackModel.swift`, `ContentView.swift`, `CustomPlayer.swift`, `PlayerShared.swift` (both platforms), `PlayerExtras.swift` (iOS channel panel and info overlay) | Player lifecycle, presentation, prompts and controls. `ready` means item installed; actual `.playing` supplies prior-play evidence. Recovery clears the item without permanently ending the model; `stop()` is terminal. Guards coalesce failures and reject stale callbacks/repeated appearances. Late resolve sessions still get released. A1.2: `AppModel.previousChannel` remembers the channel `switchPlayback(to:)` last switched away from; `returnToPreviousChannel()` swaps back to it. Exposed in the tvOS info overlay's action row as "Last channel" (hidden when there is none, or it equals the current channel); no remote shortcut — a long-press-Select alternative was considered and rejected as too fragile against the Button's own Select handling (see the comment in `CustomPlayer.swift`). |
-| `RecordingPlayback.swift`, `RecordingPlayer.swift` | Recording preparation/playback and skip/resume (tvOS custom recording player; iOS AVKit). Startup Task is retained/cancelled, checked after suspension points, and awaited before audio teardown. Generation checks reject stale callbacks after retry. 404 wording covers missing recordings and older servers without assuming either. |
+| `RecordingPlayback.swift`, `RecordingPlayer.swift` | Recording preparation/playback and skip/resume (tvOS custom recording player; iOS AVKit). Startup Task is retained/cancelled, checked after suspension points, and awaited before audio teardown. Generation checks reject stale callbacks after retry. 404 wording covers missing recordings and older servers without assuming either. **C-L (build 44):** `RecordingPlayerModel(fromStart:)` asks `recordings/{id}/watch` (polls its 202), plays the live master from the beginning with no resume question and the display mode from the answer (never awaited from the asset); when the live playlist fails or goes away it asks again and carries on in the finished file at the same position (≤ 3 times, then Retry). `handleLiveStreamEnded()` is the test seam. |
 | `GuideGrid*.swift` (A2.1) | UIKit guide grid, the only grid (tvOS since build 27; iPad since build 29, unlocked for touch). Keep navigation rules in `GuideGridMath` (unit-tested); horizontal offset changes only through `GuideGridCollectionView.setX` / the grid's animator. |
 | `BrowseModel.swift`, `GuideView.swift`, `ChannelArtwork.swift` | Guide/cache/artwork; avoid cross-row scroll feedback (previous rendering instability) and full guide reloads while navigating forward — the loaded window now **extends** in the background (`extendGuideForward`, build 33) instead. Gate artwork-index launch and preserve lightweight logo fetching. A1.1: guide paging is cursor-based (`limit=500`+`cursor`) when the server flag `guideCursor` is set, offset-based (`limit=50`+`offset`) otherwise; pages merge into `guide` via a persistent id set, not a per-page rebuild. When `guideVersion` is set, `refreshGuideIfStale` and the cached-guide launch path fetch `GET /api/library/guide/version` and skip the full reload when it matches the version saved with the guide (captured before that load started) and the loaded window still covers the next 12 hours (`GuideNavigation.guideStillCovers`, a pure function). |
-| `DVRModels.swift`, `RecordingsView.swift` | Recording states/actions and guide schedule identity; preserve milliseconds versus seconds. |
+| `DVRModels.swift`, `RecordingsView.swift` | Recording states/actions and guide schedule identity; preserve milliseconds versus seconds. Build 45: `RecordingRule`/`RuleBody`, `RuleChoices.sport` (league + both sides of "A v B", pure), the rules sheet in Recordings → Scheduled, and `image` artwork filling recording tiles (channel logo as fallback). "Watch from start" (44) is on the recording's page and the programme page while it records; "Record series" on the programme page and "Record every game" on a Sport event (45). |
 | `PigTVTests/ContractChecks.swift`, `Tools/test-contracts.sh` | Synthetic contract fixtures and local runner. Targeted simulator lifecycle tests live in `PigTVTests/PlaybackLifecycleTests.swift`; the standalone runner covers API/model fixtures. The scheme sets `PIGTV_SYNTHETIC_TESTS=1` so the test host cannot restore a saved real-server session. |
 
 C2 recovery uses actual playing evidence, allows one automatic attempt per user-initiated playback attempt, and coalesces failure callbacks. A second failure or failed resolve requires Retry; a 409 still requires explicit takeover. Mark confirmed return-to-guide behaviour on 21 September: background cleanup ends playback; foreground return must not automatically resume or reconnect the last channel. Automatic recovery applies only while the player remains active. A stream idle ≥60 seconds can be reclaimed on demand; the idle sweep is five minutes. Confirm AVPlayer paused-fetch behaviour on a real device.
@@ -272,7 +273,7 @@ C3: `APIClient.requestURL` rejects `?` in paths; use structured query items. A t
 
 ## 6. Using the server contract
 
-The contract itself (flags, frozen shapes, C-A…C-K) is [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
+The contract itself (flags, frozen shapes, C-A…C-N) is [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
 How this client applies it:
 - **Gate on flags**, and treat a missing flag as off; the C1/C2 paths also handle servers whose behaviour predates the flags.
   `ServerInfo` requires `apiVersion == 1`, `library` and `playbackResolve`.
@@ -284,6 +285,8 @@ How this client applies it:
 - Resolve always sends `capabilities.segmentedDelivery = true` and `heaac = true`; once per channel after a `'fmt?'` failure,
   `audioEncode`. A "transcode" strategy usually means a copy into HLS, not a re-encode.
 - Guide and marker times are **milliseconds**; favourites are written with the bare id and read from `library/favourites`.
+- Wave 4 features are each behind their flag: `recordingWatchLive` (C-L, and a row's `watch_live`), `recordingRules` (C-M),
+  `recordingArtwork` (C-N). The watch route's 409 is read by `recordingWatch` (`finished` → play the file).
 - A new endpoint this client calls needs a matching entry in the server's `test/api-404.test.js` → `APPLE_CLIENT_ROUTES`.
 
 ## 7. Deferred choices and crash lessons
