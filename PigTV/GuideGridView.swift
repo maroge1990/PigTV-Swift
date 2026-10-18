@@ -602,6 +602,11 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
                         with coordinator: UIFocusAnimationCoordinator) {
         let previous = context.previouslyFocusedIndexPath
         focused = context.nextFocusedIndexPath
+        // The planned row is spent once focus lands; from here the scroll keeps `focused` in view. 18 Oct (test team:
+        // a fast scroll pulled back to where it started): a fast swipe drops focus, scrolls on its own and lands focus
+        // on a row on screen without asking shouldUpdateFocus, so a row planned before the swipe clamped the landing
+        // scroll all the way back to it.
+        plannedRow = nil
         guard let next = focused, store.rows.indices.contains(next.section) else {
             pendingFocus = nil
             return

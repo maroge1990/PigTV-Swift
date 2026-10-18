@@ -111,8 +111,10 @@ struct HomeView: View {
         NavigationStack {
             ScrollViewReader { proxy in
             ScrollView(.vertical) {
+                // The page header sits outside the padded shelves: it insets itself (PigPageHeader).
+                VStack(alignment: .leading, spacing: HomeMetrics.sectionSpacing) {
+                header
                 LazyVStack(alignment: .leading, spacing: HomeMetrics.sectionSpacing) {
-                    header
                     if let hero = content.hero {
                         HomeHero(channel: hero, model: model, clock: clock,
                                  watch: { play(hero, from: [hero]) },
@@ -150,11 +152,7 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, HomeMetrics.pagePadding)
                 .padding(.bottom, 60)
-                #if os(tvOS)
-                // The tab bar is the page's title on the TV; a little air
-                // between it and the hero.
-                .padding(.top, 2)
-                #endif
+                }
             }
             .scrollClipDisabled()
             #if DEBUG

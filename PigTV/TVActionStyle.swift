@@ -158,6 +158,10 @@ struct PigBrandMark: View {
 /// The one page header every tab draws (16 Oct: Home, Guide, Sport, Recordings and Settings each had their own, so
 /// the pig and the title changed size, font or vanished between tabs). Pig mark, title, an optional secondary line
 /// (Home's and Guide's date), then trailing controls. Same mark and type on every tab of a platform.
+/// 18 Oct (test team: the pig and title still moved between tabs): the header also owns its placement. It insets itself
+/// from the page's leading edge by `PigPageHeaderMetrics.edge` and is always `rowHeight` tall, with taller trailing
+/// controls overflowing rather than re-centring the row, so a page places it at its top-leading corner with no padding of
+/// its own (PageHeaderPlacementUITests).
 struct PigPageHeader<Trailing: View>: View {
     let title: String
     var subtitle: Text? = nil
@@ -168,12 +172,15 @@ struct PigPageHeader<Trailing: View>: View {
             PigBrandMark(width: PigPageHeaderMetrics.markWidth, height: PigPageHeaderMetrics.markHeight)
             Text(title).font(GuideTypography.title).lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("page.header.title")
             if let subtitle {
                 subtitle.font(GuideTypography.body).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
             trailing
         }
+        .frame(height: PigPageHeaderMetrics.rowHeight)
+        .padding(.horizontal, PigPageHeaderMetrics.edge)
     }
 }
 
@@ -186,10 +193,15 @@ extension PigPageHeader where Trailing == EmptyView {
 nonisolated enum PigPageHeaderMetrics {
     static let markWidth: CGFloat = 58
     static let markHeight: CGFloat = 48
+    /// The row is the pig's height on every tab, whatever the trailing controls need.
+    static let rowHeight: CGFloat = markHeight
     #if os(tvOS)
     static let spacing: CGFloat = 14
+    /// From the safe area's leading edge (where Home and Sport already drew it).
+    static let edge: CGFloat = 0
     #else
     static let spacing: CGFloat = 10
+    static let edge: CGFloat = 20
     #endif
 }
 

@@ -7,7 +7,8 @@ import AVFoundation
 // between the new player and avkit, there are controls for both on screen …
 // the new player controls are a bit small"): AVKit's controls are off
 // (`showsPlaybackControls = false`) and PigTV's are the only ones:
-// - `TouchPlayerChrome`: top bar (Close, channel, **Channels**, **TV Guide**),
+// - `TouchPlayerChrome`: top bar (Close, channel, **Channels**; 18 Oct: no TV Guide pill, it only closed the player
+//   like Close does),
 //   centre transport (−15 s, play/pause, +15 s), and one bottom panel with
 //   the programme, a draggable scrub bar over the seekable window
 //   (`PlayerSeekWindow`), Go to live, and the actions (Favourite, Record,
@@ -16,7 +17,7 @@ import AVFoundation
 // - `PlayerChannelPanel`: the TV's side channel list, as a translucent side
 //   panel on iPad (regular width) or a bottom sheet on iPhone, opened from
 //   Channels; tap a row to switch (switchPlayback, which releases the old
-//   stream first). TV Guide closes the player and opens the Guide tab.
+//   stream first).
 
 /// The channel list: current channel highlighted and scrolled to.
 struct PlayerChannelPanel: View {
@@ -116,8 +117,6 @@ struct TouchPlayerChrome: View {
     @ObservedObject private var library: LibraryStore
     @ObservedObject private var artwork: ArtworkStore
     let close: () -> Void
-    /// Closes the player and shows the TV Guide tab.
-    let openGuide: () -> Void
     let openChannels: () -> Void
     let enterNumber: () -> Void
     /// Any interaction (keeps the controls up).
@@ -131,7 +130,7 @@ struct TouchPlayerChrome: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     init(playback: PlaybackModel, app: AppModel, browse: BrowseModel, pip: PiPHandle? = nil, close: @escaping () -> Void,
-         openGuide: @escaping () -> Void, openChannels: @escaping () -> Void, enterNumber: @escaping () -> Void,
+         openChannels: @escaping () -> Void, enterNumber: @escaping () -> Void,
          touch: @escaping () -> Void) {
         self.playback = playback
         self.app = app
@@ -140,7 +139,6 @@ struct TouchPlayerChrome: View {
         _library = ObservedObject(wrappedValue: browse.library)
         _artwork = ObservedObject(wrappedValue: browse.artwork)
         self.close = close
-        self.openGuide = openGuide
         self.openChannels = openChannels
         self.enterNumber = enterNumber
         self.touch = touch
@@ -192,9 +190,6 @@ struct TouchPlayerChrome: View {
                     touch(); openChannels()
                 }
                 .accessibilityIdentifier("player.channels")
-                PlayerPillButton(title: "TV Guide", icon: "calendar", prominent: true, action: openGuide)
-                    .accessibilityHint("Closes the player and opens the TV Guide")
-                    .accessibilityIdentifier("player.guide")
             }
             // iPhone upright: the channel gets its own line under the buttons.
             if !regular && !short { channelTitle.padding(.leading, 4) }

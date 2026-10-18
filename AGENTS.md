@@ -41,7 +41,7 @@ force-push.
 1. Before every commit: `sh Tools/test.sh push` passes, plus the iOS build when shared code changed. If something
    can't be run, say so in the commit message and to Mark.
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets), so Settings →
-   Version identifies the installed copy. Current: **45**.
+   Version identifies the installed copy. Current: **46**.
 3. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push (Mark's) and PR; a red run counts as a local
    failure.
 4. Device-dependent work ends with numbered test steps for Mark; nothing is *Verified* until he reports it. A simulator pass is

@@ -184,12 +184,16 @@ struct GuideView: View {
                     } else {
                         gridView()
                     }
-                }.padding(.vertical, slim ? 4 : 12)
+                }
+                // No top inset under the header: it sits at the same corner on every tab (PigPageHeader).
+                .padding(.top, slim ? 4 : 0).padding(.bottom, slim ? 4 : 12)
             }
             #if os(iOS)
             // Landscape iPhone: the grid gets the height (every control is in
             // the slim bar); rotate to portrait to reach the other tabs.
             .toolbar(slim ? .hidden : .automatic, for: .tabBar)
+            // No empty navigation bar above the header, as on every other tab (it put the Guide's header lower).
+            .toolbar(.hidden, for: .navigationBar)
             #endif
             .buttonStyle(GuideFilterStyle())
             // The app's page behind the guide (build 28): tvOS otherwise
@@ -382,12 +386,18 @@ struct GuideView: View {
             // measures both layouts: part of the first visit's stall.
             regularHeader
             #else
-            ViewThatFits(in: .horizontal) {
-                regularHeader
+            // 18 Oct (test team): an iPhone in portrait fitted the regular header, so "Search" kept its text and
+            // wrapped onto a second line. Compact widths always take the icon-only header.
+            if compact {
                 phoneHeader
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    regularHeader
+                    phoneHeader
+                }
             }
             #endif
-        }.padding(.horizontal, 24)
+        }
     }
 
     private var regularHeader: some View {

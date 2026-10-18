@@ -87,7 +87,7 @@ struct RecordingsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                PigPageHeader(title: "Recordings").padding(.horizontal, RecordingsMetrics.pagePadding)
+                PigPageHeader(title: "Recordings")
                 #if !os(tvOS)
                 sectionPicker
                 #endif

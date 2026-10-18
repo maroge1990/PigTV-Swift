@@ -478,10 +478,6 @@ struct PlayerScreen: View {
             if chromeVisible, let browse = app.browse {
                 TouchPlayerChrome(playback: playback, app: app, browse: browse, pip: pip,
                                   close: { dismiss() },
-                                  openGuide: {
-                                      app.requestedTab = "guide"
-                                      dismiss()
-                                  },
                                   openChannels: { showingGuide = true; lastInput = Date() },
                                   enterNumber: { enteringNumber = true; lastInput = Date() },
                                   touch: { lastInput = Date() })

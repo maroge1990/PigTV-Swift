@@ -43,6 +43,11 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
 - `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details;
   build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h
   of offline fixture data, no server needed).
+- `GuideFastScrollUITests` (build 46): on 300 channels, holding Down then Up leaves focus on a row on screen, not pulled
+  back to the starting row (the fast swipe's landing scroll was clamped to a stale planned row).
+- `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all five tabs.
+- `TouchLayoutUITests` (build 46, iOS only, skips on tvOS): the iPhone Guide's Search is icon-only; the touch player has no
+  TV Guide button (needs the review movie from `Tools/generate-brand-review-media.sh`).
 - `HomeUITests`: Home opens first; Down reaches Watch, then a card.
 - `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page; build 33: an upcoming
   event's secondary channel offers Record/Watch when it starts instead of tuning immediately.

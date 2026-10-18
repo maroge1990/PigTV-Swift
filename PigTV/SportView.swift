@@ -66,8 +66,10 @@ struct SportView: View {
             ScrollView(.vertical) {
                 // Lazy: with 200+ events (most of them replays) only the
                 // shelves near the screen are built.
+                // The page header sits outside the padded shelves: it insets itself (PigPageHeader).
+                VStack(alignment: .leading, spacing: SportMetrics.sectionSpacing) {
+                header
                 LazyVStack(alignment: .leading, spacing: SportMetrics.sectionSpacing) {
-                    header
                     SportPendingBanner(app: app)
                     if !leagues.isEmpty {
                         chips(leagues, chosen: chosen)
@@ -89,6 +91,7 @@ struct SportView: View {
                 }
                 .padding(.horizontal, SportMetrics.pagePadding)
                 .padding(.bottom, 60)
+                }
             }
             .scrollClipDisabled()
             #if DEBUG

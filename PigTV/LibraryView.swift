@@ -69,11 +69,12 @@ struct LibrarySettings: View {
         // the guide's header style and its cell surfaces for every row.
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
+                // At the page's corner like every tab's header (it insets itself); the rows keep their own margin.
                 PigPageHeader(title: "Settings")
                 settingsContent
+                    .frame(maxWidth: 1100, alignment: .leading)
+                    .padding(.horizontal, 48).padding(.bottom, 24)
             }
-            .frame(maxWidth: 1100, alignment: .leading)
-            .padding(.horizontal, 48).padding(.vertical, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         // The app's page, not the system's blurred backdrop (build 28).
@@ -87,7 +88,7 @@ struct LibrarySettings: View {
         #else
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
-                PigPageHeader(title: "Settings").padding(.horizontal, 20).padding(.top, 8)
+                PigPageHeader(title: "Settings")
                 Form { settingsContent }
             }
                 .toolbar(.hidden, for: .navigationBar)
