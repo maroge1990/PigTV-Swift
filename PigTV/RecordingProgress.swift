@@ -2,8 +2,13 @@ import Foundation
 
 // Resume position and watched state of a recording, in one place for the
 // Recordings page and Home. With server 0207 (`features.recordingPositions`)
-// the server's per-login values are used; an older server has none, so the
-// player's per-device UserDefaults key (`pigtv.resume.<id>`) is the source.
+// the server's per-login values are used; an older server has none (or the
+// request failed), so the player's saved position on this device is the source.
+// A1 (build 47): that key is scoped to the server and account the recording
+// belongs to (`pigtv.resume.<scope>.<id>`), because recording ids are per
+// server: recording 42 on one server or login must never resume another's.
+// The old unscoped `pigtv.resume.<id>` keys cannot say whose they were and are
+// deleted, never read.
 
 nonisolated struct RecordingProgress: Equatable, Sendable {
     /// 0...1 of a partly watched recording, or nil (not started, finished or live).
@@ -13,8 +18,6 @@ nonisolated struct RecordingProgress: Equatable, Sendable {
 }
 
 nonisolated extension Recording {
-    static func localResumeKey(_ id: Int) -> String { "pigtv.resume.\(id)" }
-
     /// `serverPositions`: the server advertises `recordingPositions`. `local`
     /// reads the saved position (seconds) for an id on this device.
     func progress(serverPositions: Bool, local: (Int) -> Double) -> RecordingProgress {

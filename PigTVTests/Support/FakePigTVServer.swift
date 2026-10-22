@@ -169,9 +169,9 @@ final class FakePigTVServer: @unchecked Sendable {
     }
 
     /// An APIClient for this server (token "fixture").
-    @MainActor func client(extraFeatures: String = "", warmingEnabled: Bool? = nil) throws -> APIClient {
+    @MainActor func client(extraFeatures: String = "", warmingEnabled: Bool? = nil, accountID: Int? = 1) throws -> APIClient {
         APIClient(address: try ServerAddress(http.baseURL), token: "fixture",
-                  info: try Self.info(extraFeatures: extraFeatures, warmingEnabled: warmingEnabled))
+                  info: try Self.info(extraFeatures: extraFeatures, warmingEnabled: warmingEnabled), accountID: accountID)
     }
 
     static func decision(session: String, playlist: String = "master.m3u8", fps: String? = "25/1",

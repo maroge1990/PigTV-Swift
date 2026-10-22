@@ -61,6 +61,9 @@ private nonisolated final class ArtworkRedirects: NSObject, URLSessionTaskDelega
 final class APIClient {
     let address: ServerAddress
     let info: ServerInfo?
+    /// A1: the signed-in account's id (`auth/me`), which scopes this device's saved
+    /// recording positions; nil before sign-in.
+    let accountID: Int?
     private let token: String?
     private let session: URLSession
     // Keyed by the canonical artwork key (server-qualified, token removed).
@@ -88,7 +91,8 @@ final class APIClient {
     }()
 
     init(address: ServerAddress, token: String? = nil, session: URLSession? = nil, info: ServerInfo? = nil,
-         artworkStore: ArtworkDiskStore = .shared) {
+         accountID: Int? = nil, artworkStore: ArtworkDiskStore = .shared) {
+        self.accountID = accountID
         self.artworkStore = artworkStore
         // A test's injected session carries its URLProtocol stubs; artwork
         // goes through the same stubs.
@@ -107,6 +111,11 @@ final class APIClient {
     }
 
     deinit { session.invalidateAndCancel() }
+
+    /// A1: this device's saved-position key for a recording on this server and account.
+    func localResumeKey(_ recordingID: Int) -> String? {
+        Recording.localResumeKey(recordingID, address: address, accountID: accountID)
+    }
 
     func requestURL(_ path: String, query: [URLQueryItem] = []) throws -> URL {
         guard !path.contains("?"), !path.contains("#"), !path.contains(".."), !path.hasPrefix("/") else {

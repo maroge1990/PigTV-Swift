@@ -67,7 +67,9 @@ final class RecordingPlayerModel: ObservableObject {
         player.allowsExternalPlayback = false
     }
 
-    private var resumeKey: String { "pigtv.resume.\(recording.id)" }
+    /// A1: scoped to this server and account (nil: nothing local is read or saved).
+    private var resumeKey: String? { client.localResumeKey(recording.id) }
+    private func saveLocal(_ seconds: Double) { if let resumeKey { UserDefaults.standard.set(seconds, forKey: resumeKey) } }
 
     #if DEBUG
     func showReviewStatus(_ state: String) {
@@ -171,7 +173,7 @@ final class RecordingPlayerModel: ObservableObject {
                 let server = featureOn ? await positionTask.value : nil
                 try Task.checkCancellation()
                 guard !stopped, error == nil else { return }
-                let local = UserDefaults.standard.double(forKey: resumeKey)
+                let local = resumeKey.map { UserDefaults.standard.double(forKey: $0) } ?? 0
                 let known = RecordingResume.source(featureOn: featureOn, server: server, local: local)
                 if let at = RecordingResume.prompt(position: known.position, watched: known.watched,
                                                    duration: recording.duration_sec, featureOn: featureOn) {
@@ -281,7 +283,7 @@ final class RecordingPlayerModel: ObservableObject {
     /// Saves the current time (local key and, with 0207, the server). Never 0.
     private func savePositionNow() {
         guard let seconds = player.currentItem?.currentTime().seconds, RecordingResume.shouldSave(seconds) else { return }
-        UserDefaults.standard.set(seconds, forKey: resumeKey)
+        saveLocal(seconds)
         lastServerSave = seconds
         guard positionsOn else { return }
         let client = client, id = recording.id
@@ -322,7 +324,7 @@ final class RecordingPlayerModel: ObservableObject {
 
     private func tick(_ seconds: Double) {
         guard seconds.isFinite else { return }
-        if Int(seconds) % 5 == 0 { UserDefaults.standard.set(seconds, forKey: resumeKey) }
+        if Int(seconds) % 5 == 0 { saveLocal(seconds) }
         if positionsOn, RecordingResume.dueForPeriodicSave(now: seconds, lastSaved: lastServerSave) {
             lastServerSave = seconds
             let client = client, id = recording.id
@@ -392,7 +394,7 @@ final class RecordingPlayerModel: ObservableObject {
         liveEndObserver = nil
         var final: Double?
         if let time = player.currentItem?.currentTime().seconds, RecordingResume.shouldSave(time) {
-            UserDefaults.standard.set(time, forKey: resumeKey)
+            saveLocal(time)
             final = time
         }
         player.pause()

@@ -56,6 +56,10 @@ final class AppModel: ObservableObject {
     private var pairingTask: Task<Void, Never>?
     private var authGeneration = UUID()
     private var currentPlayback: PlaybackModel?
+
+    /// A1 (build 47): saved recording positions are scoped to server and account from
+    /// now on; the old unscoped ones cannot be attributed and are deleted, never read.
+    init() { Recording.retireLegacyResumeKeys() }
     var loggedIn: Bool { user != nil }
 
     func restore() async {
@@ -72,7 +76,7 @@ final class AppModel: ObservableObject {
             let info: ServerInfo = try await candidate.request("info")
             try info.validate()
             let user: User = try await candidate.request("auth/me")
-            let authenticated = APIClient(address: address, token: token, info: info)
+            let authenticated = APIClient(address: address, token: token, info: info, accountID: user.id)
             self.client = authenticated
             self.serverInfo = info
             browse?.retirePrivateCaches()
@@ -139,10 +143,11 @@ final class AppModel: ObservableObject {
     }
 
     private func accept(token: String, address: ServerAddress, info: ServerInfo, user: User? = nil) async throws {
-        let candidate = APIClient(address: address, token: token, info: info)
+        let probe = APIClient(address: address, token: token, info: info)
         let resolvedUser: User
         if let user { resolvedUser = user }
-        else { resolvedUser = try await candidate.request("auth/me") }
+        else { resolvedUser = try await probe.request("auth/me") }
+        let candidate = APIClient(address: address, token: token, info: info, accountID: resolvedUser.id)
         try keychain.save(token: token, for: address)
         UserDefaults.standard.set(address.url.absoluteString, forKey: "pigtv.server")
         serverText = address.url.absoluteString
@@ -473,14 +478,14 @@ final class AppModel: ObservableObject {
     func injectHomeFixture(firstRun: Bool = false) {
         guard let address = try? ServerAddress("http://127.0.0.1:3000"),
               let info = try? JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true}}"#.utf8)) else { return }
-        let client = APIClient(address: address, token: "fixture", info: info)
-        let model = BrowseModel(client: client)
+        let client = APIClient(address: address, token: "fixture", info: info, accountID: 1)
+        let model = BrowseModel(client: client, accountID: 1)
         model.isFixture = true
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(logos: true), to: GuideFixtures.requestedCount)
         if !firstRun {
             model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
             model.recent = GuideFixtures.recent(from: model.guide).map(model.asChannel)
-            model.recordings = GuideFixtures.recordings()
+            model.recordings = GuideFixtures.recordings(client: client)
             lastWatched = GuideFixtures.lastWatched(from: model.guide)
         } else {
             lastWatched = nil

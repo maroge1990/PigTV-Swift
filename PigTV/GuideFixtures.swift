@@ -203,7 +203,7 @@ enum GuideFixtures {
         model.schedules = (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
     }
 
-    static func recordings() -> [Recording] {
+    static func recordings(client: APIClient) -> [Recording] {
         let now = Date().timeIntervalSince1970 * 1000
         let hour = 3_600_000.0
         let rows = [
@@ -217,7 +217,7 @@ enum GuideFixtures {
         // The fixture server has no `recordingPositions`, so progress comes
         // from this device's saved positions (as on an older server).
         for (id, seconds) in [(30, 600.0), (29, 4100.0), (28, 3290.0)] {
-            UserDefaults.standard.set(seconds, forKey: Recording.localResumeKey(id))
+            if let key = client.localResumeKey(id) { UserDefaults.standard.set(seconds, forKey: key) }
         }
         return rows.compactMap { try? JSONDecoder().decode(Recording.self, from: Data($0.utf8)) }
     }

@@ -677,7 +677,7 @@ final class BrowseModel: ObservableObject {
     /// them, else this device's saved position.
     func progress(for recording: Recording) -> RecordingProgress {
         recording.progress(serverPositions: usesServerPositions) {
-            UserDefaults.standard.double(forKey: Recording.localResumeKey($0))
+            client.localResumeKey($0).map { UserDefaults.standard.double(forKey: $0) } ?? 0
         }
     }
 

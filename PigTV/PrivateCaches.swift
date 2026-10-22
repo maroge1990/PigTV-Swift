@@ -25,6 +25,32 @@ nonisolated struct CacheScope: Equatable, Sendable {
     }
 }
 
+/// A1 (build 47): this device's saved recording positions (`RecordingProgress.swift`) are private
+/// per server and account too: recording ids are per server, so a key without both let one login's
+/// position resume another's recording with the same id.
+nonisolated extension Recording {
+    /// This device's saved-position key for recording `id` on `address` as `accountID`;
+    /// nil without a known account (then nothing local is read or saved).
+    static func localResumeKey(_ id: Int, address: ServerAddress, accountID: Int?) -> String? {
+        guard let accountID else { return nil }
+        let scope = SHA256.hash(data: Data("resume|\(address.url.absoluteString)|\(accountID)".utf8))
+            .prefix(8).map { String(format: "%02x", $0) }.joined()
+        return "pigtv.resume.\(scope).\(id)"
+    }
+
+    /// A1: delete the unscoped `pigtv.resume.<id>` keys of builds before 47. Returns how many went.
+    @discardableResult
+    static func retireLegacyResumeKeys(in defaults: UserDefaults = .standard) -> Int {
+        let legacy = defaults.dictionaryRepresentation().keys.filter { key in
+            guard key.hasPrefix("pigtv.resume.") else { return false }
+            let rest = key.dropFirst("pigtv.resume.".count)
+            return !rest.isEmpty && rest.allSatisfy(\.isNumber)
+        }
+        legacy.forEach(defaults.removeObject(forKey:))
+        return legacy.count
+    }
+}
+
 /// One account's guide cache file. Sign-out (or switching server/account)
 /// retires the store: the file is deleted and any save still in flight from
 /// the old session is dropped, so a late callback cannot recreate the file

@@ -42,6 +42,11 @@ final class RealPlaybackTests: XCTestCase {
                 GuideProgramme(title: "Next Up", description: nil, startTime: now + 600_000, endTime: now + 1_800_000)]
     }
 
+    /// A1: this device's saved-position key for a recording on `server` (account 1, as `client()` signs in).
+    private static func resumeKey(_ server: FakePigTVServer, _ id: Int) -> String {
+        ((try? server.client())?.localResumeKey(id)) ?? "pigtv.resume.unscoped"
+    }
+
     private func requireFixture() throws {
         guard HLSFixture.isComplete else {
             XCTFail("The HLS fixture is missing from the test bundle: \(HLSFixture.files.filter { HLSFixture.contents[$0] == nil })")
@@ -198,8 +203,8 @@ final class RealPlaybackTests: XCTestCase {
         try requireFixture()
         let server = try FakePigTVServer(markers: .init(status: 200, contentType: "application/json",
                                                         body: Data(Self.oneBreak.utf8), delay: 10))
-        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242)) }
         let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
         let began = Date()
         playback.start()
@@ -221,8 +226,8 @@ final class RealPlaybackTests: XCTestCase {
         try requireFixture()
         let server = try FakePigTVServer(markers: .init(status: 200, contentType: "application/json",
                                                         body: Data(Self.oneBreak.utf8), delay: 2))
-        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242)) }
         let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
         playback.autoSkip = false
         let began = Date()
@@ -241,8 +246,8 @@ final class RealPlaybackTests: XCTestCase {
     func testRecordingPlaysWhenMarkersFail() async throws {
         try requireFixture()
         let server = try FakePigTVServer(markers: .json(#"{"error":"boom"}"#, status: 500))
-        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242)) }
         let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
         playback.start()
         try await waitFor("the recording to play") { playback.hasPlayed }
@@ -257,8 +262,8 @@ final class RealPlaybackTests: XCTestCase {
         try requireFixture()
         let server = try FakePigTVServer(markers: .init(status: 200, contentType: "application/json",
                                                         body: Data(Self.oneBreak.utf8), delay: 1))
-        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242") }
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242)) }
         let playback = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
         playback.start()
         await playback.stop()
@@ -278,9 +283,9 @@ final class RealPlaybackTests: XCTestCase {
         let server = try FakePigTVServer()
         let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4242,"title":"Harness","status":"completed","duration_sec":6}"#.utf8))
         let autoSkip = UserDefaults.standard.object(forKey: "pigtv.recordings.autoSkip")
-        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242))
         defer {
-            UserDefaults.standard.removeObject(forKey: "pigtv.resume.4242")
+            UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242))
             UserDefaults.standard.set(autoSkip, forKey: "pigtv.recordings.autoSkip")
         }
         let playback = RecordingPlayerModel(recording: recording, client: try server.client())
@@ -304,6 +309,33 @@ final class RealPlaybackTests: XCTestCase {
 
     private static let liveWatch = #"{"url":"/api/recordings/4243/master.m3u8","container":"hls","recording":true,"videoRange":"SDR","fps":"25/1","durationSec":6}"#
 
+    /// A1 (build 47): with server positions on and the position request failing (the fake has
+    /// no route: 404), the local fallback is this server and account's only. Another account's
+    /// saved position for the same recording id is never offered; this account's is.
+    func testLocalResumeFallbackIsScopedToTheAccount() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let positions = #""recordingPositions":true"#
+        let mine = try XCTUnwrap(try server.client(extraFeatures: positions, accountID: 1).localResumeKey(4242))
+        let theirs = try XCTUnwrap(try server.client(extraFeatures: positions, accountID: 2).localResumeKey(4242))
+        UserDefaults.standard.set(600.0, forKey: mine)
+        UserDefaults.standard.removeObject(forKey: theirs)
+        defer { [mine, theirs].forEach(UserDefaults.standard.removeObject(forKey:)) }
+
+        let other = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client(extraFeatures: positions, accountID: 2))
+        other.start()
+        try await waitFor("the other account's recording to play", timeout: 8) { other.hasPlayed }
+        XCTAssertNil(other.resumePrompt, "another account's position is not offered")
+        await other.stop()
+
+        let own = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client(extraFeatures: positions, accountID: 1))
+        own.start()
+        try await waitFor("the resume question", timeout: 8) { own.resumePrompt != nil }
+        XCTAssertEqual(own.resumePrompt, 600)
+        await own.stop()
+        server.http.stop()
+    }
+
     private func inProgressRecording() throws -> Recording {
         try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4243,"title":"Early Start","status":"recording","watch_live":true}"#.utf8))
     }
@@ -320,8 +352,8 @@ final class RealPlaybackTests: XCTestCase {
         let server = try FakePigTVServer(watch: { n in
             n == 1 ? .json(#"{"status":"preparing","retryAfterSec":1}"#, status: 202) : .json(Self.liveWatch)
         })
-        UserDefaults.standard.set(3.0, forKey: "pigtv.resume.4243")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        UserDefaults.standard.set(3.0, forKey: Self.resumeKey(server, 4243))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(),
                                             client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
         playback.start()
@@ -346,8 +378,8 @@ final class RealPlaybackTests: XCTestCase {
     func testWatchFromStartOfAFinishedRecordingPlaysTheFile() async throws {
         try requireFixture()
         let server = try FakePigTVServer(watch: { _ in .json(#"{"error":"Recording is finished: play it instead","finished":true}"#, status: 409) })
-        UserDefaults.standard.set(3.0, forKey: "pigtv.resume.4243")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        UserDefaults.standard.set(3.0, forKey: Self.resumeKey(server, 4243))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(),
                                             client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
         playback.start()
@@ -367,8 +399,8 @@ final class RealPlaybackTests: XCTestCase {
         let server = try FakePigTVServer(watch: { _ in
             finished.value ? .json(#"{"error":"Recording is finished: play it instead","finished":true}"#, status: 409) : .json(Self.liveWatch)
         })
-        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(),
                                             client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
         playback.start()
@@ -391,8 +423,8 @@ final class RealPlaybackTests: XCTestCase {
     func testWithoutTheFlagFromStartUsesThePlaybackRoute() async throws {
         try requireFixture()
         let server = try FakePigTVServer(watch: { _ in .json(Self.liveWatch) })
-        UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243")
-        defer { UserDefaults.standard.removeObject(forKey: "pigtv.resume.4243") }
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(), client: try server.client(), fromStart: true)
         playback.start()
         try await waitFor("the file to play", timeout: 12) { playback.hasPlayed }

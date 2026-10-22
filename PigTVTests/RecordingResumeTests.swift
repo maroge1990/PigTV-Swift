@@ -62,4 +62,44 @@ final class RecordingResumeTests: XCTestCase {
         let reply = try JSONDecoder().decode(RecordingPosition.self, from: Data(#"{"position_sec":812.5,"watched":false,"updated_at":"2026-10-10T01:02:03Z"}"#.utf8))
         XCTAssertEqual(reply, RecordingPosition(position_sec: 812.5, watched: false))
     }
+
+    // MARK: A1 (build 47): this device's saved positions are per server and account
+
+    func testLocalKeysAreScopedToServerAndAccount() throws {
+        let home = try ServerAddress("http://192.168.1.235:3000")
+        let other = try ServerAddress("http://10.0.0.2:3000")
+        let key = { (address: ServerAddress, account: Int?) in Recording.localResumeKey(42, address: address, accountID: account) }
+        XCTAssertNotNil(key(home, 1))
+        XCTAssertNotEqual(key(home, 1), key(other, 1), "recording 42 on another server is another recording")
+        XCTAssertNotEqual(key(home, 1), key(home, 2), "another login on the same server")
+        XCTAssertEqual(key(home, 1), key(try ServerAddress("http://192.168.1.235:3000/"), 1), "the canonical address")
+        XCTAssertNil(key(home, nil), "no account: nothing local")
+        XCTAssertFalse(key(home, 1)!.contains("192.168"), "the address is not in the key")
+        XCTAssertTrue(key(home, 1)!.hasSuffix(".42"))
+    }
+
+    func testLegacyUnscopedKeysAreRetiredAndOthersKept() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "pigtv.tests.resume.\(UUID().uuidString)"))
+        let scoped = try XCTUnwrap(Recording.localResumeKey(42, address: try ServerAddress("http://127.0.0.1:3000"), accountID: 1))
+        defaults.set(900.0, forKey: "pigtv.resume.42")
+        defaults.set(900.0, forKey: scoped)
+        defaults.set(true, forKey: "pigtv.recordings.autoSkip")
+        XCTAssertEqual(Recording.retireLegacyResumeKeys(in: defaults), 1)
+        XCTAssertNil(defaults.object(forKey: "pigtv.resume.42"), "an unscoped position is never read again")
+        XCTAssertEqual(defaults.double(forKey: scoped), 900)
+        XCTAssertTrue(defaults.bool(forKey: "pigtv.recordings.autoSkip"))
+    }
+
+    @MainActor
+    func testRecordingsProgressReadsOnlyThisAccountsPositions() throws {
+        let address = try ServerAddress("http://127.0.0.1:3999")
+        let first = APIClient(address: address, token: "a", accountID: 1)
+        let second = APIClient(address: address, token: "b", accountID: 2)
+        let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":424242,"title":"T","status":"completed","duration_sec":3600}"#.utf8))
+        let key = try XCTUnwrap(first.localResumeKey(424242))
+        UserDefaults.standard.set(600.0, forKey: key)
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        XCTAssertNotNil(BrowseModel(client: first, accountID: 1).progress(for: recording).fraction)
+        XCTAssertNil(BrowseModel(client: second, accountID: 2).progress(for: recording).fraction, "another login sees nothing")
+    }
 }
