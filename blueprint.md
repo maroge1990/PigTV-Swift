@@ -8,6 +8,8 @@ icon-only Search in the iPhone Guide, no TV Guide pill in the touch player, and 
 None is device-verified yet. The joint roadmap is [`../PigTV/blueprint.md`](../PigTV/blueprint.md) §4 and
 [`../PigTV/docs/reviews/2026-10-16/ROADMAP.md`](../PigTV/docs/reviews/2026-10-16/ROADMAP.md) (Wave 4 device checks).
 
+**22 Oct review:** [newest-first intent/outcome assessment](../PigTV/docs/reviews/2026-10-21/REVIEW.md) distinguishes build 46 corrections from build 42 attempts. Follow-ups: scope local resume, make Top Shelf logout publication generation-safe, display rule errors, propagate guide corrections to visible cells, and maintain the artwork disk budget during use. Fresh synthetic contracts: 243 passed; interrupted simulator checks remain unconfirmed. No new device acceptance. [Repair handoff](../PigTV/docs/reviews/2026-10-21/HANDOFF-PROMPT.md).
+
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
 [`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
 and known limits. What the server promises is in [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
@@ -321,6 +323,8 @@ real-playback harness exercising them. Verified on the TV (R2.15: no crashes acr
 a recording).
 
 ## 8. Known limitations
+
+- Artwork disk cache is pruned only at store creation; subsequent writes can exceed 50 MB until the next launch. Coalesced pruning during use remains a follow-up (21 Oct review).
 
 - **Never checked on a device:** an HEVC recording (iPad/iPhone recordings use AVKit, `RecordingNativePlayer`); audio and
   subtitle track selection (no suitable channel); whether AVPlayer stops fetching while paused (C2 assumes it).
