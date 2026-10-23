@@ -10,6 +10,8 @@ None is device-verified yet. The joint roadmap is [`../PigTV/blueprint.md`](../P
 
 **22 Oct review:** [newest-first intent/outcome assessment](../PigTV/docs/reviews/2026-10-21/REVIEW.md) distinguishes build 46 corrections from build 42 attempts. Follow-ups: scope local resume, make Top Shelf logout publication generation-safe, display rule errors, propagate guide corrections to visible cells, and maintain the artwork disk budget during use. Fresh synthetic contracts: 243 passed; interrupted simulator checks remain unconfirmed. No new device acceptance. [Repair handoff](../PigTV/docs/reviews/2026-10-21/HANDOFF-PROMPT.md).
 
+**23 Oct fix review:** build47 scopes local resume consistently (A1 addressed in source). A2–A5 remain open; independent simulator/device acceptance is still pending. [Review of supplied fixes](../PigTV/docs/reviews/2026-10-23/FIX-REVIEW.md).
+
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
 [`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
 and known limits. What the server promises is in [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
