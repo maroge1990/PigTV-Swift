@@ -66,6 +66,8 @@ final class BrowseModel: ObservableObject {
     private var guideExtending = false
     // Private to this server and account (R14); retired on sign-out.
     private let guideCache: GuideCacheStore
+    /// A2 (build 48): the Top Shelf generation this session publishes under.
+    let topShelfGeneration = TopShelfPublication.shared.current
 
     init(client: APIClient, accountID: Int? = nil, guideCacheDirectory: URL = GuideCacheStore.defaultDirectory) {
         self.client = client
@@ -75,7 +77,11 @@ final class BrowseModel: ObservableObject {
 
     /// Sign-out or a server/account switch: delete this account's guide cache
     /// and drop any save still in flight.
-    func retirePrivateCaches() { guideCache.retire() }
+    func retirePrivateCaches() {
+        guideCache.retire()
+        // A2: and its Top Shelf publication: nothing it still exports is written.
+        if topShelfGeneration == TopShelfPublication.shared.current { TopShelfPublication.shared.retire() }
+    }
 
     // Loads the first page immediately, then keeps paging in the background
     // until every channel is present. Filters and search then work locally,

@@ -143,4 +143,75 @@ final class TopShelfCardTests: XCTestCase {
     }
 
     private func png(_ image: UIImage) -> Data? { image.pngData() }
+
+    // MARK: A2 (build 48): nothing the signed-out session still has in flight is published
+
+    private func a2Container() throws -> URL {
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent("a2-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        return container
+    }
+
+    private func a2Snapshot(_ name: String) -> TopShelfSnapshot {
+        let entry = TopShelfSnapshot.Entry(id: "fox", sourceId: 1, name: name, number: nil,
+                                           logo: URL(string: "http://tv.local:3000/api/logo/fox"), programmes: [
+            .init(title: "AFL Live", start: now.addingTimeInterval(-600), end: now.addingTimeInterval(3000))])
+        return TopShelfSnapshot(kind: "favourites", channels: [entry], savedAt: now)
+    }
+
+    private func a2Files(_ container: URL) -> [String] {
+        let snapshot = TopShelfSnapshot.fileURL(in: container).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let cards = (TopShelfCards.directory(in: container)).flatMap { try? FileManager.default.contentsOfDirectory(atPath: $0.path) } ?? []
+        return (snapshot ? ["snapshot"] : []) + cards
+    }
+
+    func testSignOutWhileACardWaitsForItsLogoPublishesNothing() async throws {
+        let container = try a2Container()
+        defer { try? FileManager.default.removeItem(at: container) }
+        TopShelfExport.lastWritten = nil
+        var release: CheckedContinuation<Void, Never>?
+        var asked = false
+        let loader: TopShelfCardExport.LogoLoader = { _ in
+            asked = true
+            await withCheckedContinuation { release = $0 }
+            return self.image(CGSize(width: 160, height: 72), colour: .systemGreen)
+        }
+        TopShelfCardExport.schedule(a2Snapshot("Old Account"), logoSources: ["1:fox": "/api/logo/fox"], loader: loader,
+                                    container: container, generation: TopShelfPublication.shared.current)
+        for _ in 0..<500 where release == nil { try await Task.sleep(nanoseconds: 2_000_000) }
+        XCTAssertTrue(asked && release != nil, "the render is waiting for the logo")
+        TopShelfExport.clear(container: container) // sign-out
+        release?.resume()
+        await TopShelfCardExport.finish()
+        await TopShelfPublication.shared.idle()
+        XCTAssertEqual(a2Files(container), [], "no snapshot and no card of the signed-out account")
+    }
+
+    func testASaveFromARetiredSessionIsDropped() async throws {
+        let container = try a2Container()
+        defer { try? FileManager.default.removeItem(at: container) }
+        TopShelfExport.lastWritten = nil
+        let old = TopShelfPublication.shared.current
+        TopShelfExport.clear(container: container)
+        TopShelfExport.save(a2Snapshot("Late Guide"), generation: old, container: container) // a late guide/favourites export
+        try await Task.sleep(nanoseconds: 200_000_000) // time for a detached write to reach the file queue
+        await TopShelfPublication.shared.idle()
+        XCTAssertEqual(a2Files(container), [])
+        // The next session publishes as usual.
+        TopShelfExport.save(a2Snapshot("New Account"), generation: TopShelfPublication.shared.current, container: container)
+        for _ in 0..<50 where a2Files(container).isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
+        await TopShelfPublication.shared.idle()
+        XCTAssertEqual(a2Files(container), ["snapshot"])
+        XCTAssertEqual(TopShelfSnapshot.read(container: container)?.channels.first?.name, "New Account")
+    }
+
+    func testAClearRightAfterASaveLeavesNothing() async throws {
+        let container = try a2Container()
+        defer { try? FileManager.default.removeItem(at: container) }
+        TopShelfExport.lastWritten = nil
+        TopShelfExport.save(a2Snapshot("Old Account"), generation: TopShelfPublication.shared.current, container: container)
+        TopShelfExport.clear(container: container)
+        for _ in 0..<20 { await TopShelfPublication.shared.idle(); try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(a2Files(container), [], "the clear runs after the save it follows, never before")
+    }
 }

@@ -239,16 +239,22 @@ enum TopShelfCardExport {
 
     typealias LogoLoader = @MainActor (String) async -> UIImage?
 
-    /// Replaces any run in progress with one for `snapshot`.
+    /// Replaces any run in progress with one for `snapshot`, published under `generation` (A2).
     static func schedule(_ snapshot: TopShelfSnapshot, logoSources: [String: String], loader: @escaping LogoLoader,
-                         container: URL? = AppGroupStorage.containerURL) {
+                         container: URL? = AppGroupStorage.containerURL, generation: Int) {
         task?.cancel()
         task = Task { @MainActor in
-            let rendered = await render(snapshot, logoSources: logoSources, loader: loader, container: container)
-            guard !Task.isCancelled else { return }
+            let rendered = await render(snapshot, logoSources: logoSources, loader: loader, container: container, generation: generation)
+            guard !Task.isCancelled, generation == TopShelfPublication.shared.current else { return }
             lastRendered = rendered
-            TopShelfExport.save(rendered, pruneCardsIn: container)
+            TopShelfExport.save(rendered, pruneCardsIn: container, generation: generation, container: container)
         }
+    }
+
+    /// A2: sign-out stops the run in progress.
+    static func cancel() {
+        task?.cancel()
+        task = nil
     }
 
     /// Waits for the current run (fixtures and tests).
@@ -257,7 +263,7 @@ enum TopShelfCardExport {
     /// The snapshot with each entry's cards, rendering only cards whose files
     /// do not exist yet.
     static func render(_ snapshot: TopShelfSnapshot, logoSources: [String: String], loader: LogoLoader,
-                       container: URL?, now: Date = Date()) async -> TopShelfSnapshot {
+                       container: URL?, now: Date = Date(), generation: Int? = nil) async -> TopShelfSnapshot {
         guard container != nil else { return snapshot }
         var result = snapshot
         var logos: [String: LoadedLogo] = [:]
@@ -279,10 +285,11 @@ enum TopShelfCardExport {
                         logos[logoKey] = logo
                     }
                     guard let png = renderPNG(content, logo: logo.image, look: logo.look) else { continue }
-                    let written = await Task.detached(priority: .utility) {
+                    // A2: on the Top Shelf file queue, and not at all once the session is retired.
+                    let written = await TopShelfPublication.shared.run(ifCurrent: generation) {
                         TopShelfCards.write(png, named: name, in: container)
-                    }.value
-                    guard written else { continue }
+                    }
+                    guard written == true else { if written == nil { return snapshot }; continue }
                     // Keep the main thread free between cards.
                     await Task.yield()
                 }
