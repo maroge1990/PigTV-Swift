@@ -720,24 +720,43 @@ final class BrowseModel: ObservableObject {
         }
     }
 
-    func setRule(_ rule: RecordingRule, enabled: Bool) async {
+    /// A3 (build 48): one rule change at a time (the sheet's buttons are off meanwhile); the old
+    /// message goes first, and a failure is kept in actionError, which the sheet shows. True when it worked.
+    @discardableResult
+    func setRule(_ rule: RecordingRule, enabled: Bool) async -> Bool {
+        guard !mutationBusy else { return false }
+        mutationBusy = true
+        actionError = nil
+        actionMessage = nil
+        defer { mutationBusy = false }
         do {
             let _: RecordingRule = try await client.request("recordings/rules/\(rule.id)", method: "PUT", body: RuleEnabledBody(enabled: enabled))
+            actionMessage = enabled ? "Rule turned on." : "Rule turned off."
             await loadRecordings()
+            return true
         } catch {
-            actionError = "Could not change the rule. \(error.localizedDescription)"
+            actionError = "Could not change the rule. \(UserMessage.text(for: error))"
+            return false
         }
     }
 
-    func deleteRule(_ rule: RecordingRule) async {
+    @discardableResult
+    func deleteRule(_ rule: RecordingRule) async -> Bool {
         struct Deleted: Decodable { let cancelled: Int? }
+        guard !mutationBusy else { return false }
+        mutationBusy = true
+        actionError = nil
+        actionMessage = nil
+        defer { mutationBusy = false }
         do {
             let result: Deleted = try await client.request("recordings/rules/\(rule.id)", method: "DELETE")
             let n = result.cancelled ?? 0
             actionMessage = n == 0 ? "Rule deleted." : "Rule deleted; \(n) upcoming recording\(n == 1 ? "" : "s") cancelled."
             await loadRecordings()
+            return true
         } catch {
-            actionError = "Could not delete the rule. \(error.localizedDescription)"
+            actionError = "Could not delete the rule. \(UserMessage.text(for: error))"
+            return false
         }
     }
 

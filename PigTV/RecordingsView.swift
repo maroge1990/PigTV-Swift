@@ -711,10 +711,17 @@ private struct RecordingRulesSheet: View {
                             }
                             Button("Delete", role: .destructive) { deleting = rule }
                         }
+                        // A3 (build 48): one change at a time.
+                        .disabled(actions.mutationBusy)
                     }
                     .padding(.vertical, 6)
                 }
-                if let message = model.actionMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
+                // A3: a rule change that failed says so (the reload after it shows the rule unchanged).
+                if let failure = actions.actionError {
+                    Text(failure).font(.caption).foregroundStyle(.red).accessibilityIdentifier("rules-action-error")
+                } else if let message = actions.actionMessage {
+                    Text(message).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("rules-action-message")
+                }
             }
             .navigationTitle("Recording rules")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
