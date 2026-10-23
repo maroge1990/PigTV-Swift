@@ -35,7 +35,8 @@ final class GuideGridCorrectionTests: XCTestCase {
         let after = [channel("a", title: "Match Day - Extra Time", start: start, minutes: 90), before[1]]
         controller.applyForTesting(rows: after, revision: GuideGridRevision(programmes: 2, loadedAt: nil))
 
-        let now = try XCTUnwrap(controller.visibleProgrammesForTesting().first { $0.section == 0 && $0.frame.minX == old.frame.minX })
+        // The same index path (the row's first programme): its frame's start may be clipped differently.
+        let now = try XCTUnwrap(controller.visibleProgrammesForTesting().first { $0.section == 0 && $0.item == old.item })
         XCTAssertEqual(now.title, "Match Day - Extra Time", "the visible text is the correction's, at once")
         // 30 minutes longer: its end moves right by half of the next programme's 60-minute width.
         let hour = try XCTUnwrap(controller.visibleProgrammesForTesting().first { $0.section == 1 && $0.title == "After b" }).frame.width

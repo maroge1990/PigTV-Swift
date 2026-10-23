@@ -434,10 +434,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     func applyForTesting(rows: [GuideChannel], revision: GuideGridRevision) { applyNow(rows: rows, revision: revision) }
 
     /// Tests: what the visible programme cells show, and where.
-    func visibleProgrammesForTesting() -> [(section: Int, title: String?, frame: CGRect, cell: UICollectionViewCell)] {
+    func visibleProgrammesForTesting() -> [(section: Int, item: Int, title: String?, frame: CGRect, cell: UICollectionViewCell)] {
         collectionView.indexPathsForVisibleItems.sorted().compactMap { indexPath in
             guard indexPath.item > 0, let cell = collectionView.cellForItem(at: indexPath) as? GuideGridProgrammeCell else { return nil }
-            return (indexPath.section, cell.info?.programme?.title, cell.frame, cell)
+            return (indexPath.section, indexPath.item, cell.info?.programme?.title, cell.frame, cell)
         }
     }
     #endif
