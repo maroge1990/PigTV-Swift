@@ -360,12 +360,20 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             a.id == b.id && a.programmes.count == b.programmes.count
                 && a.programmes.first?.startTime == b.programmes.first?.startTime
         }
+        // A4 (build 48): rows of the same shape whose content was corrected (a title, an end time):
+        // their visible cells are reconfigured in place and the layout redone at once - the cells
+        // (and focus) stay, but nothing waits for the next clock tick to show the correction.
+        let corrected = IndexSet(old.indices.filter { $0 < rows.count && !Self.sameContent(old[$0], rows[$0]) })
         if appendOnly {
-            guard rows.count > old.count else { store.setRows(rows, revision: revision); return }
-            collectionView.performBatchUpdates {
+            if rows.count > old.count {
+                collectionView.performBatchUpdates {
+                    store.setRows(rows, revision: revision)
+                    collectionView.insertSections(IndexSet(old.count..<rows.count))
+                }
+            } else {
                 store.setRows(rows, revision: revision)
-                collectionView.insertSections(IndexSet(old.count..<rows.count))
             }
+            refresh(corrected)
             return
         }
         // Build 33: a forward extension (or its periodic past-trim) changed
@@ -380,6 +388,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         if extendedOnly {
             let changedSections = IndexSet(rows.indices.filter { rows[$0].programmes.count != old[$0].programmes.count })
             store.setRows(rows, revision: revision)
+            refresh(corrected.subtracting(changedSections)) // A4: same count, corrected content
             guard !changedSections.isEmpty else { layout.invalidateLayout(); return }
             let refocus = focused.map { changedSections.contains($0.section) } ?? false
             collectionView.performBatchUpdates {
@@ -402,6 +411,36 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             requestFocus(target)
         }
     }
+
+    /// A4: does a row draw the same as before (its programmes and the tile's own fields)?
+    private static func sameContent(_ a: GuideChannel, _ b: GuideChannel) -> Bool {
+        a.programmes == b.programmes && a.name == b.name && a.logo == b.logo && a.number == b.number && a.health == b.health
+    }
+
+    /// A4: the visible cells of `sections` show their rows' current data, and the layout (a changed
+    /// end moves a frame) is redone now. Cells are reconfigured, not reloaded: focus stays.
+    private func refresh(_ sections: IndexSet) {
+        guard !sections.isEmpty else { return }
+        for indexPath in collectionView.indexPathsForVisibleItems where sections.contains(indexPath.section) {
+            guard let cell = collectionView.cellForItem(at: indexPath) else { continue }
+            configure(cell, at: indexPath)
+        }
+        layout.invalidateLayout()
+        collectionView.layoutIfNeeded()
+    }
+
+    #if DEBUG
+    /// Tests: apply rows as the SwiftUI update does, under an explicit store revision.
+    func applyForTesting(rows: [GuideChannel], revision: GuideGridRevision) { applyNow(rows: rows, revision: revision) }
+
+    /// Tests: what the visible programme cells show, and where.
+    func visibleProgrammesForTesting() -> [(section: Int, title: String?, frame: CGRect, cell: UICollectionViewCell)] {
+        collectionView.indexPathsForVisibleItems.sorted().compactMap { indexPath in
+            guard indexPath.item > 0, let cell = collectionView.cellForItem(at: indexPath) as? GuideGridProgrammeCell else { return nil }
+            return (indexPath.section, cell.info?.programme?.title, cell.frame, cell)
+        }
+    }
+    #endif
 
     private func reconfigureVisible() {
         for indexPath in collectionView.indexPathsForVisibleItems {
