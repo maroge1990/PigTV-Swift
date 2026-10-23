@@ -123,6 +123,70 @@ nonisolated enum ArtworkKey {
     }
 }
 
+/// A5 (build 48): the artwork folder's size, counted as files are written, so the cap holds while
+/// the app runs and not only at launch. One prune at a time: writes that cross the cap while one is
+/// running only add to the count, and that prune's result (plus what they wrote meanwhile) is the
+/// new count. The folder is listed once per prune, never once per image.
+nonisolated final class ArtworkBudget: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes: Int?            // nil until the first prune has counted the folder
+    private var pruning = false
+    private var addedDuringPrune = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var prunes = 0        // tests: how many times the folder was listed
+
+    /// Counts `delta` bytes written; true when the caller should start a prune now.
+    func add(_ delta: Int, limit: Int) -> Bool {
+        lock.withLock {
+            if pruning { addedDuringPrune += delta; return false }
+            let total = (bytes ?? Int.max / 2) + delta
+            bytes = bytes.map { $0 + delta }
+            guard total > limit || bytes == nil else { return false }
+            pruning = true
+            addedDuringPrune = 0
+            return true
+        }
+    }
+
+    /// Claims a prune (launch). False when one is already running.
+    func begin() -> Bool {
+        lock.withLock {
+            guard !pruning else { return false }
+            pruning = true
+            addedDuringPrune = 0
+            return true
+        }
+    }
+
+    /// A prune left `total` bytes on disk; true when what was written meanwhile needs another.
+    func finished(total: Int, limit: Int) -> Bool {
+        let (again, resume) = lock.withLock { () -> (Bool, [CheckedContinuation<Void, Never>]) in
+            prunes += 1
+            bytes = total + addedDuringPrune
+            let again = (bytes ?? 0) > limit
+            if again { addedDuringPrune = 0; return (true, []) }
+            pruning = false
+            defer { waiters = [] }
+            return (false, waiters)
+        }
+        resume.forEach { $0.resume() }
+        return again
+    }
+
+    var counted: Int? { lock.withLock { bytes } }
+
+    /// Tests: no prune is running.
+    func idle() async {
+        await withCheckedContinuation { continuation in
+            let now = lock.withLock { () -> Bool in
+                if pruning { waiters.append(continuation); return false }
+                return true
+            }
+            if now { continuation.resume() }
+        }
+    }
+}
+
 /// Artwork on disk, bounded: least recently used files go first once the
 /// folder is over its size cap, and anything untouched for the age cap goes
 /// regardless. Reads refresh the file's date, so it is a real LRU. Everything
@@ -132,6 +196,14 @@ nonisolated struct ArtworkDiskStore: Sendable {
     static let maxAge: TimeInterval = 30 * 24 * 3600
 
     let directory: URL
+    /// A5: the folder's running size and its one prune at a time.
+    let budget = ArtworkBudget()
+    var limit = ArtworkDiskStore.maxBytes
+
+    init(directory: URL, limit: Int = ArtworkDiskStore.maxBytes) {
+        self.directory = directory
+        self.limit = limit
+    }
 
     /// The app's store. Created on first use (sign-in/restore, i.e. launch),
     /// which also prunes it in the background and removes the pre-R14 folder.
@@ -140,7 +212,7 @@ nonisolated struct ArtworkDiskStore: Sendable {
         let store = ArtworkDiskStore(directory: base.appendingPathComponent("PigTVArtwork-v2", isDirectory: true))
         Task.detached(priority: .background) {
             try? FileManager.default.removeItem(at: base.appendingPathComponent("PigTVArtwork", isDirectory: true))
-            store.prune()
+            if store.budget.begin() { store.pruneLoop() }
         }
         return store
     }()
@@ -159,12 +231,26 @@ nonisolated struct ArtworkDiskStore: Sendable {
 
     func write(_ data: Data, key: String) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? data.write(to: fileURL(forKey: key), options: .atomic)
+        let url = fileURL(forKey: key)
+        let previous = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        guard (try? data.write(to: url, options: .atomic)) != nil else { return }
+        // A5: counted as written; crossing the cap starts one pruning pass in the background.
+        if budget.add(data.count - previous, limit: limit) {
+            let store = self
+            Task.detached(priority: .background) { store.pruneLoop() }
+        }
     }
 
-    func prune(maxBytes: Int = ArtworkDiskStore.maxBytes, maxAge: TimeInterval = ArtworkDiskStore.maxAge, now: Date = Date()) {
+    /// A5: prune, and again while what was written meanwhile keeps it over the cap.
+    func pruneLoop() {
+        repeat {} while budget.finished(total: prune(maxBytes: limit), limit: limit)
+    }
+
+    /// Removes expired files, then the least recently used until under `maxBytes`. Returns the bytes left.
+    @discardableResult
+    func prune(maxBytes: Int = ArtworkDiskStore.maxBytes, maxAge: TimeInterval = ArtworkDiskStore.maxAge, now: Date = Date()) -> Int {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys) else { return }
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys) else { return 0 }
         var entries: [(url: URL, date: Date, size: Int)] = []
         for url in urls {
             let values = try? url.resourceValues(forKeys: Set(keys))
@@ -177,5 +263,6 @@ nonisolated struct ArtworkDiskStore: Sendable {
             try? FileManager.default.removeItem(at: entry.url)
             total -= entry.size
         }
+        return total
     }
 }

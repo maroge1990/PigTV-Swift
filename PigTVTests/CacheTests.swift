@@ -171,6 +171,39 @@ final class CacheTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.fileURL(forKey: "new").path))
     }
 
+    // MARK: A5 (build 48): the cap holds during use, not only at launch
+
+    private func folderBytes(_ store: ArtworkDiskStore) -> Int {
+        let urls = (try? FileManager.default.contentsOfDirectory(at: store.directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        return urls.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }
+    }
+
+    func testWritesPastTheCapArePrunedWithoutANewStoreAndPrunesAreCoalesced() async throws {
+        let store = ArtworkDiskStore(directory: temp.appendingPathComponent("budget"), limit: 10_000)
+        for i in 0..<40 { store.write(Data(repeating: UInt8(i), count: 1_000), key: "logo\(i)") }
+        await store.budget.idle()
+        XCTAssertLessThanOrEqual(folderBytes(store), 10_000, "the cap holds while the app runs")
+        XCTAssertNotNil(store.read(key: "logo39"), "the newest is kept")
+        XCTAssertLessThan(store.budget.prunes, 20, "the folder is listed per prune, not per image (\(store.budget.prunes))")
+        XCTAssertEqual(store.budget.counted, folderBytes(store), "the running count matches the disk")
+    }
+
+    func testConcurrentWritesStayBoundedAndARecentlyReadLogoSurvives() async throws {
+        let store = ArtworkDiskStore(directory: temp.appendingPathComponent("budget-concurrent"), limit: 20_000)
+        store.write(Data(repeating: 7, count: 1_000), key: "favourite")
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<60 {
+                group.addTask {
+                    store.write(Data(repeating: UInt8(i % 250), count: 1_000), key: "logo\(i)")
+                    if i % 10 == 0 { _ = store.read(key: "favourite", now: Date().addingTimeInterval(3600)) } // kept in use
+                }
+            }
+        }
+        await store.budget.idle()
+        XCTAssertLessThanOrEqual(folderBytes(store), 20_000)
+        XCTAssertNotNil(store.read(key: "favourite"), "least recently used goes first: the one in use stays")
+    }
+
     // MARK: Home
 
     func testARecordingWhoseStatusChangesWithTheSameIDIsNotEqualAndChangesHomesRows() throws {
