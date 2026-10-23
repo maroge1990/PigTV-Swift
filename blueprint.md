@@ -12,6 +12,12 @@ None is device-verified yet. The joint roadmap is [`../PigTV/blueprint.md`](../P
 
 **23 Oct fix review:** build47 scopes local resume consistently (A1 addressed in source). A2–A5 remain open; independent simulator/device acceptance is still pending. [Review of supplied fixes](../PigTV/docs/reviews/2026-10-23/FIX-REVIEW.md).
 
+**24 Oct:** builds **47–51** are committed locally (not pushed): scoped local resume (47, A1), Top Shelf publication owned
+by one generation-gated queue (48, A2), visible rule-change errors and one change at a time (49, A3), same-shape guide
+corrections shown at once (50, A4), the artwork cap kept during use (51, A5). Each has a failing-before test (a mutation
+restoring build 46/47 behaviour where the new API cannot compile there); push tier and iOS build pass. None is
+device-verified; the device steps are in [`../PigTV/docs/reviews/2026-10-23/REPAIR-STATUS.md`](../PigTV/docs/reviews/2026-10-23/REPAIR-STATUS.md).
+
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
 [`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
 and known limits. What the server promises is in [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
@@ -326,7 +332,10 @@ a recording).
 
 ## 8. Known limitations
 
-- Artwork disk cache is pruned only at store creation; subsequent writes can exceed 50 MB until the next launch. Coalesced pruning during use remains a follow-up (21 Oct review).
+- The artwork disk cap (50 MB) is kept during use by a running byte count and one coalesced background prune (51); the
+  count is an estimate between prunes (a write racing a prune is added afterwards), never a per-image folder listing.
+- Top Shelf files (snapshot, cards, clear) change only on `TopShelfPublication`'s serial queue under the session's
+  generation (48): sign-out retires it before clearing, so nothing from the old session is written afterwards.
 
 - **Never checked on a device:** an HEVC recording (iPad/iPhone recordings use AVKit, `RecordingNativePlayer`); audio and
   subtitle track selection (no suitable channel); whether AVPlayer stops fetching while paused (C2 assumes it).

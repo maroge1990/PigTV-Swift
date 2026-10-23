@@ -2,7 +2,8 @@ import Foundation
 
 // Where a recording resumes (server 0207 `features.recordingPositions`).
 // With the feature the server's per-login position wins; without it, or when
-// the request fails, this device's `pigtv.resume.<id>` key is used. Before
+// the request fails, this device's saved position is used (build 47: keyed by server, account and
+// recording - Recording.localResumeKey; never the old `pigtv.resume.<id>`). Before
 // playback the viewer is asked: "Resume from H:MM:SS" or "Start over".
 
 /// `GET recordings/{id}/position`. `updated_at` is not needed.
