@@ -12,11 +12,7 @@ None is device-verified yet. The joint roadmap is [`../PigTV/blueprint.md`](../P
 
 **23 Oct fix review:** build47 scopes local resume consistently (A1 addressed in source). A2–A5 remain open; independent simulator/device acceptance is still pending. [Review of supplied fixes](../PigTV/docs/reviews/2026-10-23/FIX-REVIEW.md).
 
-**24 Oct:** builds **47–51** are committed locally (not pushed): scoped local resume (47, A1), Top Shelf publication owned
-by one generation-gated queue (48, A2), visible rule-change errors and one change at a time (49, A3), same-shape guide
-corrections shown at once (50, A4), the artwork cap kept during use (51, A5). Each has a failing-before test (a mutation
-restoring build 46/47 behaviour where the new API cannot compile there); push tier and iOS build pass. None is
-device-verified; the device steps are in [`../PigTV/docs/reviews/2026-10-23/REPAIR-STATUS.md`](../PigTV/docs/reviews/2026-10-23/REPAIR-STATUS.md).
+**24 Oct independent review:** build **51** passes 243 contracts, 221 unit tests, 16 regression UI tests and the iOS simulator build. Mutations demonstrate the direct A1–A5 improvements. A1/A3/A4 are fixed locally; A2 remains partial because delayed clear can erase the next session's publication, and A5 remains partial because replacement/prune overlap undercounts bytes. See [review](../PigTV/docs/reviews/2026-10-24/APPLE-REVIEW.md). No physical-device acceptance or application change in this review. Joint bug5/bug8 and efficiency work remain open.
 
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
 [`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
@@ -332,10 +328,8 @@ a recording).
 
 ## 8. Known limitations
 
-- The artwork disk cap (50 MB) is kept during use by a running byte count and one coalesced background prune (51); the
-  count is an estimate between prunes (a write racing a prune is added afterwards), never a per-image folder listing.
-- Top Shelf files (snapshot, cards, clear) change only on `TopShelfPublication`'s serial queue under the session's
-  generation (48): sign-out retires it before clearing, so nothing from the old session is written afterwards.
+- Artwork writes trigger a coalesced prune (51), but replacement racing pruning can persistently undercount disk usage and leave it above the 50 MB cap (24 Oct review A5-R).
+- Top Shelf's queue rejects retired-generation saves (48), but its asynchronously enqueued unconditional clear can delete the next session's publication; unchanged-export suppression can prevent repair (24 Oct review A2-R).
 
 - **Never checked on a device:** an HEVC recording (iPad/iPhone recordings use AVKit, `RecordingNativePlayer`); audio and
   subtitle track selection (no suitable channel); whether AVPlayer stops fetching while paused (C2 assumes it).
