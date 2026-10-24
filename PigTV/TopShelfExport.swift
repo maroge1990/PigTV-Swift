@@ -20,20 +20,40 @@ nonisolated final class TopShelfPublication: @unchecked Sendable {
     private var generation = 0
     private let queue = DispatchQueue(label: "au.markrogers.PigTV.topshelf-files")
 
+    private var queued = 0
+
     var current: Int { lock.withLock { generation } }
+
+    /// How many file changes are on the queue or have run (tests: counted once queued).
+    var queuedCount: Int { lock.withLock { queued } }
+
+    /// Tests only: awaited by `run` before it queues its work, so a test can choose an order the
+    /// detached callers allow (a scheduling barrier). Nil in the app.
+    nonisolated(unsafe) static var beforeQueueing: (@Sendable (String) async -> Void)?
 
     /// The session's files are no longer its to write. Returns the new generation.
     @discardableResult
     func retire() -> Int { lock.withLock { generation += 1; return generation } }
 
+    /// A2-R (build 52): queues `work` now, before this returns, so anything the caller (or the next
+    /// session) publishes afterwards runs after it. For the sign-out clear: the next session shares
+    /// the generation the clear leaves, so only this order - never a generation check - keeps a
+    /// clear from removing what that session has published.
+    func queueNow(_ work: @escaping @Sendable () -> Void) {
+        queue.async(execute: work)
+        lock.withLock { queued += 1 }
+    }
+
     /// Runs `work` in order with every other Top Shelf file change - only while `generation` is
-    /// still current (nil: always, for the clear). Nil when it was dropped.
-    func run<T: Sendable>(ifCurrent generation: Int?, _ work: @escaping @Sendable () -> T) async -> T? {
-        await withCheckedContinuation { continuation in
+    /// still current (nil: always). Nil when it was dropped.
+    func run<T: Sendable>(ifCurrent generation: Int?, label: String = "", _ work: @escaping @Sendable () -> T) async -> T? {
+        if let gate = Self.beforeQueueing { await gate(label) }
+        return await withCheckedContinuation { continuation in
             queue.async {
                 if let generation, generation != self.current { continuation.resume(returning: nil); return }
                 continuation.resume(returning: work())
             }
+            lock.withLock { queued += 1 }
         }
     }
 
@@ -110,7 +130,7 @@ enum TopShelfExport {
         guard !snapshot.sameContent(as: lastWritten) else { return }
         lastWritten = snapshot
         Task.detached(priority: .utility) {
-            let written = await TopShelfPublication.shared.run(ifCurrent: generation) { () -> Bool in
+            let written = await TopShelfPublication.shared.run(ifCurrent: generation, label: "save") { () -> Bool in
                 guard snapshot.write(container: container) else { return false }
                 if let cards {
                     let keep = Set(snapshot.channels.flatMap { $0.cards ?? [] }.map(\.file))
@@ -145,28 +165,27 @@ enum TopShelfExport {
 
     /// Signing out removes the snapshot (no channels on the Top Shelf) and
     /// any leftover Siri channel directory. A2: the session's generation is retired first and its
-    /// card render cancelled, so nothing it still has in flight is written after this.
+    /// card render cancelled, so nothing it still has in flight is written after this. A2-R: the
+    /// removal is queued before this returns, so the next session's first export (and the
+    /// `lastWritten` it sets) always comes after it and is never removed by it.
     @MainActor static func clear(container: URL? = AppGroupStorage.containerURL) {
         TopShelfPublication.shared.retire()
         TopShelfCardExport.cancel()
         lastWritten = nil
-        Task.detached(priority: .utility) {
-            _ = await TopShelfPublication.shared.run(ifCurrent: nil) { () -> Bool in
-                if let url = TopShelfSnapshot.fileURL(in: container) { try? FileManager.default.removeItem(at: url) }
-                // Build 32: and the card images.
-                TopShelfCards.removeAll(in: container)
-                // And the Siri channel directory older builds wrote.
-                if let url = AppGroupStorage.fileURL(legacyChannelDirectoryName, in: container) { try? FileManager.default.removeItem(at: url) }
-                // Build 29: files an earlier build left in the container's root
-                // (possible on iOS only; tvOS never allowed writing there).
-                if let root = container {
-                    for name in [TopShelfSnapshot.fileName, legacyChannelDirectoryName] {
-                        try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
-                    }
+        TopShelfPublication.shared.queueNow {
+            if let url = TopShelfSnapshot.fileURL(in: container) { try? FileManager.default.removeItem(at: url) }
+            // Build 32: and the card images.
+            TopShelfCards.removeAll(in: container)
+            // And the Siri channel directory older builds wrote.
+            if let url = AppGroupStorage.fileURL(legacyChannelDirectoryName, in: container) { try? FileManager.default.removeItem(at: url) }
+            // Build 29: files an earlier build left in the container's root
+            // (possible on iOS only; tvOS never allowed writing there).
+            if let root = container {
+                for name in [TopShelfSnapshot.fileName, legacyChannelDirectoryName] {
+                    try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
                 }
-                contentChanged()
-                return true
             }
+            contentChanged()
         }
     }
 

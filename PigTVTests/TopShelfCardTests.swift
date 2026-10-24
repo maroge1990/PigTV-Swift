@@ -214,4 +214,86 @@ final class TopShelfCardTests: XCTestCase {
         for _ in 0..<20 { await TopShelfPublication.shared.idle(); try await Task.sleep(nanoseconds: 10_000_000) }
         XCTAssertEqual(a2Files(container), [], "the clear runs after the save it follows, never before")
     }
+
+    // MARK: A2-R (build 52): the clear is ordered before the next session's export, not by a generation
+
+    /// Waits for `condition` by yielding (a bounded number of times), never for a time.
+    private func waitFor(_ what: String, _ condition: () -> Bool) async {
+        for _ in 0..<100_000 where !condition() { await Task.yield() }
+        XCTAssertTrue(condition(), what)
+    }
+
+    func testAClearHeldBeforeItIsQueuedNeverRemovesTheNextSessionsSnapshotOrCards() async throws {
+        let container = try a2Container()
+        let gate = A2RGate()
+        TopShelfPublication.beforeQueueing = { label in await gate.pass(label) }
+        defer {
+            TopShelfPublication.beforeQueueing = nil
+            gate.release()
+            try? FileManager.default.removeItem(at: container)
+        }
+        TopShelfExport.lastWritten = nil
+        // Sign-out. Its removal is either queued already or (a clear that queues from a detached
+        // task) held at the barrier before it is queued - the order the review found.
+        let beforeClear = TopShelfPublication.shared.queuedCount
+        TopShelfExport.clear(container: container)
+        await waitFor("the clear is queued or held") { TopShelfPublication.shared.queuedCount > beforeClear || gate.isHeld }
+
+        // The next session signs in at once: the same generation the clear left behind.
+        let generation = TopShelfPublication.shared.current
+        let card = "a2r-new-session.png"
+        let cardWritten = await TopShelfPublication.shared.run(ifCurrent: generation, label: "card") {
+            TopShelfCards.write(Data([1, 2, 3]), named: card, in: container)
+        }
+        XCTAssertEqual(cardWritten, true)
+        var snapshot = a2Snapshot("New Account")
+        snapshot.channels[0].cards = [TopShelfSnapshot.Card(file: card, start: nil, end: nil)]
+        let beforeSave = TopShelfPublication.shared.queuedCount
+        TopShelfExport.save(snapshot, generation: generation, container: container)
+        await waitFor("the save is queued") { TopShelfPublication.shared.queuedCount > beforeSave }
+        await TopShelfPublication.shared.idle()
+        XCTAssertNotNil(TopShelfSnapshot.read(container: container), "published")
+
+        // Whatever was held now goes on the queue, and everything queued runs.
+        let held = gate.isHeld
+        let beforeRelease = TopShelfPublication.shared.queuedCount
+        gate.release()
+        if held { await waitFor("the held clear is queued") { TopShelfPublication.shared.queuedCount > beforeRelease } }
+        await TopShelfPublication.shared.idle()
+
+        XCTAssertEqual(TopShelfSnapshot.read(container: container)?.channels.first?.name, "New Account",
+                       "the next session's snapshot is not removed by the earlier sign-out")
+        XCTAssertTrue(TopShelfCards.exists(card, in: container), "nor its card")
+        XCTAssertTrue(snapshot.sameContent(as: TopShelfExport.lastWritten), "what is remembered as written is on disk")
+    }
+}
+
+/// A2-R: holds the sign-out clear's queueing (label "clear") until released; everything else passes.
+private final class A2RGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var released = false
+
+    var isHeld: Bool { lock.withLock { waiting != nil } }
+
+    func pass(_ label: String) async {
+        guard label == "clear" else { return }
+        await withCheckedContinuation { continuation in
+            let go = lock.withLock { () -> Bool in
+                if released { return true }
+                waiting = continuation
+                return false
+            }
+            if go { continuation.resume() }
+        }
+    }
+
+    func release() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            released = true
+            defer { waiting = nil }
+            return waiting
+        }
+        continuation?.resume()
+    }
 }

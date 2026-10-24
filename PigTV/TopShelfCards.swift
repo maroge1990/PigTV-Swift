@@ -286,7 +286,7 @@ enum TopShelfCardExport {
                     }
                     guard let png = renderPNG(content, logo: logo.image, look: logo.look) else { continue }
                     // A2: on the Top Shelf file queue, and not at all once the session is retired.
-                    let written = await TopShelfPublication.shared.run(ifCurrent: generation) {
+                    let written = await TopShelfPublication.shared.run(ifCurrent: generation, label: "card") {
                         TopShelfCards.write(png, named: name, in: container)
                     }
                     guard written == true else { if written == nil { return snapshot }; continue }
