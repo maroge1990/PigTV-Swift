@@ -204,6 +204,100 @@ final class CacheTests: XCTestCase {
         XCTAssertNotNil(store.read(key: "favourite"), "least recently used goes first: the one in use stays")
     }
 
+    // MARK: A5-R (build 53): replacement, removal and the count are one change at a time
+
+    /// Pauses a write of `key` between reading the old size and replacing the file (once), and
+    /// reports when another change has to wait for it. Scheduling barriers: no timers.
+    private final class ReplaceBarrier: @unchecked Sendable {
+        let arrived = DispatchSemaphore(value: 0)
+        let resume = DispatchSemaphore(value: 0)
+        let progress = DispatchSemaphore(value: 0)   // another change waited, or finished
+        private let lock = NSLock()
+        private var armed = true
+
+        init(key: String) {
+            ArtworkDiskStore.beforeReplacing = { [unowned self] written in
+                guard written == key, self.lock.withLock({ () -> Bool in defer { self.armed = false }; return self.armed }) else { return }
+                self.arrived.signal()
+                self.resume.wait()
+            }
+            ArtworkBudget.waitingForFiles = { [unowned self] in self.progress.signal() }
+        }
+
+        func remove() {
+            ArtworkDiskStore.beforeReplacing = nil
+            ArtworkBudget.waitingForFiles = nil
+        }
+    }
+
+    private nonisolated static func block(_ semaphore: DispatchSemaphore) { semaphore.wait() }
+
+    private func wait(_ semaphore: DispatchSemaphore) async {
+        await Task.detached { Self.block(semaphore) }.value
+    }
+
+    func testAPruneBetweenAReplacementsSizeReadAndItsWriteLeavesTheCountEqualToTheDisk() async throws {
+        let store = ArtworkDiskStore(directory: temp.appendingPathComponent("budget-replace"), limit: 1_500)
+        store.write(Data(repeating: 1, count: 1_000), key: "old")
+        await store.budget.idle()
+        XCTAssertEqual(store.budget.counted, 1_000)
+        _ = store.read(key: "old", now: Date().addingTimeInterval(-60)) // the least recently used
+        let barrier = ReplaceBarrier(key: "old")
+        defer { barrier.remove() }
+
+        let replacing = Task.detached { store.write(Data(repeating: 2, count: 1_000), key: "old") }
+        await wait(barrier.arrived) // the old size is read; the replacement has not been written
+        let other = Task.detached {
+            store.write(Data(repeating: 3, count: 1_000), key: "new") // crosses the cap: a prune
+            barrier.progress.signal()
+        }
+        await wait(barrier.progress) // it waited for the replacement, or it ran (and started its prune)
+        await store.budget.idle()    // a prune it started has removed what it could
+        barrier.resume.signal()
+        await replacing.value
+        await other.value
+        await store.budget.idle()
+
+        XCTAssertEqual(store.budget.counted, folderBytes(store), "the count is what is on disk")
+        XCTAssertLessThanOrEqual(folderBytes(store), store.limit, "and the cap holds once no prune runs")
+    }
+
+    func testTwoWritersOfTheSameKeyAreCountedOnce() async throws {
+        let store = ArtworkDiskStore(directory: temp.appendingPathComponent("budget-same-key"), limit: 100_000)
+        store.write(Data(repeating: 9, count: 500), key: "seed")
+        await store.budget.idle() // counted from here on
+        let barrier = ReplaceBarrier(key: "same")
+        defer { barrier.remove() }
+
+        let first = Task.detached { store.write(Data(repeating: 1, count: 1_000), key: "same") }
+        await wait(barrier.arrived) // it read "no file yet"
+        let second = Task.detached {
+            store.write(Data(repeating: 2, count: 1_000), key: "same")
+            barrier.progress.signal()
+        }
+        await wait(barrier.progress)
+        barrier.resume.signal()
+        await first.value
+        await second.value
+        await store.budget.idle()
+
+        XCTAssertEqual(folderBytes(store), 1_500)
+        XCTAssertEqual(store.budget.counted, 1_500, "one file of 1000 bytes, counted once")
+    }
+
+    func testAfterManyConcurrentWritersAndPrunesTheCountIsTheDiskAndUnderTheCap() async throws {
+        let store = ArtworkDiskStore(directory: temp.appendingPathComponent("budget-eventual"), limit: 8_000)
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<80 {
+                group.addTask { store.write(Data(repeating: UInt8(i % 250), count: 700 + (i % 5) * 100), key: "logo\(i % 25)") }
+                if i % 20 == 0 { group.addTask { _ = store.prune(maxBytes: 8_000) } }
+            }
+        }
+        await store.budget.idle()
+        XCTAssertEqual(store.budget.counted, folderBytes(store), "the count is what is on disk")
+        XCTAssertLessThanOrEqual(folderBytes(store), 8_000)
+    }
+
     // MARK: Home
 
     func testARecordingWhoseStatusChangesWithTheSameIDIsNotEqualAndChangesHomesRows() throws {

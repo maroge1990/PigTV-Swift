@@ -124,26 +124,55 @@ nonisolated enum ArtworkKey {
 }
 
 /// A5 (build 48): the artwork folder's size, counted as files are written, so the cap holds while
-/// the app runs and not only at launch. One prune at a time: writes that cross the cap while one is
-/// running only add to the count, and that prune's result (plus what they wrote meanwhile) is the
-/// new count. The folder is listed once per prune, never once per image.
+/// the app runs and not only at launch. A5-R (build 53): every change to the folder - a write, a
+/// replacement, a removal by a prune - runs alone (`change`) and is counted with what it actually
+/// did, so the count is the folder's size, not an estimate: a prune between a replacement's size
+/// read and its write can no longer leave bytes uncounted. One prune at a time; the folder is
+/// listed once per prune, never once per image.
 nonisolated final class ArtworkBudget: @unchecked Sendable {
-    private let lock = NSLock()
+    private let lock = NSLock()        // the state below
+    private let files = NSLock()       // A5-R: one change to the folder at a time
     private var bytes: Int?            // nil until the first prune has counted the folder
     private var pruning = false
-    private var addedDuringPrune = 0
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private(set) var prunes = 0        // tests: how many times the folder was listed
 
-    /// Counts `delta` bytes written; true when the caller should start a prune now.
-    func add(_ delta: Int, limit: Int) -> Bool {
+    /// Tests only: called when a change has to wait for another one to finish (a scheduling
+    /// barrier a test can observe). Nil in the app.
+    nonisolated(unsafe) static var waitingForFiles: (@Sendable () -> Void)?
+
+    private func owningFiles<T>(_ body: () -> T) -> T {
+        if !files.try() {
+            Self.waitingForFiles?()
+            files.lock()
+        }
+        defer { files.unlock() }
+        return body()
+    }
+
+    /// Runs `body` - one change to the folder - alone, and counts the bytes it reports (negative:
+    /// removed) together with it.
+    func change<T>(_ body: () -> (T, Int)) -> T {
+        owningFiles {
+            let (result, delta) = body()
+            lock.withLock { bytes = bytes.map { $0 + delta } }
+            return result
+        }
+    }
+
+    /// The folder's size as `total` lists it, with no change running meanwhile.
+    func recount(_ total: () -> Int) {
+        owningFiles {
+            let counted = total()
+            lock.withLock { bytes = counted }
+        }
+    }
+
+    /// True when the caller should start a prune now (over the cap, or never counted) and none runs.
+    func claimPrune(limit: Int) -> Bool {
         lock.withLock {
-            if pruning { addedDuringPrune += delta; return false }
-            let total = (bytes ?? Int.max / 2) + delta
-            bytes = bytes.map { $0 + delta }
-            guard total > limit || bytes == nil else { return false }
+            guard !pruning, bytes.map({ $0 > limit }) ?? true else { return false }
             pruning = true
-            addedDuringPrune = 0
             return true
         }
     }
@@ -153,18 +182,16 @@ nonisolated final class ArtworkBudget: @unchecked Sendable {
         lock.withLock {
             guard !pruning else { return false }
             pruning = true
-            addedDuringPrune = 0
             return true
         }
     }
 
-    /// A prune left `total` bytes on disk; true when what was written meanwhile needs another.
-    func finished(total: Int, limit: Int) -> Bool {
+    /// A prune ended; true when it should run again (still over the cap after it removed something:
+    /// what was written meanwhile).
+    func finished(limit: Int, removedAny: Bool) -> Bool {
         let (again, resume) = lock.withLock { () -> (Bool, [CheckedContinuation<Void, Never>]) in
             prunes += 1
-            bytes = total + addedDuringPrune
-            let again = (bytes ?? 0) > limit
-            if again { addedDuringPrune = 0; return (true, []) }
+            if removedAny, (bytes ?? 0) > limit { return (true, []) }
             pruning = false
             defer { waiters = [] }
             return (false, waiters)
@@ -229,13 +256,26 @@ nonisolated struct ArtworkDiskStore: Sendable {
         return data
     }
 
+    /// Tests only: called by a write between reading the old file's size and replacing it. Nil in the app.
+    nonisolated(unsafe) static var beforeReplacing: (@Sendable (String) -> Void)?
+
+    private static func size(_ url: URL) -> Int {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+    }
+
     func write(_ data: Data, key: String) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = fileURL(forKey: key)
-        let previous = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-        guard (try? data.write(to: url, options: .atomic)) != nil else { return }
-        // A5: counted as written; crossing the cap starts one pruning pass in the background.
-        if budget.add(data.count - previous, limit: limit) {
+        // A5-R: the size read, the replacement and its count are one change: no prune or other
+        // writer of the same file runs in between.
+        let written = budget.change { () -> (Bool, Int) in
+            let previous = Self.size(url)
+            Self.beforeReplacing?(key)
+            guard (try? data.write(to: url, options: .atomic)) != nil else { return (false, 0) }
+            return (true, data.count - previous)
+        }
+        // A5: crossing the cap starts one pruning pass in the background.
+        if written, budget.claimPrune(limit: limit) {
             let store = self
             Task.detached(priority: .background) { store.pruneLoop() }
         }
@@ -243,26 +283,49 @@ nonisolated struct ArtworkDiskStore: Sendable {
 
     /// A5: prune, and again while what was written meanwhile keeps it over the cap.
     func pruneLoop() {
-        repeat {} while budget.finished(total: prune(maxBytes: limit), limit: limit)
+        repeat {} while budget.finished(limit: limit, removedAny: pruneOnce(maxBytes: limit).removed > 0)
+    }
+
+    /// A5-R: removes `url`, counting the size it has as it goes (a write may have replaced it since it was listed).
+    private func remove(_ url: URL) -> Bool {
+        budget.change { () -> (Bool, Int) in
+            let size = Self.size(url)
+            guard (try? FileManager.default.removeItem(at: url)) != nil else { return (false, 0) }
+            return (true, -size)
+        }
     }
 
     /// Removes expired files, then the least recently used until under `maxBytes`. Returns the bytes left.
     @discardableResult
     func prune(maxBytes: Int = ArtworkDiskStore.maxBytes, maxAge: TimeInterval = ArtworkDiskStore.maxAge, now: Date = Date()) -> Int {
+        pruneOnce(maxBytes: maxBytes, maxAge: maxAge, now: now).left
+    }
+
+    private func pruneOnce(maxBytes: Int, maxAge: TimeInterval = ArtworkDiskStore.maxAge, now: Date = Date()) -> (left: Int, removed: Int) {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys) else { return 0 }
+        let list = { try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys) }
+        if budget.counted == nil {
+            budget.recount { (list() ?? []).reduce(0) { $0 + Self.size($1) } }
+        }
+        guard let urls = list() else { return (budget.counted ?? 0, 0) }
+        var removed = 0
         var entries: [(url: URL, date: Date, size: Int)] = []
         for url in urls {
             let values = try? url.resourceValues(forKeys: Set(keys))
             let date = values?.contentModificationDate ?? .distantPast
-            if now.timeIntervalSince(date) > maxAge { try? FileManager.default.removeItem(at: url); continue }
+            if now.timeIntervalSince(date) > maxAge {
+                if remove(url) { removed += 1 }
+                continue
+            }
             entries.append((url, date, values?.fileSize ?? 0))
         }
-        var total = entries.reduce(0) { $0 + $1.size }
-        for entry in entries.sorted(by: { $0.date < $1.date }) where total > maxBytes {
-            try? FileManager.default.removeItem(at: entry.url)
-            total -= entry.size
+        // What to remove is decided from this listing (its dates are its recency); what is counted is
+        // what each removal really removed. Writes since the listing are a later pass's (pruneLoop).
+        var listed = entries.reduce(0) { $0 + $1.size }
+        for entry in entries.sorted(by: { $0.date < $1.date }) where listed > maxBytes {
+            if remove(entry.url) { removed += 1 }
+            listed -= entry.size
         }
-        return total
+        return (budget.counted ?? 0, removed)
     }
 }
