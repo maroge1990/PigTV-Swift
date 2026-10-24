@@ -19,6 +19,10 @@ owner for every artwork-folder change and its byte count) are committed locally,
 on build 51's ordering. Not device-verified; status and steps in
 [`../PigTV/docs/reviews/2026-10-24/REPAIR-STATUS.md`](../PigTV/docs/reviews/2026-10-24/REPAIR-STATUS.md).
 
+**25 Oct repairs:** build **54** (A5-R2: a write that crosses the cap during a prune pass that removed nothing gets a
+fresh pass) is committed locally, not pushed, with a test that fails on build 53's stop condition. Not device-verified;
+see [`../PigTV/docs/reviews/2026-10-24/round4/REPAIR-STATUS.md`](../PigTV/docs/reviews/2026-10-24/round4/REPAIR-STATUS.md).
+
 **25 Oct independent follow-up:** build **53** push tier and iOS build pass. A2-R is fixed locally; A5 accounting is repaired but a write during completion of a no-removal prune can leave the cache over cap with no prune running. See [review](../PigTV/docs/reviews/2026-10-24/round4/APPLE.md). Device acceptance remains open.
 
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
@@ -335,7 +339,10 @@ a recording).
 
 ## 8. Known limitations
 
-- Artwork writes, replacements and prune removals share an owner and correct byte accounting (53). The50 MB cap remains incomplete: a write crossing the cap during completion of a no-removal prune can be left without another pass (25 Oct review A5-R2). The folder is listed once per prune, never per image.
+- The artwork disk cap (50 MB) is kept during use: every write, replacement and prune removal runs alone under
+  `ArtworkBudget` and is counted with what it did (53), so the count is the folder's size. A prune pass repeats while
+  over the cap if it removed something or a write added bytes during it (54); one that removed nothing with nothing
+  written stops, so undeletable files never loop. The folder is listed once per pass, never per image.
 - Top Shelf files (snapshot, cards, clear) change only on `TopShelfPublication`'s serial queue. Saves and cards run
   under the session's generation (48); the sign-out clear is put on the queue before `clear()` returns (52), because the
   next session shares the generation the clear leaves: queue order, not a generation check, keeps the clear off what that
