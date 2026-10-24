@@ -14,6 +14,11 @@ None is device-verified yet. The joint roadmap is [`../PigTV/blueprint.md`](../P
 
 **24 Oct independent review:** build **51** passes 243 contracts, 221 unit tests, 16 regression UI tests and the iOS simulator build. Mutations demonstrate the direct A1–A5 improvements. A1/A3/A4 are fixed locally; A2 remains partial because delayed clear can erase the next session's publication, and A5 remains partial because replacement/prune overlap undercounts bytes. See [review](../PigTV/docs/reviews/2026-10-24/APPLE-REVIEW.md). No physical-device acceptance or application change in this review. Joint bug5/bug8 and efficiency work remain open.
 
+**24 Oct repairs:** builds **52** (A2-R: the sign-out clear is queued before `clear()` returns) and **53** (A5-R: one
+owner for every artwork-folder change and its byte count) are committed locally, not pushed, each with a test that fails
+on build 51's ordering. Not device-verified; status and steps in
+[`../PigTV/docs/reviews/2026-10-24/REPAIR-STATUS.md`](../PigTV/docs/reviews/2026-10-24/REPAIR-STATUS.md).
+
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
 [`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
 and known limits. What the server promises is in [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
@@ -328,8 +333,13 @@ a recording).
 
 ## 8. Known limitations
 
-- Artwork writes trigger a coalesced prune (51), but replacement racing pruning can persistently undercount disk usage and leave it above the 50 MB cap (24 Oct review A5-R).
-- Top Shelf's queue rejects retired-generation saves (48), but its asynchronously enqueued unconditional clear can delete the next session's publication; unchanged-export suppression can prevent repair (24 Oct review A2-R).
+- The artwork disk cap (50 MB) is kept during use (51): every write, replacement and prune removal runs alone under
+  `ArtworkBudget` and is counted with what it did (53), so the running count is the folder's size; a prune runs once the
+  count crosses the cap. The folder is listed once per prune, never per image.
+- Top Shelf files (snapshot, cards, clear) change only on `TopShelfPublication`'s serial queue. Saves and cards run
+  under the session's generation (48); the sign-out clear is put on the queue before `clear()` returns (52), because the
+  next session shares the generation the clear leaves: queue order, not a generation check, keeps the clear off what that
+  session publishes.
 
 - **Never checked on a device:** an HEVC recording (iPad/iPhone recordings use AVKit, `RecordingNativePlayer`); audio and
   subtitle track selection (no suitable channel); whether AVPlayer stops fetching while paused (C2 assumes it).
