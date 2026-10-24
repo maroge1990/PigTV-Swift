@@ -134,12 +134,15 @@ nonisolated final class ArtworkBudget: @unchecked Sendable {
     private let files = NSLock()       // A5-R: one change to the folder at a time
     private var bytes: Int?            // nil until the first prune has counted the folder
     private var pruning = false
+    private var grewDuringPass = false // A5-R2: a change added bytes while a pass ran
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private(set) var prunes = 0        // tests: how many times the folder was listed
 
     /// Tests only: called when a change has to wait for another one to finish (a scheduling
     /// barrier a test can observe). Nil in the app.
     nonisolated(unsafe) static var waitingForFiles: (@Sendable () -> Void)?
+    /// Tests only: called by pruneLoop between a pass and its `finished` decision. Nil in the app.
+    nonisolated(unsafe) static var afterPass: (@Sendable () -> Void)?
 
     private func owningFiles<T>(_ body: () -> T) -> T {
         if !files.try() {
@@ -155,7 +158,10 @@ nonisolated final class ArtworkBudget: @unchecked Sendable {
     func change<T>(_ body: () -> (T, Int)) -> T {
         owningFiles {
             let (result, delta) = body()
-            lock.withLock { bytes = bytes.map { $0 + delta } }
+            lock.withLock {
+                bytes = bytes.map { $0 + delta }
+                if pruning, delta > 0 { grewDuringPass = true }
+            }
             return result
         }
     }
@@ -173,6 +179,7 @@ nonisolated final class ArtworkBudget: @unchecked Sendable {
         lock.withLock {
             guard !pruning, bytes.map({ $0 > limit }) ?? true else { return false }
             pruning = true
+            grewDuringPass = false
             return true
         }
     }
@@ -182,16 +189,21 @@ nonisolated final class ArtworkBudget: @unchecked Sendable {
         lock.withLock {
             guard !pruning else { return false }
             pruning = true
+            grewDuringPass = false
             return true
         }
     }
 
-    /// A prune ended; true when it should run again (still over the cap after it removed something:
-    /// what was written meanwhile).
+    /// A prune pass ended; true when it should run again: still over the cap, and either it removed
+    /// something or (A5-R2, build 54) a write added bytes while it ran - that write's own claim was
+    /// refused because this prune was running, so only this pass can take it. A pass that removed
+    /// nothing with nothing written meanwhile stops (files it cannot delete never loop).
     func finished(limit: Int, removedAny: Bool) -> Bool {
         let (again, resume) = lock.withLock { () -> (Bool, [CheckedContinuation<Void, Never>]) in
             prunes += 1
-            if removedAny, (bytes ?? 0) > limit { return (true, []) }
+            let grew = grewDuringPass
+            grewDuringPass = false
+            if (bytes ?? 0) > limit, removedAny || grew { return (true, []) }
             pruning = false
             defer { waiters = [] }
             return (false, waiters)
@@ -283,7 +295,11 @@ nonisolated struct ArtworkDiskStore: Sendable {
 
     /// A5: prune, and again while what was written meanwhile keeps it over the cap.
     func pruneLoop() {
-        repeat {} while budget.finished(limit: limit, removedAny: pruneOnce(maxBytes: limit).removed > 0)
+        repeat {
+            let removed = pruneOnce(maxBytes: limit).removed
+            ArtworkBudget.afterPass?()
+            guard budget.finished(limit: limit, removedAny: removed > 0) else { return }
+        } while true
     }
 
     /// A5-R: removes `url`, counting the size it has as it goes (a write may have replaced it since it was listed).

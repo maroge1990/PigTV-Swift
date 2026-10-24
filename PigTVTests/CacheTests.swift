@@ -298,6 +298,49 @@ final class CacheTests: XCTestCase {
         XCTAssertLessThanOrEqual(folderBytes(store), 8_000)
     }
 
+    // MARK: A5-R2 (build 54): a write during a pass that removed nothing still gets a pass
+
+    func testAWriteThatCrossesTheCapWhileAnEmptyPassEndsIsStillPruned() async throws {
+        let directory = temp.appendingPathComponent("budget-pass-end")
+        let store = ArtworkDiskStore(directory: directory, limit: 1_500)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 1_000).write(to: store.fileURL(forKey: "first")) // left by the previous launch
+        let arrived = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
+        let once = OnceFlag()
+        ArtworkBudget.afterPass = { if once.take() { arrived.signal(); resume.wait() } }
+        defer { ArtworkBudget.afterPass = nil }
+
+        XCTAssertTrue(store.budget.begin()) // the launch prune, as `shared` starts it
+        let pruning = Task.detached { store.pruneLoop() }
+        await wait(arrived) // its pass listed 1000 bytes and removed nothing; not yet finished
+        store.write(Data(repeating: 2, count: 1_000), key: "second") // crosses the cap; its own claim is refused
+        XCTAssertEqual(store.budget.counted, 2_000)
+        resume.signal()
+        await pruning.value
+        await store.budget.idle()
+
+        XCTAssertLessThanOrEqual(folderBytes(store), store.limit, "the cap holds on disk")
+        XCTAssertEqual(store.budget.counted, folderBytes(store))
+    }
+
+    func testFilesThatCannotBeDeletedEndThePruneInsteadOfLooping() async throws {
+        let directory = temp.appendingPathComponent("budget-locked")
+        let roomy = ArtworkDiskStore(directory: directory, limit: 100_000)
+        for key in ["a", "b", "c"] { roomy.write(Data(repeating: 1, count: 1_000), key: key) }
+        await roomy.budget.idle()
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path) // removals fail
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path) }
+
+        let store = ArtworkDiskStore(directory: directory, limit: 1_500) // over its cap, nothing deletable
+        XCTAssertTrue(store.budget.begin())
+        let ended = expectation(description: "the prune ends")
+        Task.detached { store.pruneLoop(); ended.fulfill() }
+        await fulfillment(of: [ended], timeout: 20) // a guard against a hang, not the proof: one pass, then it stops
+        await store.budget.idle()
+        XCTAssertEqual(store.budget.prunes, 1, "no pass after one that removed nothing with nothing written")
+        XCTAssertEqual(store.budget.counted, 3_000)
+    }
+
     // MARK: Home
 
     func testARecordingWhoseStatusChangesWithTheSameIDIsNotEqualAndChangesHomesRows() throws {
@@ -314,3 +357,11 @@ final class CacheTests: XCTestCase {
         XCTAssertTrue(HomeRows.recordings([ready]).first?.isPreparingForPlayback == false)
     }
 }
+
+/// Tests: true the first time only.
+private final class OnceFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var taken = false
+    func take() -> Bool { lock.withLock { defer { taken = true }; return !taken } }
+}
+
