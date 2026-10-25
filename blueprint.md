@@ -25,6 +25,8 @@ see [`../PigTV/docs/reviews/2026-10-24/round4/REPAIR-STATUS.md`](../PigTV/docs/r
 
 **25 Oct independent follow-up:** build **53** push tier and iOS build pass. A2-R is fixed locally; A5 accounting is repaired but a write during completion of a no-removal prune can leave the cache over cap with no prune running. See [review](../PigTV/docs/reviews/2026-10-24/round4/APPLE.md). Device acceptance remains open.
 
+**25 Oct review of54:** the empty-prune completion fix passes its direct before/after proof; the locked-folder92s outlier did not recur. A5 remains partial because prefetched URL file-size values can miscount a replacement during pruning. Independent push:243contracts/227unit pass,15of16UIpass (tab577ms>500); iOS build passes. [Review](../PigTV/docs/reviews/2026-10-25/APPLE.md). Physical acceptance remains open.
+
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
 [`TESTING.md`](TESTING.md). This file holds the client's **durable facts**: architecture, implementation constraints, lessons
 and known limits. What the server promises is in [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md).
@@ -338,6 +340,8 @@ real-playback harness exercising them. Verified on the TV (R2.15: no crashes acr
 a recording).
 
 ## 8. Known limitations
+
+- **Artwork54:** shared locking and growth-aware completion do not invalidate prefetched URL sizes; replacing a listed file before removal can make counted bytes negative and leave actual disk usage above cap (25Oct review R5-A1).
 
 - The artwork disk cap (50 MB) is kept during use: every write, replacement and prune removal runs alone under
   `ArtworkBudget` and is counted with what it did (53), so the count is the folder's size. A prune pass repeats while
