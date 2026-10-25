@@ -71,6 +71,16 @@ final class ChannelWarmerTests: XCTestCase {
     /// Lets main-actor tasks run: continuations resume, sends begin and end.
     private func settle() async { for _ in 0..<30 { await Task.yield() } }
 
+    /// Waits until `count` held sends have seen their cancellation. A cancelled `Task.sleep` resumes on
+    /// the cooperative pool and then hops back to the main actor, so a fixed number of yields is not
+    /// always enough under load (a push run on 25 Oct). Bounded: a request that is never cancelled
+    /// still fails the assertion that follows.
+    private func untilCancelled(_ count: Int = 1) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while cancelled.count < count, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(1)) }
+        await settle()
+    }
+
     private func advance(_ seconds: Double) async {
         clock.advance(.milliseconds(Int(seconds * 1000)))
         await settle()
@@ -154,6 +164,7 @@ final class ChannelWarmerTests: XCTestCase {
         XCTAssertEqual(sent, [a])
         XCTAssertTrue(cancelled.isEmpty)
         await browse(warmer, b)
+        await untilCancelled()
         XCTAssertEqual(cancelled, [a], "the old request is cancelled, not left running")
         await advance(1.6)
         XCTAssertEqual(sent, [a, b])
@@ -166,6 +177,7 @@ final class ChannelWarmerTests: XCTestCase {
         await browse(warmer, a)
         await advance(1.6)
         await browse(warmer, nil)
+        await untilCancelled()
         XCTAssertEqual(cancelled, [a])
         XCTAssertNil(warmer.scheduled)
     }
@@ -176,7 +188,7 @@ final class ChannelWarmerTests: XCTestCase {
         await browse(warmer, a)
         await advance(1.6)
         warmer.setActive(false)
-        await settle()
+        await untilCancelled()
         XCTAssertEqual(cancelled, [a])
         warmer.setActive(true)
         await advance(10)
@@ -211,7 +223,7 @@ final class ChannelWarmerTests: XCTestCase {
         await advance(1.6)
         let play = UUID()
         warmer.beginStart(play)
-        await settle()
+        await untilCancelled()
         XCTAssertEqual(cancelled, [a], "a warm never gets in a real play's way")
         warmer.setPlayerTarget(b)
         await advance(10)
