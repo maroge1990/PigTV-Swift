@@ -30,7 +30,8 @@ not the size it was listed with) is committed locally, not pushed, with shrink a
 A push run then also showed a ChannelWarmer cancellation test waiting on a fixed yield count; it now waits for the
 cancellation (test-only). Push tier: see
 [`../PigTV/docs/reviews/2026-10-25/repair/REPAIR-STATUS.md`](../PigTV/docs/reviews/2026-10-25/repair/REPAIR-STATUS.md);
-the tab-switch budget is not reliably clean under load. Not device-verified.
+the tab-switch budget is not reliably clean under load. Not device-verified. 26 Oct: CI failed that test (585 ms, one
+lap); build 46 fails it as often under load, so the gate now fails a switch only when it stalls on both laps (test-only).
 
 **25 Oct review of54:** the empty-prune completion fix passes its direct before/after proof; the locked-folder92s outlier did not recur. A5 remains partial because prefetched URL file-size values can miscount a replacement during pruning. Independent push:243contracts/227unit pass,15of16UIpass (tab577ms>500); iOS build passes. [Review](../PigTV/docs/reviews/2026-10-25/APPLE.md). Physical acceptance remains open.
 
