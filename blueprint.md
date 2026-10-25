@@ -25,6 +25,13 @@ see [`../PigTV/docs/reviews/2026-10-24/round4/REPAIR-STATUS.md`](../PigTV/docs/r
 
 **25 Oct independent follow-up:** build **53** push tier and iOS build pass. A2-R is fixed locally; A5 accounting is repaired but a write during completion of a no-removal prune can leave the cache over cap with no prune running. See [review](../PigTV/docs/reviews/2026-10-24/round4/APPLE.md). Device acceptance remains open.
 
+**25 Oct round-5 repairs:** build **55** (R5-A1: a prune's removal counts the file's size read from the file system,
+not the size it was listed with) is committed locally, not pushed, with shrink and growth tests that fail on build 54.
+A push run then also showed a ChannelWarmer cancellation test waiting on a fixed yield count; it now waits for the
+cancellation (test-only). Push tier: see
+[`../PigTV/docs/reviews/2026-10-25/repair/REPAIR-STATUS.md`](../PigTV/docs/reviews/2026-10-25/repair/REPAIR-STATUS.md);
+the tab-switch budget is not reliably clean under load. Not device-verified.
+
 **25 Oct review of54:** the empty-prune completion fix passes its direct before/after proof; the locked-folder92s outlier did not recur. A5 remains partial because prefetched URL file-size values can miscount a replacement during pruning. Independent push:243contracts/227unit pass,15of16UIpass (tab577ms>500); iOS build passes. [Review](../PigTV/docs/reviews/2026-10-25/APPLE.md). Physical acceptance remains open.
 
 How to work in this repo (commands, tests, shipping, rules) is in [`AGENTS.md`](AGENTS.md); what the suites cover is in
@@ -341,12 +348,11 @@ a recording).
 
 ## 8. Known limitations
 
-- **Artwork54:** shared locking and growth-aware completion do not invalidate prefetched URL sizes; replacing a listed file before removal can make counted bytes negative and leave actual disk usage above cap (25Oct review R5-A1).
-
 - The artwork disk cap (50 MB) is kept during use: every write, replacement and prune removal runs alone under
   `ArtworkBudget` and is counted with what it did (53), so the count is the folder's size. A prune pass repeats while
   over the cap if it removed something or a write added bytes during it (54); one that removed nothing with nothing
-  written stops, so undeletable files never loop. The folder is listed once per pass, never per image.
+  written stops, so undeletable files never loop. The folder is listed once per pass, never per image. What a change
+  counts is the file's size read from the file system then, never a listed URL's prefetched `fileSizeKey` (55).
 - Top Shelf files (snapshot, cards, clear) change only on `TopShelfPublication`'s serial queue. Saves and cards run
   under the session's generation (48); the sign-out clear is put on the queue before `clear()` returns (52), because the
   next session shares the generation the clear leaves: queue order, not a generation check, keeps the clear off what that

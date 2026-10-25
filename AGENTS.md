@@ -41,7 +41,7 @@ force-push.
 1. Before every commit: `sh Tools/test.sh push` passes, plus the iOS build when shared code changed. If something
    can't be run, say so in the commit message and to Mark.
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets), so Settings →
-   Version identifies the installed copy. Current: **54**.
+   Version identifies the installed copy. Current: **55**.
 3. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push (Mark's) and PR; a red run counts as a local
    failure.
 4. Device-dependent work ends with numbered test steps for Mark; nothing is *Verified* until he reports it. A simulator pass is
@@ -63,6 +63,14 @@ force-push.
 - Server changes are made in `../PigTV` under its `AGENTS.md`; a new endpoint this client calls needs an entry in the server's
   `APPLE_CLIENT_ROUTES`.
 - The lead session may delegate to sub-agents (never Haiku) and reviews every diff before it's committed.
+- **Adversarial review (Mark, 25 Oct).** A batch above this threshold gets a Codex adversarial review before Mark is
+  told it is ready: any functional change to playback, the caches or other shared ownership/accounting, the Top Shelf,
+  pairing/auth, or anything the server's `docs/CLIENT-CONTRACT.md` covers; any
+  fix for a review finding; or more than ~150 changed non-test lines. Run `/codex:adversarial-review --background --base
+  <origin/main or the reviewed baseline> <focus>` in each repo touched (it needs `codex login`; the slash command is
+  Mark's to type, since Claude cannot invoke it). Every finding is fixed (with its own failing-before test) or answered,
+  and the handoff lists each with its disposition. If it cannot run, say so and give Mark the exact command and focus
+  text. Docs-only and test-only commits are exempt.
 - At the end of a session update `blueprint.md` with any durable fact; the story goes in the commit message.
 
 ## Gotchas
