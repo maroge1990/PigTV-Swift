@@ -270,9 +270,14 @@ nonisolated struct ArtworkDiskStore: Sendable {
 
     /// Tests only: called by a write between reading the old file's size and replacing it. Nil in the app.
     nonisolated(unsafe) static var beforeReplacing: (@Sendable (String) -> Void)?
+    /// Tests only: called by a prune between listing a file and removing it. Nil in the app.
+    nonisolated(unsafe) static var beforeRemoving: (@Sendable (URL) -> Void)?
 
+    /// R5-A1 (build 55): the file's size now, from the file system. A URL from a directory listing
+    /// carries the size it was listed with (prefetched resource values), which a write may have
+    /// changed since; counting that would leave the count off the disk by the difference.
     private static func size(_ url: URL) -> Int {
-        (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.intValue ?? 0
     }
 
     func write(_ data: Data, key: String) {
@@ -304,7 +309,8 @@ nonisolated struct ArtworkDiskStore: Sendable {
 
     /// A5-R: removes `url`, counting the size it has as it goes (a write may have replaced it since it was listed).
     private func remove(_ url: URL) -> Bool {
-        budget.change { () -> (Bool, Int) in
+        Self.beforeRemoving?(url)
+        return budget.change { () -> (Bool, Int) in
             let size = Self.size(url)
             guard (try? FileManager.default.removeItem(at: url)) != nil else { return (false, 0) }
             return (true, -size)

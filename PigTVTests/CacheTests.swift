@@ -323,6 +323,48 @@ final class CacheTests: XCTestCase {
         XCTAssertEqual(store.budget.counted, folderBytes(store))
     }
 
+    // MARK: R5-A1 (build 55): a removal counts the file it removes, read then, not the size it was listed with
+
+    /// Pauses a prune once between listing a file and removing it, while a write replaces that file.
+    /// The listing's URL carries the size it was listed with (prefetched resource values).
+    private func replaceDuringRemoval(listed: Int, replacement: Int, limit: Int, name: String) async throws -> ArtworkDiskStore {
+        let directory = temp.appendingPathComponent(name)
+        let store = ArtworkDiskStore(directory: directory, limit: limit)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: listed).write(to: store.fileURL(forKey: "a"), options: .atomic) // left by the previous launch
+        let arrived = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
+        let once = OnceFlag()
+        ArtworkDiskStore.beforeRemoving = { _ in if once.take() { arrived.signal(); resume.wait() } }
+        defer { ArtworkDiskStore.beforeRemoving = nil }
+
+        XCTAssertTrue(store.budget.begin()) // the launch prune: counts the folder, lists "a", decides to remove it
+        let pruning = Task.detached { store.pruneLoop() }
+        await wait(arrived)
+        store.write(Data(repeating: 2, count: replacement), key: "a") // replaced after the listing
+        XCTAssertEqual(store.budget.counted, replacement)
+        resume.signal()
+        await pruning.value
+        await store.budget.idle()
+        XCTAssertEqual(store.budget.counted, folderBytes(store), "the removal counted the file it removed")
+        return store
+    }
+
+    func testAFileThatShrankAfterItWasListedIsCountedAtItsSizeWhenRemoved() async throws {
+        let store = try await replaceDuringRemoval(listed: 2_000, replacement: 500, limit: 1_500, name: "budget-shrank")
+        store.write(Data(repeating: 3, count: 2_000), key: "b") // crosses the cap: it must be seen to
+        await store.budget.idle()
+        XCTAssertEqual(store.budget.counted, folderBytes(store))
+        XCTAssertLessThanOrEqual(folderBytes(store), store.limit, "the cap holds on disk")
+    }
+
+    func testAFileThatGrewAfterItWasListedIsCountedAtItsSizeWhenRemoved() async throws {
+        let store = try await replaceDuringRemoval(listed: 600, replacement: 2_000, limit: 500, name: "budget-grew")
+        store.write(Data(repeating: 3, count: 400), key: "b") // under the cap: no prune needed
+        await store.budget.idle()
+        XCTAssertEqual(store.budget.counted, 400)
+        XCTAssertEqual(folderBytes(store), 400)
+    }
+
     func testFilesThatCannotBeDeletedEndThePruneInsteadOfLooping() async throws {
         let directory = temp.appendingPathComponent("budget-locked")
         let roomy = ArtworkDiskStore(directory: directory, limit: 100_000)
