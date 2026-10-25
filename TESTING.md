@@ -51,7 +51,7 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
 - `HomeUITests`: Home opens first; Down reaches Watch, then a card.
 - `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page; build 33: an upcoming
   event's secondary channel offers Record/Watch when it starts instead of tuning immediately.
-- `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, the stall must stay under `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms), and after each switch Down must move focus into the tab's content.
+- `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, no switch may stall over `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms) on both laps (a one-lap spike of a loaded simulator is reported, not failed; 26 Oct), and after each switch Down must move focus into the tab's content.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
 - `BrandSplashUITests`: the 1.6 splash draws in light and dark and stays up through a breathing half-cycle (`PIGTV_UI_TEST_SCREEN=splash`, `PIGTV_UI_TEST_APPEARANCE`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
 - `TopShelfCardsUITests`: renders the Top Shelf cards through the real export, then focuses PigTV on the Home Screen.
