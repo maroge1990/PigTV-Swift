@@ -1,12 +1,12 @@
 # PigTV Apple client: blueprint
 
-**State:** app **1.0 (40)** with server **0207** is the 13 Oct device baseline. Builds **42–45** are committed for Mark to
-push, matching server 0208–0222: the 15 Oct review's fixes and Mark's 16 Oct bugs (42), the larger tvOS icon (43), watch a
-recording from the start while it records (44, C-L), recording rules and programme artwork (45, C-M, C-N); 42–45 are
-pushed. Build **46** (committed, not pushed) fixes the test team's 18 Oct list: one header position on every tab, an
-icon-only Search in the iPhone Guide, no TV Guide pill in the touch player, and the tvOS guide's fast-swipe snap-back.
-None is device-verified yet. The joint roadmap is [`../PigTV/blueprint.md`](../PigTV/blueprint.md) §4 and
-[`../PigTV/docs/reviews/2026-10-16/ROADMAP.md`](../PigTV/docs/reviews/2026-10-16/ROADMAP.md) (Wave 4 device checks).
+**State (27 Oct):** build **57** is pushed and on Mark's Apple TV; nothing is waiting. Builds 56-57 hold a live play 30 s
+behind the playlist's edge (`configuredTimeOffsetFromLive`, live items only), so a provider's pause is ridden out; with
+server R7 (0282-0284) Chicago Sports Network Plus and NBC Sports Boston played 35-65 min with 0 stalls. Open on this side:
+FR-10 (the player found frozen after a long live play; not reproducible on demand). The joint plan and Mark's open
+questions: [`../PigTV/docs/reviews/2026-10-27/ROADMAP.md`](../PigTV/docs/reviews/2026-10-27/ROADMAP.md); handover:
+[`../PigTV/docs/reviews/2026-10-27/HANDOVER.md`](../PigTV/docs/reviews/2026-10-27/HANDOVER.md). The older notes below are
+history.
 
 **22 Oct review:** [newest-first intent/outcome assessment](../PigTV/docs/reviews/2026-10-21/REVIEW.md) distinguishes build 46 corrections from build 42 attempts. Follow-ups: scope local resume, make Top Shelf logout publication generation-safe, display rule errors, propagate guide corrections to visible cells, and maintain the artwork disk budget during use. Fresh synthetic contracts: 243 passed; interrupted simulator checks remain unconfirmed. No new device acceptance. [Repair handoff](../PigTV/docs/reviews/2026-10-21/HANDOFF-PROMPT.md).
 
