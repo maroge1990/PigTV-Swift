@@ -100,12 +100,19 @@ final class PlaybackModel: ObservableObject, Identifiable {
         }
         let edge = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
         let current = CMTimeGetSeconds(item.currentTime())
-        let behind = edge.isFinite && current.isFinite && (edge - current) > 20
+        let behind = edge.isFinite && current.isFinite && (edge - current) > PlayerSeekWindow.liveMargin
         if behind != behindLive { behindLive = behind }
     }
     func goToLive() {
         guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return }
-        player.seek(to: CMTimeRangeGetEnd(range))
+        let start = CMTimeGetSeconds(range.start)
+        let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
+        if start.isFinite, end.isFinite {
+            // Build 56: back to the held offset, not the very edge, where a provider's pause would stall at once.
+            player.seek(to: CMTime(seconds: PlayerSeekWindow.liveTarget(start: start, end: end), preferredTimescale: 600))
+        } else {
+            player.seek(to: CMTimeRangeGetEnd(range))
+        }
         player.rate = 1
         behindLive = false
     }
@@ -119,9 +126,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
         let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
         let current = CMTimeGetSeconds(item.currentTime())
         guard start.isFinite, end.isFinite, current.isFinite, end > start else { return }
-        let target = min(max(current + seconds, start), end)
+        let target = min(max(current + seconds, start), PlayerSeekWindow.liveTarget(start: start, end: end))
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        behindLive = (end - target) > 20
+        behindLive = (end - target) > PlayerSeekWindow.liveMargin
     }
 
     // Fraction through the seekable buffer, for the scrub indicator (nil when
@@ -145,7 +152,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// Seeks to a point in the seekable window (the scrub bar's release).
     func seek(toFraction fraction: Double) {
         guard let window = seekWindow() else { return }
-        let target = window.time(at: fraction)
+        let target = min(window.time(at: fraction), PlayerSeekWindow.liveTarget(start: window.start, end: window.end))
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         behindLive = !window.isLive(at: fraction)
     }
@@ -359,6 +366,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // load finishes (a stale result is discarded).
     private func installItem(url: URL, strategy: String, mode: DisplayMode?, assetCriteria: Bool = true, generation: UUID) {
         let item = AVPlayerItem(url: url)
+        // Build 56: start (and stay) this far from the live edge, so a provider's pause is ridden out. No effect on a
+        // playlist that ends.
+        item.configuredTimeOffsetFromLive = CMTime(seconds: PlayerSeekWindow.liveOffset, preferredTimescale: 1)
         PigTVSignpost.event("LiveItemCreated")
         currentURL = url
         currentStrategy = strategy

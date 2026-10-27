@@ -63,10 +63,15 @@ final class PlayerSharedTests: XCTestCase {
         XCTAssertEqual(window.readout(at: window.fraction), "30:00 behind live")
         XCTAssertEqual(window.readout(at: 0), "3 h 00 min behind live")
         XCTAssertTrue(window.isLive(at: 1))
-        XCTAssertTrue(window.isLive(at: (10_800 - 15) / 10_800.0), "within 20 s reads as live")
+        XCTAssertTrue(window.isLive(at: (10_800 - 15) / 10_800.0), "within the margin reads as live")
+        // Build 56: a play held 30 s behind the edge (FR-8) still reads as live; 45 s does not.
+        XCTAssertTrue(window.isLive(at: (10_800 - PlayerSeekWindow.liveOffset) / 10_800.0), "the held offset reads as live")
+        XCTAssertFalse(window.isLive(at: (10_800 - 45) / 10_800.0))
         XCTAssertEqual(window.readout(at: 1), "LIVE")
         XCTAssertEqual(window.skipTarget(15), 9_115)
-        XCTAssertEqual(window.skipTarget(5_000), 10_900)
+        XCTAssertEqual(window.skipTarget(5_000), 10_900 - PlayerSeekWindow.liveOffset, "skipping forward stops at the held offset")
+        XCTAssertEqual(PlayerSeekWindow.liveTarget(start: 100, end: 10_900), 10_870)
+        XCTAssertEqual(PlayerSeekWindow.liveTarget(start: 100, end: 110), 100, "never before the window's start")
         XCTAssertEqual(window.skipTarget(-20_000), 100)
         // Finger position on the track.
         XCTAssertEqual(PlayerSeekWindow.fraction(forX: 150, width: 600), 0.25)

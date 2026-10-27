@@ -250,8 +250,15 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     var start: Double
     var end: Double
     var current: Double
-    /// Within this many seconds of the end reads as live (as on the TV).
-    static let liveMargin: Double = 20
+    /// How far behind the live edge a live play is held (build 56). Some providers deliver in bursts with pauses of up
+    /// to ~16 s, and a healthy one fell 18.3 s behind (server FINDINGS FR-8); AVPlayer's default start, about three
+    /// target durations (~12 s), runs dry in one. The server calls a feed lost at 24 s, before this runs out.
+    static let liveOffset: Double = 30
+    /// Within this many seconds of the end reads as live (as on the TV): the held offset plus slack.
+    static let liveMargin: Double = liveOffset + 10
+
+    /// Where "go to live" seeks: the held offset from the end, never before the window's start.
+    static func liveTarget(start: Double, end: Double) -> Double { max(start, end - liveOffset) }
 
     /// Nil when there is nothing meaningful to scrub (under 5 s, or not finite).
     init?(start: Double, end: Double, current: Double) {
@@ -265,8 +272,8 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     func time(at fraction: Double) -> Double { start + Self.clamp(fraction) * duration }
     func behindLive(at fraction: Double) -> Double { max(0, end - time(at: fraction)) }
     func isLive(at fraction: Double) -> Bool { behindLive(at: fraction) <= Self.liveMargin }
-    /// The target of a ±seconds skip, clamped to the window.
-    func skipTarget(_ seconds: Double) -> Double { min(max(current + seconds, start), end) }
+    /// The target of a ±seconds skip, clamped to the window and never nearer the edge than the held offset.
+    func skipTarget(_ seconds: Double) -> Double { min(max(current + seconds, start), Self.liveTarget(start: start, end: end)) }
 
     /// A drag's x position on a track `width` wide → fraction.
     static func fraction(forX x: Double, width: Double) -> Double {

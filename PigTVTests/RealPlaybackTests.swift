@@ -101,6 +101,8 @@ final class RealPlaybackTests: XCTestCase {
         try await waitFor("ready") { playback.ready }
         XCTAssertLessThan(Date().timeIntervalSince(began), 3, "nothing may wait before the item is installed")
         XCTAssertEqual(itemPath(playback), "/api/transcode/s1/master.m3u8")
+        // Build 56 (FR-8): a live item is held 30 s behind the edge, so a provider's pause is ridden out.
+        XCTAssertEqual(playback.player.currentItem?.configuredTimeOffsetFromLive.seconds, 30)
         #if os(tvOS)
         XCTAssertNotNil(playback.displayCriteria, "criteria come from the resolve decision's fps")
         #endif
