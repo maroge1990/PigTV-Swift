@@ -121,6 +121,25 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// Build 57 (Codex review of 56): the 30 s hold applies to live playlists only. On a source that ends
+    /// (the fixture is a 6 s VOD), a forward skip near the end goes to the end, never back by the offset.
+    func testForwardSkipOnAFiniteSourceNeverMovesBack() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let playback = PlaybackModel(channel: channel(), client: try server.client())
+        playback.start()
+        try await waitFor("AVPlayer .playing") { isPlaying(playback) }
+        try await waitFor("a seekable window") { playback.seekWindow() != nil }
+        try await waitFor("past 1 s") { playback.player.currentTime().seconds > 1 }
+        XCTAssertEqual(playback.seekWindow()?.live, false, "a VOD playlist is not live")
+        let before = playback.player.currentTime().seconds
+        playback.skip(15)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertGreaterThanOrEqual(playback.player.currentTime().seconds, before, "not jumped back by the live offset")
+        _ = await playback.stop()
+        server.http.stop()
+    }
+
     /// A decision without a usable frame rate: the asset's display criteria
     /// load in the background (the build 27 path), and playback never waits.
     func testPlaysWithoutFrameRateInTheDecision() async throws {

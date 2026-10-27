@@ -103,13 +103,16 @@ final class PlaybackModel: ObservableObject, Identifiable {
         let behind = edge.isFinite && current.isFinite && (edge - current) > PlayerSeekWindow.liveMargin
         if behind != behindLive { behindLive = behind }
     }
+    /// A live playlist has no end (indefinite duration); a finite source's does (build 57).
+    private static func isLive(_ item: AVPlayerItem) -> Bool { item.duration.isIndefinite }
+
     func goToLive() {
         guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return }
         let start = CMTimeGetSeconds(range.start)
         let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
         if start.isFinite, end.isFinite {
             // Build 56: back to the held offset, not the very edge, where a provider's pause would stall at once.
-            player.seek(to: CMTime(seconds: PlayerSeekWindow.liveTarget(start: start, end: end), preferredTimescale: 600))
+            player.seek(to: CMTime(seconds: PlayerSeekWindow.liveTarget(start: start, end: end, live: Self.isLive(item)), preferredTimescale: 600))
         } else {
             player.seek(to: CMTimeRangeGetEnd(range))
         }
@@ -126,7 +129,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
         let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
         let current = CMTimeGetSeconds(item.currentTime())
         guard start.isFinite, end.isFinite, current.isFinite, end > start else { return }
-        let target = min(max(current + seconds, start), PlayerSeekWindow.liveTarget(start: start, end: end))
+        let target = min(max(current + seconds, start), PlayerSeekWindow.liveTarget(start: start, end: end, live: Self.isLive(item)))
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         behindLive = (end - target) > PlayerSeekWindow.liveMargin
     }
@@ -146,13 +149,13 @@ final class PlaybackModel: ObservableObject, Identifiable {
     func seekWindow() -> PlayerSeekWindow? {
         guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return nil }
         return PlayerSeekWindow(start: CMTimeGetSeconds(range.start), end: CMTimeGetSeconds(CMTimeRangeGetEnd(range)),
-                                current: CMTimeGetSeconds(item.currentTime()))
+                                current: CMTimeGetSeconds(item.currentTime()), live: Self.isLive(item))
     }
 
     /// Seeks to a point in the seekable window (the scrub bar's release).
     func seek(toFraction fraction: Double) {
         guard let window = seekWindow() else { return }
-        let target = min(window.time(at: fraction), PlayerSeekWindow.liveTarget(start: window.start, end: window.end))
+        let target = min(window.time(at: fraction), PlayerSeekWindow.liveTarget(start: window.start, end: window.end, live: window.live))
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         behindLive = !window.isLive(at: fraction)
     }

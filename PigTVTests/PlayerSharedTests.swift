@@ -70,8 +70,12 @@ final class PlayerSharedTests: XCTestCase {
         XCTAssertEqual(window.readout(at: 1), "LIVE")
         XCTAssertEqual(window.skipTarget(15), 9_115)
         XCTAssertEqual(window.skipTarget(5_000), 10_900 - PlayerSeekWindow.liveOffset, "skipping forward stops at the held offset")
-        XCTAssertEqual(PlayerSeekWindow.liveTarget(start: 100, end: 10_900), 10_870)
-        XCTAssertEqual(PlayerSeekWindow.liveTarget(start: 100, end: 110), 100, "never before the window's start")
+        XCTAssertEqual(PlayerSeekWindow.liveTarget(start: 100, end: 10_900, live: true), 10_870)
+        XCTAssertEqual(PlayerSeekWindow.liveTarget(start: 100, end: 110, live: true), 100, "never before the window's start")
+        // Build 57 (Codex review of 56): a playlist that ends keeps its whole range.
+        XCTAssertEqual(PlayerSeekWindow.liveTarget(start: 100, end: 10_900, live: false), 10_900)
+        let finite = try XCTUnwrap(PlayerSeekWindow(start: 0, end: 60, current: 50, live: false))
+        XCTAssertEqual(finite.skipTarget(15), 60, "a forward skip near the end of a finite item goes to the end, never back")
         XCTAssertEqual(window.skipTarget(-20_000), 100)
         // Finger position on the track.
         XCTAssertEqual(PlayerSeekWindow.fraction(forX: 150, width: 600), 0.25)

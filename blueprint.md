@@ -215,7 +215,8 @@ earlier one where they differ.
   stale row (the "snaps back to where I started" bug). `GuideFastScrollUITests` holds Down/Up on 300 channels.
 
 - **Live plays are held 30 s behind the edge (build 56).** `configuredTimeOffsetFromLive` = `PlayerSeekWindow.liveOffset`; Go to
-  live, a forward skip and a scrub release return there, not to the very edge. Some providers pause 3-16 s while healthy
+  live, a forward skip and a scrub release return there, not to the very edge; only on a live playlist (indefinite
+  duration): a source that ends keeps its whole range (build 57). Some providers pause 3-16 s while healthy
   (server `docs/FINDINGS.md` FR-8); the server calls a shared feed lost at 24 s behind real time (R7, 0282). Preserving the
   offset after a stall (`automaticallyPreservesTimeOffsetFromLive`) is off: it would skip content.
 

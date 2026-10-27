@@ -250,6 +250,8 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     var start: Double
     var end: Double
     var current: Double
+    /// A live playlist (no end): only then is a play held back from the end (build 57, Codex review of 56).
+    var live: Bool = true
     /// How far behind the live edge a live play is held (build 56). Some providers deliver in bursts with pauses of up
     /// to ~16 s, and a healthy one fell 18.3 s behind (server FINDINGS FR-8); AVPlayer's default start, about three
     /// target durations (~12 s), runs dry in one. The server calls a feed lost at 24 s, before this runs out.
@@ -257,13 +259,14 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     /// Within this many seconds of the end reads as live (as on the TV): the held offset plus slack.
     static let liveMargin: Double = liveOffset + 10
 
-    /// Where "go to live" seeks: the held offset from the end, never before the window's start.
-    static func liveTarget(start: Double, end: Double) -> Double { max(start, end - liveOffset) }
+    /// The furthest a seek goes: for a live playlist the held offset from the end, never before the window's
+    /// start; for one that ends (a finite source), the end itself.
+    static func liveTarget(start: Double, end: Double, live: Bool) -> Double { live ? max(start, end - liveOffset) : end }
 
     /// Nil when there is nothing meaningful to scrub (under 5 s, or not finite).
-    init?(start: Double, end: Double, current: Double) {
+    init?(start: Double, end: Double, current: Double, live: Bool = true) {
         guard start.isFinite, end.isFinite, current.isFinite, end - start > 5 else { return nil }
-        self.start = start; self.end = end; self.current = current
+        self.start = start; self.end = end; self.current = current; self.live = live
     }
 
     var duration: Double { end - start }
@@ -273,7 +276,7 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     func behindLive(at fraction: Double) -> Double { max(0, end - time(at: fraction)) }
     func isLive(at fraction: Double) -> Bool { behindLive(at: fraction) <= Self.liveMargin }
     /// The target of a ±seconds skip, clamped to the window and never nearer the edge than the held offset.
-    func skipTarget(_ seconds: Double) -> Double { min(max(current + seconds, start), Self.liveTarget(start: start, end: end)) }
+    func skipTarget(_ seconds: Double) -> Double { min(max(current + seconds, start), Self.liveTarget(start: start, end: end, live: live)) }
 
     /// A drag's x position on a track `width` wide → fraction.
     static func fraction(forX x: Double, width: Double) -> Double {
