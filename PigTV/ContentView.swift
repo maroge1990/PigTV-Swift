@@ -339,7 +339,11 @@ struct PlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let message = playback.viewerConflict {
+            if playback.stopping {
+                // Teardown clears ready before the server releases the stream.
+                // Keep the exit background instead of returning to tuning.
+                Color.clear
+            } else if let message = playback.viewerConflict {
                 VStack(spacing: 24) {
                     Text("Another device is watching").font(.title2.bold())
                     Text(message).multilineTextAlignment(.center)

@@ -16,6 +16,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// R11: the resolve adopted a stream the app warmed earlier.
     private(set) var warmAdopted = false
     @Published private(set) var ready = false
+    /// The player screen can remain visible while the server releases its stream.
+    @Published private(set) var stopping = false
     @Published private(set) var error: String?
     @Published private(set) var recordingConflict: RecordingConflict?
     @Published private(set) var viewerConflict: String?
@@ -740,6 +742,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     func stop() async -> String? {
         if let stopTask { return await stopTask.value }
         ended = true
+        stopping = true
         clearItem()
         let task = Task<String?, Never> {
             await resolveTask?.value

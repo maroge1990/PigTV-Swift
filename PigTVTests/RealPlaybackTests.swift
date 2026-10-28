@@ -1,5 +1,6 @@
 import XCTest
 import AVFoundation
+import Combine
 @testable import PigTV
 
 /// Real playback through the app's own code (build 28). Two crashes reached
@@ -118,6 +119,28 @@ final class RealPlaybackTests: XCTestCase {
         XCTAssertNil(warning)
         XCTAssertNil(playback.player.currentItem)
         XCTAssertEqual(server.http.requests(path: "/api/playback/s1", method: "DELETE").count, 1, "the session is released")
+        server.http.stop()
+    }
+
+    /// Exiting holds the screen until release completes. Clearing the item must
+    /// not make that screen present its initial tuning card again.
+    func testStoppingAPlayingStreamNeverReturnsToTuning() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let playback = PlaybackModel(channel: channel(), client: try server.client())
+        playback.start()
+        try await waitFor("playing before exit") { isPlaying(playback) }
+        var returnedToTuning = false
+        let observation = playback.$ready.dropFirst().sink { ready in
+            if !ready && !playback.stopping { returnedToTuning = true }
+        }
+        _ = await playback.stop()
+        XCTAssertFalse(returnedToTuning, "stop must publish its closing state before clearing ready")
+        XCTAssertTrue(playback.stopping)
+        XCTAssertFalse(playback.ready)
+        XCTAssertNil(playback.player.currentItem)
+        XCTAssertEqual(server.http.requests(path: "/api/playback/s1", method: "DELETE").count, 1)
+        withExtendedLifetime(observation) {}
         server.http.stop()
     }
 
