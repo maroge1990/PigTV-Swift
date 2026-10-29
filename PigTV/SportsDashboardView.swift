@@ -32,6 +32,11 @@ struct SportsDashboardView: View {
     self.browse = browse
     self.model = model
     _actions = ObservedObject(wrappedValue: browse.actions)
+    #if DEBUG
+      if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-dashboard" {
+        _league = State(initialValue: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_LEAGUE"])
+      }
+    #endif
   }
   @Environment(\.scenePhase) private var scenePhase
   @State private var pageWidth: CGFloat = 360
@@ -149,8 +154,9 @@ struct SportsDashboardView: View {
     }
   }
   @ViewBuilder private var navigationActions: some View {
-    Button("Today") { changeLeague(nil) }
+    Button("Today") { changeLeague(nil) }.accessibilityIdentifier("sportsDashboard.today")
     Button("Spoilers & delay", systemImage: "eye.slash") { settings = true }
+      .accessibilityIdentifier("sportsDashboard.settings")
   }
   private var detailBinding: Binding<DashboardIdentity?> {
     Binding(get: { details.map { DashboardIdentity(id: $0) } }, set: { details = $0?.id })
@@ -312,7 +318,18 @@ private struct SportsDashboardShelf: View {
   @State private var order: [String] = []
   @FocusState private var focused: String?
   #if os(tvOS)
-    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 380
+    @ScaledMetric(relativeTo: .body) private var basicHeight: CGFloat = 320
+    @ScaledMetric(relativeTo: .body) private var situationHeight: CGFloat = 372
+    @ScaledMetric(relativeTo: .body) private var sessionHeight: CGFloat = 352
+    @ScaledMetric(relativeTo: .body) private var guideHeight: CGFloat = 304
+    private var cardHeight: CGFloat {
+      switch league {
+      case "NFL", "MLB": situationHeight
+      case "Cricket", "F1": sessionHeight
+      case "AFL", "AFLW", "NBA", "EPL", "FA Cup", "UEFA", "Championship": basicHeight
+      default: guideHeight
+      }
+    }
   #else
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 280
   #endif
@@ -346,31 +363,40 @@ private struct SportsDashboardShelf: View {
                 Button {
                   select(game)
                 } label: {
-                  VStack(alignment: .leading, spacing: 14) {
+                  VStack(alignment: .leading, spacing: 8) {
                     SportsGameContent(
                       game: game, hidden: hidden, timezone: timezone, client: browse.client,
                       showLeague: false)
-                    if game.availability == "matched" && !game.terminal {
-                      Label(game.availabilityLabel, systemImage: "tv").font(SportMetrics.detail)
-                        .foregroundStyle(.secondary)
-                    }
-                    if game.channels.contains(where: { marks.recordingChannels.contains($0.name) })
-                    {
-                      Label("Recording", systemImage: "record.circle.fill").font(
-                        SportMetrics.detail
-                      ).foregroundStyle(.red)
-                    }
+                    HStack(spacing: 8) {
+                      if game.availability == "matched" && !game.terminal {
+                        Label(game.availabilityLabel, systemImage: "tv")
+                          .foregroundStyle(.secondary).lineLimit(1)
+                      }
+                      if game.channels.contains(where: { marks.isRecording($0) }) {
+                        Label("Recording", systemImage: "record.circle.fill")
+                          .foregroundStyle(.red).fixedSize()
+                      }
+                    }.font(SportMetrics.detail)
                   }.padding(SportMetrics.cardPadding).frame(
                     width: cardWidth, height: cardHeight, alignment: .topLeading
                   ).clipped()
-                }.buttonStyle(HomeCardButtonStyle()).focused($focused, equals: id)
-                  .accessibilityIdentifier("sportsDashboard.game.\(id)")
-                  .contextMenu {
-                    Button("Event details, channels & recording", systemImage: "ellipsis.circle") {
-                      details(id)
+                }.buttonStyle(HomeCardButtonStyle())
+                  #if os(tvOS)
+                    .highPriorityGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in details(id) })
+                    .focused($focused, equals: id)
+                    .accessibilityIdentifier("sportsDashboard.game.\(id)")
+                    .accessibilityHint("Hold Select for event, channel and recording options")
+                  #else
+                    .focused($focused, equals: id)
+                    .accessibilityIdentifier("sportsDashboard.game.\(id)")
+                    .contextMenu {
+                      Button("Event details, channels & recording", systemImage: "ellipsis.circle") { details(id) }
                     }
-                  }
-                #if os(iOS)
+                  #endif
+                #if os(tvOS)
+                  Text("Hold Select for options").font(.caption).foregroundStyle(.secondary)
+                    .opacity(focused == id ? 1 : 0).accessibilityHidden(true)
+                #else
                   Button("More options", systemImage: "ellipsis.circle") { details(id) }
                     .accessibilityLabel("More options for \(game.title)")
                     .accessibilityIdentifier("sportsDashboard.options.\(id)")
@@ -413,7 +439,7 @@ private struct SportsGameContent: View {
   let client: APIClient
   var showLeague = true
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: showLeague ? 12 : 8) {
       HStack {
         Text(showLeague ? "\(game.league.uppercased()) · \(game.statusLabel)" : game.statusLabel)
           .font(SportMetrics.league).foregroundStyle(Color.pigAccentText)
@@ -436,7 +462,8 @@ private struct SportsGameContent: View {
               .fixedSize(horizontal: false, vertical: true).frame(
                 maxWidth: .infinity, alignment: .leading)
             if let scores = game.visibleScores(hidden: hidden) {
-              Text(scores[index]).font(SportMetrics.title).monospacedDigit()
+              Text(scores[index]).font(SportMetrics.title).monospacedDigit().lineLimit(1)
+                .minimumScaleFactor(0.7)
             }
           }
         }
@@ -446,9 +473,9 @@ private struct SportsGameContent: View {
         ).lineLimit(3)
       }
       if game.family == .motorsport {
-        if let session = game.session { Text(session).font(SportMetrics.title) }
+        if let session = game.session { Text(session).font(SportMetrics.title).lineLimit(showLeague ? nil : 1) }
         if let circuit = game.circuit, !circuit.name.isEmpty {
-          Text(circuit.name).font(SportMetrics.detail)
+          Text(circuit.name).font(SportMetrics.detail).lineLimit(showLeague ? nil : 2)
         }
       }
       if !game.progressLabel().isEmpty && game.status != "scheduled" {
@@ -490,42 +517,57 @@ private struct SportsGameContent: View {
 private struct SportsDashboardSettings: View {
   @ObservedObject var model: SportsDashboardModel
   @Environment(\.dismiss) private var dismiss
+  @State private var draft: SportsPreferences?
+  @FocusState private var focused: String?
+  private var preferences: SportsPreferences? {
+    model.dashboard?.preferences ?? (model.saving ? draft : nil)
+  }
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 28) {
         Button("Done") { dismiss() }
         Text("Sports · Your account").font(SportMetrics.sectionTitle)
         Text("These settings sync to devices paired with this account.")
-        if let prefs = model.dashboard?.preferences {
-          Toggle(
-            "Avoid spoilers",
-            isOn: Binding(
-              get: { prefs.avoidSpoilers },
-              set: { value in
-                Task { await model.save(avoidSpoilers: value, delay: prefs.scoreDelaySeconds) }
-              }))
+        if let prefs = preferences {
+          Toggle("Avoid spoilers", isOn: Binding(
+            get: { prefs.avoidSpoilers },
+            set: { value in save(prefs, spoilers: value, delay: prefs.scoreDelaySeconds) }))
           Text("Score delay: \(prefs.scoreDelaySeconds) seconds")
-          VStack(alignment: .leading, spacing: 12) {
-            Button("− 10 seconds") {
-              Task {
-                await model.save(
-                  avoidSpoilers: prefs.avoidSpoilers, delay: max(0, prefs.scoreDelaySeconds - 10))
-              }
-            }
-            Button("+ 10 seconds") {
-              Task {
-                await model.save(
-                  avoidSpoilers: prefs.avoidSpoilers, delay: min(300, prefs.scoreDelaySeconds + 10))
-              }
+          LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 16) {
+            ForEach([0, 30, 60, 90, 120, 180, 300], id: \.self) { delay in
+              Button("\(delay)s") { save(prefs, spoilers: prefs.avoidSpoilers, delay: delay) }
+                .focused($focused, equals: "delay-\(delay)")
+                .accessibilityIdentifier("sportsDashboard.delay.\(delay)")
+                .accessibilityLabel("Score delay \(delay) seconds")
+                .accessibilityValue(prefs.scoreDelaySeconds == delay ? "Selected" : "")
             }
           }
-          Text("0–300 seconds. Game clocks come from the delayed server snapshot.")
+          VStack(alignment: .leading, spacing: 12) {
+            Button("− 10 seconds") { save(prefs, spoilers: prefs.avoidSpoilers, delay: max(0, prefs.scoreDelaySeconds - 10)) }
+              .focused($focused, equals: "less")
+            Button("+ 10 seconds") { save(prefs, spoilers: prefs.avoidSpoilers, delay: min(300, prefs.scoreDelaySeconds + 10)) }
+              .focused($focused, equals: "more")
+          }
+          // Controls remain mounted/focusable during save; the model refuses repeated writes.
+          Text(model.saving ? "Saving settings…" : "0–300 seconds. Game clocks come from the delayed server snapshot.")
+            .font(SportMetrics.detail).frame(minHeight: 48, alignment: .topLeading)
         } else {
           Text("Settings hidden until refreshed.")
         }
         if let message = model.message { Text(message) }
       }.padding(SportsDashboardLayout.detailPadding).frame(maxWidth: 1000, alignment: .leading)
-    }.pigPageBackdrop().whileVisible { await model.keepFresh(league: model.league) }
+    }.pigPageBackdrop()
+      .onAppear { draft = model.dashboard?.preferences }
+      .onChange(of: model.dashboard?.preferences) { _, prefs in
+        if let prefs { draft = prefs }
+        else if !model.saving { draft = nil }
+      }
+      .whileVisible { await model.keepFresh(league: model.league, clear: false) }
+  }
+  private func save(_ prefs: SportsPreferences, spoilers: Bool, delay: Int) {
+    guard !model.saving else { return }
+    draft = SportsPreferences(avoidSpoilers: spoilers, scoreDelaySeconds: delay, revision: prefs.revision)
+    Task { await model.save(avoidSpoilers: spoilers, delay: delay, revision: prefs.revision) }
   }
 }
 

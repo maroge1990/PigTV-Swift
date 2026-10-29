@@ -90,6 +90,16 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }
     var isActive: Bool { ["scheduled", "waiting", "recording"].contains(status) }
     var statusLabel: String { status == "waiting" ? "Waiting — someone is watching" : status.capitalized }
+    // Existing schedule response identity; optional for old servers. Dashboard badges never guess by name.
+    var source_id: Int? = nil
+    var channel_item_id: String? = nil
+    var channel_stable_id: String? = nil
+    var channelIdentityKey: String? {
+        guard let source_id else { return nil }
+        if let stable = channel_stable_id, !stable.isEmpty { return "\(source_id):s:\(stable)" }
+        guard let item = channel_item_id, !item.isEmpty else { return nil }
+        return "\(source_id):\(item)"
+    }
     // Guide cells match schedules by channel name and programme start.
     var guideKey: String { ScheduledRecording.key(channel: channel_name ?? "", start: program_start) }
     static func key(channel: String, start: Double) -> String { "\(channel)|\(Int64(start))" }

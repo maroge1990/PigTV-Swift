@@ -126,3 +126,21 @@ families, terminal/transit expiry, background late responses, account identity, 
 
 The fixture is not device/source acceptance. Mark's real-device checks and server pilot/review gates are in
 `../PigTV/docs/reviews/2026-10-29/sports-dashboard-continuation/README.md`.
+
+## Sports dashboard refinement fixtures (build 61)
+
+`SportsDashboardTests` covers strict recording identities (including duplicate names, renamed/reordered channels,
+legacy missing fields), visible revision conflicts and the existing account/delay/action lifecycle. The tvOS dashboard
+UI suite checks compact family geometry/content, direct Hold Select without a primary Watch, normal short Select,
+and preset focus during a delayed synthetic save. Mobile dashboard checks remain in the iOS UI suite.
+
+These additional DEBUG launch options require `PIGTV_UI_TEST_SCREEN=sport-dashboard`; previews have no real actions:
+
+| Variable | Values |
+|---|---|
+| `PIGTV_UI_TEST_DASHBOARD_LEAGUE` | One canonical league, to inspect its family without scrolling all shelves |
+| `PIGTV_UI_TEST_DASHBOARD_WATCHABLE` | `1`: first invented AFL card offers Watch; the fixture still refuses acquisition |
+| `PIGTV_UI_TEST_SAVE_DELAY_MS` | `0`–`5000`: hold a synthetic settings save to check mounted controls/focus |
+
+They do not query a real server or provider. Physical remote feel and consolidated cross-platform acceptance remain
+Mark's checks in the server's `sports-tvos-refinements` handoff.

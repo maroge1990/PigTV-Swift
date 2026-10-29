@@ -21,6 +21,67 @@ final class SportsDashboardTests: XCTestCase {
       info: try FakePigTVServer.info(extraFeatures: #""sportsDashboard":\#(enabled)"#),
       accountID: account)
   }
+  @MainActor func testRecordingBadgeUsesSourceAndStableIdentityInsteadOfChannelName() throws {
+    let store = RecordingsStore()
+    let marks = ScheduleMarks(following: store)
+    let row = #"[{"id":1,"title":"Game","channel_name":"Sports HD","program_start":1000,"program_end":9000,"status":"recording","source_id":1,"channel_item_id":"pos_7","channel_stable_id":"stable7"}]"#
+    store.schedules = try JSONDecoder().decode([ScheduledRecording].self, from: Data(row.utf8))
+    XCTAssertFalse(marks.isRecording(SportEventChannel(sourceId: 2, rawID: "pos_7", stableId: "stable7", name: "Sports HD")))
+    XCTAssertFalse(marks.isRecording(SportEventChannel(sourceId: 1, rawID: "pos_7", stableId: "other", name: "Sports HD")))
+    XCTAssertTrue(marks.isRecording(SportEventChannel(sourceId: 1, rawID: "pos_99", stableId: "stable7", name: "Renamed Sports")))
+    store.schedules = []
+    XCTAssertFalse(marks.isRecording(SportEventChannel(sourceId: 1, rawID: "pos_99", stableId: "stable7", name: "Renamed Sports")))
+  }
+  @MainActor func testRecordingBadgeNeverGuessesAnIdentityForOldSchedules() throws {
+    let store = RecordingsStore()
+    let marks = ScheduleMarks(following: store)
+    let row = #"[{"id":1,"title":"Game","channel_name":"Sports HD","program_start":1000,"program_end":9000,"status":"recording"}]"#
+    store.schedules = try JSONDecoder().decode([ScheduledRecording].self, from: Data(row.utf8))
+    XCTAssertFalse(marks.isRecording(SportEventChannel(sourceId: 1, rawID: "pos_7", stableId: "stable7", name: "Sports HD")))
+    XCTAssertTrue(marks.recordingChannels.contains("Sports HD"), "Ordinary Guide's existing marks remain separate")
+  }
+  @MainActor func testVisibleSettingsRevisionCannotWriteOverANewerPolledPreference() async throws {
+    let writes = Locked(0)
+    let server = try LocalHTTPServer { request in
+      if request.method == "PUT" { writes.value += 1; return .json(#"{"avoidSpoilers":true,"scoreDelaySeconds":120,"revision":3}"#) }
+      return .json(Self.payload(hidden: true, revision: 2, delay: 120))
+    }
+    defer { server.stop() }
+    let model = SportsDashboardModel(client: try client(server))
+    _ = await model.load()
+    await model.save(avoidSpoilers: false, delay: 90, revision: 1)
+    XCTAssertEqual(writes.value, 0, "The visible choice must not silently borrow a newer revision")
+    XCTAssertTrue(model.message?.contains("changed") == true)
+  }
+  @MainActor func testSavingStaysTrueUntilAuthoritativePreferenceRereadCompletes() async throws {
+    let written = Locked(false)
+    let rereading = Locked(false)
+    let release = DispatchSemaphore(value: 0)
+    let server = try LocalHTTPServer { request in
+      if request.method == "PUT" {
+        written.value = true
+        return .json(#"{"avoidSpoilers":true,"scoreDelaySeconds":120,"revision":1}"#)
+      }
+      if written.value {
+        rereading.value = true
+        _ = release.wait(timeout: .now() + 10)
+      }
+      return .json(Self.payload(hidden: written.value, revision: written.value ? 1 : 0, delay: written.value ? 120 : 90))
+    }
+    defer { release.signal(); server.stop() }
+    let model = SportsDashboardModel(client: try client(server))
+    _ = await model.load()
+    let save = Task { await model.save(avoidSpoilers: true, delay: 120, revision: 0) }
+    let deadline = Date().addingTimeInterval(5)
+    while !rereading.value && Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+    XCTAssertTrue(rereading.value)
+    XCTAssertTrue(model.saving, "Controls must remain mounted through the real GET after PUT, not just the write")
+    XCTAssertNil(model.dashboard, "Pending preference revalidation cannot reveal scores")
+    release.signal()
+    await save.value
+    XCTAssertFalse(model.saving)
+    XCTAssertEqual(model.dashboard?.preferences.revision, 1)
+  }
   func testSevenFamiliesAndNeutralProgressWithoutFabricatedSituations() throws {
     let leagues: [String: SportsGame.Family] = [
       "AFL": .australianFootball, "NBA": .basketball, "EPL": .football, "FA Cup": .football,

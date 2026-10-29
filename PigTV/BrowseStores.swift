@@ -97,11 +97,17 @@ final class ScheduleMarks: ObservableObject {
     @Published private(set) var recordingChannels: Set<String> = []
     private var cancellable: AnyCancellable?
 
+    @Published private(set) var recordingChannelKeys: Set<String> = []
+    func isRecording(_ channel: SportEventChannel) -> Bool {
+        recordingChannelKeys.contains(channel.identityKey)
+    }
+
     init(following store: RecordingsStore) {
         // `$schedules` hands over the new value before it is stored.
         cancellable = store.$schedules.sink { [weak self] schedules in
             self?.change(\.scheduledKeys, to: Set(schedules.filter(\.isActive).map(\.guideKey)))
             self?.change(\.recordingChannels, to: Set(schedules.filter { $0.status == "recording" }.compactMap(\.channel_name)))
+            self?.change(\.recordingChannelKeys, to: Set(schedules.filter { $0.status == "recording" }.compactMap(\.channelIdentityKey)))
         }
     }
 }

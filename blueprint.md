@@ -1,6 +1,11 @@
 # PigTV Apple client: blueprint
 
-**State (29 Oct, cross-platform sports):** build **60** adapts the shared sports dashboard to viewport width and large
+**State (29 Oct, tvOS refinements):** build **61** adds strict recording badge identities, compact fixed family heights,
+direct Hold Select actions and delay presets with stable save focus. Local gates pass: 244 contracts, 247 unit/playback,
+23 tvOS UI, iOS build and 2 UI tests each on iPhone/iPad. Required review and
+consolidated device acceptance remain pending. [Evidence/checks](../PigTV/docs/reviews/2026-10-29/sports-tvos-refinements/README.md).
+
+**Apple 60 baseline (29 Oct):** build **60** adapts the shared sports dashboard to viewport width and large
 text, keeps equal card geometry, stacks controls and provides labelled visible touch options. The iPad baseline UI
 regression proves 59 used a fixed 264pt width. Local gates pass: 244 contracts, 243 unit/playback, 20 tvOS UI,
 iOS build and 2 UI tests each on iPhone/iPad. No device acceptance or
@@ -438,3 +443,9 @@ Build 60 measures the dashboard viewport; compact/regular mobile cards target 30
 capped by available width, while tvOS retains 380pt. Scaled card height is uniform per sport. ViewThatFits stacks
 navigation controls, mobile covers use 20pt padding, and visible options carry neutral event-specific accessibility
 labels. The iPad baseline regression fails on 59's fixed 264pt width. Shared models/actions and C-I navigation remain.
+
+Build 61 dashboard activity marks decode optional source/item/stable schedule identities, keeping a separate key set
+from ordinary Guide's name-based markers. tvOS uses scaled fixed heights by league family (320/372/352/304pt) and a
+one-row channel/recording footer. Hold Select opens existing current details/actions directly; focus shows a reserved
+hint. Preset controls keep only ephemeral preference drafts while saving and retain focusable identities. Every UI
+write supplies its visible revision; a newer polled revision requires another choice. No recording writer changes.

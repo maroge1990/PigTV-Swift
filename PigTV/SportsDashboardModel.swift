@@ -17,7 +17,7 @@ final class SportsDashboardModel: ObservableObject {
     let elapsed = instant.duration(to: ContinuousClock.now).components
     return Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15
   }
-  private var saving = false
+  @Published private(set) var saving = false
   private var backgrounded = false
   private(set) var league: String?
   var enabled: Bool {
@@ -59,7 +59,11 @@ final class SportsDashboardModel: ObservableObject {
 
   @discardableResult
   func load(league: String? = nil, clear: Bool = false) async -> Bool {
-    guard enabled, client.accountID != nil, !saving, !backgrounded else { return false }
+    await loadSnapshot(league: league, clear: clear, completingSave: false)
+  }
+
+  private func loadSnapshot(league: String?, clear: Bool, completingSave: Bool) async -> Bool {
+    guard enabled, client.accountID != nil, (!saving || completingSave), !backgrounded else { return false }
     #if DEBUG
       if let fixture {
         dashboard = fixture
@@ -97,22 +101,34 @@ final class SportsDashboardModel: ObservableObject {
     }
   }
 
-  func save(avoidSpoilers: Bool, delay: Int) async {
+  func save(avoidSpoilers: Bool, delay: Int, revision: Int? = nil) async {
     guard let prefs = dashboard?.preferences, !saving, (0...300).contains(delay) else { return }
+    guard revision == nil || revision == prefs.revision else {
+      message = "Settings changed. Review the current values and choose again."
+      return
+    }
     var next = prefs
     next.avoidSpoilers = avoidSpoilers
     next.scoreDelaySeconds = delay
     #if DEBUG
       if fixture != nil {
+        saving = true
+        hide()
+        let requestGeneration = generation
+        defer { saving = false }
+        let delayMS = min(5000, max(0, Int(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SAVE_DELAY_MS"] ?? "0") ?? 0))
+        if delayMS > 0 { try? await Task.sleep(for: .milliseconds(delayMS)) }
+        guard generation == requestGeneration, !backgrounded, !Task.isCancelled else { return }
         fixture = SportsDashboardFixtures.response(
           hidden: avoidSpoilers, delay: delay, revision: prefs.revision + 1)
         dashboard = fixture
         return
       }
     #endif
+    saving = true
+    defer { saving = false }
     hide()
     let requestGeneration = generation
-    saving = true
     busy = true
     var resultMessage: String?
     do {
@@ -124,9 +140,8 @@ final class SportsDashboardModel: ObservableObject {
         ? "Settings changed on another device. Current settings were reloaded; choose again to retry."
         : "Settings could not be saved. Current settings were reloaded."
     }
-    saving = false
     guard generation == requestGeneration else { return }
-    _ = await load(league: league, clear: true)
+    _ = await loadSnapshot(league: league, clear: true, completingSave: true)
     message = resultMessage
   }
 
