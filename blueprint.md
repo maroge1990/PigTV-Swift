@@ -1,5 +1,10 @@
 # PigTV Apple client: blueprint
 
+**CI test repair (29 Oct):** Apple 61 CI failed one recording-harness assertion at `9125628`: raw AVPlayer playing
+state could precede its KVO MainActor publication to `hasPlayed`. The test now awaits both within the unchanged
+10s deadline. Ten focused repetitions and the full local gate pass (244 contracts, 247 unit/playback, 23 tvOS UI). Replacement CI is pending at repair commit. App build stays **61**;
+no playback code change. [CI evidence](../PigTV/docs/reviews/2026-10-29/apple-ci-observer-race/README.md).
+
 **State (29 Oct, tvOS refinements):** build **61** adds strict recording badge identities, compact fixed family heights,
 direct Hold Select actions and delay presets with stable save focus. Local gates pass: 244 contracts, 247 unit/playback,
 23 tvOS UI, iOS build and 2 UI tests each on iPhone/iPad. Required review and

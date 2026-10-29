@@ -336,8 +336,11 @@ final class RealPlaybackTests: XCTestCase {
         playback.autoSkip = false
         playback.start()
         try await waitFor("recording ready") { playback.ready }
-        try await waitFor("recording playing") {
-            playback.player.timeControlStatus == .playing && playback.player.currentItem?.status == .readyToPlay
+        // Raw AVPlayer state can lead the KVO callback's hop to the main actor.
+        // Wait for the model's published state too, using the same bounded deadline.
+        try await waitFor("recording playing and observed by the model") {
+            playback.hasPlayed && playback.player.timeControlStatus == .playing
+                && playback.player.currentItem?.status == .readyToPlay
         }
         try await waitFor("the break markers") { playback.breaks.count == 1 }
         XCTAssertTrue(playback.hasPlayed)

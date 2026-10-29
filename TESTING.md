@@ -144,3 +144,8 @@ These additional DEBUG launch options require `PIGTV_UI_TEST_SCREEN=sport-dashbo
 
 They do not query a real server or provider. Physical remote feel and consolidated cross-platform acceptance remain
 Mark's checks in the server's `sports-tvos-refinements` handoff.
+
+The recording harness waits for both AVPlayer's raw playing/ready state and RecordingPlayerModel's published
+`hasPlayed` before asserting playback. KVO publishes through a MainActor hop, so raw engine state is not proof that
+the model callback has run. Keep the existing bounded deadline and periodic-break/timeline/error/release assertions;
+CI 40862302742 is the captured failing-before evidence for this test-ordering race.
