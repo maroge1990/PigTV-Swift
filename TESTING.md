@@ -110,3 +110,19 @@ PIGTV_TABSWITCH_BUDGET_MS=250 xcodebuild test -project PigTV.xcodeproj -scheme P
 ```
 
 (If the variable does not reach the test runner on your Xcode, set `TEST_RUNNER_PIGTV_TABSWITCH_BUDGET_MS=250` instead.)
+
+
+### Sports dashboard preview (59)
+
+The DEBUG-only `PIGTV_UI_TEST_SCREEN=sport-dashboard` fixture is an offline acceptance slate for seven sport families
+and all ten follows. Use `PIGTV_UI_TEST_SPOILERS=hidden` for hidden scores, plus `PIGTV_UI_TEST_APPEARANCE=light|dark`.
+No real source/provider is contacted; preview watch/record/rule actions are disabled. Missing logos intentionally show
+name fallbacks. Sport chips filter the illustrated shelves; production canonical league chips request rolling 72h data.
+
+`SportsDashboardUITests` checks hidden accessible text, remote long press, equal same-sport card dimensions and absence
+of repeated sport headings; light/revealed and dark/hidden screenshots are attached. `SportsDashboardTests` covers all
+families, terminal/transit expiry, background late responses, account identity, revision conflicts and separate users.
+`RealPlaybackTests/testDashboardRevalidatesThenUsesOrdinaryResolveAndReleases` uses the bundled HLS fixture only.
+
+The fixture is not device/source acceptance. Mark's real-device checks and server pilot/review gates are in
+`../PigTV/docs/reviews/2026-10-29/sports-dashboard-continuation/README.md`.

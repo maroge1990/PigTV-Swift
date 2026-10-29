@@ -506,6 +506,32 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    func testDashboardRevalidatesThenUsesOrdinaryResolveAndReleases() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(sportsDashboard: SportsDashboardTests.payload())
+        defer {server.http.stop()}
+        let client = try server.client(extraFeatures: #""sportsDashboard":true"#)
+        let browse = BrowseModel(client:client)
+        let app = AppModel()
+        app.configureClientForTesting(client,browse:browse)
+        let dashboard = SportsDashboardModel(client:client)
+        _ = await dashboard.load()
+        XCTAssertTrue(server.resolves.isEmpty)
+        XCTAssertTrue(server.warms.isEmpty, "Rendering/focus never probes or warms")
+        let selected = await dashboard.event(gameID:"game",watch:true)
+        let event = try XCTUnwrap(selected)
+        channelKeys += event.channels.map {browse.playable($0).identityKey}
+        app.playSportEvent(event)
+        let playback = try XCTUnwrap(app.playback)
+        playback.start()
+        try await waitFor("dashboard channel playing") {isPlaying(playback)}
+        XCTAssertEqual(server.http.requests(path:"/api/sports/dashboard").count,2)
+        XCTAssertEqual(server.resolveBodies().first?["channelId"] as? String,"pos_7")
+        XCTAssertEqual(server.resolveBodies().first?["force"] as? Bool,false)
+        await app.endPlayback(playback)
+        XCTAssertEqual(server.http.requests(path:"/api/playback/s1",method:"DELETE").count,1)
+    }
+
     /// R11: with warming on, a live Sport event that holds focus warms its best
     /// channel with exactly the body resolve sends; playing it then adopts the
     /// warm stream, and the play-start event carries `warm`. While watching,

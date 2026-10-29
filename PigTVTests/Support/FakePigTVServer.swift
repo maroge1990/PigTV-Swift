@@ -69,6 +69,7 @@ final class FakePigTVServer: @unchecked Sendable {
     /// `resolve(n)` builds the n-th resolve answer (1-based) as JSON.
     init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil,
          sportEvents: String? = nil,
+         sportsDashboard: String? = nil,
          reminders: String? = nil,
          markers: LocalHTTPServer.Response? = nil,
          warm: LocalHTTPServer.Response = .init(status: 204, contentType: "application/json", body: Data()),
@@ -81,6 +82,7 @@ final class FakePigTVServer: @unchecked Sendable {
         }
         let sport = sportEvents ?? FakePigTVServer.sportEventsJSON(now: Date())
         http = try LocalHTTPServer { request in
+            if request.method == "GET", request.path == "/api/sports/dashboard", let sportsDashboard { return .json(sportsDashboard) }
             if request.method == "GET", request.path == "/api/sports/events" { return .json(sport) }
             if request.method == "POST", request.path == "/api/playback/warm" {
                 if warm.status == 200 { warmed.value.insert(FakePigTVServer.channelKey(request.body)) }

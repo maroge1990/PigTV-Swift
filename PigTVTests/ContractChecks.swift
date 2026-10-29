@@ -62,6 +62,10 @@ enum ContractChecks {
         try expect(UserMessage.text(for: URLError(.timedOut)) != nil, "A real failure still has a message")
         try expect(UserMessage.text(for: PigTVError.forbidden) == PigTVError.forbidden.localizedDescription, "PigTV errors keep their text")
 
+        // C-O: retain the negotiated flag; an older server remains off.
+        let dashboardInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9","apiVersion":1,"features":{"library":true,"playbackResolve":true,"sportsDashboard":true}}"#.utf8))
+        try expect(Mirror(reflecting: dashboardInfo.features).children.contains { $0.label == "sportsDashboard" && ($0.value as? Bool) == true }, "C-O capability is decoded before selecting the dashboard")
+
         let address = try ServerAddress(" HTTPS://EXAMPLE.invalid:443/ ")
         try expect(address.url.absoluteString == "https://example.invalid/", "Origin must canonicalize default port and case")
         for invalid in ["file:///etc/passwd", "https://user:pass@example.invalid", "https://example.invalid/pigtv",

@@ -23,7 +23,8 @@ struct LibraryView: View {
                 // C-I (build 30): only when the server has sport events.
                 // Five tabs fit the iPhone's bar, so it is a tab there too.
                 if browse.sportEnabled {
-                    SportView(app: model, browse: browse, sport: browse.sport)
+                    SportsLandingView(app: model, browse: browse)
+                        .id(ObjectIdentifier(browse))
                         .tabItem { Label("Sport", systemImage: "sportscourt") }
                         .tag("sport")
                     .onAppear { PigTVSignpost.tabContentAppeared("sport") }

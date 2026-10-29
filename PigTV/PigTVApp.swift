@@ -50,7 +50,7 @@ struct PigTVApp: App {
             GuideTestScreen()
         } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
-        } else if ["sport", "sport-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+        } else if ["sport", "sport-empty", "sport-dashboard"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             HomeTestScreen(firstRun: false, initialTab: "sport",
                            noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
         } else if ["tab-guide", "tab-recordings"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {

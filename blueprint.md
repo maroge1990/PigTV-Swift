@@ -1,6 +1,10 @@
 # PigTV Apple client: blueprint
 
-**State (29 Oct):** build **58** repairs the live-player exit tuning flash locally: stopping publishes a closing state
+**State (29 Oct, sports):** build **59** implements the gated compact dashboard and Mark’s equal-size/shelf-only-heading
+feedback. Local gates pass (244 contracts, 243 unit/playback, 20 UI, iOS build); mandatory review and device acceptance remain pending. Server 0316 passes
+1,316 tests/build checks. [Current handoff](../PigTV/docs/reviews/2026-10-29/sports-dashboard-continuation/README.md).
+
+**58 player-exit baseline (29 Oct):** build **58** repairs the live-player exit tuning flash locally: stopping publishes a closing state
 before clearing the item, and both platforms retain a black exit background while release completes. The real-playback
 regression fails on the old ordering. Contracts (243), unit/playback (231), regression UI (17) and the iOS build pass.
 Committed locally for Mark to review and push; required adversarial review and device acceptance are pending.
@@ -69,7 +73,7 @@ for builds 21–39) is `docs/archive/blueprint-2026-10-13.md`; everything in `do
 |---|---|---|---|
 | Home | Hero "Continue watching" + shelves (`HomeView`) | same, TV-like layout | simplified |
 | Guide | UIKit grid (`GuideGrid*`), remote focus | the same grid, free touch scrolling | **On now list** (`OnNowList`) |
-| Sport | On now · Starting soon · Later today · Tomorrow · weekdays · Replays, league chips, event page | same | same |
+| Sport | C-O (59): Today sport shelves, rolling 72h league filters, per-account spoiler/delay settings; C-I fallback preserves previous rows | shared initial layout, device adaptation pending | shared initial layout + visible options, device adaptation pending |
 | Live player | `CustomPlayerView` (no AVKit UI): info/scrub/channels/tracks overlays | `NativePlayer` (AVPlayerViewController, controls off) + PigTV's `TouchPlayerChrome` | same, bottom-sheet channel list |
 | Recording player | `RecordingPlayerView` (custom; Skip break, Auto-skip) | AVKit (`RecordingNativePlayer`) | AVKit |
 | Top Shelf | `PigTVTopShelf` extension: favourites as rendered 16:9 cards, `pigtv://play` links | — | — |
@@ -387,3 +391,39 @@ a recording).
   repeat); a channel may still fail during an outage after the server's retries and this client's one recovery.
 - `docs/evidence` screenshots use offline fixture data, not the real feed.
 - A0.2 (a SwiftUI "Environment accessed outside a View" warning seen only in an accessibility-heavy UI test) is parked.
+
+
+## 9. Sports dashboard (C-O, build 59; local slice)
+
+`SportsLandingView` owns an ephemeral `SportsDashboardModel` per authenticated BrowseModel identity. A negotiated
+`sportsDashboard` flag opens shelves; absent/404 keeps ordinary Sports. Home remains C-I. Canonical league filters
+fetch the server's rolling 72h scope, including configured team follows; empty follows remain named with server 0316.
+No score/preference disk cache. A response publishes preferences and whole delayed game data together; no local game
+clock ticks or raw final-state overrides. Visible dashboard/details/settings refresh every 20s; background/resume,
+failed fetch, scope change and preference save hide old data first. Generation checks reject late callbacks; a 409
+re-reads and requires a fresh choice. Paired devices use the authenticated account ID.
+
+Seven progress families render only present fields. Cached `/api/logo/` assets use existing artwork/name fallback.
+Status labels distinguish confirmed LIVE from guide ON TV NOW and UPCOMING/break/final/stale/buffering. Compact cards
+omit “Total points,” show current game progress OR start time, and put availability icons in the top corner. VoiceOver
+and details retain explicit meanings, separate from labelled recording indicators. Shelf cards retain identity/order through
+updates, pin a neutral expired-focus placeholder, and reserve equal sizes within each sport. The shelf header names
+the sport; cards show status without repeating it. Details retain league context.
+
+Every watch/channel/record/rule action re-fetches the projection. Use only current eligible airing bounds, server
+preferred channel order, and selected stable channel identity. A monotonic round-trip bound applies to airing eligibility
+only, refusing responses that expired in transit. Displayed delayed score state does not advance. Upcoming watch
+revalidates on wake and cancels on background. Guard account replacement before actions; close details before opening
+playback or a recording sheet. A recording sheet's captured title is masked whenever its preference revision is no
+longer validated, before dismissal. All dashboard details/accessibility use projected fields, never raw C-I aliases.
+
+`PIGTV_UI_TEST_SCREEN=sport-dashboard` is an invented DEBUG-only edge preview with playback/recording disabled;
+`PIGTV_UI_TEST_SPOILERS=hidden` and `PIGTV_UI_TEST_APPEARANCE=light|dark` show privacy/appearance variants. Unit/API tests
+cover account/conflict/offline/resume/expiry semantics; UI tests cover accessible hiding, remote long press and uniform
+cards. Actual two-device <=30s sync, focus, source transitions, iPhone/iPad layout and all sport edge cases require
+Mark's device acceptance. Web adaptation, SD-0313-L2 unknown-format cricket and SD-0313-L3 authorized pilot remain open.
+
+Recording/rule actions re-read C-I event associations to use the selected stable channel's own airing window, while
+keeping only the safe C-O projected title. An independent visible activity task refreshes existing recording marks
+through `loadRecordingsIfStale` so badges update without a Home/Guide visit and do not hold up preference/score polling.
+No new recording endpoint, recording writer or playback-engine change is part of this dashboard batch.

@@ -37,6 +37,7 @@ struct ServerInfo: Decodable {
         // C-I (server 0147): `GET sports/events` (the Sport tab and Home's
         // "Sport now & next"). C-H's `sportCategories` is no longer read.
         var sportsEvents: Bool? = nil
+        var sportsDashboard: Bool? = nil
         // Server 0207: per-login recording positions (`GET`/`PUT
         // recordings/{id}/position`, and `position_sec`/`watched` on list rows).
         var recordingPositions: Bool? = nil
