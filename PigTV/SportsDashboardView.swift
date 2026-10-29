@@ -34,6 +34,7 @@ struct SportsDashboardView: View {
     _actions = ObservedObject(wrappedValue: browse.actions)
   }
   @Environment(\.scenePhase) private var scenePhase
+  @State private var pageWidth: CGFloat = 360
   @State private var league: String?
   @State private var details: String?
   @State private var settings = false
@@ -91,9 +92,9 @@ struct SportsDashboardView: View {
               ? "Sport · Illustrative preview"
               : league.map { "\($0) · Next 72 hours" } ?? "Sport · Today")
           VStack(alignment: .leading, spacing: 24) {
-            HStack {
-              Button("Today") { changeLeague(nil) }
-              Button("Spoilers & delay", systemImage: "eye.slash") { settings = true }
+            ViewThatFits(in: .horizontal) {
+              HStack { navigationActions }
+              VStack(alignment: .leading, spacing: 12) { navigationActions }
             }
             if let waitingLabel {
               Text(waitingLabel)
@@ -127,7 +128,7 @@ struct SportsDashboardView: View {
                 SportsDashboardShelf(
                   league: name, games: response.games.filter { $0.league == name },
                   hidden: response.preferences.avoidSpoilers, timezone: response.timezone,
-                  browse: browse,
+                  browse: browse, availableWidth: max(1, pageWidth - 2 * SportMetrics.pagePadding),
                   select: { game in select(game.id) }, details: { details = $0 })
               }
               if response.games.isEmpty {
@@ -144,7 +145,12 @@ struct SportsDashboardView: View {
           }.padding(.horizontal, SportMetrics.pagePadding).padding(.bottom, 60)
         }
       }.pigPageBackdrop()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
     }
+  }
+  @ViewBuilder private var navigationActions: some View {
+    Button("Today") { changeLeague(nil) }
+    Button("Spoilers & delay", systemImage: "eye.slash") { settings = true }
   }
   private var detailBinding: Binding<DashboardIdentity?> {
     Binding(get: { details.map { DashboardIdentity(id: $0) } }, set: { details = $0?.id })
@@ -278,7 +284,7 @@ struct SportsDashboardView: View {
         } else {
           Text("Event data is hidden or no longer available.")
         }
-      }.padding(48).frame(maxWidth: 1100, alignment: .leading)
+      }.padding(SportsDashboardLayout.detailPadding).frame(maxWidth: 1100, alignment: .leading)
     }.pigPageBackdrop()
       .whileVisible { await model.keepFresh(league: league) }
   }
@@ -298,6 +304,9 @@ private struct SportsDashboardShelf: View {
   let timezone: String
   let browse: BrowseModel
   let select: (SportsGame) -> Void
+  let availableWidth: CGFloat
+  @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.dynamicTypeSize) private var typeSize
   let details: (String) -> Void
   @ObservedObject private var marks: ScheduleMarks
   @State private var order: [String] = []
@@ -310,8 +319,10 @@ private struct SportsDashboardShelf: View {
 
   init(
     league: String, games: [SportsGame], hidden: Bool, timezone: String, browse: BrowseModel,
+    availableWidth: CGFloat,
     select: @escaping (SportsGame) -> Void, details: @escaping (String) -> Void
   ) {
+    self.availableWidth = availableWidth
     self.league = league
     self.games = games
     self.hidden = hidden
@@ -350,7 +361,7 @@ private struct SportsDashboardShelf: View {
                       ).foregroundStyle(.red)
                     }
                   }.padding(SportMetrics.cardPadding).frame(
-                    width: SportMetrics.cardWidth, height: cardHeight, alignment: .topLeading
+                    width: cardWidth, height: cardHeight, alignment: .topLeading
                   ).clipped()
                 }.buttonStyle(HomeCardButtonStyle()).focused($focused, equals: id)
                   .accessibilityIdentifier("sportsDashboard.game.\(id)")
@@ -361,13 +372,15 @@ private struct SportsDashboardShelf: View {
                   }
                 #if os(iOS)
                   Button("More options", systemImage: "ellipsis.circle") { details(id) }
+                    .accessibilityLabel("More options for \(game.title)")
+                    .accessibilityIdentifier("sportsDashboard.options.\(id)")
                 #endif
               }
             } else {
               Button {
               } label: {
                 Text("Event no longer available").padding(SportMetrics.cardPadding)
-                  .frame(width: SportMetrics.cardWidth, height: cardHeight, alignment: .topLeading)
+                  .frame(width: cardWidth, height: cardHeight, alignment: .topLeading)
               }.buttonStyle(HomeCardButtonStyle()).focused($focused, equals: id)
             }
           }
@@ -377,6 +390,13 @@ private struct SportsDashboardShelf: View {
     .onAppear { reconcile() }
     .onChange(of: games.map(\.id)) { reconcile() }
     .onChange(of: focused) { reconcile() }
+  }
+  private var cardWidth: CGFloat {
+    #if os(tvOS)
+      SportMetrics.cardWidth
+    #else
+      min(availableWidth, typeSize.isAccessibilitySize ? 480 : sizeClass == .regular ? 360 : 300)
+    #endif
   }
   private func reconcile() {
     // Keep existing order through score/status updates and pin an expired focused placeholder.
@@ -485,7 +505,7 @@ private struct SportsDashboardSettings: View {
                 Task { await model.save(avoidSpoilers: value, delay: prefs.scoreDelaySeconds) }
               }))
           Text("Score delay: \(prefs.scoreDelaySeconds) seconds")
-          HStack {
+          VStack(alignment: .leading, spacing: 12) {
             Button("− 10 seconds") {
               Task {
                 await model.save(
@@ -504,7 +524,17 @@ private struct SportsDashboardSettings: View {
           Text("Settings hidden until refreshed.")
         }
         if let message = model.message { Text(message) }
-      }.padding(48).frame(maxWidth: 1000, alignment: .leading)
+      }.padding(SportsDashboardLayout.detailPadding).frame(maxWidth: 1000, alignment: .leading)
     }.pigPageBackdrop().whileVisible { await model.keepFresh(league: model.league) }
+  }
+}
+
+private enum SportsDashboardLayout {
+  static var detailPadding: CGFloat {
+    #if os(tvOS)
+      48
+    #else
+      20
+    #endif
   }
 }

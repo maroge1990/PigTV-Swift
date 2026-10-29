@@ -67,4 +67,46 @@ import XCTest
       add(shot)
     }
   }
+#else
+final class SportsDashboardUITests: XCTestCase {
+  @MainActor func testTouchCardsUseAvailableWidthAndVisibleOptionsOpenSafeDetails() throws {
+    let app = XCUIApplication()
+    app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "sport-dashboard"
+    app.launchEnvironment["PIGTV_UI_TEST_SPOILERS"] = "hidden"
+    app.launch()
+    let card = app.buttons["sportsDashboard.game.fixture-AFL-basic points"]
+    XCTAssertTrue(card.waitForExistence(timeout: 15))
+    XCTAssertGreaterThanOrEqual(card.frame.width, 300, "Use phone/tablet space instead of the fixed 264pt card")
+    XCTAssertLessThanOrEqual(card.frame.width, app.frame.width - 20)
+    XCTAssertFalse(card.label.contains("101"))
+    let options = app.buttons["sportsDashboard.options.fixture-AFL-basic points"]
+    XCTAssertTrue(options.exists)
+    options.tap()
+    XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["101"].exists)
+    app.buttons["Done"].tap()
+    XCTAssertTrue(card.waitForExistence(timeout: 5))
+  }
+  @MainActor func testLargeTextKeepsSameSportCardsEqualAndNamesAccessible() throws {
+    let app = XCUIApplication()
+    app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "sport-dashboard"
+    app.launchEnvironment["PIGTV_UI_TEST_SPOILERS"] = "hidden"
+    app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+    app.launch()
+    let first = app.buttons["sportsDashboard.game.fixture-AFL-basic points"]
+    let missing = app.buttons["sportsDashboard.game.fixture-AFL-no channel"]
+    XCTAssertTrue(first.waitForExistence(timeout: 15))
+    XCTAssertTrue(missing.exists)
+    XCTAssertGreaterThan(first.frame.height, 280)
+    XCTAssertEqual(first.frame.height, missing.frame.height, accuracy: 1)
+    XCTAssertEqual(first.frame.width, missing.frame.width, accuracy: 1)
+    XCTAssertTrue(first.label.contains("Scores hidden"))
+    XCTAssertFalse(first.label.contains("101"))
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "mobile-dashboard-large-text"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
+}
 #endif

@@ -1,6 +1,12 @@
 # PigTV Apple client: blueprint
 
-**State (29 Oct, sports):** build **59** implements the gated compact dashboard and Mark’s equal-size/shelf-only-heading
+**State (29 Oct, cross-platform sports):** build **60** adapts the shared sports dashboard to viewport width and large
+text, keeps equal card geometry, stacks controls and provides labelled visible touch options. The iPad baseline UI
+regression proves 59 used a fixed 264pt width. Local gates pass: 244 contracts, 243 unit/playback, 20 tvOS UI,
+iOS build and 2 UI tests each on iPhone/iPad. No device acceptance or
+review approval is claimed. [Consolidated evidence/checklist](../PigTV/docs/reviews/2026-10-29/sports-cross-platform/README.md).
+
+**Apple 59 baseline (29 Oct):** build **59** implements the gated compact dashboard and Mark’s equal-size/shelf-only-heading
 feedback. Local gates pass (244 contracts, 243 unit/playback, 20 UI, iOS build); mandatory review and device acceptance remain pending. Server 0316 passes
 1,316 tests/build checks. [Current handoff](../PigTV/docs/reviews/2026-10-29/sports-dashboard-continuation/README.md).
 
@@ -393,7 +399,7 @@ a recording).
 - A0.2 (a SwiftUI "Environment accessed outside a View" warning seen only in an accessibility-heavy UI test) is parked.
 
 
-## 9. Sports dashboard (C-O, build 59; local slice)
+## 9. Sports dashboard (C-O, builds 59–60; local slice)
 
 `SportsLandingView` owns an ephemeral `SportsDashboardModel` per authenticated BrowseModel identity. A negotiated
 `sportsDashboard` flag opens shelves; absent/404 keeps ordinary Sports. Home remains C-I. Canonical league filters
@@ -421,9 +427,14 @@ longer validated, before dismissal. All dashboard details/accessibility use proj
 `PIGTV_UI_TEST_SPOILERS=hidden` and `PIGTV_UI_TEST_APPEARANCE=light|dark` show privacy/appearance variants. Unit/API tests
 cover account/conflict/offline/resume/expiry semantics; UI tests cover accessible hiding, remote long press and uniform
 cards. Actual two-device <=30s sync, focus, source transitions, iPhone/iPad layout and all sport edge cases require
-Mark's device acceptance. Web adaptation, SD-0313-L2 unknown-format cricket and SD-0313-L3 authorized pilot remain open.
+Mark's device acceptance. Web 0317 is implemented locally; SD-0313-L2 unknown-format cricket and SD-0313-L3 authorized pilot remain open.
 
 Recording/rule actions re-read C-I event associations to use the selected stable channel's own airing window, while
 keeping only the safe C-O projected title. An independent visible activity task refreshes existing recording marks
 through `loadRecordingsIfStale` so badges update without a Home/Guide visit and do not hold up preference/score polling.
 No new recording endpoint, recording writer or playback-engine change is part of this dashboard batch.
+
+Build 60 measures the dashboard viewport; compact/regular mobile cards target 300/360pt (480pt at accessibility sizes),
+capped by available width, while tvOS retains 380pt. Scaled card height is uniform per sport. ViewThatFits stacks
+navigation controls, mobile covers use 20pt padding, and visible options carry neutral event-specific accessibility
+labels. The iPad baseline regression fails on 59's fixed 264pt width. Shared models/actions and C-I navigation remain.
