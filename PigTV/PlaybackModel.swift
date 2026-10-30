@@ -361,15 +361,16 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 guard !ended else { return }
                 let recovering = reconnecting
                 reconnecting = false
+                var retryAfter: TimeInterval?
                 if case PigTVError.recordingConflict(let conflict) = error {
                     recordingConflict = conflict
                 } else if case PigTVError.viewerConflict(let message) = error {
                     viewerConflict = message
-                } else if hasPlayed, recovering, let delay = takeRecoverySlot() {
-                    // #5: a reconnect's resolve failed (the provider may still be coming back): try again,
-                    // within the same window.
+                } else if hasPlayed, recovering, let wait = Self.retryWait(after: error), let delay = takeRecoverySlot() {
+                    // #5: a reconnect's resolve failed for a passing reason (the provider may still be coming back):
+                    // try again within the same window; a permanent error is shown at once (#139).
                     reconnecting = true
-                    scheduleRecovery(after: delay, session: nil)
+                    retryAfter = max(delay, wait)
                 } else {
                     self.error = hasPlayed ? "The stream ended. \(error.localizedDescription)" : error.localizedDescription
                     canRetry = true
@@ -380,8 +381,26 @@ final class PlaybackModel: ObservableObject, Identifiable {
                     catch PigTVError.http(404) { self.sessionID = nil }
                     catch { coordinationWarning = "The server did not confirm releasing the previous stream." }
                 }
+                // #140: after the cleanup, so a session it could not release is still checked for a takeover.
+                if let retryAfter { scheduleRecovery(after: retryAfter, session: sessionID) }
             }
         }
+    }
+
+    /// #139: how long to wait before retrying a reconnect whose resolve failed with `error`, or nil when retrying
+    /// cannot help (sign-in, permission, a missing channel, a conflict, a bad answer, the audio session).
+    nonisolated static func retryWait(after error: Error) -> TimeInterval? {
+        if let error = error as? PigTVError {
+            switch error {
+            case .http(let status): return status >= 500 || status == 408 ? 0 : nil
+            case .rateLimited(let seconds): return seconds <= 30 ? TimeInterval(seconds) : nil
+            default: return nil
+            }
+        }
+        if let error = error as? URLError {
+            return [.badURL, .unsupportedURL, .cancelled, .userAuthenticationRequired].contains(error.code) ? nil : 0
+        }
+        return nil
     }
 
     // Installs the item and starts playing at once. The display mode never

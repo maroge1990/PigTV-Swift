@@ -166,6 +166,71 @@ final class PlaybackLifecycleTests: XCTestCase {
         _ = await playback.stop()
     }
 
+    /// #139: a reconnect's resolve that fails for a permanent reason shows the error at once, without retries.
+    func testPermanentResolveErrorsAreNotRetried() async throws {
+        for status in [401, 403, 404, 409] {
+            let server = SyntheticServer { _, _, _ in .init(status: status, json: #"{"error":"no"}"#) }
+            let playback = model(try client(server))
+            playback.recoveryDelays = [0, 0, 0]
+            playback.playbackStarted()
+            playback.playbackFailed(detail: "Synthetic failure")
+            try await eventually { playback.error != nil }
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(server.captured.filter { $0.path == "/api/playback/resolve" }.count, 1, "HTTP \(status) is not retried")
+            _ = await playback.stop()
+        }
+        XCTAssertNil(PlaybackModel.retryWait(after: PigTVError.decoding))
+        XCTAssertEqual(PlaybackModel.retryWait(after: PigTVError.http(503)), 0)
+        XCTAssertEqual(PlaybackModel.retryWait(after: URLError(.timedOut)), 0)
+        XCTAssertNil(PlaybackModel.retryWait(after: PigTVError.rateLimited(retryAfterSec: 120)))
+    }
+
+    /// #139: a 429 is retried no sooner than its retry-after.
+    func testARateLimitedReconnectWaitsItsRetryAfter() async throws {
+        let times = Locked<[Date]>([])
+        let server = SyntheticServer { _, _, count in
+            times.value.append(Date())
+            return count == 1 ? .init(status: 429, json: #"{"error":"slow down","retryAfterSec":1}"#) : .init(status: 503, json: "{}")
+        }
+        let playback = model(try client(server))
+        playback.recoveryDelays = [0, 0, 0]
+        playback.playbackStarted()
+        playback.playbackFailed(detail: "Synthetic failure")
+        for _ in 0..<150 where server.captured.count < 2 { try await Task.sleep(for: .milliseconds(20)) }
+        let t = times.value
+        XCTAssertGreaterThanOrEqual(t.count, 2)
+        XCTAssertGreaterThanOrEqual(t[1].timeIntervalSince(t[0]), 0.95, "the retry waited for the server's retry-after")
+        _ = await playback.stop()
+    }
+
+    /// #140: when the old session could not be released, the next recovery still asks whether it was taken over,
+    /// and a takeover stops it instead of resolving again.
+    func testARetryAfterAFailedReleaseStillChecksForATakeover() async throws {
+        let server = SyntheticServer { path, method, count in
+            switch (method, path) {
+            case ("POST", "/api/playback/resolve"):
+                return count == 1 ? .init(status: 200, json: #"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","container":"hls"}"#)
+                    : .init(status: 503, json: "{}")
+            case ("DELETE", "/api/playback/s1"):
+                return count <= 2 ? .init(status: 500, json: "{}") : .init(status: 200, json: #"{"success":true}"#)
+            case ("GET", "/api/playback/s1/terminal-status"):
+                return .init(status: 200, json: count == 1 ? #"{"status":"none"}"# : #"{"status":"taken-over"}"#)
+            default:
+                return .init(status: 404, json: "{}")
+            }
+        }
+        let playback = model(try client(server, modern: true))
+        playback.recoveryDelays = [0, 0.2, 0.2]
+        playback.start()
+        try await eventually { playback.ready }
+        playback.playbackStarted()
+        playback.playbackFailed(detail: "Synthetic failure")
+        try await eventually { playback.error == "Playback moved to another device." }
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(server.captured.filter { $0.path == "/api/playback/resolve" }.count, 1, "no resolve after the takeover")
+        _ = await playback.stop()
+    }
+
     /// #5: the re-resolves are spaced 0 / 3 / 10 s (scaled down here), with the Reconnecting card meanwhile.
     func testReResolvesAreSpacedOut() async throws {
         let times = Locked<[Date]>([])
@@ -309,7 +374,8 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertNotNil(playback.error)
         XCTAssertTrue(playback.canRetry)
         try await Task.sleep(for: .milliseconds(50))
-        XCTAssertEqual(server.captured.map(\.path), ["/api/playback/resolve"])
+        // The player's conflict poll may get one request out before the failure stops it; it resolves nothing.
+        XCTAssertEqual(server.captured.map(\.path).filter { $0 != "/api/playback/conflict" }, ["/api/playback/resolve"])
         _ = await playback.stop()
     }
 
