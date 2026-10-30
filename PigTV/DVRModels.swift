@@ -89,7 +89,20 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     var end: Date { Date(timeIntervalSince1970: program_end / 1000) }
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }
     var isActive: Bool { ["scheduled", "waiting", "recording"].contains(status) }
-    var statusLabel: String { status == "waiting" ? "Waiting — someone is watching" : status.capitalized }
+    /// Server 0324 (#12, C-M): up to ten other schedules this one clashes with; nil when none.
+    var conflictsWith: [Int]? = nil
+    var statusLabel: String {
+        guard status == "waiting" else { return status.capitalized }
+        // Server 0324: a schedule can also wait for the recording slot; its `error` says which.
+        if error?.contains("recording slot") == true { return "Waiting — another recording has the slot" }
+        return "Waiting — someone is watching"
+    }
+    /// #12 (D-28): what to say about a clash, naming the other schedules found in `all`; nil when there is none.
+    func clashText(in all: [ScheduledRecording]) -> String? {
+        guard let ids = conflictsWith, !ids.isEmpty else { return nil }
+        let names = ids.map { id in all.first { $0.id == id }.map { "\($0.title) (\($0.channel_name ?? "unknown channel"))" } ?? "another recording" }
+        return "Clashes with \(names.joined(separator: ", ")): one will wait or be missed."
+    }
     // Existing schedule response identity; optional for old servers. Dashboard badges never guess by name.
     var source_id: Int? = nil
     var channel_item_id: String? = nil

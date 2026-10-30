@@ -631,13 +631,18 @@ final class BrowseModel: ObservableObject {
         actionMessage = nil
         defer { mutationBusy = false }
         do {
-            let _: ScheduledRecording = try await client.request("recordings/schedule", method: "POST",
+            let made: ScheduledRecording = try await client.request("recordings/schedule", method: "POST",
                 body: ScheduleBody(sourceId: channel.sourceId, channelItemId: channel.rawID,
                     channelName: channel.name, channelLogo: channel.logo, title: programme.title,
                     description: programme.description, programStart: programme.startTime,
                     programEnd: programme.endTime, preBufferMin: before, postBufferMin: after))
-            actionMessage = "Recording scheduled. You can review it in Recordings."
             await loadRecordings()
+            // #12 (D-28): a clash is said when scheduling, never found later as a wait or a miss.
+            if let clash = made.clashText(in: schedules) {
+                actionMessage = "Recording scheduled. \(clash)"
+            } else {
+                actionMessage = "Recording scheduled. You can review it in Recordings."
+            }
             return true
         } catch {
             actionError = "Could not confirm the schedule. Check Recordings before retrying, in case the server accepted it. \(error.localizedDescription)"

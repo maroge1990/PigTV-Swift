@@ -241,6 +241,10 @@ struct RecordingsView: View {
                     Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
                         .font(.caption.monospacedDigit()).fontDesign(.rounded)
                     Text(item.statusLabel).font(.caption.bold())
+                    if let clash = item.clashText(in: model.schedules) {
+                        Text(clash).font(.caption).foregroundStyle(Color.pigWarning)
+                            .accessibilityIdentifier("recordings.clash.\(item.id)")
+                    }
                     if item.canCancel {
                         Button(item.status == "recording" ? "Stop recording" : "Cancel schedule", role: .destructive) {
                             cancellation = item
