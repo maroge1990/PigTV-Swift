@@ -313,6 +313,11 @@ write supplies its visible revision; a newer polled revision requires another ch
 
 From the 3 Oct audit (`../PigTV/docs/archive/audit-2026-10-03/ROADMAP.md`) and the multi-provider work.
 
+- **Every API request says what it is (84, #19).** `APIClient.response` sets `X-PigTV-Client: PigTV/<CFBundleVersion>
+  (<OS> <version>; <model>)` from `ClientIdentity.current` (tvOS, iPadOS or iOS; the model from `uname`, a simulator's
+  from `SIMULATOR_MODEL_IDENTIFIER`). The server keeps it on the paired device for Status and Settings → Devices; media
+  and artwork requests do not send it, and the server keeps the last value it had.
+
 - **Screens observe only what they show (R05).** `BrowseModel` publishes nothing itself; its state lives in small stores
   (`BrowseStores.swift`): `GuideStore` (channels, window, paging), `RecordingsStore`, `LibraryStore` (favourites, recent),
   `ArtworkStore`, `ScheduleMarks` (republished only when the sets change) and `ActionState`. The old `BrowseModel` properties

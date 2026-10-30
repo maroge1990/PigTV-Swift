@@ -58,6 +58,42 @@ private nonisolated final class ArtworkRedirects: NSObject, URLSessionTaskDelega
     }
 }
 
+/// #19 (Apple 84): what this app is, sent as `X-PigTV-Client` on every API request, so the server's Status page and
+/// Settings → Devices can say which device and build is playing: `PigTV/<build> (<OS> <version>; <model>)`, e.g.
+/// `PigTV/84 (tvOS 26.1; AppleTV14,1)` (server docs/CLIENT-CONTRACT.md § 2).
+nonisolated enum ClientIdentity {
+    static let headerField = "X-PigTV-Client"
+
+    static func header(build: String, osName: String, osVersion: OperatingSystemVersion, model: String) -> String {
+        let version = osVersion.patchVersion > 0
+            ? "\(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)"
+            : "\(osVersion.majorVersion).\(osVersion.minorVersion)"
+        return "PigTV/\(build) (\(osName) \(version); \(model))"
+    }
+
+    static let current: String = {
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        let model = modelIdentifier()
+        #if os(tvOS)
+        let osName = "tvOS"
+        #else
+        let osName = model.hasPrefix("iPad") ? "iPadOS" : "iOS"
+        #endif
+        return header(build: build, osName: osName, osVersion: ProcessInfo.processInfo.operatingSystemVersion, model: model)
+    }()
+
+    /// The hardware model ("AppleTV14,1", "iPad13,4"); a simulator reports the device it simulates.
+    static func modelIdentifier() -> String {
+        if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"], !simulated.isEmpty { return simulated }
+        var info = utsname()
+        uname(&info)
+        let machine = withUnsafeBytes(of: &info.machine) { raw in
+            String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        return machine.isEmpty ? "unknown" : machine
+    }
+}
+
 final class APIClient {
     let address: ServerAddress
     let info: ServerInfo?
@@ -165,6 +201,7 @@ final class APIClient {
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(ClientIdentity.current, forHTTPHeaderField: ClientIdentity.headerField)
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let body {
             request.httpBody = try JSONEncoder().encode(body)
