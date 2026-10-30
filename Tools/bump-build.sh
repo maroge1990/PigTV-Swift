@@ -28,7 +28,9 @@ if ! printf '%s' "$new" | grep -qE '^[0-9]+$' || [ "$new" -le 1 ]; then
 fi
 
 lines=$(grep -c "CURRENT_PROJECT_VERSION = $current;" "$pbxproj")
-sed -i '' "s/CURRENT_PROJECT_VERSION = $current;/CURRENT_PROJECT_VERSION = $new;/" "$pbxproj"
+# -i.bak, not -i '': the same on BSD sed (the Mac) and GNU sed (Linux, WSL).
+sed -i.bak "s/CURRENT_PROJECT_VERSION = $current;/CURRENT_PROJECT_VERSION = $new;/" "$pbxproj"
+rm -f "$pbxproj.bak"
 if [ "$(grep -c "CURRENT_PROJECT_VERSION = $new;" "$pbxproj")" -ne "$lines" ]; then
     echo "error: not every shipping line was updated" >&2
     exit 1
