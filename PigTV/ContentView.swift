@@ -506,7 +506,7 @@ struct PlayerScreen: View {
             Text("No channel in the guide has that number.")
         }
         #endif
-        .onAppear { playback.start() }
+        .onAppear { app.playerAppeared(playback); playback.start() }
         .onDisappear { Task { await app.endPlayback(playback) } }
 
     }

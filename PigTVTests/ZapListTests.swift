@@ -30,4 +30,76 @@ final class ZapListTests: XCTestCase {
         await app.endPlayback(playback)
         XCTAssertEqual(app.playerChannels.count, browse.guide.count, "the next play that sets no list zaps through the guide")
     }
+
+    func testATopShelfChannelZapsThroughTheGuide() async throws {
+        let (app, browse, server) = try signedIn()
+        defer { server.http.stop() }
+        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
+        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
+        app.zapList = [browse.asChannel(browse.guide[0])] // left behind by something earlier
+        let target = browse.guide[2]
+        let delay = AppModel.coverCloseDelay
+        AppModel.coverCloseDelay = .milliseconds(10)
+        defer { AppModel.coverCloseDelay = delay }
+        app.open(try XCTUnwrap(URL(string: "pigtv://play?sourceId=\(target.sourceId)&id=\(target.rawID)")))
+        try await Task.sleep(for: .milliseconds(200)) // #14: open pages close first
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(target).id)
+        XCTAssertEqual(app.playerChannels.count, browse.guide.count, "not the one-channel list left behind")
+        if let playback = app.playback { await app.endPlayback(playback) }
+    }
+}
+/// #14: a play started from outside the screen closes open pages first, and a player that never appears does not
+/// leave the app "playing" with no player (every later Watch was refused until the app was killed).
+@MainActor
+final class PlayOverCoversTests: XCTestCase {
+    func testOpenPagesAreAskedToCloseBeforeATopShelfPlay() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let app = AppModel()
+        app.injectHomeFixture()
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
+        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
+        let delay = AppModel.coverCloseDelay
+        AppModel.coverCloseDelay = .milliseconds(50)
+        defer { AppModel.coverCloseDelay = delay }
+        var closed = 0
+        let token = NotificationCenter.default.addObserver(forName: .pigCloseCovers, object: nil, queue: nil) { _ in closed += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+        let target = browse.guide[1]
+        app.open(try XCTUnwrap(URL(string: "pigtv://play?sourceId=\(target.sourceId)&id=\(target.rawID)")))
+        XCTAssertEqual(closed, 1, "the pages are told to close")
+        XCTAssertNil(app.playback, "and the player waits for them")
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertNotNil(app.playback)
+        if let playback = app.playback { await app.endPlayback(playback) }
+    }
+
+    func testAPlayerThatNeverAppearsIsGivenUp() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let app = AppModel()
+        app.injectHomeFixture()
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
+        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
+        let deadline = AppModel.playerAppearDeadline
+        AppModel.playerAppearDeadline = .milliseconds(200)
+        defer { AppModel.playerAppearDeadline = deadline }
+        app.beginPlayback(browse.asChannel(browse.guide[0]))
+        XCTAssertTrue(app.playbackBusy)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertNil(app.playback, "no player screen ever appeared: the play is ended")
+        XCTAssertFalse(app.playbackBusy, "so a later Watch works")
+        XCTAssertEqual(app.error, "The player could not open. Try again.")
+        // A play whose screen appears is left alone.
+        app.error = nil
+        app.beginPlayback(browse.asChannel(browse.guide[1]))
+        app.playerAppeared(try XCTUnwrap(app.playback))
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertNotNil(app.playback)
+        if let playback = app.playback { await app.endPlayback(playback) }
+    }
 }

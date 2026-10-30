@@ -286,11 +286,35 @@ final class AppModel: ObservableObject {
 
     private func play(_ link: PigTVLink.Play) {
         let channel = channel(for: link)
+        // #13: a Top Shelf channel zaps through the guide, not whatever list the last play left behind.
+        zapList = []
         if currentPlayback != nil {
             if currentPlayback?.channel.id != channel.id { switchPlayback(to: channel) }
         } else {
-            beginPlayback(channel)
+            playOverCovers { $0.beginPlayback(channel) }
         }
+    }
+
+    /// #14: how long open pages get to close before a play started from outside them presents the player, and how
+    /// long a started play may wait for its player to appear before it is given up.
+    static var coverCloseDelay: Duration = .milliseconds(700)
+    /// Off in the unit-test host (PIGTV_SYNTHETIC_TESTS), where plays run with no player screen; tests set it.
+    static var playerAppearDeadline: Duration? = ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" ? nil : .seconds(6)
+
+    /// #14: a play started from outside the screen (the Top Shelf, a "watch when it starts" timer) closes every open
+    /// page first, since the player cannot present over a cover; it starts once they are gone.
+    func playOverCovers(_ start: @escaping @MainActor (AppModel) -> Void) {
+        NotificationCenter.default.post(name: .pigCloseCovers, object: nil)
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.coverCloseDelay)
+            guard let self else { return }
+            start(self)
+        }
+    }
+
+    /// #14: the player screen appeared for this play (PlayerScreen.onAppear).
+    func playerAppeared(_ model: PlaybackModel) {
+        if currentPlayback === model { playerShown = true }
     }
 
     func beginPlayback(_ channel: Channel) {
@@ -302,7 +326,20 @@ final class AppModel: ObservableObject {
         playbackBusy = true
         playerPresented = true
         updateWarming(for: model, justSwitched: false)
+        // #14: a player that never appears (something still covering the screen) does not leave the app "playing"
+        // with no player, refusing every later Watch: the play is ended and the reason shown.
+        playerShown = false
+        guard let deadline = Self.playerAppearDeadline else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: deadline)
+            guard let self, self.currentPlayback === model, !self.playerShown else { return }
+            await self.endPlayback(model)
+            self.error = "The player could not open. Try again."
+        }
     }
+
+    /// #14: whether the current play's player screen has appeared.
+    private(set) var playerShown = false
 
     // Change channel without leaving the player. The old session is released
     // first (the provider allows one stream), then the new one resolves.
@@ -419,7 +456,12 @@ final class AppModel: ObservableObject {
             guard let self, self.pendingWatch == pending else { return }
             self.pendingWatch = nil
             self.pendingWatchTask = nil
-            self.playSportEvent(event, channel: chosen)
+            // #14: a page may be open when the time comes.
+            if self.currentPlayback == nil {
+                self.playOverCovers { $0.playSportEvent(event, channel: chosen) }
+            } else {
+                self.playSportEvent(event, channel: chosen)
+            }
         }
     }
 

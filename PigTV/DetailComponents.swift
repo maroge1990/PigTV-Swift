@@ -332,13 +332,16 @@ extension View {
     }
 
     /// A detail page over the current one: full screen on tvOS (a tvOS
-    /// sheet is a narrow panel), a sheet on iOS.
+    /// sheet is a narrow panel), a sheet on iOS. #14: every such page closes when playback is started from outside it
+    /// (a Top Shelf channel, a "watch when it starts" timer): the player cannot present over a cover.
     @ViewBuilder
     func detailCover<Item: Identifiable, Page: View>(item: Binding<Item?>, @ViewBuilder page: @escaping (Item) -> Page) -> some View {
         #if os(tvOS)
         fullScreenCover(item: item, content: page)
+            .onReceive(NotificationCenter.default.publisher(for: .pigCloseCovers)) { _ in item.wrappedValue = nil }
         #else
         sheet(item: item, content: page)
+            .onReceive(NotificationCenter.default.publisher(for: .pigCloseCovers)) { _ in item.wrappedValue = nil }
         #endif
     }
 
@@ -349,8 +352,10 @@ extension View {
                                                      @ViewBuilder page: @escaping (Item) -> Page) -> some View {
         #if os(tvOS)
         fullScreenCover(item: item, onDismiss: onDismiss, content: page)
+            .onReceive(NotificationCenter.default.publisher(for: .pigCloseCovers)) { _ in item.wrappedValue = nil }
         #else
         sheet(item: item, onDismiss: onDismiss, content: page)
+            .onReceive(NotificationCenter.default.publisher(for: .pigCloseCovers)) { _ in item.wrappedValue = nil }
         #endif
     }
 
@@ -359,10 +364,17 @@ extension View {
                                  @ViewBuilder page: @escaping () -> Page) -> some View {
         #if os(tvOS)
         fullScreenCover(isPresented: isPresented, onDismiss: onDismiss, content: page)
+            .onReceive(NotificationCenter.default.publisher(for: .pigCloseCovers)) { _ in isPresented.wrappedValue = false }
         #else
         sheet(isPresented: isPresented, onDismiss: onDismiss, content: page)
+            .onReceive(NotificationCenter.default.publisher(for: .pigCloseCovers)) { _ in isPresented.wrappedValue = false }
         #endif
     }
+}
+
+extension Notification.Name {
+    /// #14: close every detail page, so the player can present (AppModel.playOverCovers).
+    static let pigCloseCovers = Notification.Name("PigTV.closeCovers")
 }
 
 extension GuideProgramme {
