@@ -128,6 +128,7 @@ struct ProgrammeDetails: View {
         .fullScreenCover(item: $watchingFromStart) { recording in
             RecordingPlayerScreen(recording: recording, client: model.client, fromStart: true) { Task { await model.loadRecordings() } }
         }
+        .closesForOutsidePlay { watchingFromStart = nil } // #179
         .detailCover(isPresented: $recordSheet) {
             RecordSheet(model: model, channel: channel, programme: programme) { scheduled in
                 if scheduled { scheduledHere = true }

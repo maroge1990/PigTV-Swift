@@ -127,6 +127,7 @@ struct RecordingsView: View {
             .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }
             .sheet(isPresented: $reviewing) { RecordingAttentionSheet(model: model) }
             .sheet(isPresented: $showingRules) { RecordingRulesSheet(model: model) }
+            .closesForOutsidePlay { selected = nil; reviewing = false; showingRules = false } // #179
             .confirmationDialog("Cancel this recording?", isPresented: Binding(
                 get: { cancellation != nil }, set: { if !$0 { cancellation = nil } }
             ), presenting: cancellation) { item in
@@ -645,6 +646,7 @@ struct RecordingDetails: View {
         .fullScreenCover(isPresented: $watchingFromStart) {
             RecordingPlayerScreen(recording: item, client: model.client, fromStart: true) { Task { await model.loadRecordings() } }
         }
+        .closesForOutsidePlay { playing = false; watchingFromStart = false } // #179
         .confirmationDialog("Delete this recording?", isPresented: $deleting, titleVisibility: .visible) {
             Button("Delete recording and file", role: .destructive) {
                 Task {

@@ -152,4 +152,26 @@ final class PlayOverCoversTests: XCTestCase {
         XCTAssertEqual(app.playback?.channel.id, browse.asChannel(browse.guide[3]).id, "the user's choice stands")
         if let playback = app.playback { await app.endPlayback(playback) }
     }
+
+    /// #179: a second play before the player appears is watched too; the unseen replacement is ended.
+    func testASwitchBeforeThePlayerAppearsIsStillWatched() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let app = AppModel()
+        app.injectHomeFixture()
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
+        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
+        let deadline = AppModel.playerAppearDeadline
+        AppModel.playerAppearDeadline = .milliseconds(300)
+        defer { AppModel.playerAppearDeadline = deadline }
+        app.beginPlayback(browse.asChannel(browse.guide[0]))
+        try await Task.sleep(for: .milliseconds(100))
+        app.switchPlayback(to: browse.asChannel(browse.guide[1]))
+        try await Task.sleep(for: .milliseconds(800))
+        XCTAssertNil(app.playback, "the replacement never appeared either: ended")
+        XCTAssertFalse(app.playbackBusy)
+        XCTAssertFalse(app.playerPresented)
+    }
 }

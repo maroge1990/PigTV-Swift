@@ -289,6 +289,7 @@ struct GuideView: View {
                     schedule = nil
                 }
             }
+            .closesForOutsidePlay { selection = nil; channelDetails = nil; schedule = nil } // #179
         }
     }
 

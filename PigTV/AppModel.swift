@@ -347,6 +347,12 @@ final class AppModel: ObservableObject {
         // #14: a player that never appears (something still covering the screen) does not leave the app "playing"
         // with no player, refusing every later Watch: the play is ended and the reason shown.
         playerShown = false
+        armPlayerWatchdog(model)
+    }
+
+    /// #14, #179: watches the play that is waiting for its player screen; a switch before it appears re-arms it for
+    /// the replacement, so an unseen play is always ended.
+    private func armPlayerWatchdog(_ model: PlaybackModel) {
         guard let deadline = Self.playerAppearDeadline else { return }
         Task { [weak self] in
             try? await Task.sleep(for: deadline)
@@ -371,6 +377,7 @@ final class AppModel: ObservableObject {
         playback = model
         remember(channel)
         updateWarming(for: model, justSwitched: true)
+        if !playerShown { armPlayerWatchdog(model) } // #179: still no player: the replacement is watched too
     }
 
     /// R11: tells the warmer which channel the viewer is likely to go to from

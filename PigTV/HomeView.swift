@@ -221,6 +221,7 @@ struct HomeView: View {
         .fullScreenCover(item: $recordingDetails) { recording in
             RecordingDetails(model: model, original: recording)
         }
+        .closesForOutsidePlay { details = nil; schedule = nil; playingRecording = nil; recordingDetails = nil } // #179
     }
 
     private var header: some View {

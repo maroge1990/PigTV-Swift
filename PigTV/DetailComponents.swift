@@ -377,6 +377,14 @@ extension Notification.Name {
     static let pigCloseCovers = Notification.Name("PigTV.closeCovers")
 }
 
+extension View {
+    /// #179: a screen's own fullScreenCover or sheet (not a `detailCover`) closes for a play started from outside the
+    /// screen too: `close` sets its presentation state back.
+    func closesForOutsidePlay(_ close: @escaping () -> Void) -> some View {
+        onReceive(NotificationCenter.default.publisher(for: .pigCloseCovers)) { _ in close() }
+    }
+}
+
 extension GuideProgramme {
     /// "8:30 – 10:00 pm".
     var timeRange: String {
