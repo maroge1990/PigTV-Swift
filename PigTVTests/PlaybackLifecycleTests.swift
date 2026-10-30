@@ -185,6 +185,23 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertNil(PlaybackModel.retryWait(after: PigTVError.rateLimited(retryAfterSec: 120)))
     }
 
+    /// #147: a provider timeout the server explains in a sentence (shown to the viewer) is still a 5xx: retried.
+    func testAShownProviderTimeoutIsRetried() async throws {
+        for status in [500, 503] {
+            let server = SyntheticServer { _, _, _ in
+                .init(status: status, json: #"{"error":"The provider did not respond in time. It may be busy; try again in a few seconds."}"#)
+            }
+            let playback = model(try client(server))
+            playback.recoveryDelays = [0, 0, 0]
+            playback.playbackStarted()
+            playback.playbackFailed(detail: "Synthetic failure")
+            try await eventually { server.captured.filter { $0.path == "/api/playback/resolve" }.count >= 2 }
+            _ = await playback.stop()
+        }
+        XCTAssertEqual(PlaybackModel.retryWait(after: PigTVError.serverMessage("The provider did not respond in time.", status: 500)), 0)
+        XCTAssertNil(PlaybackModel.retryWait(after: PigTVError.serverMessage("The provider refused this channel (HTTP 403).", status: 404)))
+    }
+
     /// #139: a 429 is retried no sooner than its retry-after.
     func testARateLimitedReconnectWaitsItsRetryAfter() async throws {
         let times = Locked<[Date]>([])

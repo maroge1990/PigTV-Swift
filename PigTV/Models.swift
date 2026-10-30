@@ -357,6 +357,9 @@ enum PigTVError: LocalizedError, Equatable {
     case rateLimited(retryAfterSec: Int)
     case recordingPreparationFailed(reason: String?)
     case message(String)
+    /// #147: a sentence the server wrote to be shown, with the HTTP status it came with (which decides whether
+    /// retrying can help).
+    case serverMessage(String, status: Int)
 
     var errorDescription: String? {
         switch self {
@@ -371,6 +374,7 @@ enum PigTVError: LocalizedError, Equatable {
         case .recordingConflict: return "A recording is using the provider stream. Confirm before stopping it."
         case .decoding: return "The server returned an unexpected response. Check that PigTV is up to date."
         case .message(let message): return message
+        case .serverMessage(let message, _): return message
         }
     }
 }

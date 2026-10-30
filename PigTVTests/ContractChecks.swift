@@ -161,8 +161,9 @@ enum ContractChecks {
         do {
             let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
             throw CheckFailure(description: "Startup timeout must fail")
-        } catch PigTVError.message(let message) {
+        } catch PigTVError.serverMessage(let message, let status) {
             try expect(message.contains("startup deadline"), "Known startup timeout needs an actionable message")
+            try expect(status == 500, "The startup timeout keeps its HTTP status (#147)")
         }
         FixtureProtocol.responseData = Data(#"{"error":"Failed https://provider.invalid/private/password/stream"}"#.utf8)
         do {
@@ -177,15 +178,16 @@ enum ContractChecks {
         do {
             let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
             throw CheckFailure(description: "An allow-listed resolve failure must fail")
-        } catch PigTVError.message(let message) {
+        } catch PigTVError.serverMessage(let message, let status) {
             try expect(message == refused, "An allow-listed resolve error (including its HTTP status text) must be shown as sent")
+            try expect(status == 500, "An allow-listed resolve error keeps its HTTP status (#147)")
         }
         let long = "This channel is not available " + String(repeating: "x", count: 400)
         FixtureProtocol.responseData = try JSONSerialization.data(withJSONObject: ["error": long])
         do {
             let _: PlaybackDecision = try await fixtureAPI.request("playback/resolve", method: "POST", body: request)
             throw CheckFailure(description: "A long allow-listed resolve failure must fail")
-        } catch PigTVError.message(let message) {
+        } catch PigTVError.serverMessage(let message, _) {
             try expect(message.count == 300 && long.hasPrefix(message), "An allow-listed resolve error is trimmed to 300 characters")
         }
         for disallowed in ["The provider could not find this channel (HTTP 404). A playlist sync may help.",

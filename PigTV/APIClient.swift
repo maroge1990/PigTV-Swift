@@ -199,11 +199,12 @@ final class APIClient {
             }
             // C-B: a failed resolve may carry a sentence written to be shown.
             // Only an allow-listed prefix is displayed; all else stays generic.
+            // #147: with its status, so a reconnect still retries a provider timeout or a 5xx.
             if path == "playback/resolve", let shown = Self.displayableResolveError(serverError?.error) {
-                throw PigTVError.message(shown)
+                throw PigTVError.serverMessage(shown, status: response.statusCode)
             }
             if serverError?.error == "Transcode failed to produce a playlist in time" {
-                throw PigTVError.message("The server could not prepare the stream before its startup deadline. No video was received. Try again after checking the server's playback log.")
+                throw PigTVError.serverMessage("The server could not prepare the stream before its startup deadline. No video was received. Try again after checking the server's playback log.", status: response.statusCode)
             }
             throw PigTVError.http(response.statusCode)
         }

@@ -392,7 +392,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
     nonisolated static func retryWait(after error: Error) -> TimeInterval? {
         if let error = error as? PigTVError {
             switch error {
-            case .http(let status): return status >= 500 || status == 408 ? 0 : nil
+            // #147: a shown server sentence is as retryable as its status.
+            case .http(let status), .serverMessage(_, let status): return status >= 500 || status == 408 ? 0 : nil
             case .rateLimited(let seconds): return seconds <= 30 ? TimeInterval(seconds) : nil
             default: return nil
             }
