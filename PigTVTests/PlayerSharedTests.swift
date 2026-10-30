@@ -77,6 +77,14 @@ final class PlayerSharedTests: XCTestCase {
         let finite = try XCTUnwrap(PlayerSeekWindow(start: 0, end: 60, current: 50, live: false))
         XCTAssertEqual(finite.skipTarget(15), 60, "a forward skip near the end of a finite item goes to the end, never back")
         XCTAssertEqual(window.skipTarget(-20_000), 100)
+        // #7 (build 72): a play still building its hold sits nearer the edge than the offset; a forward skip never moves it back.
+        let building = try XCTUnwrap(PlayerSeekWindow(start: 0, end: 100, current: 96))
+        XCTAssertEqual(building.skipTarget(15), 96, "not jumped back to the held offset")
+        XCTAssertEqual(building.skipTarget(-10), 86)
+        XCTAssertEqual(LiveCatchUp.rate(behind: 4, live: true), 0.97)
+        XCTAssertEqual(LiveCatchUp.rate(behind: .nan, live: true), 0.97, "unknown: still building")
+        XCTAssertEqual(LiveCatchUp.rate(behind: 30, live: true), 1)
+        XCTAssertEqual(LiveCatchUp.rate(behind: 4, live: false), 1, "a source that ends plays at 1")
         // Finger position on the track.
         XCTAssertEqual(PlayerSeekWindow.fraction(forX: 150, width: 600), 0.25)
         XCTAssertEqual(PlayerSeekWindow.fraction(forX: -30, width: 600), 0)

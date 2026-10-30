@@ -102,13 +102,18 @@ final class RealPlaybackTests: XCTestCase {
         try await waitFor("ready") { playback.ready }
         XCTAssertLessThan(Date().timeIntervalSince(began), 3, "nothing may wait before the item is installed")
         XCTAssertEqual(itemPath(playback), "/api/transcode/s1/master.m3u8")
-        // Build 56 (FR-8): a live item is held 30 s behind the edge, so a provider's pause is ridden out.
-        XCTAssertEqual(playback.player.currentItem?.configuredTimeOffsetFromLive.seconds, 30)
+        // #7 (D-36, build 72): no fixed 30 s hold from the start; the play builds it at 0.97x with the pitch kept.
+        XCTAssertNotEqual(playback.player.currentItem?.configuredTimeOffsetFromLive.seconds, 30, "no fixed hold")
+        XCTAssertEqual(playback.player.currentItem?.audioTimePitchAlgorithm, .timeDomain)
+        XCTAssertTrue(playback.catchingUp)
+        XCTAssertEqual(playback.player.defaultRate, LiveCatchUp.slowRate)
         #if os(tvOS)
         XCTAssertNotNil(playback.displayCriteria, "criteria come from the resolve decision's fps")
         #endif
         try await waitFor("AVPlayer .playing") { isPlaying(playback) }
         try await waitFor("the picture's clock to move") { playback.player.currentTime().seconds > 0.5 }
+        // The fixture is a 6 s playlist that ends: no hold to build, so it goes to 1.0 (its own 2 s timer).
+        try await waitFor("a source that ends plays at 1.0") { !playback.catchingUp && playback.player.defaultRate == 1 }
         XCTAssertNil(playback.error)
         // The timeControlStatus KVO observer fired and reported the start.
         try await waitFor("play-start event") { server.clientEvents().contains("play-start") }

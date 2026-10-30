@@ -76,6 +76,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private var playbackObservation: NSKeyValueObservation?
     private var failedNotification: NSObjectProtocol?
     private var stallNotification: NSObjectProtocol?
+    private var catchUpObserver: Any?
+    /// #7 (D-36): this play is still building its hold at `LiveCatchUp.slowRate`.
+    private(set) var catchingUp = false
     @Published var recordingPrompt: RecordingPrompt?
     @Published private(set) var coordinationWarning: String?
     private var conflictTask: Task<Void, Never>?
@@ -121,6 +124,20 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// A live playlist has no end (indefinite duration); a finite source's does (build 57).
     private static func isLive(_ item: AVPlayerItem) -> Bool { item.duration.isIndefinite }
 
+    /// #7 (D-36): back to 1.0 once the play holds `PlayerSeekWindow.liveOffset` behind the live edge, or at once on a
+    /// source that ends. Runs on its own timer, so it never depends on the conflict poll (which stops on an old server).
+    func updateCatchUp() {
+        guard catchingUp, let item = player.currentItem else { return }
+        var behind = Double.nan
+        if let range = item.seekableTimeRanges.last?.timeRangeValue {
+            behind = CMTimeGetSeconds(CMTimeRangeGetEnd(range)) - CMTimeGetSeconds(item.currentTime())
+        }
+        guard LiveCatchUp.rate(behind: behind, live: Self.isLive(item)) == 1 else { return }
+        catchingUp = false
+        player.defaultRate = 1
+        if player.rate > 0 { player.rate = 1 }
+    }
+
     func goToLive() {
         guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return }
         let start = CMTimeGetSeconds(range.start)
@@ -131,6 +148,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
         } else {
             player.seek(to: CMTimeRangeGetEnd(range))
         }
+        catchingUp = false // the seek lands on the held offset
+        player.defaultRate = 1
         player.rate = 1
         behindLive = false
     }
@@ -419,9 +438,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // load finishes (a stale result is discarded).
     private func installItem(url: URL, strategy: String, mode: DisplayMode?, assetCriteria: Bool = true, generation: UUID) {
         let item = AVPlayerItem(url: url)
-        // Build 56: start (and stay) this far from the live edge, so a provider's pause is ridden out. No effect on a
-        // playlist that ends.
-        item.configuredTimeOffsetFromLive = CMTime(seconds: PlayerSeekWindow.liveOffset, preferredTimescale: 1)
+        // #7 (D-36, build 72): no fixed hold from the start (build 56 set 30 s, which froze the picture through a new
+        // play's first delivery pause); the play builds it at LiveCatchUp.slowRate with the pitch kept (updateCatchUp).
+        item.audioTimePitchAlgorithm = .timeDomain
         PigTVSignpost.event("LiveItemCreated")
         currentURL = url
         currentStrategy = strategy
@@ -482,6 +501,14 @@ final class PlaybackModel: ObservableObject, Identifiable {
         }
         itemPlayed = false
         armStartTimer(generation: generation)
+        catchingUp = true
+        player.defaultRate = LiveCatchUp.slowRate
+        catchUpObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 2, preferredTimescale: 1), queue: .main) { @Sendable [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.itemGeneration == generation, !self.ended else { return }
+                self.updateCatchUp()
+            }
+        }
         player.replaceCurrentItem(with: item)
         ready = true
         player.play()
@@ -740,6 +767,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
         failedNotification = nil
         if let stallNotification { NotificationCenter.default.removeObserver(stallNotification) }
         stallNotification = nil
+        if let catchUpObserver { player.removeTimeObserver(catchUpObserver) }
+        catchUpObserver = nil
+        catchingUp = false
+        player.defaultRate = 1
         conflictTask?.cancel()
         conflictTask = nil
         cancelWaitTimers()

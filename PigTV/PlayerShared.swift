@@ -264,6 +264,18 @@ nonisolated enum PlayerChromeTimer {
 /// The seekable (live buffer) window in the player item's
 /// seconds, for the touch scrub bar (build 31). Pure: position ↔ fraction
 /// mapping and the behind-live readout, tested in `PlayerSharedTests`.
+/// #7 (D-36, build 72): a live play starts without a fixed hold, which turned a new play's first delivery pause into a
+/// ~26 s frozen picture, and builds the same hold by playing slightly slower (pitch kept) until it is
+/// `PlayerSeekWindow.liveOffset` behind the edge; measured in the server's docs/evidence/2026-10-30-live-hold-variants.
+nonisolated enum LiveCatchUp {
+    static let slowRate: Float = 0.97
+    /// The rate for a play `behind` seconds behind the live edge (not finite while unknown). A source that ends plays at 1.
+    static func rate(behind: Double, live: Bool) -> Float {
+        guard live else { return 1 }
+        return behind.isFinite && behind >= PlayerSeekWindow.liveOffset ? 1 : slowRate
+    }
+}
+
 nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     var start: Double
     var end: Double
@@ -273,6 +285,7 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     /// How far behind the live edge a live play is held (build 56). Some providers deliver in bursts with pauses of up
     /// to ~16 s, and a healthy one fell 18.3 s behind (server FINDINGS FR-8); AVPlayer's default start, about three
     /// target durations (~12 s), runs dry in one. The server calls a feed lost at 24 s, before this runs out.
+    /// Since build 72 (#7, D-36) a play builds this hold at `LiveCatchUp.slowRate` instead of starting with it.
     static let liveOffset: Double = 30
     /// Within this many seconds of the end reads as live (as on the TV): the held offset plus slack.
     static let liveMargin: Double = liveOffset + 10
@@ -293,8 +306,11 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     func time(at fraction: Double) -> Double { start + Self.clamp(fraction) * duration }
     func behindLive(at fraction: Double) -> Double { max(0, end - time(at: fraction)) }
     func isLive(at fraction: Double) -> Bool { behindLive(at: fraction) <= Self.liveMargin }
-    /// The target of a ±seconds skip, clamped to the window and never nearer the edge than the held offset.
-    func skipTarget(_ seconds: Double) -> Double { min(max(current + seconds, start), Self.liveTarget(start: start, end: end, live: live)) }
+    /// The target of a ±seconds skip, clamped to the window and never nearer the edge than the held offset. A play still
+    /// building its hold (nearer the edge than the offset, build 72) is never moved back by a forward skip.
+    func skipTarget(_ seconds: Double) -> Double {
+        min(max(current + seconds, start), max(current, Self.liveTarget(start: start, end: end, live: live)))
+    }
 
     /// A drag's x position on a track `width` wide → fraction.
     static func fraction(forX x: Double, width: Double) -> Double {
