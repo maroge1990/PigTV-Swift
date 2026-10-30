@@ -180,8 +180,9 @@ final class SportsDashboardTests: XCTestCase {
       case "/api/sports/dashboard": return .json(Self.payload())
       case "/api/recordings": return .json("[]")
       case "/api/recordings/scheduled":
+        // The card's badge matches source + stable identity, so the schedule carries them (not just a name).
         return .json(
-          #"[{"id":1,"title":"Chiefs v Bills","channel_name":"Sports HD","program_start":1000,"program_end":9000,"status":"recording"}]"#
+          #"[{"id":1,"title":"Chiefs v Bills","channel_name":"Sports HD","program_start":1000,"program_end":9000,"status":"recording","source_id":1,"channel_item_id":"pos_7","channel_stable_id":"stable7"}]"#
         )
       default: return .notFound
       }
@@ -193,13 +194,15 @@ final class SportsDashboardTests: XCTestCase {
       client: client, refreshActivity: { await browse.loadRecordingsIfStale(maxAge: 15) })
     let loop = Task { await model.keepFresh(league: nil) }
     defer { loop.cancel() }
+    // The badge the card draws: any of the game's own channels recording, by identity.
+    func badged() -> Bool {
+      model.dashboard?.games.first?.channels.contains { browse.marks.isRecording($0) } == true
+    }
     let deadline = Date().addingTimeInterval(5)
-    while !browse.marks.recordingChannels.contains("Sports HD") && Date() < deadline {
+    while !badged() && Date() < deadline {
       try await Task.sleep(for: .milliseconds(20))
     }
-    XCTAssertTrue(
-      browse.marks.recordingChannels.contains("Sports HD"),
-      "A visible dashboard refreshes the shared recording marks")
+    XCTAssertTrue(badged(), "A visible dashboard refreshes the shared recording marks for its card's identity")
     XCTAssertTrue(
       server.requests.allSatisfy {
         ["/api/sports/dashboard", "/api/recordings", "/api/recordings/scheduled"].contains($0.path)
@@ -316,6 +319,77 @@ final class SportsDashboardTests: XCTestCase {
     let model = SportsDashboardModel(client: try client(server))
     let event = await model.event(gameID: "game", watch: true)
     XCTAssertNil(event, "response.now predates transit; the airing ended before select completed")
+  }
+  /// Review finding 2: a 20 s poll or a reappearance load overlapping an action's revalidation
+  /// superseded it, so Watch said "That airing is no longer available" and nothing played.
+  @MainActor func testRevalidationSurvivesAnOverlappingLoad() async throws {
+    let server = try LocalHTTPServer { _ in
+      var r = LocalHTTPServer.Response.json(Self.payload())
+      r.delay = 0.3
+      return r
+    }
+    defer { server.stop() }
+    let model = SportsDashboardModel(client: try client(server))
+    let action = Task { await model.event(gameID: "game", watch: true) }
+    let deadline = Date().addingTimeInterval(5)
+    while server.requests.isEmpty && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    _ = await model.load()
+    let event = await action.value
+    XCTAssertEqual(event?.best?.stableId, "stable7", "An overlapping poll must not cancel the action")
+    XCTAssertNil(model.message)
+    XCTAssertNotNil(model.dashboard)
+  }
+  @MainActor func testRevalidationIsStillRefusedAfterHide() async throws {
+    let server = try LocalHTTPServer { _ in
+      var r = LocalHTTPServer.Response.json(Self.payload())
+      r.delay = 0.3
+      return r
+    }
+    defer { server.stop() }
+    let model = SportsDashboardModel(client: try client(server))
+    let action = Task { await model.event(gameID: "game", watch: true) }
+    let deadline = Date().addingTimeInterval(5)
+    while server.requests.isEmpty && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    model.sceneActive(false)
+    let event = await action.value
+    XCTAssertNil(event, "Background/scope change/save still invalidates an in-flight action")
+    XCTAssertNil(model.dashboard)
+  }
+  /// Review finding 3: a cancelled request (leaving the page) is not an outage.
+  @MainActor func testCancelledLoadIsNotReportedAsAnOutage() async throws {
+    let server = try LocalHTTPServer { _ in
+      var r = LocalHTTPServer.Response.json(Self.payload())
+      r.delay = 2
+      return r
+    }
+    defer { server.stop() }
+    let model = SportsDashboardModel(client: try client(server))
+    let load = Task { await model.load() }
+    let deadline = Date().addingTimeInterval(5)
+    while server.requests.isEmpty && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    load.cancel()
+    _ = await load.value
+    XCTAssertNil(model.message, "URLError(.cancelled) is a cancellation, not 'Sports data unavailable'")
+  }
+  @MainActor func testOutageMessageClearsAfterASuccessfulLoad() async throws {
+    let failing = Locked(true)
+    let server = try LocalHTTPServer { _ in
+      failing.value ? .json(#"{"error":"down"}"#, status: 503) : .json(Self.payload())
+    }
+    defer { server.stop() }
+    let model = SportsDashboardModel(client: try client(server))
+    _ = await model.load()
+    XCTAssertNotNil(model.message)
+    failing.value = false
+    _ = await model.load()
+    XCTAssertNotNil(model.dashboard)
+    XCTAssertNil(model.message, "A recovered load must not keep saying the data is unavailable")
   }
   @MainActor func testSelectObtainsCurrentWholeStateAndRefusesNewFinal() async throws {
     let final = Locked(false)

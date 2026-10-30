@@ -109,6 +109,7 @@ private struct HomeTestScreen: View {
     let firstRun: Bool
     var initialTab = "home"
     var noSport = false
+    static let presentsPlayer = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_PLAY"] == "1"
     @StateObject private var model = AppModel()
     var body: some View {
         LibraryView(model: model, initialTab: initialTab)
@@ -119,6 +120,15 @@ private struct HomeTestScreen: View {
                 model.injectHomeFixture(firstRun: firstRun)
                 if initialTab == "recordings", let browse = model.browse { GuideFixtures.addSchedules(to: browse) }
                 if noSport { model.browse?.sport.setFixture([]) }
+                // PIGTV_UI_TEST_DASHBOARD_PLAY=1: a dashboard Watch reaches the real player, whose resolve goes to a
+                // non-routable TEST-NET address, so it stays on the tuning card (as player-tuning does).
+                if Self.presentsPlayer, let address = try? ServerAddress("http://192.0.2.1:3000") {
+                    model.configureClientForTesting(APIClient(address: address, token: "fixture", info: model.serverInfo))
+                }
+            }
+            .fullScreenCover(isPresented: Binding(get: { Self.presentsPlayer && model.playerPresented },
+                                                  set: { model.playerPresented = $0 })) {
+                PlayerHost(app: model).tint(Color("AccentColor"))
             }
             .preferredColorScheme(fixtureScheme)
     }

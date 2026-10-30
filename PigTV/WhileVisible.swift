@@ -7,12 +7,15 @@ extension View {
     /// clock, a periodic refresh) could keep running behind another tab
     /// (audit R05: hidden screens do no work). `work` starts again when the
     /// view reappears.
-    func whileVisible(_ work: @escaping @MainActor () async -> Void) -> some View {
-        modifier(WhileVisible(work: work))
+    /// `when`: run only while this also holds (e.g. the scene is active and no sheet covers the page); `work`
+    /// starts when both hold, whichever came second, and is cancelled when either stops.
+    func whileVisible(when condition: Bool = true, _ work: @escaping @MainActor () async -> Void) -> some View {
+        modifier(WhileVisible(condition: condition, work: work))
     }
 }
 
 private struct WhileVisible: ViewModifier {
+    let condition: Bool
     let work: @MainActor () async -> Void
     @State private var visible = false
 
@@ -20,6 +23,6 @@ private struct WhileVisible: ViewModifier {
         content
             .onAppear { visible = true }
             .onDisappear { visible = false }
-            .task(id: visible) { if visible { await work() } }
+            .task(id: visible && condition) { if visible && condition { await work() } }
     }
 }

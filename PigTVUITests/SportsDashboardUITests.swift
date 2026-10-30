@@ -48,7 +48,11 @@ import XCTest
       XCTAssertTrue(
         app.buttons["Record on Fixture Sports HD"].waitForExistence(timeout: 5))
       XCTAssertTrue(app.buttons["Watch Fixture Sports HD"].exists)
-      XCTAssertFalse(app.staticTexts["Illustrative preview · playback and recording are disabled."].exists, "A hold must not also invoke primary Watch")
+      // The primary action's refusal appears within a second or two when it runs (short Select, below), so give
+      // it that long to show up before calling its absence proof.
+      let refusal = app.staticTexts["Illustrative preview · playback and recording are disabled."]
+      let appeared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: refusal)
+      XCTAssertEqual(XCTWaiter.wait(for: [appeared], timeout: 3), .timedOut, "A hold must not also invoke primary Watch")
     }
     @MainActor func testShortSelectStillUsesPrimaryWatchAction() throws {
       let app = XCUIApplication()
@@ -83,6 +87,65 @@ import XCTest
       XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 8), .completed)
       XCTAssertEqual(focused(app).identifier, preset.identifier)
       XCTAssertTrue(app.staticTexts["Score delay: 120 seconds"].exists)
+    }
+    /// Mark's bug (build 61): after Hold Select → "Watch <second channel>", the tuning player was on screen but
+    /// Up/Down moved focus through the hidden dashboard behind it until the picture was ready.
+    @MainActor func testWatchingASecondChannelFromDetailsKeepsRemoteFocusInThePlayer() throws {
+      let app = XCUIApplication()
+      app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "sport-dashboard"
+      app.launchEnvironment["PIGTV_UI_TEST_DASHBOARD_PLAY"] = "1"
+      if let latency = ProcessInfo.processInfo.environment["PIGTV_DASHBOARD_LATENCY_MS"] {
+        app.launchEnvironment["PIGTV_UI_TEST_DASHBOARD_LATENCY_MS"] = latency
+      }
+      app.launch()
+      let card = app.buttons["sportsDashboard.game.fixture-AFL-basic points"]
+      XCTAssertTrue(card.waitForExistence(timeout: 10))
+      focus(card, in: app)
+      XCUIRemote.shared.press(.select, forDuration: 1.5)
+      let second = app.buttons["Watch Fixture Sports 2"]
+      XCTAssertTrue(second.waitForExistence(timeout: 5))
+      focus(second, in: app)
+      XCUIRemote.shared.press(.select)
+      XCTAssertTrue(app.staticTexts["Tuning…"].waitForExistence(timeout: 8), "The player should be tuning")
+      var trace: [String] = []
+      defer {
+        let attachment = XCTAttachment(string: trace.joined(separator: "\n"))
+        attachment.name = "Focus while tuning"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+      }
+      // The old window lasted until the picture was ready; the fixture never becomes ready, so sample a few seconds.
+      for press in [XCUIRemote.Button.down, .up, .down, .down] {
+        XCUIRemote.shared.press(press)
+        Thread.sleep(forTimeInterval: 0.5)
+        let current = focused(app)
+        let identifier = current.exists ? current.identifier : "<none>"
+        trace.append("\(press.rawValue): \(identifier) / \(current.exists ? current.label : "")")
+        XCTAssertFalse(identifier.hasPrefix("sportsDashboard."), "Focus moved behind the player: \(identifier)")
+        XCTAssertTrue(current.exists && current.label == "Cancel", "Focus should be on the tuning card's Cancel")
+      }
+      XCTAssertTrue(app.staticTexts["Tuning…"].exists)
+    }
+    /// Review fix (b): Watch revalidates the airing while details are still up, and closes them only to play
+    /// (the player is presented synchronously in onDismiss, like the legacy Sport presenter).
+    @MainActor func testWatchFromDetailsRevalidatesBeforeClosingThem() throws {
+      let app = XCUIApplication()
+      app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "sport-dashboard"
+      app.launchEnvironment["PIGTV_UI_TEST_DASHBOARD_PLAY"] = "1"
+      app.launchEnvironment["PIGTV_UI_TEST_DASHBOARD_LATENCY_MS"] = "3000"
+      app.launch()
+      let card = app.buttons["sportsDashboard.game.fixture-AFL-basic points"]
+      XCTAssertTrue(card.waitForExistence(timeout: 10))
+      focus(card, in: app)
+      XCUIRemote.shared.press(.select, forDuration: 1.5)
+      let second = app.buttons["Watch Fixture Sports 2"]
+      XCTAssertTrue(second.waitForExistence(timeout: 8))
+      focus(second, in: app)
+      XCUIRemote.shared.press(.select)
+      Thread.sleep(forTimeInterval: 1.2)
+      XCTAssertTrue(second.exists, "Details closed before the 3 s revalidation finished")
+      XCTAssertFalse(app.staticTexts["Tuning…"].exists)
+      XCTAssertTrue(app.staticTexts["Tuning…"].waitForExistence(timeout: 10), "The revalidated channel plays")
     }
     @MainActor private func focused(_ app: XCUIApplication) -> XCUIElement {
       app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))

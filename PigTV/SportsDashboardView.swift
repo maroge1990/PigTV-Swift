@@ -27,10 +27,12 @@ struct SportsDashboardView: View {
   let browse: BrowseModel
   @ObservedObject var model: SportsDashboardModel
   @ObservedObject private var actions: ActionState
-  init(app: AppModel, browse: BrowseModel, model: SportsDashboardModel) {
+  /// `details` opens a game's details at once (tests).
+  init(app: AppModel, browse: BrowseModel, model: SportsDashboardModel, details: String? = nil) {
     self.app = app
     self.browse = browse
     self.model = model
+    _details = State(initialValue: details)
     _actions = ObservedObject(wrappedValue: browse.actions)
     #if DEBUG
       if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-dashboard" {
@@ -48,11 +50,18 @@ struct SportsDashboardView: View {
   @State private var waitingLabel: String?
   @State private var waitingToken: UUID?
   @State private var afterDetails: (() -> Void)?
+  /// A Watch/Record choice revalidating its airing while the details are still up.
+  @State private var revalidating: Task<Void, Never>?
   @State private var lastRevision: Int?
 
   var body: some View {
     page
-      .whileVisible { if scenePhase == .active { await model.keepFresh(league: league) } }
+      // One loop: the page's pauses while a details/settings/recording page is up (an iOS sheet leaves the page
+      // "visible"; each of those pages keeps its own). Reappearing is not a scope change: no clear (C-O).
+      .whileVisible(when: scenePhase == .active && details == nil && !settings && recording == nil) {
+        model.sceneActive(true)
+        await model.keepFresh(league: league, clear: false)
+      }
       .onChange(of: scenePhase) { _, phase in sceneChanged(phase) }
       .onChange(of: model.dashboard?.preferences.revision) { _, revision in
         guard let revision else {
@@ -161,25 +170,53 @@ struct SportsDashboardView: View {
   private var detailBinding: Binding<DashboardIdentity?> {
     Binding(get: { details.map { DashboardIdentity(id: $0) } }, set: { details = $0?.id })
   }
+  /// Only a real background clears scores, closes the covers and cancels a scheduled watch; .inactive (Control
+  /// Center, a system alert) does neither. The return from background only re-allows loading: the page reloads by
+  /// itself if it is visible (whileVisible above), so a hidden tab makes no request.
   private func sceneChanged(_ phase: ScenePhase) {
-    model.sceneActive(phase == .active)
-    waiting?.cancel()
-    waiting = nil
-    waitingLabel = nil
-    recording = nil
-    details = nil
-    settings = false
-    afterDetails = nil
-    if phase == .active { Task { await model.load(league: league, clear: true) } }
+    switch phase {
+    case .background:
+      model.sceneActive(false)
+      waiting?.cancel()
+      waiting = nil
+      waitingLabel = nil
+      revalidating?.cancel()
+      revalidating = nil
+      recording = nil
+      details = nil
+      settings = false
+      afterDetails = nil
+    case .active:
+      model.sceneActive(true)
+    default:
+      break
+    }
   }
   private func closeDetails(then action: @escaping () -> Void) {
     afterDetails = action
     details = nil
   }
   private func detailsDismissed() {
+    revalidating?.cancel()
+    revalidating = nil
     let action = afterDetails
     afterDetails = nil
     action?()
+  }
+  /// Revalidate the airing while the details are still up, then close them and act synchronously in onDismiss, as
+  /// the legacy Sport presenter does. Nothing awaits between the page reappearing and the player (or the recording
+  /// sheet) presenting, so the tvOS focus engine never restores focus into the page under it.
+  private func revalidateThenClose(
+    gameID: String, channelKey: String, watch: Bool, then action: @escaping (SportEvent) -> Void
+  ) {
+    guard revalidating == nil else { return }
+    revalidating = Task {
+      defer { revalidating = nil }
+      guard let event = await model.event(gameID: gameID, channelKey: channelKey, watch: watch),
+        !Task.isCancelled, details == gameID, app.browse === browse
+      else { return }
+      closeDetails { action(event) }
+    }
   }
   private func changeLeague(_ value: String?) {
     league = value
@@ -208,36 +245,24 @@ struct SportsDashboardView: View {
             client: browse.client)
           Text(game.availabilityLabel)
           if let message = model.message { Text(message) }
+          if revalidating != nil { Text("Checking the airing…").foregroundStyle(.secondary) }
           if let error = actions.actionError { Text(error) }
           if let message = actions.actionMessage { Text(message) }
           if !game.terminal {
             ForEach(game.channels) { channel in
               if game.canWatch {
                 Button("Watch \(channel.name)", systemImage: "play.fill") {
-                  closeDetails {
-                    Task {
-                      guard
-                        let event = await model.event(
-                          gameID: id, channelKey: channel.identityKey, watch: true),
-                        app.browse === browse
-                      else { return }
-                      app.playSportEvent(event)
-                    }
+                  revalidateThenClose(gameID: id, channelKey: channel.identityKey, watch: true) { event in
+                    app.playSportEvent(event)
                   }
                 }
               }
               Button("Record on \(channel.name)", systemImage: "record.circle") {
-                closeDetails {
-                  Task {
-                    guard
-                      let event = await model.event(
-                        gameID: id, channelKey: channel.identityKey, watch: false),
-                      let current = event.best, app.browse === browse
-                    else { return }
-                    recording = DashboardRecording(
-                      event: event, channel: current,
-                      revision: model.dashboard?.preferences.revision ?? -1)
-                  }
+                revalidateThenClose(gameID: id, channelKey: channel.identityKey, watch: false) { event in
+                  guard let current = event.best else { return }
+                  recording = DashboardRecording(
+                    event: event, channel: current,
+                    revision: model.dashboard?.preferences.revision ?? -1)
                 }
               }
               if game.start > response.now {
@@ -292,7 +317,7 @@ struct SportsDashboardView: View {
         }
       }.padding(SportsDashboardLayout.detailPadding).frame(maxWidth: 1100, alignment: .leading)
     }.pigPageBackdrop()
-      .whileVisible { await model.keepFresh(league: league) }
+      .whileVisible { await model.keepFresh(league: league, clear: false) }
   }
 }
 private struct DashboardIdentity: Identifiable { let id: String }

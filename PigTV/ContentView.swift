@@ -302,6 +302,18 @@ struct OnboardingView: View {
     }
 }
 
+extension View {
+    /// tvOS: this button takes focus when its player state shows (PlayerScreen). Touch has no focus to claim.
+    @ViewBuilder
+    func playerStateFocus(_ binding: FocusState<Bool>.Binding) -> some View {
+        #if os(tvOS)
+        focused(binding)
+        #else
+        self
+        #endif
+    }
+}
+
 // Stays presented while channels change underneath it, so switching never
 // dismisses and re-presents the player.
 struct PlayerHost: View {
@@ -323,6 +335,9 @@ struct PlayerScreen: View {
     @ObservedObject var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingGuide = false
+    /// tvOS: the button that holds focus in the tuning, reconnecting, error and conflict states. Without a claim the
+    /// focus engine could stay in the page under the player until the picture took focus (Mark, build 61).
+    @FocusState private var stateFocus: Bool
     #if os(iOS)
     // C-A: iOS "Go to number" (tvOS has no digit entry).
     @State private var enteringNumber = false
@@ -347,7 +362,7 @@ struct PlayerScreen: View {
                 VStack(spacing: 24) {
                     Text("Another device is watching").font(.title2.bold())
                     Text(message).multilineTextAlignment(.center)
-                    Button("Keep watching there") { dismiss() }.pigPrimaryButton()
+                    Button("Keep watching there") { dismiss() }.pigPrimaryButton().playerStateFocus($stateFocus)
                     Button("Stop the other stream and watch here", role: .destructive) { playback.confirmViewerStop() }
                 }.padding(48).foregroundStyle(.white)
             } else if let conflict = playback.recordingConflict {
@@ -355,21 +370,25 @@ struct PlayerScreen: View {
                     Text("A recording is in progress").font(.title2.bold())
                     Text("\(conflict.title) on \(conflict.channelName)")
                     Text("Watching live TV will stop the recording. What has already been recorded will be kept.")
-                    Button("Keep recording") { dismiss() }.pigPrimaryButton()
+                    Button("Keep recording") { dismiss() }.pigPrimaryButton().playerStateFocus($stateFocus)
                     Button("Stop recording and watch", role: .destructive) { playback.confirmRecordingStop() }
                 }.padding(48).foregroundStyle(.white)
             } else if let error = playback.error {
                 VStack(spacing: 24) {
                     Text("Unable to play \(playback.channel.name)").font(.title2)
                     Text(error)
-                    if playback.canRetry { Button("Retry") { playback.retry() }.pigPrimaryButton() }
-                    Button("Back to channels") { dismiss() }
+                    if playback.canRetry {
+                        Button("Retry") { playback.retry() }.pigPrimaryButton().playerStateFocus($stateFocus)
+                        Button("Back to channels") { dismiss() }
+                    } else {
+                        Button("Back to channels") { dismiss() }.playerStateFocus($stateFocus)
+                    }
                 }.padding(48).foregroundStyle(.white)
             } else if playback.reconnecting {
                 // Build 29: the tuning card on iOS too.
                 VStack(spacing: 24) {
                     TuningCard(playback: playback, browse: app.browse, message: "Reconnecting…")
-                    Button("Back to guide") { dismiss() }
+                    Button("Back to guide") { dismiss() }.playerStateFocus($stateFocus)
                 }
                 .environment(\.colorScheme, .dark)
                 #if os(tvOS)
@@ -384,7 +403,7 @@ struct PlayerScreen: View {
             } else {
                 VStack(spacing: 24) {
                     TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.playerStateFocus($stateFocus)
                 }
                 .environment(\.colorScheme, .dark)
                 #if os(tvOS)
@@ -395,6 +414,13 @@ struct PlayerScreen: View {
         .environment(\.colorScheme, .dark)
         #if os(tvOS)
         .buttonStyle(TVActionStyle())
+        .defaultFocus($stateFocus, true)
+        .onChange(of: stateName, initial: true) { _, state in
+            // The picture (CustomPlayerView) takes focus itself; every other state claims it for its button, once
+            // the state's button is in the hierarchy.
+            guard state != "ready", state != "stopping" else { return }
+            Task { @MainActor in stateFocus = true }
+        }
         #endif
         .alert("A recording needs the stream", isPresented: Binding(
             get: { playback.recordingPrompt != nil },
@@ -459,6 +485,16 @@ struct PlayerScreen: View {
         .onAppear { playback.start() }
         .onDisappear { Task { await app.endPlayback(playback) } }
 
+    }
+
+    /// Which of the body's states shows (tvOS focus follows it).
+    private var stateName: String {
+        if playback.stopping { return "stopping" }
+        if playback.viewerConflict != nil { return "viewer" }
+        if playback.recordingConflict != nil { return "recording" }
+        if playback.error != nil { return playback.canRetry ? "error-retry" : "error" }
+        if playback.reconnecting { return "reconnecting" }
+        return playback.ready ? "ready" : "tuning"
     }
 
     #if os(iOS)

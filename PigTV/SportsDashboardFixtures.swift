@@ -57,6 +57,14 @@
       }
       add("AFL", "basic points", progress: ["period": 3, "clock": "3:21"])
       if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_WATCHABLE"] == "1" { games[0]["canWatch"] = true }
+      if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_PLAY"] == "1" {
+        // A watchable game with a second (non-preferred) channel, played through the ordinary path.
+        games[0]["canWatch"] = true
+        games[0]["channels"] = [
+          ["sourceId": 1, "id": "ch1", "stableId": "fixture1", "name": "Fixture Sports HD"],
+          ["sourceId": 1, "id": "ch2", "stableId": "fixture2", "name": "Fixture Sports 2"],
+        ]
+      }
       add("AFL", "no channel", availability: "unmatched")
       add("AFL", "unavailable", availability: "unavailable")
       add("AFL", "buffering", "unknown", freshness: "buffering")

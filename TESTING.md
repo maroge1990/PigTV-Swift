@@ -141,6 +141,14 @@ These additional DEBUG launch options require `PIGTV_UI_TEST_SCREEN=sport-dashbo
 | `PIGTV_UI_TEST_DASHBOARD_LEAGUE` | One canonical league, to inspect its family without scrolling all shelves |
 | `PIGTV_UI_TEST_DASHBOARD_WATCHABLE` | `1`: first invented AFL card offers Watch; the fixture still refuses acquisition |
 | `PIGTV_UI_TEST_SAVE_DELAY_MS` | `0`–`5000`: hold a synthetic settings save to check mounted controls/focus |
+| `PIGTV_UI_TEST_DASHBOARD_PLAY` | `1`: the fixture is served through the real load/hide/revalidation path; the first AFL card has a second channel and Watch reaches the real player, which stays tuning (TEST-NET resolve) |
+| `PIGTV_UI_TEST_DASHBOARD_LATENCY_MS` | `0`–`5000` (default 400): the served fixture's simulated round trip, with `PIGTV_UI_TEST_DASHBOARD_PLAY` |
+
+`SportsDashboardViewTests` (build 61 review fixes) hosts the real `SportsDashboardView` in a window on a real model against
+`LocalHTTPServer`, with the scene phase and the selected tab under the test's control: details and reappearance never
+clear the shelves, one polling loop under details (meaningful on iOS, where details are a sheet: run it on the iPad
+too), `.inactive` keeps details and scores, a hidden tab makes no request on foreground, and a page first shown while
+inactive starts polling once active.
 
 They do not query a real server or provider. Physical remote feel and consolidated cross-platform acceptance remain
 Mark's checks in the server's `sports-tvos-refinements` handoff.
