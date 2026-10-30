@@ -215,6 +215,27 @@ controls are not used for live play.
 
 - **Sport replays (build 31; Mark: "I don't mind replays being there, I miss games often, just should be its own section").** The server's `sports/events` now also lists replays of identifiable games with `kind: "event" | "replay"`; `SportEvent.kind` (`SportEventKind`) decodes it case-insensitively, and an absent, unknown or non-string `kind` reads as an event. `SportRows.buckets` puts replays that have not ended in `SportBuckets.replays` (on now first, then by start) and never in live/soon/later, so Home's "Sport now & next" (`nowAndNext`) and the On now / Starting soon / Later sections never show them; `all` includes them, so the league chips count and filter them (`filter` covers `replays`). The Sport tab adds a **Replays** section after Later today; the card shows a grey **REPLAY** badge (with `arrow.counterclockwise`) in place of LIVE and "On now · ends in …" when it is on. Selecting behaves as for events: on now → plays its best channel (`playSportEvent`), upcoming → the event page (Watch when it starts, Record). Fixture: two replays ("Packers v Jets · Week 2" on now, "AFL Grand Final 2025" later) in `GuideFixtures.sportEvents`; `PIGTV_UI_TEST_SPORT_SCROLL=<section>` scrolls the Sport tab for screenshots. Tests `testReplaysAreTheirOwnBucket`, `testKindDecodesTolerantly`. Screenshots `docs/evidence/2026-09-25-b31-sport-replays-tv-{dark,light}.jpg`.
 
+### Sport pages: Formula 1 (C-P, builds 74–75)
+
+- **Per-channel airing times (build 74, #20).** `SportEventChannel` decodes C-I's per-channel `start`/`end` (server 0337);
+  `SportEvent.airing(on:)` answers the chosen channel's times, else the event's (an older server). The Watch-now rule
+  (`SportRows.playsChannelNow(_:on:now:)`), `watchWhenStarts`, `recordingRow`/`isScheduled` and every `RecordSheet` use it,
+  so a channel showing a session late is never played or recorded on another channel's hour.
+- **The F1 page (build 75, #21).** Shown when the server advertises `sportPages`: a "Sport pages" row above the league chips
+  (`SportPageLinks`) pushes `F1PageView` in the Sport tab's `NavigationStack`. `F1PageModels.swift` decodes C-P tolerantly
+  (`F1Page`, sessions in time order, a broken session or row dropped) and holds the pure rules (`F1PageText`: the focus
+  session, pills, headline, "Sat 31 Oct · 5:30 am", the session as a C-I `SportEvent` titled "Mexico City GP · Practice 1").
+  `F1PageModel` (`BrowseModel.f1Page`) loads the page and the household's preferences (`sports/pages/preferences`, server
+  0346) every 60 s while visible; a switch is sent as its own field and put back if refused; a 404 keeps them on the device.
+  A session's Watch, channel picker, Record and bell ("Watch when it starts") are the Sport tab's own, through the screen's
+  `SportPresenter`. Layout: the approved mock-ups; tvOS and an iPad at least 1150 pt wide use the wide layout (weekend ·
+  circuit card · sessions, then results beside the championships, cards of equal height); iPhone and iPad portrait stack it.
+  Spoiler-free hides the results, the pole/winner/fastest labels and the standings. No points column on the results (C-P
+  sends none). Fixtures `PIGTV_UI_TEST_SCREEN=f1 | f1-live | f1-spoilers` (`F1PageFixtures`); tests `F1PageTextTests`
+  (decoding the server's own answer, `PigTVTests/Fixtures/f1-page-0346.json`), `F1PageModelTests`, `F1PageUITests`, and
+  `StagingF1UITests` (iPad against the Unraid staging server; skipped unless `TEST_RUNNER_PIGTV_STAGING_URL`, `_USER`,
+  `_PASS` are given).
+
 ### Live now dashboard (C-O, builds 59–63)
 
 The client's consumption of C-O, including the Apple 59–63 notes, is written down once in the server's

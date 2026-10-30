@@ -1,0 +1,304 @@
+{
+ "available": true,
+ "updatedAt": 1793361600000,
+ "weekend": {
+  "round": 21,
+  "rounds": 25,
+  "name": "Mexico City Grand Prix",
+  "circuit": "Autodromo Hermanos Rodriguez",
+  "city": "Mexico city",
+  "country": "Mexico",
+  "phase": "before",
+  "info": {
+   "length": "4.304 km",
+   "laps": 71,
+   "turns": 17,
+   "lapRecord": "1:17.774",
+   "lapRecordYear": 2021,
+   "map": "/api/logo/35302e6a7067"
+  },
+  "sessions": [
+   {
+    "id": "practice 1",
+    "name": "Practice 1",
+    "start": 1793385000000,
+    "end": 1793388600000,
+    "status": "scheduled",
+    "top": null,
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_12",
+      "stableId": "fox506",
+      "name": "Fox Sports 506 HD",
+      "number": 506,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793383200000,
+      "end": 1793388600000
+     }
+    ]
+   },
+   {
+    "id": "practice 2",
+    "name": "Practice 2",
+    "start": 1793397600000,
+    "end": 1793401200000,
+    "status": "scheduled",
+    "top": null,
+    "channels": []
+   },
+   {
+    "id": "practice 3",
+    "name": "Practice 3",
+    "start": 1793467800000,
+    "end": 1793471400000,
+    "status": "scheduled",
+    "top": null,
+    "channels": []
+   },
+   {
+    "id": "qualifying",
+    "name": "Qualifying",
+    "start": 1793480400000,
+    "end": 1793484000000,
+    "status": "scheduled",
+    "top": null,
+    "channels": []
+   },
+   {
+    "id": "race",
+    "name": "Race",
+    "start": 1793563200000,
+    "end": 1793570400000,
+    "status": "scheduled",
+    "top": null,
+    "channels": []
+   }
+  ]
+ },
+ "results": {
+  "kind": "race",
+  "title": "Last race · United States GP",
+  "date": 1792958400000,
+  "rows": [
+   {
+    "pos": 1,
+    "driver": "Kimi Antonelli",
+    "team": "Mercedes",
+    "teamColor": "00D2BE",
+    "points": null
+   },
+   {
+    "pos": 2,
+    "driver": "Charles Leclerc",
+    "team": "Ferrari",
+    "teamColor": "DC0000",
+    "points": null
+   },
+   {
+    "pos": 3,
+    "driver": "Max Verstappen",
+    "team": "Red Bull",
+    "teamColor": "00327D",
+    "points": null
+   },
+   {
+    "pos": 4,
+    "driver": "Lewis Hamilton",
+    "team": "Ferrari",
+    "teamColor": "DC0000",
+    "points": null
+   },
+   {
+    "pos": 5,
+    "driver": "Lando Norris",
+    "team": "McLaren",
+    "teamColor": "FF8700",
+    "points": null
+   },
+   {
+    "pos": 6,
+    "driver": "Isack Hadjar",
+    "team": "Red Bull",
+    "teamColor": "00327D",
+    "points": null
+   },
+   {
+    "pos": 7,
+    "driver": "Oscar Piastri",
+    "team": "McLaren",
+    "teamColor": "FF8700",
+    "points": null
+   },
+   {
+    "pos": 8,
+    "driver": "George Russell",
+    "team": "Mercedes",
+    "teamColor": "00D2BE",
+    "points": null
+   },
+   {
+    "pos": 9,
+    "driver": "Liam Lawson",
+    "team": "Racing Bulls",
+    "teamColor": "6692FF",
+    "points": null
+   },
+   {
+    "pos": 10,
+    "driver": "Pierre Gasly",
+    "team": "Alpine",
+    "teamColor": "FFF500",
+    "points": null
+   }
+  ]
+ },
+ "standings": {
+  "drivers": [
+   {
+    "pos": 1,
+    "name": "Kimi Antonelli",
+    "team": "Mercedes",
+    "teamColor": "00D2BE",
+    "points": 365
+   },
+   {
+    "pos": 2,
+    "name": "George Russell",
+    "team": "Mercedes",
+    "teamColor": "00D2BE",
+    "points": 242
+   },
+   {
+    "pos": 3,
+    "name": "Lewis Hamilton",
+    "team": "Ferrari",
+    "teamColor": "DC0000",
+    "points": 241
+   },
+   {
+    "pos": 4,
+    "name": "Max Verstappen",
+    "team": "Red Bull",
+    "teamColor": "00327D",
+    "points": 236
+   },
+   {
+    "pos": 5,
+    "name": "Charles Leclerc",
+    "team": "Ferrari",
+    "teamColor": "DC0000",
+    "points": 233
+   },
+   {
+    "pos": 6,
+    "name": "Lando Norris",
+    "team": "McLaren",
+    "teamColor": "FF8700",
+    "points": 211
+   },
+   {
+    "pos": 7,
+    "name": "Oscar Piastri",
+    "team": "McLaren",
+    "teamColor": "FF8700",
+    "points": 144
+   },
+   {
+    "pos": 8,
+    "name": "Isack Hadjar",
+    "team": "Red Bull",
+    "teamColor": "00327D",
+    "points": 105
+   },
+   {
+    "pos": 9,
+    "name": "Liam Lawson",
+    "team": "Racing Bulls",
+    "teamColor": "6692FF",
+    "points": 77
+   },
+   {
+    "pos": 10,
+    "name": "Pierre Gasly",
+    "team": "Alpine",
+    "teamColor": "FFF500",
+    "points": 42
+   }
+  ],
+  "constructors": [
+   {
+    "pos": 1,
+    "name": "Mercedes",
+    "team": null,
+    "teamColor": "00D2BE",
+    "points": 607
+   },
+   {
+    "pos": 2,
+    "name": "Ferrari",
+    "team": null,
+    "teamColor": "DC0000",
+    "points": 474
+   },
+   {
+    "pos": 3,
+    "name": "Red Bull",
+    "team": null,
+    "teamColor": "00327D",
+    "points": 355
+   },
+   {
+    "pos": 4,
+    "name": "McLaren",
+    "team": null,
+    "teamColor": "FF8700",
+    "points": 355
+   },
+   {
+    "pos": 5,
+    "name": "Racing Bulls",
+    "team": null,
+    "teamColor": "6692FF",
+    "points": 102
+   },
+   {
+    "pos": 6,
+    "name": "Alpine",
+    "team": null,
+    "teamColor": "FFF500",
+    "points": 69
+   },
+   {
+    "pos": 7,
+    "name": "Haas",
+    "team": null,
+    "teamColor": null,
+    "points": 30
+   },
+   {
+    "pos": 8,
+    "name": "Audi",
+    "team": null,
+    "teamColor": "FF2D00",
+    "points": 23
+   },
+   {
+    "pos": 9,
+    "name": "Williams",
+    "team": null,
+    "teamColor": null,
+    "points": 12
+   },
+   {
+    "pos": 10,
+    "name": "Aston Martin",
+    "team": null,
+    "teamColor": null,
+    "points": 7
+   }
+  ],
+  "afterRound": 20
+ }
+}

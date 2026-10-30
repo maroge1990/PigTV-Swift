@@ -71,6 +71,10 @@ struct SportView: View {
                 header
                 LazyVStack(alignment: .leading, spacing: SportMetrics.sectionSpacing) {
                     SportPendingBanner(app: app)
+                    // C-P (#21): the sport pages (Formula 1 first), above the event shelves.
+                    if browse.sportPagesEnabled {
+                        SportPageLinks(app: app, browse: browse)
+                    }
                     if !leagues.isEmpty {
                         chips(leagues, chosen: chosen)
                     }

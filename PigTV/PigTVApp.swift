@@ -62,6 +62,8 @@ struct PigTVApp: App {
             TopShelfCardsTestScreen()
         } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {
             PlayerTestScreen()
+        } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"], screen.hasPrefix("f1") {
+            F1TestScreen(screen: screen)
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
                   DesignTestScreen.screens.contains(screen) {
             DesignTestScreen(screen: screen)
@@ -98,6 +100,34 @@ private struct GuideTestScreen: View {
             // PIGTV_UI_TEST_APPEARANCE=light|dark: the tvOS simulator cannot
             // switch its own appearance (simctl ui appearance is unsupported).
             .preferredColorScheme(fixtureScheme)
+    }
+}
+
+// Offline Formula 1 page (#21): PIGTV_UI_TEST_SCREEN=f1 | f1-live | f1-spoilers (F1PageFixtures).
+private struct F1TestScreen: View {
+    let screen: String
+    @StateObject private var model = AppModel()
+    var body: some View {
+        Group {
+            if let browse = model.browse {
+                NavigationStack { F1PageView(app: model, browse: browse, model: browse.f1Page) }
+                    .sportPages(app: model, browse: browse, clock: Date())
+            } else {
+                Color.clear
+            }
+        }
+        #if os(tvOS)
+        .buttonStyle(TVActionStyle())
+        #endif
+        .preferredColorScheme(fixtureScheme)
+        .task {
+            model.injectHomeFixture()
+            guard let browse = model.browse else { return }
+            browse.f1Page.setFixture(F1PageFixtures.page(live: screen == "f1-live", guide: browse.guide),
+                                     preferences: screen == "f1-spoilers"
+                                        ? SportPagePreferences(spoilerFree: true, f1Following: "Oscar Piastri")
+                                        : SportPagePreferences(f1Following: screen == "f1-live" ? "Oscar Piastri" : nil))
+        }
     }
 }
 

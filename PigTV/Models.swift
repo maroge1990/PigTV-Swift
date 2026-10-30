@@ -38,6 +38,9 @@ struct ServerInfo: Decodable {
         // "Sport now & next"). C-H's `sportCategories` is no longer read.
         var sportsEvents: Bool? = nil
         var sportsDashboard: Bool? = nil
+        // C-P (server 0340, #21): `GET sports/pages/f1`, the Formula 1 page; 0346 adds
+        // `sports/pages/preferences` (a 404 there means device-local defaults).
+        var sportPages: Bool? = nil
         // Server 0207: per-login recording positions (`GET`/`PUT
         // recordings/{id}/position`, and `position_sec`/`watched` on list rows).
         var recordingPositions: Bool? = nil

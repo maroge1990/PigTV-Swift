@@ -575,6 +575,9 @@ final class BrowseModel: ObservableObject {
     /// Moves when a Sport card's logo may have changed (see `SportLogoRevision`).
     private(set) lazy var sportLogos = SportLogoRevision(following: self)
     var sportEnabled: Bool { client.info?.features.sportsEvents == true }
+    /// C-P (#21): the Formula 1 page, only with the server's `sportPages` flag.
+    private(set) lazy var f1Page = F1PageModel(client: client)
+    var sportPagesEnabled: Bool { client.info?.features.sportPages == true }
 
     /// The Channel the player needs for one of an event's channels: its
     /// guide row when loaded (logo fallback, stable identity), else the
