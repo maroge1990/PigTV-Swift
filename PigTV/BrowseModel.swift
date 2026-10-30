@@ -34,6 +34,8 @@ final class BrowseModel: ObservableObject {
     var recent: [Channel] { get { library.recent } set { library.recent = newValue } }
     var mutationBusy: Bool { get { actions.mutationBusy } set { actions.change(\.mutationBusy, to: newValue) } }
     var actionMessage: String? { get { actions.actionMessage } set { actions.change(\.actionMessage, to: newValue) } }
+    /// #148: the clash the last successful schedule() found (nil when none), for callers that word their own notice.
+    private(set) var scheduleClash: String?
     var actionError: String? { get { actions.actionError } set { actions.change(\.actionError, to: newValue) } }
     var artworkIndex: EPGArtworkIndex { artwork.artworkIndex }
     var scheduledKeys: Set<String> { marks.scheduledKeys }
@@ -629,6 +631,7 @@ final class BrowseModel: ObservableObject {
         mutationBusy = true
         actionError = nil
         actionMessage = nil
+        scheduleClash = nil
         defer { mutationBusy = false }
         do {
             let made: ScheduledRecording = try await client.request("recordings/schedule", method: "POST",
@@ -639,6 +642,7 @@ final class BrowseModel: ObservableObject {
             await loadRecordings()
             // #12 (D-28): a clash is said when scheduling, never found later as a wait or a miss.
             if let clash = made.clashText(in: schedules) {
+                scheduleClash = clash
                 actionMessage = "Recording scheduled. \(clash)"
             } else {
                 actionMessage = "Recording scheduled. You can review it in Recordings."

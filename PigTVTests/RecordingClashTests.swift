@@ -42,4 +42,26 @@ final class RecordingClashTests: XCTestCase {
         XCTAssertTrue(ok)
         XCTAssertEqual(model.actionMessage, "Recording scheduled. Clashes with Footy (Fox Footy): one will wait or be missed.")
     }
+
+    /// #148: Record from inside the player says the clash too, not just "Recording <title>".
+    func testRecordFromThePlayerSaysTheClash() async throws {
+        let http = try LocalHTTPServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/api/recordings/schedule"): return .json(Self.made, status: 201)
+            case ("GET", "/api/recordings/scheduled"): return .json("[\(Self.other),\(Self.made)]")
+            case ("GET", "/api/recordings"): return .json("[]")
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let client = APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1)
+        let browse = BrowseModel(client: client, accountID: 1)
+        let now = Date().timeIntervalSince1970 * 1000
+        let programme = GuideProgramme(title: "Cricket", description: nil, startTime: now - 60_000, endTime: now + 3_600_000)
+        let channel = GuideChannel(rawID: "11", sourceId: 1, name: "Fox Cricket", logo: nil, category: nil, programmes: [programme])
+        browse.guide = [channel]
+        let playback = PlaybackModel(channel: browse.asChannel(channel), client: client, programmes: [programme])
+        let notice = await PlayerCommands.recordNow(playback: playback, browse: browse)
+        XCTAssertEqual(notice, "Recording Cricket. Clashes with Footy (Fox Footy): one will wait or be missed.")
+    }
 }
