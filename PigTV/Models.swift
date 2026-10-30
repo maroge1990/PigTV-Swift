@@ -473,4 +473,6 @@ struct PlaybackEvent: Encodable {
     // R11, play-start: true when the resolve adopted a warmed stream (absent
     // otherwise, so the server can compare warm and cold start times).
     var warm: Bool?
+    // #6, start-timeout only: how long nothing played.
+    var waitedSec: Double?
 }

@@ -45,7 +45,9 @@ enum HLSFixture {
 /// - `POST /api/playback/resolve` → the decision `resolve` returns (by default,
 ///   session `s<n>` pointing at `/api/transcode/s<n>/master.m3u8`);
 /// - `GET /api/transcode/<session>/<file>` → the HLS fixture (any session;
-///   a session whose name contains `pq` serves a VIDEO-RANGE=PQ master);
+///   a session whose name contains `pq` serves a VIDEO-RANGE=PQ master; in a
+///   session containing `hang` no media arrives (init and segments wait 120 s),
+///   and in one containing `stall` the last segment does, so play stops after 4 s);
 /// - `GET /api/playback/conflict` → `null`;
 /// - `POST /api/playback/client-event`, `POST /api/playback/conflict/decline`,
 ///   `DELETE /api/playback/<session>` → `{"success":true}`;
@@ -224,7 +226,9 @@ final class FakePigTVServer: @unchecked Sendable {
                 return .init(status: 200, contentType: HLSFixture.contentType(name), body: HLSFixture.master(videoRange: "PQ"))
             }
             if let data = HLSFixture.contents[name] {
-                return .init(status: 200, contentType: HLSFixture.contentType(name), body: data)
+                let hangs = (session.contains("hang") && !name.hasSuffix(".m3u8"))
+                    || (session.contains("stall") && name == "fixture-seg2.m4s")
+                return .init(status: 200, contentType: HLSFixture.contentType(name), body: data, delay: hangs ? 120 : 0)
             }
         }
         return .notFound

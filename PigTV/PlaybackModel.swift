@@ -42,7 +42,20 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private(set) var routeVideoMode: String?
     var stallCount: Int { stalls }
     var serverIdentity: String? { client.info?.identity }
-    private(set) var hasPlayed = false
+    /// The play has shown a picture (the tuning card covers the player until then).
+    @Published private(set) var hasPlayed = false
+    /// Mid-play, the player has been waiting for data for `bufferingAfter` seconds.
+    @Published private(set) var buffering = false
+    // #6: nothing on screen for `startTimeout` after the item is installed is a failed start (reported as
+    // `start-timeout`); a mid-play wait of `stallTimeout` is a failure that feeds the automatic recovery. Above the
+    // 30 s live hold, which can make an ordinary stall last ~30 s (#7).
+    var startTimeout: TimeInterval = 20
+    var bufferingAfter: TimeInterval = 1.5
+    var stallTimeout: TimeInterval = 35
+    /// The current item has played (hasPlayed covers the whole play, across recoveries).
+    private var itemPlayed = false
+    private var startTimer: Task<Void, Never>?
+    private var stallTimer: Task<Void, Never>?
     private var recoveryUsed = false
     // Multi-provider failover: a recovery is only good for one re-resolve, but
     // after `recoveryResetInterval` of continuous good playback following it
@@ -426,13 +439,19 @@ final class PlaybackModel: ObservableObject, Identifiable {
             }
         }
         playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] player, _ in
-            let playing = player.timeControlStatus == .playing
-            if playing { PigTVSignpost.event("LivePlaying") }
+            let status = player.timeControlStatus
+            if status == .playing { PigTVSignpost.event("LivePlaying") }
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation, !self.ended else { return }
-                self.updateWatchTime(playing: playing)
-                if playing { self.playbackStarted() }
+                self.timeControlChanged(status)
             }
+        }
+        itemPlayed = false
+        let startTimeout = startTimeout
+        startTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(startTimeout))
+            guard !Task.isCancelled, let self, self.itemGeneration == generation else { return }
+            self.startTimedOut()
         }
         player.replaceCurrentItem(with: item)
         ready = true
@@ -453,6 +472,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
         } else if state == "player-error" {
             error = "The local review stream is unavailable. Try again or return to channels."
             canRetry = true
+        } else if state == "player-buffering" {
+            ready = true
+            hasPlayed = true
+            buffering = true
         } else if state == "player-reconnecting" {
             reconnecting = true
             player.pause()
@@ -464,8 +487,63 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
     #endif
 
+    /// The player's `timeControlStatus` for the current item: playing ends both timers; a wait after the item has
+    /// played shows "Buffering…" after `bufferingAfter` and fails the play after `stallTimeout`; a pause is the
+    /// viewer's and times nothing.
+    func timeControlChanged(_ status: AVPlayer.TimeControlStatus) {
+        guard !ended else { return }
+        updateWatchTime(playing: status == .playing)
+        switch status {
+        case .playing:
+            cancelWaitTimers()
+            playbackStarted()
+        case .waitingToPlayAtSpecifiedRate:
+            guard itemPlayed, stallTimer == nil else { return }
+            let generation = itemGeneration
+            let (hint, limit) = (bufferingAfter, stallTimeout)
+            stallTimer = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(hint))
+                guard !Task.isCancelled, let self, self.itemGeneration == generation else { return }
+                self.buffering = true
+                try? await Task.sleep(for: .seconds(max(0, limit - hint)))
+                guard !Task.isCancelled, self.itemGeneration == generation else { return }
+                self.stallTimer = nil
+                self.buffering = false
+                self.playbackFailed(detail: "The stream stopped for \(Int(limit)) seconds.", codeName: "StallTimeout")
+            }
+        default:
+            stallTimer?.cancel()
+            stallTimer = nil
+            buffering = false
+        }
+    }
+
+    private func cancelWaitTimers() {
+        startTimer?.cancel()
+        startTimer = nil
+        stallTimer?.cancel()
+        stallTimer = nil
+        buffering = false
+    }
+
+    /// Nothing played within `startTimeout` and the player reported no error: tell the server (channel health), then
+    /// fail the start like any other (Retry, or a recovery when this item was itself a reconnect).
+    private func startTimedOut() {
+        startTimer = nil
+        guard !ended, !handlingFailure, !itemPlayed else { return }
+        if let context = eventContext {
+            var event = PlaybackEvent(event: "start-timeout")
+            event.strategy = context.strategy
+            event.path = context.path
+            event.waitedSec = startTimeout
+            report(event)
+        }
+        playbackFailed(detail: "Nothing played after \(Int(startTimeout)) seconds.", codeName: "StartTimeout", reportsError: false)
+    }
+
     func playbackStarted() {
         guard !ended, !handlingFailure else { return }
+        itemPlayed = true
         hasPlayed = true
         reconnecting = false
         if recoveryUsed, goodPlaySince == nil { goodPlaySince = clock() }
@@ -476,7 +554,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
         }
     }
 
-    func playbackFailed(detail: String, codeName: String? = nil, code: Int? = nil, errorCodes: [PlayerErrorCode] = []) {
+    func playbackFailed(detail: String, codeName: String? = nil, code: Int? = nil, errorCodes: [PlayerErrorCode] = [],
+                        reportsError: Bool = true) {
         guard !ended, !handlingFailure else { return }
         handlingFailure = true
         // Two minutes of unbroken playback since the last recovery renews the
@@ -485,7 +564,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             recoveryUsed = false
         }
         goodPlaySince = nil
-        if let context = eventContext {
+        if reportsError, let context = eventContext {
             var event = PlaybackEvent(event: "media-error")
             event.strategy = context.strategy
             event.path = context.path
@@ -605,6 +684,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
         stallNotification = nil
         conflictTask?.cancel()
         conflictTask = nil
+        cancelWaitTimers()
+        itemPlayed = false
         recordingPrompt = nil
         player.pause()
         player.replaceCurrentItem(with: nil)

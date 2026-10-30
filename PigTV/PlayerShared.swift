@@ -84,6 +84,22 @@ nonisolated enum TuningText {
     }
 }
 
+/// #6: a mid-play wait for data, so a stall reads as buffering rather than a frozen app.
+struct BufferingPill: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+            Text("Buffering…").font(.headline)
+        }
+        .padding(.horizontal, 24).padding(.vertical, 12)
+        .background(.black.opacity(0.7), in: Capsule())
+        .foregroundStyle(.white)
+        .padding(.top, 48)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Buffering")
+    }
+}
+
 struct TuningCard: View {
     @ObservedObject var playback: PlaybackModel
     let browse: BrowseModel?

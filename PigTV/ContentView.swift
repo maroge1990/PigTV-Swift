@@ -395,11 +395,34 @@ struct PlayerScreen: View {
                 .onExitCommand { dismiss() }
                 #endif
             } else if playback.ready {
-                #if os(tvOS)
-                CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
-                #else
-                touchPlayer
-                #endif
+                Group {
+                    #if os(tvOS)
+                    CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
+                    #else
+                    touchPlayer
+                    #endif
+                }
+                .overlay {
+                    // #6: the item is installed but there is no picture yet (HDMI mode switch, first segments). The
+                    // player stays underneath so it loads, and on tvOS keeps focus, so Menu still leaves.
+                    if !playback.hasPlayed {
+                        ZStack {
+                            Color.black.ignoresSafeArea()
+                            VStack(spacing: 24) {
+                                TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
+                                #if os(iOS)
+                                Button("Cancel") { dismiss() }
+                                #endif
+                            }
+                        }
+                        #if os(tvOS)
+                        .allowsHitTesting(false)
+                        #endif
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if playback.hasPlayed, playback.buffering { BufferingPill().allowsHitTesting(false) }
+                }
             } else {
                 VStack(spacing: 24) {
                     TuningCard(playback: playback, browse: app.browse, message: "Tuning…")

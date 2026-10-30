@@ -623,4 +623,73 @@ final class RealPlaybackTests: XCTestCase {
         await app.endPlayback(second)
         server.http.stop()
     }
+
+    /// #6: a start that never shows a picture keeps the tuning card (hasPlayed stays false), then after the start
+    /// timeout reports `start-timeout` (not a media error) and offers Retry instead of a black screen for ever.
+    func testNothingPlayingWithinTheStartTimeoutFailsTheStart() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(resolve: { count, _ in FakePigTVServer.decision(session: "hang\(count)") })
+        let playback = PlaybackModel(channel: channel(), client: try server.client())
+        playback.startTimeout = 2
+        playback.start()
+        try await waitFor("item installed") { playback.ready }
+        XCTAssertFalse(playback.hasPlayed, "no picture yet: the tuning card still covers the player")
+        try await waitFor("the start to time out", timeout: 8) { playback.error != nil }
+        XCTAssertFalse(playback.hasPlayed)
+        XCTAssertTrue(playback.canRetry)
+        XCTAssertTrue(playback.error?.hasPrefix("Playback could not start") == true, playback.error ?? "")
+        try await waitFor("the start-timeout report") { !server.clientEventBodies("start-timeout").isEmpty }
+        let reports = server.clientEventBodies("start-timeout")
+        XCTAssertEqual(reports.count, 1)
+        XCTAssertEqual(reports.first?["waitedSec"] as? Double, 2)
+        XCTAssertEqual(reports.first?["path"] as? String, "/api/transcode/hang1/master.m3u8")
+        XCTAssertTrue(server.clientEventBodies("media-error").isEmpty, "one report per failed start")
+        XCTAssertEqual(server.resolves.count, 1, "a failed first start waits for Retry")
+        _ = await playback.stop()
+        server.http.stop()
+    }
+
+    /// #6: a mid-play wait shows "Buffering…" after `bufferingAfter`; past the stall timeout it is a failure that
+    /// reports a media error and recovers with a new resolve, instead of a frozen picture with no cue.
+    func testAMidPlayStallShowsBufferingThenRecovers() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(resolve: { count, _ in FakePigTVServer.decision(session: count == 1 ? "stall1" : "s\(count)") })
+        let playback = PlaybackModel(channel: channel(), client: try server.client())
+        playback.bufferingAfter = 0.5
+        playback.stallTimeout = 3
+        playback.start()
+        try await waitFor("first picture") { playback.hasPlayed }
+        XCTAssertFalse(playback.buffering)
+        try await waitFor("buffering once the last segment hangs", timeout: 10) { playback.buffering }
+        XCTAssertNil(playback.error)
+        try await waitFor("a second resolve after the stall timeout", timeout: 8) { server.resolves.count == 2 }
+        try await waitFor("the recovered play") { isPlaying(playback) && itemPath(playback) == "/api/transcode/s2/master.m3u8" }
+        XCTAssertFalse(playback.buffering)
+        XCTAssertNil(playback.error)
+        try await waitFor("the media-error report") { !server.clientEventBodies("media-error").isEmpty }
+        XCTAssertEqual(server.clientEventBodies("media-error").first?["codeName"] as? String, "StallTimeout")
+        XCTAssertEqual(server.resolveBodies().last?["force"] as? Bool, false)
+        _ = await playback.stop()
+        server.http.stop()
+    }
+
+    /// #6: the viewer's pause is not a stall: no Buffering…, no timeout.
+    func testAPauseIsNeverTimedOut() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let playback = PlaybackModel(channel: channel(), client: try server.client())
+        playback.bufferingAfter = 0.2
+        playback.stallTimeout = 1
+        playback.startTimeout = 1
+        playback.start()
+        try await waitFor("playing") { isPlaying(playback) }
+        playback.player.pause()
+        try await Task.sleep(for: .seconds(2))
+        XCTAssertFalse(playback.buffering)
+        XCTAssertNil(playback.error)
+        XCTAssertEqual(server.resolves.count, 1)
+        XCTAssertTrue(server.clientEventBodies("start-timeout").isEmpty)
+        _ = await playback.stop()
+        server.http.stop()
+    }
 }
