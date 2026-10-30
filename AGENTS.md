@@ -44,8 +44,10 @@ all`) after a plain `xcodebuild test`. A new UI suite runs in the push tier unle
 
 ## How changes ship
 
-**Commit to `main`, never push** (server D-15). Work on `main`; Claude may `git pull --rebase` but leaves every commit
-local for Mark to review and push (`git log origin/main..main`). Never force-push. Session start and end follow the
+**Commit to `main`; push once the batch has passed its reviews** (server D-34). Work on `main`; `git pull --rebase`
+first, push with `git push origin main` after the tests and Codex rounds, then watch CI. Never force-push. Work in
+batches by area (server D-35, its `AGENTS.md` › Work in batches): a batch is Swift-only where possible, each fix its own
+commit and build number, `Tools/test.sh push` once before the first review round and again before the push. Session start and end follow the
 server's `AGENTS.md` › Session checklist (issues first; the end-of-session docs check; ask Mark about pushed-but-open issues).
 
 1. Before every commit: `sh Tools/test.sh push` passes, plus the iOS build when shared code changed. If something
@@ -53,8 +55,8 @@ server's `AGENTS.md` › Session checklist (issues first; the end-of-session doc
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets) and its
    subject starts with the build number (`63: what changed`); Settings → Version identifies the installed copy.
 3. Commits write `Refs maroge1990/PigTV#n`, never `Fixes`/`Closes`; issues are closed only after Mark confirms.
-4. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push (Mark's) and PR; a red run counts as a local
-   failure.
+4. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push and PR; a red run is fixed or
+   reverted at once.
 5. Device-dependent work ends with numbered T5 steps for Mark; nothing is *Verified* until he reports it. A simulator pass
    is not a device pass.
 
