@@ -155,6 +155,14 @@ private struct HomeTestScreen: View {
                 if Self.presentsPlayer, let address = try? ServerAddress("http://192.0.2.1:3000") {
                     model.configureClientForTesting(APIClient(address: address, token: "fixture", info: model.serverInfo))
                 }
+                // #179: PIGTV_UI_TEST_OPEN_URL="<seconds>|<pigtv:// link>" delivers that link as a Top Shelf card does
+                // (ContentView's onOpenURL -> AppModel.open), after the test has opened a page (OutsidePlayUITests).
+                if let spec = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_OPEN_URL"],
+                   let bar = spec.firstIndex(of: "|"), let seconds = Double(spec[..<bar]),
+                   let url = URL(string: String(spec[spec.index(after: bar)...])) {
+                    try? await Task.sleep(for: .seconds(seconds))
+                    model.open(url)
+                }
             }
             .fullScreenCover(isPresented: Binding(get: { Self.presentsPlayer && model.playerPresented },
                                                   set: { model.playerPresented = $0 })) {
