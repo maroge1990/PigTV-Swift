@@ -202,6 +202,30 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertNil(PlaybackModel.retryWait(after: PigTVError.serverMessage("The provider refused this channel (HTTP 403).", status: 404)))
     }
 
+    /// #153: a channel the provider no longer has (its 404, sent wrapped in HTTP 500) is not retried: the viewer sees why at once.
+    func testAMissingChannelIsNotRetriedThoughSentAs500() async throws {
+        let server = SyntheticServer { _, _, _ in
+            .init(status: 500, json: #"{"error":"This channel is not available from the provider (HTTP 404). It may be offline or have moved; a playlist sync may help."}"#)
+        }
+        let playback = model(try client(server))
+        playback.recoveryDelays = [0, 0, 0]
+        playback.playbackStarted()
+        playback.playbackFailed(detail: "Synthetic failure")
+        try await eventually { playback.error != nil }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(server.captured.filter { $0.path == "/api/playback/resolve" }.count, 1, "a missing channel is not retried")
+        _ = await playback.stop()
+        for lasting in ["This channel is not available. It may have been removed from the playlist; a playlist sync may help.",
+                        "This channel is not available: the playlist has no stream address for it."] {
+            XCTAssertNil(PlaybackModel.retryWait(after: PigTVError.serverMessage(lasting, status: 500)), lasting)
+        }
+        for passing in ["This channel is not available right now: its stream could not be opened. Try again in a few seconds.",
+                        "The provider refused this channel (HTTP 502): its server had a problem. Try again in a few seconds.",
+                        "The provider did not respond (connection refused). Its server may be down; try again shortly."] {
+            XCTAssertEqual(PlaybackModel.retryWait(after: PigTVError.serverMessage(passing, status: 500)), 0, passing)
+        }
+    }
+
     /// #139: a 429 is retried no sooner than its retry-after.
     func testARateLimitedReconnectWaitsItsRetryAfter() async throws {
         let times = Locked<[Date]>([])

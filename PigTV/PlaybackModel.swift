@@ -389,11 +389,20 @@ final class PlaybackModel: ObservableObject, Identifiable {
 
     /// #139: how long to wait before retrying a reconnect whose resolve failed with `error`, or nil when retrying
     /// cannot help (sign-in, permission, a missing channel, a conflict, a bad answer, the audio session).
+    /// #153: C-B's fixed sentences for a channel that is gone (missing at the provider or from the playlist, or with no
+    /// stream address), as opposed to one that is "not available right now" or whose provider did not respond.
+    nonisolated static func isLastingResolveFailure(_ text: String) -> Bool {
+        text.hasPrefix("This channel is not available") && !text.contains("right now")
+    }
+
     nonisolated static func retryWait(after error: Error) -> TimeInterval? {
         if let error = error as? PigTVError {
             switch error {
-            // #147: a shown server sentence is as retryable as its status.
-            case .http(let status), .serverMessage(_, let status): return status >= 500 || status == 408 ? 0 : nil
+            case .http(let status): return status >= 500 || status == 408 ? 0 : nil
+            // #147: a shown server sentence is as retryable as its status, except C-B's lasting ones (#153: a provider
+            // 404 arrives wrapped in HTTP 500).
+            case .serverMessage(let text, let status):
+                return !isLastingResolveFailure(text) && (status >= 500 || status == 408) ? 0 : nil
             case .rateLimited(let seconds): return seconds <= 30 ? TimeInterval(seconds) : nil
             default: return nil
             }

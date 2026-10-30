@@ -319,7 +319,8 @@ From the 3 Oct audit (`../PigTV/docs/archive/audit-2026-10-03/ROADMAP.md`) and t
 - **Recovery window (build 66, #5).** Once a play has shown a picture, up to three automatic re-resolves in any 10 minutes
   (`recoveryWindow`, `recoveries`; `clock` injectable), the first at once, then after 3 and 10 s (`recoveryDelays`), with
   the Reconnecting card and Back meanwhile; a reconnect whose resolve fails for a passing reason (network, HTTP 5xx/408,
-  including a C-B sentence the server sent with one, `PigTVError.serverMessage`, build 69, #147; a 429 after its
+  including a C-B sentence the server sent with one, `PigTVError.serverMessage`, build 69, #147, except a channel that is
+  gone, "This channel is not available" without "right now", whatever its status, build 71, #153; a 429 after its
   retry-after, up to 30 s) tries again inside the same window, any other error shows at once
   (`retryWait(after:)`, build 67, #139), and the retry is scheduled after cleanup with any session it could not release,
   so its takeover is still checked (#140). Only
