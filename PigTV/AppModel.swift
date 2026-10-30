@@ -232,6 +232,7 @@ final class AppModel: ObservableObject {
     private func clearSession() {
         cancelPairing()
         cancelPendingWatch()
+        cancelHandoff()
         pendingLink = nil
         TopShelfExport.clear()
         LastWatched.clear()
@@ -304,12 +305,28 @@ final class AppModel: ObservableObject {
     /// #14: a play started from outside the screen (the Top Shelf, a "watch when it starts" timer) closes every open
     /// page first, since the player cannot present over a cover; it starts once they are gone.
     func playOverCovers(_ start: @escaping @MainActor (AppModel) -> Void) {
+        // #178: one waiting at a time: a newer link replaces it; backgrounding, signing out and any play the user
+        // starts cancel it (cancelHandoff).
+        cancelHandoff()
+        handoffGeneration &+= 1
+        let generation = handoffGeneration
         NotificationCenter.default.post(name: .pigCloseCovers, object: nil)
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.coverCloseDelay)
-            guard let self else { return }
+        pendingHandoff = Task { [weak self] in
+            do { try await Task.sleep(for: Self.coverCloseDelay) } catch { return }
+            guard let self, self.handoffGeneration == generation, !Task.isCancelled else { return }
+            self.pendingHandoff = nil
             start(self)
         }
+    }
+
+    private var pendingHandoff: Task<Void, Never>?
+    private var handoffGeneration = 0
+
+    /// #178: a play waiting for open pages to close is dropped.
+    func cancelHandoff() {
+        pendingHandoff?.cancel()
+        pendingHandoff = nil
+        handoffGeneration &+= 1
     }
 
     /// #14: the player screen appeared for this play (PlayerScreen.onAppear).
@@ -318,6 +335,7 @@ final class AppModel: ObservableObject {
     }
 
     func beginPlayback(_ channel: Channel) {
+        cancelHandoff() // #178: whatever starts now wins over a play still waiting for pages to close
         guard !playbackBusy, currentPlayback == nil, let client else { return }
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         currentPlayback = model
@@ -344,6 +362,7 @@ final class AppModel: ObservableObject {
     // Change channel without leaving the player. The old session is released
     // first (the provider allows one stream), then the new one resolves.
     func switchPlayback(to channel: Channel) {
+        cancelHandoff() // #178
         guard let old = currentPlayback, let client, old.channel.id != channel.id else { return }
         previousChannel = old.channel
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
@@ -495,6 +514,7 @@ final class AppModel: ObservableObject {
         cancelPairing()
         // Returning to the foreground never starts playback by itself.
         cancelPendingWatch()
+        cancelHandoff() // #178: nor does a Top Shelf or timer play that was waiting for pages to close
         #if os(iOS)
         // Picture in Picture keeps playing until its window is closed (which
         // ends the playback). Auto-PiP starts as the app is left, a moment

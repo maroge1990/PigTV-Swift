@@ -118,4 +118,38 @@ final class PlayOverCoversTests: XCTestCase {
         XCTAssertNotNil(app.playback)
         if let playback = app.playback { await app.endPlayback(playback) }
     }
+
+    /// #178: a play waiting for pages to close is dropped when the app goes to the background, replaced by a newer
+    /// link, and overridden by a play the user starts.
+    func testAWaitingPlayIsCancelledOrSuperseded() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let app = AppModel()
+        app.injectHomeFixture()
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
+        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
+        let delay = AppModel.coverCloseDelay
+        AppModel.coverCloseDelay = .milliseconds(150)
+        defer { AppModel.coverCloseDelay = delay }
+        func link(_ row: GuideChannel) throws -> URL { try XCTUnwrap(URL(string: "pigtv://play?sourceId=\(row.sourceId)&id=\(row.rawID)")) }
+
+        app.open(try link(browse.guide[1]))
+        await app.background()
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertNil(app.playback, "backgrounded while it waited: nothing starts")
+
+        app.open(try link(browse.guide[1]))
+        app.open(try link(browse.guide[2]))
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(browse.guide[2]).id, "the newer link wins")
+        if let playback = app.playback { await app.endPlayback(playback) }
+
+        app.open(try link(browse.guide[1]))
+        app.beginPlayback(browse.asChannel(browse.guide[3])) // the user's own Watch
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(browse.guide[3]).id, "the user's choice stands")
+        if let playback = app.playback { await app.endPlayback(playback) }
+    }
 }
