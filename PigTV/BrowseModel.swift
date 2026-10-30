@@ -578,6 +578,9 @@ final class BrowseModel: ObservableObject {
     /// C-P (#21): the Formula 1 page, only with the server's `sportPages` flag.
     private(set) lazy var f1Page = F1PageModel(client: client)
     var sportPagesEnabled: Bool { client.info?.features.sportPages == true }
+    /// C-Q (#21): the NFL page, only with the server's `sportPageNfl` flag.
+    private(set) lazy var nflPage = NFLPageModel(client: client)
+    var nflPageEnabled: Bool { client.info?.features.sportPageNfl == true }
 
     /// The Channel the player needs for one of an event's channels: its
     /// guide row when loaded (logo fallback, stable identity), else the

@@ -506,7 +506,7 @@ extension Color {
     }
 }
 
-/// The Sport tab's way in: one card per sport page the server offers (Formula 1 today).
+/// The Sport tab's way in: one card per sport page the server offers (Formula 1, and the NFL since Apple 86).
 struct SportPageLinks: View {
     let app: AppModel
     let browse: BrowseModel
@@ -531,6 +531,25 @@ struct SportPageLinks: View {
                 }
                 .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportMetrics.radius))
                 .accessibilityIdentifier("sport.page.f1")
+                // C-Q (#21): the NFL page, with the server's `sportPageNfl` flag.
+                if browse.nflPageEnabled {
+                    NavigationLink {
+                        NFLPageView(app: app, browse: browse)
+                    } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: "football").font(.system(size: 30, weight: .semibold))
+                                .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("NFL").font(SportMetrics.title)
+                                Text("This week's games, standings").font(SportMetrics.detail).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(SportMetrics.cardPadding)
+                        .frame(width: SportMetrics.cardWidth, alignment: .leading)
+                    }
+                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportMetrics.radius))
+                    .accessibilityIdentifier("sport.page.nfl")
+                }
             }
             .padding(.vertical, 24)
         }

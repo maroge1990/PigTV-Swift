@@ -219,12 +219,14 @@ nonisolated struct SportPagePreferences: Codable, Equatable, Sendable {
     var spoilerFree = false
     /// The followed driver on the F1 page (nil: nobody).
     var f1Following: String?
+    /// The followed team on the NFL page, by abbreviation ("GB"; server 0379, C-Q).
+    var nflFollowing: String?
 
     enum CodingKeys: String, CodingKey { case spoilerFree, following }
-    private enum Pages: String, CodingKey { case f1 = "F1" }
+    private enum Pages: String, CodingKey { case f1 = "F1", nfl = "NFL" }
 
-    init(spoilerFree: Bool = false, f1Following: String? = nil) {
-        self.spoilerFree = spoilerFree; self.f1Following = f1Following
+    init(spoilerFree: Bool = false, f1Following: String? = nil, nflFollowing: String? = nil) {
+        self.spoilerFree = spoilerFree; self.f1Following = f1Following; self.nflFollowing = nflFollowing
     }
 
     init(from decoder: Decoder) throws {
@@ -232,6 +234,7 @@ nonisolated struct SportPagePreferences: Codable, Equatable, Sendable {
         spoilerFree = (try? c.decode(Bool.self, forKey: .spoilerFree)) ?? false
         let pages = try? c.nestedContainer(keyedBy: Pages.self, forKey: .following)
         f1Following = ((try? pages?.decodeIfPresent(String.self, forKey: .f1)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
+        nflFollowing = ((try? pages?.decodeIfPresent(String.self, forKey: .nfl)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -239,6 +242,7 @@ nonisolated struct SportPagePreferences: Codable, Equatable, Sendable {
         try c.encode(spoilerFree, forKey: .spoilerFree)
         var pages = c.nestedContainer(keyedBy: Pages.self, forKey: .following)
         try pages.encode(f1Following, forKey: .f1)
+        try pages.encode(nflFollowing, forKey: .nfl)
     }
 }
 

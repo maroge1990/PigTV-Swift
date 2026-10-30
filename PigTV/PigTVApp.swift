@@ -64,6 +64,8 @@ struct PigTVApp: App {
             PlayerTestScreen()
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"], screen.hasPrefix("f1") {
             F1TestScreen(screen: screen)
+        } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"], screen.hasPrefix("nfl") {
+            NFLTestScreen(screen: screen)
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
                   DesignTestScreen.screens.contains(screen) {
             DesignTestScreen(screen: screen)
@@ -127,6 +129,36 @@ private struct F1TestScreen: View {
                                      preferences: screen == "f1-spoilers"
                                         ? SportPagePreferences(spoilerFree: true, f1Following: "Oscar Piastri")
                                         : SportPagePreferences(f1Following: screen == "f1-live" ? "Oscar Piastri" : nil))
+        }
+    }
+}
+
+// C-Q (#21, Apple 86): the NFL page offline. PIGTV_UI_TEST_SCREEN=nfl | nfl-following (the Packers) | nfl-spoilers,
+// on the server's own answer given base64 in PIGTV_UI_TEST_NFL_JSON (the UI test reads it from the unit tests' fixture).
+private struct NFLTestScreen: View {
+    let screen: String
+    @StateObject private var model = AppModel()
+    var body: some View {
+        Group {
+            if let browse = model.browse {
+                NavigationStack { NFLPageView(app: model, browse: browse) }
+                    .sportPages(app: model, browse: browse, clock: Date())
+            } else {
+                Color.clear
+            }
+        }
+        #if os(tvOS)
+        .buttonStyle(TVActionStyle())
+        #endif
+        .preferredColorScheme(fixtureScheme)
+        .task {
+            model.injectHomeFixture()
+            guard let browse = model.browse,
+                  let base64 = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_NFL_JSON"], let data = Data(base64Encoded: base64),
+                  let page = try? JSONDecoder().decode(NFLPage.self, from: data) else { return }
+            browse.nflPage.setFixture(page)
+            browse.f1Page.setFixture(F1Page(available: false), preferences: SportPagePreferences(
+                spoilerFree: screen == "nfl-spoilers", nflFollowing: screen == "nfl" ? nil : "GB"))
         }
     }
 }

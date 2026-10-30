@@ -41,6 +41,8 @@ struct ServerInfo: Decodable {
         // C-P (server 0340, #21): `GET sports/pages/f1`, the Formula 1 page; 0346 adds
         // `sports/pages/preferences` (a 404 there means device-local defaults).
         var sportPages: Bool? = nil
+        // C-Q (server 0379, #21): `GET sports/pages/nfl`, the NFL page, and `following.NFL` in the preferences.
+        var sportPageNfl: Bool? = nil
         // Server 0207: per-login recording positions (`GET`/`PUT
         // recordings/{id}/position`, and `position_sec`/`watched` on list rows).
         var recordingPositions: Bool? = nil

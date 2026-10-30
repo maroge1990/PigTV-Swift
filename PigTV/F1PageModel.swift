@@ -38,12 +38,13 @@ final class F1PageModel: ObservableObject {
     private var answers = 0
     /// Saves are sent one after another, in the order they were made.
     private var saveQueue: Task<Void, Never>?
-    private enum Field: CaseIterable { case spoilerFree, following }
+    private enum Field: CaseIterable { case spoilerFree, following, nflFollowing }
 
     private static func copy(_ field: Field, from source: SportPagePreferences, to target: inout SportPagePreferences) {
         switch field {
         case .spoilerFree: target.spoilerFree = source.spoilerFree
         case .following: target.f1Following = source.f1Following
+        case .nflFollowing: target.nflFollowing = source.nflFollowing
         }
     }
 
@@ -115,6 +116,24 @@ final class F1PageModel: ObservableObject {
 
     func setFollowing(_ driver: String?) async {
         await save(.following, body: FollowBody(following: .init(F1: driver))) { $0.f1Following = driver }
+    }
+
+    /// C-Q (#21): the NFL page's followed team (an abbreviation), the household's like the rest. Only with the server's
+    /// `sportPageNfl` flag (an older server refuses the key).
+    func setNFLFollowing(_ team: String?) async {
+        await save(.nflFollowing, body: NFLFollowBody(following: .init(NFL: team))) { $0.nflFollowing = team }
+    }
+
+    private nonisolated struct NFLFollowBody: Encodable, Sendable {
+        nonisolated struct Pages: Encodable, Sendable {
+            let NFL: String?
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: Key.self)
+                try c.encode(NFL, forKey: .nfl)
+            }
+            enum Key: String, CodingKey { case nfl = "NFL" }
+        }
+        let following: Pages
     }
 
     private nonisolated struct SpoilerBody: Encodable, Sendable { let spoilerFree: Bool }
