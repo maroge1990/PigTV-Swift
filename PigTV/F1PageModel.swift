@@ -88,6 +88,12 @@ final class F1PageModel: ObservableObject {
         inFlight = nil
     }
 
+    /// #185: the household's preferences alone (another sport page refreshes them without fetching the F1 page).
+    func refreshPreferences() async {
+        guard !isFixture else { return }
+        await loadPreferences()
+    }
+
     private func loadPreferences() async {
         let startedFields = fieldGeneration
         let startedAnswers = answers

@@ -207,6 +207,20 @@ nonisolated enum NFLPageText {
         return String(s)
     }
 
+    enum Action: Equatable, Sendable { case watch, watchLive, watchAtKickOff, cancelKickOff, record }
+
+    /// What a game offers (#184): every play action needs a channel the guide carries it on; Watch while it can be
+    /// watched now, "Watch at kick-off" before (or its cancel when already asked), Record until it has finished.
+    static func actions(_ game: NFLGame, in page: NFLPage, now: Date, pendingEventID: String?) -> [Action] {
+        let event = event(game, in: page)
+        guard event.best != nil else { return [] }
+        var out: [Action] = []
+        if game.status != .done, F1PageText.watchesNow(event, now: now) { out.append(game.status == .live ? .watchLive : .watch) }
+        else if game.status == .scheduled { out.append(pendingEventID == event.id ? .cancelKickOff : .watchAtKickOff) }
+        if game.status != .done { out.append(.record) }
+        return out
+    }
+
     /// The followed team's last and next games across the weeks the page has.
     static func lastAndNext(_ page: NFLPage, team: String) -> (last: NFLGame?, next: NFLGame?) {
         let mine = page.weeks.flatMap(\.games).filter { $0.home.abbr == team || $0.away.abbr == team }.sorted { $0.startTime < $1.startTime }

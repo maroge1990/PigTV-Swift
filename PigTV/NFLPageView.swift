@@ -90,11 +90,7 @@ struct NFLPageView: View {
         .navigationTitle("NFL")
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .whileVisible {
-            async let page: Void = model.keepFresh()
-            async let prefs: Void = preferences.load()
-            _ = await (page, prefs)
-        }
+        .whileVisible { await model.keepFresh(preferences: preferences) }
         .detailCover(item: $recording) { event in
             if let best = event.best {
                 RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme(on: best)) { _ in
@@ -227,7 +223,7 @@ struct NFLPageView: View {
     private func gameCard(_ game: NFLGame, page: NFLPage, now: Date, spoilerFree: Bool) -> some View {
         let mine = preferences.preferences.nflFollowing.map { $0 == game.home.abbr || $0 == game.away.abbr } ?? false
         let event = NFLPageText.event(game, in: page)
-        return Button { chosen = game } label: {
+        return Button { if !NFLPageText.actions(game, in: page, now: now, pendingEventID: nil).isEmpty { chosen = game } } label: {
             VStack(alignment: .leading, spacing: 8) {
                 teamLine(game.away, game: game, page: page, spoilerFree: spoilerFree)
                 teamLine(game.home, game: game, page: page, spoilerFree: spoilerFree)
@@ -281,18 +277,17 @@ struct NFLPageView: View {
     private func gameActions(_ game: NFLGame) -> some View {
         if let page = model.page {
             let event = NFLPageText.event(game, in: page)
-            if F1PageText.watchesNow(event, now: Date()) {
-                Button(game.status == .live ? "Watch live" : "Watch") {
-                    if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
-                }
-            } else if game.status == .scheduled, event.best != nil {
-                if appState.pendingWatch?.eventID == event.id {
-                    Button("Don't watch at kick-off") { app.cancelPendingWatch() }
-                } else {
-                    Button("Watch at kick-off") { app.watchWhenStarts(event, now: Date()) }
+            ForEach(NFLPageText.actions(game, in: page, now: Date(), pendingEventID: appState.pendingWatch?.eventID), id: \.self) { action in
+                switch action {
+                case .watch, .watchLive:
+                    Button(action == .watchLive ? "Watch live" : "Watch") {
+                        if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
+                    }
+                case .watchAtKickOff: Button("Watch at kick-off") { app.watchWhenStarts(event, now: Date()) }
+                case .cancelKickOff: Button("Don't watch at kick-off") { app.cancelPendingWatch() }
+                case .record: Button("Record") { recording = event }
                 }
             }
-            if game.status != .done, event.best != nil { Button("Record") { recording = event } }
         }
         Button("Cancel", role: .cancel) {}
     }

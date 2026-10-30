@@ -6,7 +6,7 @@ import XCTest
 // the rest to come, one channel on Ravens at Bills, the eight divisions). Before Apple 86 there is no NFL page.
 @MainActor
 final class NFLPageTests: XCTestCase {
-    static func fixture() throws -> Data {
+    nonisolated static func fixture() throws -> Data {
         for bundle in Bundle.allBundles + Bundle.allFrameworks {
             for url in bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [] {
                 if url.lastPathComponent == "nfl-page-0379.json" { return try Data(contentsOf: url) }
@@ -86,5 +86,64 @@ final class NFLPageTests: XCTestCase {
         let p = try JSONDecoder().decode(NFLPage.self, from: Data(#"{"available":false}"#.utf8))
         XCTAssertFalse(p.available)
         XCTAssertTrue(p.weeks.isEmpty)
+    }
+}
+
+private final class NFLRoutes: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var asked: [String] = []
+    nonisolated(unsafe) static var preferences = #"{"spoilerFree":false,"following":{"F1":null,"NFL":"GB"}}"#
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let path = request.url?.path ?? ""
+        Self.asked.append(path)
+        let body: Data
+        if path.hasSuffix("sports/pages/preferences") { body = Data(Self.preferences.utf8) }
+        else if path.hasSuffix("sports/pages/nfl") { body = (try? NFLPageTests.fixture()) ?? Data("{}".utf8) }
+        else { body = Data(#"{"available":false}"#.utf8) }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+@MainActor
+final class NFLPageRefreshTests: XCTestCase {
+    // #184 (Apple 86 Codex round 1): a game with no guide channel offered a Watch that did nothing.
+    func testEveryPlayActionNeedsAChannel() throws {
+        let p = try JSONDecoder().decode(NFLPage.self, from: try NFLPageTests.fixture())
+        let ravens = try XCTUnwrap(p.weeks[1].games.first { $0.away.abbr == "BAL" })
+        let before = ravens.start.addingTimeInterval(-3 * 3600)
+        XCTAssertEqual(NFLPageText.actions(ravens, in: p, now: before, pendingEventID: nil), [.watchAtKickOff, .record])
+        XCTAssertEqual(NFLPageText.actions(ravens, in: p, now: before, pendingEventID: "nfl:\(ravens.id)"), [.cancelKickOff, .record])
+        var live = ravens
+        live.status = .live
+        XCTAssertEqual(NFLPageText.actions(live, in: p, now: ravens.start.addingTimeInterval(600), pendingEventID: nil), [.watchLive, .record])
+        var noChannel = live
+        noChannel.channels = []
+        XCTAssertEqual(NFLPageText.actions(noChannel, in: p, now: ravens.start.addingTimeInterval(600), pendingEventID: nil), [], "nothing to play")
+        let thursday = p.weeks[1].games[0]
+        XCTAssertEqual(NFLPageText.actions(thursday, in: p, now: Date(), pendingEventID: nil), [], "finished, no channel")
+    }
+
+    // #185 (Apple 86 Codex round 1): the page reloaded only its own data, so spoiler-free switched on elsewhere never
+    // reached an open page. A refresh now reloads the household's preferences too, and never the F1 page.
+    func testARefreshReloadsThePreferencesWithoutTheF1Page() async throws {
+        NFLRoutes.asked = []
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [NFLRoutes.self]
+        let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", session: URLSession(configuration: configuration))
+        let prefs = F1PageModel(client: client, defaults: UserDefaults(suiteName: "nfl-\(UUID())")!)
+        let model = NFLPageModel(client: client)
+        await model.refresh(preferences: prefs)
+        XCTAssertEqual(prefs.preferences.nflFollowing, "GB")
+        XCTAssertFalse(prefs.hidesSpoilers)
+        NFLRoutes.preferences = #"{"spoilerFree":true,"following":{"F1":null,"NFL":"GB"}}"#
+        await model.refresh(preferences: prefs)
+        XCTAssertTrue(prefs.hidesSpoilers, "switched on elsewhere: hidden at the next refresh")
+        XCTAssertFalse(NFLRoutes.asked.contains { $0.hasSuffix("sports/pages/f1") })
+        XCTAssertEqual(NFLRoutes.asked.filter { $0.hasSuffix("sports/pages/nfl") }.count, 2)
     }
 }

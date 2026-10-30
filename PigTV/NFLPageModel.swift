@@ -42,12 +42,18 @@ final class NFLPageModel: ObservableObject {
         inFlight = nil
     }
 
-    /// Loads now, then again on the interval until the calling task is cancelled (the page went away).
-    func keepFresh() async {
+    /// The page and the household's preferences (#185: spoiler-free switched on elsewhere reaches an open page).
+    func refresh(preferences: F1PageModel?) async {
         await load()
+        await preferences?.refreshPreferences()
+    }
+
+    /// Refreshes now, then again on the interval until the calling task is cancelled (the page went away).
+    func keepFresh(preferences: F1PageModel? = nil) async {
+        await refresh(preferences: preferences)
         while !Task.isCancelled {
             do { try await Task.sleep(for: hasLiveGame ? Self.liveRefreshInterval : Self.refreshInterval) } catch { return }
-            await load()
+            await refresh(preferences: preferences)
         }
     }
 
