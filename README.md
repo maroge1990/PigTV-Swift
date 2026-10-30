@@ -1,7 +1,8 @@
 # PigTV Apple client
 
 The native client for [PigTV](https://github.com/maroge1990/PigTV) (a self-hosted live TV server) on **Apple TV**, **iPad** and
-**iPhone**: SwiftUI with a UIKit guide grid and AVFoundation playback. Build **1.0 (40)**, for server build 0207.
+**iPhone**: SwiftUI with a UIKit guide grid and AVFoundation playback. The installed build is shown in Settings → Version
+(build 63 at the 30 Oct 2026 documentation reset).
 
 What it has: a Home screen (continue watching and shelves), the TV guide (a UIKit grid on Apple TV and iPad, an "On now" list on
 iPhone), a Sport tab (events across channels for the next 72 hours, with replays), recordings (scheduling, playback with
@@ -33,8 +34,8 @@ Work happens on `main`; pushes run CI (`.github/workflows/ci.yml`: iOS build, tv
 | Document | For |
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | Start here when working on the code: commands, how changes ship, the rules |
-| [`blueprint.md`](blueprint.md) | Architecture screen by screen, implementation constraints, crash lessons, known limitations |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Architecture screen by screen, the players, Top Shelf, crash lessons, known limitations |
 | [`TESTING.md`](TESTING.md) | What the suites cover, UI fixtures, measuring on the Apple TV |
-| [`../PigTV/docs/CLIENT-CONTRACT.md`](../PigTV/docs/CLIENT-CONTRACT.md) | What the server promises: `/api/info` flags, frozen shapes, contracts C-A…C-K |
-| `../PigTV/blueprint.md` §4 | The joint roadmap |
+| [PigTV `docs/CLIENT-CONTRACT.md`](https://github.com/maroge1990/PigTV/blob/main/docs/CLIENT-CONTRACT.md) | What the server promises: `/api/info` flags, frozen shapes, the contracts |
+| [PigTV `ROADMAP.md`](https://github.com/maroge1990/PigTV/blob/main/ROADMAP.md) and [issues](https://github.com/maroge1990/PigTV/issues?q=is%3Aopen+label%3Aapple) | The joint roadmap; open work for this app (label `apple`) |
 | [`docs/archive/`](docs/archive/README.md) | Frozen history (old handovers, blueprints, test evidence, server requests) |

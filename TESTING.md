@@ -1,13 +1,14 @@
 # PigTV client: testing
 
-Commands and the rules for running them are in [AGENTS.md](AGENTS.md); the architecture is in [blueprint.md](blueprint.md).
+Commands and the rules for running them are in [AGENTS.md](AGENTS.md); the architecture is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 This file says what each suite covers, how to put a screen up with fixture data, and how to measure on the Apple TV. Mark's
 device rounds and results (complete to build 40) are frozen in `../PigTV/docs/archive/TEST-BLOCK-2026-10-13.md`; the old
 per-build evidence (builds 3–16) in [docs/archive/TESTING-2026-09-23.md](docs/archive/TESTING-2026-09-23.md).
 
-Who tests what: the agent runs builds and simulator tests; Mark runs the physical Apple TV, iPad and iPhone checks. A simulator
-pass is not a device pass, and nothing becomes *Verified* until Mark reports it. Ask Mark before contacting the deployed
-server or driving the simulator UI by hand.
+Who tests what follows the server's test protocol ([`../PigTV/docs/TESTING.md`](../PigTV/docs/TESTING.md), tiers T1–T5):
+Claude runs builds, unit and UI tests and drives the tvOS and iOS simulators (attach, screenshots, input) without asking,
+because none of it touches a real provider (T1–T3); Mark runs the physical Apple TV, iPad and iPhone checks (T5). A
+simulator pass is not a device pass, and nothing becomes *Verified* until Mark reports it.
 
 ## What the suites cover
 
@@ -21,6 +22,8 @@ server or driving the simulator UI by hand.
   `Fixtures/HLS` stream (6 s, H.264 + AAC, fMP4, a master playlist like the server's). Real starts, display criteria, -11868 for
   real, the `'fmt?'` fallback, switching, a recording in the recording player, a sport event's best channel. **New playback
   code gets a test here.**
+  Why it exists and how it is built (from the retired blueprint, build 28):
+  - **Real-playback harness (build 28, `PigTVTests/RealPlaybackTests.swift`, `PigTVTests/Support/`).** Two crashes reached the TV because no test played a stream through the app's own code. `LocalHTTPServer` is an in-process HTTP/1.1 server (Network.framework `NWListener` on 127.0.0.1, random port; one request per connection, `Range` → 206, every request recorded). `FakePigTVServer` puts a minimal PigTV API on it: `POST playback/resolve` (a configurable decision; by default session `s<n>` → `/api/transcode/s<n>/master.m3u8` with `info.fps = 25/1`), the HLS fixture under `/api/transcode/<session>/…` (a session named `pq…` serves a `VIDEO-RANGE=PQ` master), `GET playback/conflict` → `null`, `client-event`/`conflict/decline`/`DELETE playback/<id>` → success; `client()` returns an `APIClient` with `clientEvents` advertised. The fixture (`PigTVTests/Fixtures/HLS`, ~280 KB, command in `fixture-README.txt`) is 6 s of ffmpeg `testsrc2` + sine, H.264 Main 320×180 25 fps + AAC-LC, three 2 s fMP4 segments, `stream.m3u8`, and `master.m3u8` mirroring the server's `buildMasterPlaylist` (FRAME-RATE, VIDEO-RANGE=SDR). Tests: a real start reaches `ready` within 3 s, AVPlayer `.playing` with `.readyToPlay` and a moving clock, the play-start event (from the `timeControlStatus` KVO observer), release on stop; a decision without fps (background asset criteria); **-11868 for real**: the tvOS simulator refuses the PQ variant, the item-status KVO observer reports it and the model plays the same session's `stream.m3u8` with no new resolve (skips itself if a simulator ever plays PQ); the 'fmt?' fallback (synthetic failure, then a real release, second resolve with `audioEncode: true` and real playback); channel switching releases before the next resolve; a recording (C-E HLS answer, fake markers) plays in `RecordingPlayerModel` and its periodic time observer sees the 1–2 s break. **New playback code gets a harness test.**
 - `ChannelWarmerTests` (audit R11, predictive warming): the warm policy with a hand-moved clock (off by default, dwell, one in flight, cancel on
   background/real play start, the player's previous-or-next choice, the 60 s refresh); `RealPlaybackTests` warm cases use the fake server's
   `/api/playback/warm` (a focused live Sport event warms with resolve's body, the play adopts it and play-start carries `warm`).
@@ -76,15 +79,17 @@ data, not the real feed.
 
 ## Device checks
 
-For a device run, note the app build (Settings → Version), the server build (`/api/version`), the device and OS, and for a
-fault the channel and roughly when; keep provider URLs and tokens out of anything shared. On-device diagnostics: Settings →
-Diagnostics (tvOS, the Top Shelf), and Console on the Mac filtered to subsystem `au.markrogers.PigTV.TopShelf`. Checks no
-simulator can settle are listed in blueprint §8.
+What to note for a device run, and on-device diagnostics, are in the server's
+[`docs/TESTING.md`](../PigTV/docs/TESTING.md) › T5: device checks. Checks no simulator can settle carry the
+`needs-device-test` label in the issues (label `apple`).
 
 ## Measuring on the Apple TV
 
 The simulator cannot say how the tabs and playback feel; the device can. Audit R03 added signposts (`PigTV/PigTVSignpost.swift`,
 subsystem = the bundle id, category **Responsiveness**) so Instruments shows each stage.
+- **Measurement (R03).** `PigTVSignpost` (subsystem = bundle id, category "Responsiveness"): `TabSwitch`, `TabFirstFrame`,
+  `GuideLoad`/`GuidePage`/`GuideExtend`, `SportLoad`/`SportBuckets`, `HomeRebuild`, `RecordingsLoad`, `Live*` and
+  `Recording*` playback stages, `LogoDecoded`. Device profiling: `TESTING.md` → "Measuring on the Apple TV".
 
 1. Build **Release** to the Apple TV from Xcode (Product → Profile, or Run with the Release configuration).
 2. Instruments: a blank template with **Time Profiler**, **Hangs**, **os_signpost** (filter the category to Responsiveness) and
@@ -125,7 +130,7 @@ families, terminal/transit expiry, background late responses, account identity, 
 `RealPlaybackTests/testDashboardRevalidatesThenUsesOrdinaryResolveAndReleases` uses the bundled HLS fixture only.
 
 The fixture is not device/source acceptance. Mark's real-device checks and server pilot/review gates are in
-`../PigTV/docs/reviews/2026-10-29/sports-dashboard-continuation/README.md`.
+`../PigTV/docs/evidence/2026-10-29-sports-0316-continuation/README.md`.
 
 ## Sports dashboard refinement fixtures (build 61)
 
