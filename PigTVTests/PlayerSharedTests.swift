@@ -81,6 +81,10 @@ final class PlayerSharedTests: XCTestCase {
         let building = try XCTUnwrap(PlayerSeekWindow(start: 0, end: 100, current: 96))
         XCTAssertEqual(building.skipTarget(15), 96, "not jumped back to the held offset")
         XCTAssertEqual(building.skipTarget(-10), 86)
+        // #159: a scrub released at the edge while building lands where the play is, not back at the held offset.
+        XCTAssertEqual(building.scrubTarget(at: 1), 96)
+        XCTAssertEqual(building.scrubTarget(at: 0.5), 50)
+        XCTAssertEqual(window.scrubTarget(at: 1), 10_900 - PlayerSeekWindow.liveOffset, "a play holding its offset: as before")
         XCTAssertEqual(LiveCatchUp.rate(behind: 4, live: true), 0.97)
         XCTAssertEqual(LiveCatchUp.rate(behind: .nan, live: true), 0.97, "unknown: still building")
         XCTAssertEqual(LiveCatchUp.rate(behind: 30, live: true), 1)

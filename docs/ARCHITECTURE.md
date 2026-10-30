@@ -141,8 +141,9 @@ controls are not used for live play.
   and plays at `LiveCatchUp.slowRate` (0.97, `audioTimePitchAlgorithm` `.timeDomain`) until it is
   `PlayerSeekWindow.liveOffset` behind the edge, then at 1.0 (`updateCatchUp`, its own 2 s time observer; at once on a
   source that ends); measured in the server's `docs/evidence/2026-10-30-live-hold-variants/`. Go to live, a forward skip
-  and a scrub release return to the held offset, not the very edge, and a forward skip never moves a play that is still
-  building back; only on a live playlist (indefinite duration): a source that ends keeps its whole range (build 57). Some providers pause 3-16 s while healthy
+  and a scrub release return to the held offset, not the very edge, and neither a skip nor a scrub release moves a play
+  that is still building back (`PlaybackModel.skip`/`seek(toFraction:)` use `PlayerSeekWindow.skipTarget`/`scrubTarget`,
+  build 73, #159); only on a live playlist (indefinite duration): a source that ends keeps its whole range (build 57). Some providers pause 3-16 s while healthy
   (server `docs/archive/FINDINGS-2026-10-30.md` FR-8); the server calls a shared feed lost at 24 s behind real time (R7, 0282). Preserving the
   offset after a stall (`automaticallyPreservesTimeOffsetFromLive`) is off: it would skip content.
 

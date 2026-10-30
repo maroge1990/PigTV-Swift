@@ -311,6 +311,11 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     func skipTarget(_ seconds: Double) -> Double {
         min(max(current + seconds, start), max(current, Self.liveTarget(start: start, end: end, live: live)))
     }
+    /// Where a scrub released at `fraction` lands: never nearer the edge than the held offset, and, for a play still
+    /// building its hold, never further forward than where it is (#159).
+    func scrubTarget(at fraction: Double) -> Double {
+        min(time(at: fraction), max(current, Self.liveTarget(start: start, end: end, live: live)))
+    }
 
     /// A drag's x position on a track `width` wide → fraction.
     static func fraction(forX x: Double, width: Double) -> Double {

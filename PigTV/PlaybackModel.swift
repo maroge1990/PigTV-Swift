@@ -158,14 +158,11 @@ final class PlaybackModel: ObservableObject, Identifiable {
     // typically a few minutes). Clamped to the buffer; seeking to the end
     // returns to the live edge.
     func skip(_ seconds: Double) {
-        guard let item = player.currentItem, let range = item.seekableTimeRanges.last?.timeRangeValue else { return }
-        let start = CMTimeGetSeconds(range.start)
-        let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
-        let current = CMTimeGetSeconds(item.currentTime())
-        guard start.isFinite, end.isFinite, current.isFinite, end > start else { return }
-        let target = min(max(current + seconds, start), PlayerSeekWindow.liveTarget(start: start, end: end, live: Self.isLive(item)))
+        // #159: the seek window's own rule (a play still building its hold, build 72, is never moved back).
+        guard let window = seekWindow() else { return }
+        let target = window.skipTarget(seconds)
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        behindLive = (end - target) > PlayerSeekWindow.liveMargin
+        behindLive = (window.end - target) > PlayerSeekWindow.liveMargin
     }
 
     // Fraction through the seekable buffer, for the scrub indicator (nil when
@@ -189,7 +186,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// Seeks to a point in the seekable window (the scrub bar's release).
     func seek(toFraction fraction: Double) {
         guard let window = seekWindow() else { return }
-        let target = min(window.time(at: fraction), PlayerSeekWindow.liveTarget(start: window.start, end: window.end, live: window.live))
+        let target = window.scrubTarget(at: fraction) // #159
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         behindLive = !window.isLive(at: fraction)
     }
