@@ -184,10 +184,7 @@ struct HomeView: View {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
                 clock = Date()
-                if !model.isFixture {
-                    await model.loadRecent()
-                    await model.loadRecordings(quietly: true)
-                }
+                await home.refreshNow() // #46: the guide too, when stale
                 home.rebuild()
             }
         }

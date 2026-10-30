@@ -147,6 +147,17 @@ controls are not used for live play.
   (server `docs/archive/FINDINGS-2026-10-30.md` FR-8); the server calls a shared feed lost at 24 s behind real time (R7, 0282). Preserving the
   offset after a stall (`automaticallyPreservesTimeOffsetFromLive`) is off: it would skip content.
 
+- **Where playback starts, and its channel list (builds 79–81, batch 6).** #13: the player's channel list is the list
+  the play set (a guide row, a Home shelf, a sport event's channels), else the whole guide (`AppModel.playerChannels`):
+  Home's hero and a Top Shelf channel set none (the guide), and `endPlayback` forgets the list, so a later play never
+  inherits a one-item or stale one. #14: a play started from outside the screen (a Top Shelf link, a "watch when it
+  starts" timer) posts `.pigCloseCovers`, which every `detailCover` answers by closing, and starts after
+  `AppModel.coverCloseDelay` (0.7 s); a play whose `PlayerScreen` never appears within `playerAppearDeadline` (6 s; off
+  in the synthetic test host) is ended with "The player could not open. Try again." instead of leaving the app
+  "playing" with no player. #46: Home's minute loop and the return to the foreground call `HomeModel.refreshNow()`, which
+  brings a stale guide up to date (`refreshGuideIfStale`), so Home and the Top Shelf are current the next day. Tests
+  `ZapListTests`, `PlayOverCoversTests`, `HomeGuideRefreshTests`.
+
 ## Recording player
 
 - **Recordings on tvOS (A4.3, build 21): one player.** `RecordingPlayerScreen` shows `RecordingPlayerView` (`RecordingPlayer.swift`) once ready: `PlayerLayerView` video plus a recording overlay built from the live player's shared parts in `PlayerControls.swift` (`PlayerActionRow`, `PlayerScrubTrack`, `playerBottomShade`, `BlankButtonStyle`): channel and date, title, scrub bar with elapsed and remaining, Left/Right ±15 s, Play/Pause, a **Skip break** pill while inside a break (Select skips; also first in the action row), an **Auto-skip breaks** toggle in the action row (only when the recording has breaks), Back hides chrome then closes. `RecordingPlayerModel` keeps lifecycle, resume and markers, and gains `timeline()` (`RecordingTimeline`, pure, in `DVRModels.swift`), `skip`, `togglePause` and display criteria (from the asset's `preferredDisplayCriteria`, applied whenever that load finishes and never awaited before playing — build 27 — since a bare layer does not switch HDR/frame rate). The tvOS `AVPlayerViewController` path (contextual action / transport-bar menu) is deleted. **iOS keeps AVKit** (`RecordingNativePlayer`, iOS only) for recordings, because touch scrubbing is AVKit's strength. Only a completed recording plays (`Recording.playLabel`).

@@ -52,6 +52,16 @@ final class HomeModel: ObservableObject {
     private var pending: Task<Void, Never>?
     private var subscriptions: [AnyCancellable] = []
 
+    /// #46: Home's once-a-minute (and return-to-foreground) refresh: history and recordings, and the guide when it is
+    /// stale, so the hero, Favourites on now, Starting soon and the Top Shelf (exported from the same guide) are current
+    /// the next day without visiting the TV Guide tab. The guide check is cheap: it asks the server's guide version.
+    func refreshNow() async {
+        guard !browse.isFixture else { return }
+        await browse.refreshGuideIfStale()
+        await browse.loadRecent()
+        await browse.loadRecordings(quietly: true)
+    }
+
     /// `guideDelay`: guide pages arrive in bursts; rebuild at most a few
     /// times a second.
     init(browse: BrowseModel, guideDelay: Duration = .milliseconds(400)) {

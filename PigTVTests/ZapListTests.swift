@@ -48,6 +48,22 @@ final class ZapListTests: XCTestCase {
         if let playback = app.playback { await app.endPlayback(playback) }
     }
 }
+
+/// #46: Home's minute (and foreground) refresh brings a stale guide up to date; before build 79 only the TV Guide tab
+/// did, so Home and the Top Shelf showed yesterday after an overnight resume.
+@MainActor
+final class HomeGuideRefreshTests: XCTestCase {
+    func testHomesRefreshAsksForAStaleGuide() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client())
+        browse.guide = GuideFixtures.channels() // loaded, but never stamped: as old as it gets
+        await browse.home.refreshNow()
+        XCTAssertFalse(server.http.requests(path: "/api/library/guide", method: "GET").isEmpty,
+                       "the stale guide is fetched again from Home")
+    }
+}
+
 /// #14: a play started from outside the screen closes open pages first, and a player that never appears does not
 /// leave the app "playing" with no player (every later Watch was refused until the app was killed).
 @MainActor
