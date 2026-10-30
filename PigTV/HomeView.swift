@@ -117,7 +117,7 @@ struct HomeView: View {
                 LazyVStack(alignment: .leading, spacing: HomeMetrics.sectionSpacing) {
                     if let hero = content.hero {
                         HomeHero(channel: hero, model: model, clock: clock,
-                                 watch: { play(hero, from: [hero]) },
+                                 watch: { play(hero, from: nil) },
                                  schedule: model.guideRow(id: hero.id, identityKey: hero.identityKey).map { row in { schedule = row } })
                     } else if content.hasNoHistory && !home.guideLoading {
                         HomeWelcome(openGuide: openGuide)
@@ -273,8 +273,9 @@ struct HomeView: View {
 
     // MARK: Actions
 
-    private func play(_ channel: HomeChannel, from row: [HomeChannel]) {
-        app.zapList = row.map(model.playable)
+    /// #13: a shelf zaps through that shelf; the hero (no row) through the guide, never a one-channel list.
+    private func play(_ channel: HomeChannel, from row: [HomeChannel]?) {
+        app.zapList = row?.map(model.playable) ?? []
         app.beginPlayback(model.playable(channel))
     }
 

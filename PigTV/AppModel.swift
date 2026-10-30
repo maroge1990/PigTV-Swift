@@ -436,6 +436,8 @@ final class AppModel: ObservableObject {
             playback = nil
             playbackBusy = false
             playerPresented = false
+            // #13: the next play sets its own list; one that sets none zaps through the guide.
+            zapList = []
             warmer.playerClosed()
             if let message { error = message }
         }
