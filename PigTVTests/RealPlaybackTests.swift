@@ -511,7 +511,8 @@ final class RealPlaybackTests: XCTestCase {
 
     func testDashboardRevalidatesThenUsesOrdinaryResolveAndReleases() async throws {
         try requireFixture()
-        let server = try FakePigTVServer(sportsDashboard: SportsDashboardTests.payload())
+        let server = try FakePigTVServer(sportEvents: SportsDashboardTests.payloadGuide(),
+                                         sportsDashboard: SportsDashboardTests.payload())
         defer {server.http.stop()}
         let client = try server.client(extraFeatures: #""sportsDashboard":true"#)
         let browse = BrowseModel(client:client)

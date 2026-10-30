@@ -207,15 +207,15 @@ struct SportsDashboardView: View {
   /// the legacy Sport presenter does. Nothing awaits between the page reappearing and the player (or the recording
   /// sheet) presenting, so the tvOS focus engine never restores focus into the page under it.
   private func revalidateThenClose(
-    gameID: String, channelKey: String, watch: Bool, then action: @escaping (SportEvent) -> Void
+    gameID: String, channelKey: String, watch: Bool, then action: @escaping (DashboardAiring) -> Void
   ) {
     guard revalidating == nil else { return }
     revalidating = Task {
       defer { revalidating = nil }
-      guard let event = await model.event(gameID: gameID, channelKey: channelKey, watch: watch),
+      guard let airing = await model.airing(gameID: gameID, channelKey: channelKey, watch: watch),
         !Task.isCancelled, details == gameID, app.browse === browse
       else { return }
-      closeDetails { action(event) }
+      closeDetails { action(airing) }
     }
   }
   private func changeLeague(_ value: String?) {
@@ -252,41 +252,37 @@ struct SportsDashboardView: View {
             ForEach(game.channels) { channel in
               if game.canWatch {
                 Button("Watch \(channel.name)", systemImage: "play.fill") {
-                  revalidateThenClose(gameID: id, channelKey: channel.identityKey, watch: true) { event in
-                    app.playSportEvent(event)
+                  revalidateThenClose(gameID: id, channelKey: channel.identityKey, watch: true) { airing in
+                    app.playSportEvent(airing.event)
                   }
                 }
               }
               Button("Record on \(channel.name)", systemImage: "record.circle") {
-                revalidateThenClose(gameID: id, channelKey: channel.identityKey, watch: false) { event in
-                  guard let current = event.best else { return }
+                revalidateThenClose(gameID: id, channelKey: channel.identityKey, watch: false) { airing in
+                  guard let current = airing.event.best else { return }
+                  // The revision whose snapshot projected the title, never the current one (Codex r1 finding 1):
+                  // the sheet masks itself if the preferences changed since.
                   recording = DashboardRecording(
-                    event: event, channel: current,
-                    revision: model.dashboard?.preferences.revision ?? -1)
+                    event: airing.event, channel: current, revision: airing.revision)
                 }
               }
               if game.start > response.now {
                 Button("Watch \(channel.name) when it starts", systemImage: "alarm") {
-                  closeDetails {
+                  // The selected channel's own upcoming airing, not the game's start (Codex r1 finding 3).
+                  revalidateThenClose(gameID: id, channelKey: channel.identityKey, watch: false) { first in
                     waiting?.cancel()
                     waitingLabel = "Waiting for the event on \(channel.name)"
                     let token = UUID()
                     waitingToken = token
                     waiting = Task {
-                      do {
-                        try await Task.sleep(for: .milliseconds(max(0, game.start - response.now)))
-                      } catch { return }
-                      defer {
-                        if waitingToken == token {
-                          waiting = nil
-                          waitingLabel = nil
-                          waitingToken = nil
-                        }
+                      let event = await model.watchWhenItStarts(
+                        gameID: id, channelKey: channel.identityKey, from: first)
+                      if waitingToken == token {
+                        waiting = nil
+                        waitingLabel = nil
+                        waitingToken = nil
                       }
-                      if let event = await model.event(
-                        gameID: id, channelKey: channel.identityKey, watch: true),
-                        !Task.isCancelled, app.browse === browse
-                      {
+                      if let event, !Task.isCancelled, app.browse === browse {
                         app.playSportEvent(event)
                       }
                     }

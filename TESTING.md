@@ -153,6 +153,13 @@ inactive starts polling once active.
 They do not query a real server or provider. Physical remote feel and consolidated cross-platform acceptance remain
 Mark's checks in the server's `sports-tvos-refinements` handoff.
 
+Codex round 1 on build 62 (`SportsDashboardTests`): Watch, Record and "Watch when it starts" associate the selected
+stable channel with its own C-I airing, aged through every request (two channels, only the selected one expiring in
+transit); a record title whose preference revision changed while C-I was read is refused, and the sheet keeps the
+snapshot's revision; a scheduled watch sleeps until the selected broadcast's start, re-arming (at most
+`SportsDashboardModel.maxRearms` times) while the server still places it in the future. The served UI fixture
+(`PIGTV_UI_TEST_DASHBOARD_PLAY`) answers C-I from the same games (`SportsDashboardFixtures.guide`).
+
 The recording harness waits for both AVPlayer's raw playing/ready state and RecordingPlayerModel's published
 `hasPlayed` before asserting playback. KVO publishes through a MainActor hop, so raw engine state is not proof that
 the model callback has run. Keep the existing bounded deadline and periodic-break/timeline/error/release assertions;

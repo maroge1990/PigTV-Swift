@@ -218,6 +218,19 @@ final class SportsDashboardModel: ObservableObject {
 
   /// A menu/card stores only identities. Every action obtains a fresh authoritative projection.
   func event(gameID: String, channelKey: String? = nil, watch: Bool) async -> SportEvent? {
+    await airing(gameID: gameID, channelKey: channelKey, watch: watch)?.event
+  }
+
+  /// The selected channel's own airing (C-I association), revalidated for one action. Watch needs that airing to be
+  /// current on the aged clock, not merely some airing of the game (Codex r1 finding 2); a card select (no channel)
+  /// takes the first channel in the fresh server order whose own airing is current. Record/rules refuse a title
+  /// whose preference revision changed while C-I was read (Codex r1 finding 1), and carry it to the sheet.
+  func airing(gameID: String, channelKey: String? = nil, watch: Bool) async -> DashboardAiring? {
+    await airing(gameID: gameID, channelKey: channelKey, watch: watch, presentsTitle: !watch)
+  }
+  private func airing(gameID: String, channelKey: String?, watch: Bool, presentsTitle: Bool) async
+    -> DashboardAiring?
+  {
     #if DEBUG
       if fixture != nil, !fixtureServed {
         message = "Illustrative preview · playback and recording are disabled."
@@ -227,26 +240,31 @@ final class SportsDashboardModel: ObservableObject {
     let actionInvalidation = invalidation
     guard let snapshot = await revalidate(),
       let game = snapshot.dashboard.games.first(where: { $0.id == gameID }),
-      let event = game.actionableEvent(
+      let projected = game.actionableEvent(
         at: snapshot.eligibilityTime + elapsedMilliseconds(since: snapshot.receivedAt),
         channelKey: channelKey, watch: watch)
     else {
       message = "That airing is no longer available. Choose a current channel or event."
       return nil
     }
-    if watch { return event }
-    // C-O references can cover different airing windows on different channels.
-    // Read their C-I association for recording/rules; keep the projected title, never raw guide prose.
+    // C-O references can cover different airing windows on different channels; only C-I says which channel carries
+    // which. Keep the projected title, never raw guide prose.
+    let guide: [SportEvent]
     do {
-      let guide: SportEventsResponse = try await client.decodedOffMain(
-        "sports/events", query: [URLQueryItem(name: "hours", value: "72")])
-      guard invalidation == actionInvalidation, !backgrounded, !Task.isCancelled,
-        let chosen = event.best
-      else { return nil }
-      let now = snapshot.eligibilityTime + elapsedMilliseconds(since: snapshot.receivedAt)
-      let references = Set(game.events.map(\.id))
-      let candidates = guide.events.filter {
-        references.contains($0.id) && $0.endTime > now
+      guide = try await fetchGuide()
+    } catch {
+      guard invalidation == actionInvalidation, !Task.isCancelled else { return nil }
+      message = "Could not revalidate that channel’s airing. Try again."
+      return nil
+    }
+    guard invalidation == actionInvalidation, !backgrounded, !Task.isCancelled else { return nil }
+    // Aged monotonically through every request this action made, C-I included.
+    let now = snapshot.eligibilityTime + elapsedMilliseconds(since: snapshot.receivedAt)
+    let references = Set(game.events.map(\.id))
+    let choices = channelKey == nil ? projected.channels : Array(projected.channels.prefix(1))
+    func own(_ chosen: SportEventChannel) -> (SportEvent, SportEventChannel)? {
+      let candidates = guide.filter {
+        references.contains($0.id) && $0.endTime > now && (!watch || $0.startTime <= now)
           && $0.channels.contains { $0.identityKey == chosen.identityKey }
       }
       .sorted { a, b in
@@ -256,18 +274,74 @@ final class SportsDashboardModel: ObservableObject {
       }
       guard let airing = candidates.first,
         let channel = airing.channels.first(where: { $0.identityKey == chosen.identityKey })
-      else {
-        message = "That channel’s airing is no longer available. Choose a current event."
-        return nil
-      }
-      return SportEvent(
-        id: airing.id, title: game.title, league: game.league, startTime: airing.startTime,
-        endTime: airing.endTime,
-        channels: [channel] + event.channels.filter { $0.identityKey != channel.identityKey })
-    } catch {
-      message = "Could not revalidate that channel’s airing. Try again."
+      else { return nil }
+      return (airing, channel)
+    }
+    guard let found = choices.lazy.compactMap(own).first else {
+      message = "That channel’s airing is no longer available. Choose a current event."
       return nil
     }
+    let (airing, channel) = found
+    let revision = snapshot.dashboard.preferences.revision
+    if presentsTitle, dashboard?.preferences.revision != revision {
+      message = "Settings changed. Choose the event again."
+      return nil
+    }
+    return DashboardAiring(
+      event: SportEvent(
+        id: airing.id, title: game.title, league: game.league, startTime: airing.startTime,
+        endTime: airing.endTime,
+        channels: [channel] + projected.channels.filter { $0.identityKey != channel.identityKey }),
+      revision: revision, now: now, serverNow: snapshot.dashboard.now,
+      canWatch: game.canWatch && airing.startTime <= now)
+  }
+
+  /// "Watch when it starts" (Codex r1 finding 3): sleep until the selected channel's own airing starts, not the
+  /// game's start, then revalidate. If the authoritative state still places that airing in the future (the local
+  /// estimate includes the round trip, or the guide moved it), re-arm, at most `maxRearms` times.
+  static let maxRearms = 3
+  func watchWhenItStarts(gameID: String, channelKey: String, from first: DashboardAiring) async
+    -> SportEvent?
+  {
+    var next = first
+    var rearms = 0
+    while true {
+      let wait = next.event.startTime - next.now
+      if wait > 0 {
+        do { try await Task.sleep(for: .milliseconds(min(wait, 72 * 3_600_000))) } catch { return nil }
+      }
+      guard !Task.isCancelled,
+        // Plays only; no title is presented, so a spoiler/delay change does not cancel an approved watch.
+        let current = await airing(
+          gameID: gameID, channelKey: channelKey, watch: false, presentsTitle: false)
+      else { return nil }
+      if current.event.startTime <= current.serverNow {
+        guard current.canWatch else {
+          message = "That airing is no longer available. Choose a current channel or event."
+          return nil
+        }
+        return current.event
+      }
+      // The server's own clock still says the airing has not started.
+      rearms += 1
+      guard rearms <= Self.maxRearms else {
+        message = "That airing has not started yet. Choose Watch when it starts again."
+        return nil
+      }
+      next = DashboardAiring(
+        event: current.event, revision: current.revision,
+        now: min(current.now, current.event.startTime - 500), serverNow: current.serverNow,
+        canWatch: current.canWatch)
+    }
+  }
+
+  private func fetchGuide() async throws -> [SportEvent] {
+    #if DEBUG
+      if fixtureServed, let fixture { return SportsDashboardFixtures.guide(for: fixture) }
+    #endif
+    let response: SportEventsResponse = try await client.decodedOffMain(
+      "sports/events", query: [URLQueryItem(name: "hours", value: "72")])
+    return response.events
   }
 
   func keepFresh(league: String?, clear: Bool = false) async {
@@ -291,4 +365,17 @@ final class SportsDashboardModel: ObservableObject {
       _ = await load(league: self.league)
     }
   }
+}
+
+/// One action's revalidated airing on its selected channel. `revision` is the preference revision of the snapshot
+/// whose projected title the event carries; a sheet built from it renders only while that revision is current.
+nonisolated struct DashboardAiring: Sendable {
+  let event: SportEvent
+  let revision: Int
+  /// The aged estimate of the server clock when the association was made (ms): conservative for expiry.
+  let now: Double
+  /// The dashboard response's own `now`: the authoritative "has it started" clock for a scheduled watch.
+  let serverNow: Double
+  /// C-O `canWatch` and the selected airing current on the aged clock.
+  let canWatch: Bool
 }

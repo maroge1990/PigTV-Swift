@@ -104,5 +104,16 @@
       return try! JSONDecoder().decode(
         SportsDashboard.self, from: JSONSerialization.data(withJSONObject: json))
     }
+    /// The served fixture's C-I answer (`PIGTV_UI_TEST_DASHBOARD_PLAY`): each game's airings on all its channels, so
+    /// the ordinary channel association runs. Matched games come first, as C-I lists only playable events.
+    static func guide(for dashboard: SportsDashboard) -> [SportEvent] {
+      dashboard.games.filter { !$0.channels.isEmpty }.flatMap { game in
+        game.events.map {
+          SportEvent(
+            id: $0.id, title: game.title, league: game.league, startTime: $0.start, endTime: $0.end,
+            channels: game.channels)
+        }
+      }
+    }
   }
 #endif
