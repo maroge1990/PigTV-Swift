@@ -256,6 +256,8 @@ final class F1PreferenceOrderTests: XCTestCase {
         let state = Locked<(spoilerFree: Bool, following: String?)>((false, "Lando Norris"))
         let getDelay = Locked<TimeInterval>(0)
         let failFollowing = Locked<TimeInterval?>(nil)
+        let followDelay = Locked<TimeInterval>(0)
+        let failSpoiler = Locked(false)
         let getStatus = Locked(200)
         func json() -> String {
             let s = state.value
@@ -281,9 +283,12 @@ final class F1PreferenceOrderTests: XCTestCase {
                     r.delay = delay
                     return r
                 }
+                if body["spoilerFree"] != nil, house.failSpoiler.value { return .json(#"{"error":"x"}"#, status: 500) }
                 if let value = body["spoilerFree"] as? Bool { house.state.value.spoilerFree = value }
                 if let following = body["following"] as? [String: Any] { house.state.value.following = following["F1"] as? String }
-                return .json(house.json())
+                var r = LocalHTTPServer.Response.json(house.json())
+                if body["following"] != nil { r.delay = house.followDelay.value }
+                return r
             default:
                 return .notFound
             }
@@ -338,4 +343,46 @@ final class F1PreferenceOrderTests: XCTestCase {
         await refresh
         XCTAssertTrue(model.preferences.spoilerFree, "the slow refresh answered with the old value; the change stands")
     }
+
+    /// #171: a refresh answering spoiler-free on while an unrelated save is in flight still makes it known: per field.
+    func testASlowFollowSaveCannotHideTheSpoilerChoice() async throws {
+        let house = Household()
+        house.getStatus.value = 500
+        let http = try server(house)
+        defer { http.stop() }
+        let model = try model(http)
+        await model.load()
+        XCTAssertTrue(model.hidesSpoilers, "not known yet")
+        house.getStatus.value = 200
+        house.state.value.spoilerFree = true
+        house.followDelay.value = 1.0
+        async let follow: Void = model.setFollowing("Oscar Piastri")
+        try await Task.sleep(for: .milliseconds(150))
+        await model.load()
+        XCTAssertTrue(model.preferences.spoilerFree, "the refresh's spoiler-free applies though following is being saved")
+        XCTAssertTrue(model.hidesSpoilers)
+        await follow
+        XCTAssertTrue(model.hidesSpoilers, "and stays on once the save answers")
+        XCTAssertEqual(model.preferences.f1Following, "Oscar Piastri")
+    }
+
+    /// #172: a stale refresh does not become the value a refused change falls back to.
+    func testAStaleRefreshIsNotTheRollbackValue() async throws {
+        let house = Household()
+        let http = try server(house)
+        defer { http.stop() }
+        let model = try model(http)
+        await model.load()
+        house.getDelay.value = 1.0
+        async let refresh: Void = model.load()
+        try await Task.sleep(for: .milliseconds(200))
+        await model.setSpoilerFree(true) // saved: the server now has it on
+        await refresh // answers with the old "off"
+        house.getDelay.value = 0
+        house.failSpoiler.value = true
+        await model.setSpoilerFree(false) // refused
+        XCTAssertTrue(model.preferences.spoilerFree, "back to the last saved value, on")
+        XCTAssertNotNil(model.saveError)
+    }
 }
+

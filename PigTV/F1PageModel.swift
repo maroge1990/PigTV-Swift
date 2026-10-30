@@ -32,10 +32,32 @@ final class F1PageModel: ObservableObject {
     /// Moves on every local change; a refresh or an answer that started before it does not overwrite it.
     private var generation = 0
     private var fieldGeneration: [Field: Int] = [:]
-    private var savesInFlight = 0
+    /// #171: saves still to answer, per field: an answer is merged field by field, never wholesale.
+    private var savingFields: [Field: Int] = [:]
+    /// #172: moves whenever a save answers; a refresh that started before it is older than that answer.
+    private var answers = 0
     /// Saves are sent one after another, in the order they were made.
     private var saveQueue: Task<Void, Never>?
-    private enum Field { case spoilerFree, following }
+    private enum Field: CaseIterable { case spoilerFree, following }
+
+    private static func copy(_ field: Field, from source: SportPagePreferences, to target: inout SportPagePreferences) {
+        switch field {
+        case .spoilerFree: target.spoilerFree = source.spoilerFree
+        case .following: target.f1Following = source.f1Following
+        }
+    }
+
+    /// Takes the server's value of each field nothing local is still changing: into what is shown and what a refused
+    /// change falls back to. The spoiler choice is known once its own value has been taken (#171).
+    private func merge(_ answer: SportPagePreferences, skipping busy: (Field) -> Bool) {
+        var shown = preferences
+        for field in Field.allCases where !busy(field) {
+            Self.copy(field, from: answer, to: &confirmed)
+            Self.copy(field, from: answer, to: &shown)
+            if field == .spoilerFree { preferencesKnown = true }
+        }
+        if shown != preferences { preferences = shown }
+    }
 
     init(client: APIClient, defaults: UserDefaults = .standard) {
         self.client = client
@@ -66,23 +88,21 @@ final class F1PageModel: ObservableObject {
     }
 
     private func loadPreferences() async {
-        let started = generation
+        let startedFields = fieldGeneration
+        let startedAnswers = answers
         do {
             let answer: SportPagePreferences = try await client.request("sports/pages/preferences")
             serverPreferences = true
-            if savesInFlight == 0 {
-                confirmed = answer
-                // #163: a change made while this was on its way stands.
-                if generation == started, answer != preferences { preferences = answer }
+            // #171, #172: per field, and only where nothing changed it, or is saving it, or answered since this began.
+            merge(answer) { field in
+                (self.savingFields[field] ?? 0) > 0 || self.fieldGeneration[field] != startedFields[field] || self.answers != startedAnswers
             }
-            preferencesKnown = true
         } catch {
             if error as? PigTVError == .http(404) {
                 serverPreferences = false
                 let local = defaults.data(forKey: Self.localKey).flatMap { try? JSONDecoder().decode(SportPagePreferences.self, from: $0) }
                     ?? SportPagePreferences()
-                confirmed = local
-                if generation == started, local != preferences { preferences = local }
+                merge(local) { field in self.fieldGeneration[field] != startedFields[field] }
                 preferencesKnown = true
             }
             // Anything else keeps what is on screen, and an unknown choice stays unknown (#162).
@@ -120,29 +140,30 @@ final class F1PageModel: ObservableObject {
         saveError = nil
         guard !isFixture else { return }
         guard serverPreferences else {
-            confirmed = preferences
+            Self.copy(field, from: preferences, to: &confirmed)
             return storeLocally(preferences)
         }
-        savesInFlight += 1
+        savingFields[field, default: 0] += 1
         let previous = saveQueue
         let task = Task { [weak self] in
             await previous?.value
             guard let self else { return }
-            defer { self.savesInFlight -= 1 }
             do {
                 let answer: SportPagePreferences = try await self.client.request("sports/pages/preferences", method: "PUT", body: body)
-                self.confirmed = answer
-                if self.generation == mine, answer != self.preferences { self.preferences = answer }
+                self.savingFields[field, default: 1] -= 1
+                self.answers += 1
+                // The server's state after this save: every field nothing local is still saving (#171).
+                self.merge(answer) { other in
+                    (self.savingFields[other] ?? 0) > 0 || (other == field && self.fieldGeneration[field] != mine)
+                }
             } catch {
+                self.savingFields[field, default: 1] -= 1
                 if error as? PigTVError == .http(404) {
                     self.serverPreferences = false
                     self.confirmed = self.preferences
                     self.storeLocally(self.preferences)
                 } else if self.fieldGeneration[field] == mine {
-                    switch field {
-                    case .spoilerFree: self.preferences.spoilerFree = self.confirmed.spoilerFree
-                    case .following: self.preferences.f1Following = self.confirmed.f1Following
-                    }
+                    Self.copy(field, from: self.confirmed, to: &self.preferences)
                     self.saveError = UserMessage.text(for: error)
                 }
             }
