@@ -150,6 +150,34 @@ final class F1PageTextTests: XCTestCase {
     }
 }
 
+extension F1PageTextTests {
+    /// #164: the Follow a driver list never gives the standings away: alphabetical by surname.
+    func testTheDriverListIsAlphabeticalNotTheStandings() {
+        let page = F1Page(available: true, results: F1Results(kind: "race", title: "Last race", rows: [
+            F1ResultRow(pos: 1, driver: "Kimi Antonelli"), F1ResultRow(pos: 2, driver: "Arvid Lindblad")]),
+            standings: F1Standings(afterRound: 20, drivers: [F1StandingRow(pos: 1, name: "Max Verstappen", points: 365),
+                                                             F1StandingRow(pos: 2, name: "Kimi Antonelli", points: 300),
+                                                             F1StandingRow(pos: 3, name: "Lando Norris", points: 250)], constructors: []))
+        XCTAssertEqual(F1PageText.drivers(page), ["Kimi Antonelli", "Arvid Lindblad", "Lando Norris", "Max Verstappen"])
+    }
+
+    /// #165: a live session on a channel that shows it later is not "Watch live": playing now is the channel's own
+    /// airing (build 74), whatever the session's status.
+    func testALiveSessionOnADelayedChannelWaitsForThatChannel() {
+        let start = now.timeIntervalSince1970 * 1000 - 600_000
+        let delayed = SportEventChannel(sourceId: 1, rawID: "d", name: "Delayed", startTime: start + 3 * 3_600_000, endTime: start + 5 * 3_600_000)
+        let session = F1Session(id: "race", name: "Race", startTime: start, endTime: start + 7_200_000, status: .live, channels: [delayed])
+        let w = F1Weekend(round: 21, rounds: 25, name: "Mexico City Grand Prix", circuit: nil, city: nil, country: nil,
+                          phase: .during, info: nil, sessions: [session])
+        XCTAssertTrue(F1PageText.live(session, now: now), "the race itself is on")
+        XCTAssertFalse(F1PageText.watchesNow(F1PageText.event(session, in: w), now: now), "its channel shows it in three hours")
+        let onTime = SportEventChannel(sourceId: 1, rawID: "o", name: "On time", startTime: start, endTime: start + 7_200_000)
+        var both = session
+        both.channels = [onTime]
+        XCTAssertTrue(F1PageText.watchesNow(F1PageText.event(both, in: w), now: now))
+    }
+}
+
 /// The model against a local server: the page and the household's preferences load; a change is sent as only its
 /// own field; a refused change is put back; an older server (no preferences route) keeps them on the device.
 @MainActor

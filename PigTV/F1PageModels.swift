@@ -344,10 +344,16 @@ nonisolated enum F1PageText {
         return value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
     }
 
-    /// Everyone the page can offer to follow: the drivers' standings, then anyone else in the results, unique.
+    /// Everyone the page can offer to follow (the standings and the results), unique and alphabetical by surname:
+    /// never in the standings' order, which would give them away with spoiler-free on (#164).
     static func drivers(_ page: F1Page) -> [String] {
-        var seen = Set<String>()
-        return ((page.standings?.drivers.map(\.name) ?? []) + (page.results?.rows.map(\.driver) ?? []))
-            .filter { seen.insert($0).inserted }
+        let names = Set((page.standings?.drivers.map(\.name) ?? []) + (page.results?.rows.map(\.driver) ?? []))
+        return names.sorted { (surname($0), $0) < (surname($1), $1) }
+    }
+
+    /// #165: whether Watch plays at once: the chosen (best) channel's own airing (build 74), never the session's
+    /// status, so a live race on a channel that shows it later offers "Watch when it starts".
+    static func watchesNow(_ event: SportEvent, now: Date) -> Bool {
+        SportRows.playsChannelNow(event, now: now)
     }
 }

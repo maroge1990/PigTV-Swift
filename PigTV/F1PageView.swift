@@ -236,7 +236,7 @@ struct F1PageView: View {
             let pending = appState.pendingWatch?.eventID == event.id
             let scheduled = browse.isScheduled(event, on: best)
             HStack(spacing: 14) {
-                if live || SportRows.playsChannelNow(event, now: now) {
+                if F1PageText.watchesNow(event, now: now) {
                     Button(live ? "Watch live" : "Watch", systemImage: "play.fill") {
                         if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
                     }
