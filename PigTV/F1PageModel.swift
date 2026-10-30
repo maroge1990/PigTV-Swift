@@ -13,6 +13,10 @@ final class F1PageModel: ObservableObject {
 
     @Published private(set) var page: F1Page?
     @Published private(set) var preferences = SportPagePreferences()
+    /// #162: false until the household's choice is known (a load answered, or the device keeps it on an older server).
+    @Published private(set) var preferencesKnown = false
+    /// What the page hides: spoiler-free, or not knowing yet whether it is on.
+    var hidesSpoilers: Bool { !preferencesKnown || preferences.spoilerFree }
     /// True once one load has finished.
     @Published private(set) var loaded = false
     @Published private(set) var error: String?
@@ -23,6 +27,15 @@ final class F1PageModel: ObservableObject {
     private var inFlight: Task<Void, Never>?
     private var serverPreferences = true
     private let defaults: UserDefaults
+    /// #163: what the server (or this device) last confirmed; a refused change puts its own field back to this.
+    private var confirmed = SportPagePreferences()
+    /// Moves on every local change; a refresh or an answer that started before it does not overwrite it.
+    private var generation = 0
+    private var fieldGeneration: [Field: Int] = [:]
+    private var savesInFlight = 0
+    /// Saves are sent one after another, in the order they were made.
+    private var saveQueue: Task<Void, Never>?
+    private enum Field { case spoilerFree, following }
 
     init(client: APIClient, defaults: UserDefaults = .standard) {
         self.client = client
@@ -53,36 +66,40 @@ final class F1PageModel: ObservableObject {
     }
 
     private func loadPreferences() async {
+        let started = generation
         do {
             let answer: SportPagePreferences = try await client.request("sports/pages/preferences")
             serverPreferences = true
-            if answer != preferences { preferences = answer }
+            if savesInFlight == 0 {
+                confirmed = answer
+                // #163: a change made while this was on its way stands.
+                if generation == started, answer != preferences { preferences = answer }
+            }
+            preferencesKnown = true
         } catch {
             if error as? PigTVError == .http(404) {
                 serverPreferences = false
                 let local = defaults.data(forKey: Self.localKey).flatMap { try? JSONDecoder().decode(SportPagePreferences.self, from: $0) }
                     ?? SportPagePreferences()
-                if local != preferences { preferences = local }
+                confirmed = local
+                if generation == started, local != preferences { preferences = local }
+                preferencesKnown = true
             }
-            // Anything else keeps what is on screen.
+            // Anything else keeps what is on screen, and an unknown choice stays unknown (#162).
         }
     }
 
     func setSpoilerFree(_ value: Bool) async {
-        var next = preferences
-        next.spoilerFree = value
-        await save(next, body: SpoilerBody(spoilerFree: value))
+        await save(.spoilerFree, body: SpoilerBody(spoilerFree: value)) { $0.spoilerFree = value }
     }
 
     func setFollowing(_ driver: String?) async {
-        var next = preferences
-        next.f1Following = driver
-        await save(next, body: FollowBody(following: .init(F1: driver)))
+        await save(.following, body: FollowBody(following: .init(F1: driver))) { $0.f1Following = driver }
     }
 
-    private struct SpoilerBody: Encodable { let spoilerFree: Bool }
-    private struct FollowBody: Encodable {
-        struct Pages: Encodable {
+    private nonisolated struct SpoilerBody: Encodable, Sendable { let spoilerFree: Bool }
+    private nonisolated struct FollowBody: Encodable, Sendable {
+        nonisolated struct Pages: Encodable, Sendable {
             let F1: String?
             func encode(to encoder: Encoder) throws {
                 var c = encoder.container(keyedBy: Key.self)
@@ -93,25 +110,45 @@ final class F1PageModel: ObservableObject {
         let following: Pages
     }
 
-    /// Shows the change at once; puts it back when the server refuses it.
-    private func save(_ next: SportPagePreferences, body: any Encodable) async {
-        let previous = preferences
-        preferences = next
+    /// Shows the change at once and sends it after any earlier one (#163). A refused change puts back only its own
+    /// field, and only if nothing newer changed that field; an answer older than a newer local change is not applied.
+    private func save(_ field: Field, body: some Encodable & Sendable, apply: (inout SportPagePreferences) -> Void) async {
+        apply(&preferences)
+        generation += 1
+        let mine = generation
+        fieldGeneration[field] = mine
         saveError = nil
         guard !isFixture else { return }
-        guard serverPreferences else { return storeLocally(next) }
-        do {
-            let answer: SportPagePreferences = try await client.request("sports/pages/preferences", method: "PUT", body: body)
-            if answer != preferences { preferences = answer }
-        } catch {
-            if error as? PigTVError == .http(404) {
-                serverPreferences = false
-                storeLocally(next)
-            } else {
-                preferences = previous
-                saveError = UserMessage.text(for: error)
+        guard serverPreferences else {
+            confirmed = preferences
+            return storeLocally(preferences)
+        }
+        savesInFlight += 1
+        let previous = saveQueue
+        let task = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            defer { self.savesInFlight -= 1 }
+            do {
+                let answer: SportPagePreferences = try await self.client.request("sports/pages/preferences", method: "PUT", body: body)
+                self.confirmed = answer
+                if self.generation == mine, answer != self.preferences { self.preferences = answer }
+            } catch {
+                if error as? PigTVError == .http(404) {
+                    self.serverPreferences = false
+                    self.confirmed = self.preferences
+                    self.storeLocally(self.preferences)
+                } else if self.fieldGeneration[field] == mine {
+                    switch field {
+                    case .spoilerFree: self.preferences.spoilerFree = self.confirmed.spoilerFree
+                    case .following: self.preferences.f1Following = self.confirmed.f1Following
+                    }
+                    self.saveError = UserMessage.text(for: error)
+                }
             }
         }
+        saveQueue = task
+        await task.value
     }
 
     private func storeLocally(_ value: SportPagePreferences) {
@@ -132,6 +169,8 @@ final class F1PageModel: ObservableObject {
         isFixture = true
         self.page = page
         self.preferences = preferences
+        confirmed = preferences
+        preferencesKnown = true
         loaded = true
     }
     #endif

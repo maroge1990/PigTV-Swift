@@ -134,7 +134,8 @@ struct F1PageView: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let spoilerFree = model.preferences.spoilerFree
+        // #162: hidden too while the household's choice is not known yet.
+        let spoilerFree = model.hidesSpoilers
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: F1Metrics.spacing) {
                 header
@@ -199,6 +200,7 @@ struct F1PageView: View {
                     .font(F1Metrics.chip).lineLimit(1)
             }
             .buttonStyle(GuideFilterStyle(selected: model.preferences.spoilerFree))
+            .disabled(!model.preferencesKnown)
             .accessibilityLabel(model.preferences.spoilerFree ? "Spoiler-free is on" : "Scores are shown")
             .accessibilityHint("Changes it for every device")
             .accessibilityIdentifier("f1.spoilers")
