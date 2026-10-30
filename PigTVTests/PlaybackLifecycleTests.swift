@@ -140,25 +140,65 @@ final class PlaybackLifecycleTests: XCTestCase {
         _ = await playback.stop()
     }
 
-    func testRepeatedFailureSignalsAllowOnlyOneAutomaticResolve() async throws {
+    /// #5: simultaneous failure signals are one failure; a reconnect whose resolve keeps failing tries again up to
+    /// the window's three re-resolves (never forced), then shows the error with Retry.
+    func testRepeatedFailureSignalsAreOneFailureAndReResolvesAreBounded() async throws {
         let server = SyntheticServer { _, _, _ in .init(status: 503, json: "{}") }
         let playback = model(try client(server))
+        playback.recoveryDelays = [0, 0, 0]
         playback.playbackStarted() // AVPlayer's playing signal, without real media.
         playback.playbackFailed(detail: "Synthetic failure")
         playback.playbackFailed(detail: "Duplicate failure")
         try await eventually { playback.error != nil }
-        XCTAssertEqual(server.captured.count, 1)
+        XCTAssertEqual(server.captured.count, 3, "three re-resolves in the window, then the error")
         XCTAssertTrue(playback.canRetry)
         XCTAssertFalse(playback.reconnecting)
         XCTAssertTrue(playback.error!.contains("The stream ended"))
-        let request = try JSONSerialization.jsonObject(with: server.captured[0].body) as! [String: Any]
-        XCTAssertEqual(request["force"] as? Bool, false)
+        for request in server.captured {
+            let body = try JSONSerialization.jsonObject(with: request.body) as! [String: Any]
+            XCTAssertEqual(body["force"] as? Bool, false)
+        }
         playback.playbackFailed(detail: "Another signal")
         try await Task.sleep(for: .milliseconds(30))
-        XCTAssertEqual(server.captured.count, 1)
+        XCTAssertEqual(server.captured.count, 3)
         playback.retry()
-        try await eventually { server.captured.count == 2 && playback.error != nil }
+        try await eventually { server.captured.count == 4 && playback.error != nil }
         _ = await playback.stop()
+    }
+
+    /// #5: the re-resolves are spaced 0 / 3 / 10 s (scaled down here), with the Reconnecting card meanwhile.
+    func testReResolvesAreSpacedOut() async throws {
+        let times = Locked<[Date]>([])
+        let server = SyntheticServer { _, _, _ in times.value.append(Date()); return .init(status: 503, json: "{}") }
+        let playback = model(try client(server))
+        playback.recoveryDelays = [0, 0.3, 0.6]
+        playback.playbackStarted()
+        let began = Date()
+        playback.playbackFailed(detail: "Synthetic failure")
+        try await eventually { server.captured.count == 2 }
+        XCTAssertTrue(playback.reconnecting)
+        XCTAssertNil(playback.error)
+        for _ in 0..<100 where playback.error == nil { try await Task.sleep(for: .milliseconds(20)) }
+        let t = times.value
+        XCTAssertEqual(t.count, 3)
+        XCTAssertLessThan(t[0].timeIntervalSince(began), 0.25, "the first re-resolve is immediate")
+        XCTAssertGreaterThanOrEqual(t[1].timeIntervalSince(t[0]), 0.3)
+        XCTAssertGreaterThanOrEqual(t[2].timeIntervalSince(t[1]), 0.6)
+        XCTAssertNotNil(playback.error)
+        _ = await playback.stop()
+    }
+
+    /// #5: going Back during the wait before a re-resolve issues nothing.
+    func testStoppingDuringTheRecoveryWaitPreventsResolve() async throws {
+        let server = SyntheticServer { _, _, _ in .init(status: 503, json: "{}") }
+        let playback = model(try client(server))
+        playback.recoveryDelays = [0, 0.3, 0.3]
+        playback.playbackStarted()
+        playback.playbackFailed(detail: "Synthetic failure")
+        try await eventually { server.captured.count == 1 }
+        _ = await playback.stop()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(server.captured.count, 1)
     }
 
     func testRecoveryConflictDoesNotForceTakeover() async throws {

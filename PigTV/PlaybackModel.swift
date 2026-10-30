@@ -56,14 +56,14 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private var itemPlayed = false
     private var startTimer: Task<Void, Never>?
     private var stallTimer: Task<Void, Never>?
-    private var recoveryUsed = false
-    // Multi-provider failover: a recovery is only good for one re-resolve, but
-    // after `recoveryResetInterval` of continuous good playback following it
-    // the allowance is renewed (the backup provider may fail later too).
-    // Evaluated lazily when a failure arrives; `clock` is injectable for tests.
+    // #5: after a play has shown a picture, up to `recoveryDelays.count` automatic re-resolves in any
+    // `recoveryWindow`, the n-th after `recoveryDelays[n]` seconds; one more failure in the window is the error.
+    // Only failures count (a stall that plays on is not one), and simultaneous signals are one failure.
+    // `clock` is injectable for tests.
     var clock: () -> Date = Date.init
-    var recoveryResetInterval: TimeInterval = 120
-    private(set) var goodPlaySince: Date?
+    var recoveryWindow: TimeInterval = 600
+    var recoveryDelays: [TimeInterval] = [0, 3, 10]
+    private(set) var recoveries: [Date] = []
     // C-J: the provider serving the current play (nil on an older server).
     private(set) var provider: ResolveProvider?
     // Build 27 fallbacks: what the current item is playing, and whether its
@@ -359,11 +359,17 @@ final class PlaybackModel: ObservableObject, Identifiable {
                             generation: generation)
             } catch {
                 guard !ended else { return }
+                let recovering = reconnecting
                 reconnecting = false
                 if case PigTVError.recordingConflict(let conflict) = error {
                     recordingConflict = conflict
                 } else if case PigTVError.viewerConflict(let message) = error {
                     viewerConflict = message
+                } else if hasPlayed, recovering, let delay = takeRecoverySlot() {
+                    // #5: a reconnect's resolve failed (the provider may still be coming back): try again,
+                    // within the same window.
+                    reconnecting = true
+                    scheduleRecovery(after: delay, session: nil)
                 } else {
                     self.error = hasPlayed ? "The stream ended. \(error.localizedDescription)" : error.localizedDescription
                     canRetry = true
@@ -435,7 +441,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
             Task { @MainActor [weak self] in
                 guard let self, self.itemGeneration == generation, !self.ended else { return }
                 self.stalls += 1
-                self.goodPlaySince = nil
             }
         }
         playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] player, _ in
@@ -563,7 +568,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
         itemPlayed = true
         hasPlayed = true
         reconnecting = false
-        if recoveryUsed, goodPlaySince == nil { goodPlaySince = clock() }
         if !firstPlayReported, var event = eventContext {
             firstPlayReported = true
             event.totalMs = Date().timeIntervalSince(resolveBegan) * 1000
@@ -575,12 +579,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
                         reportsError: Bool = true) {
         guard !ended, !handlingFailure else { return }
         handlingFailure = true
-        // Two minutes of unbroken playback since the last recovery renews the
-        // allowance; a failure sooner than that still ends in the error.
-        if recoveryUsed, let since = goodPlaySince, clock().timeIntervalSince(since) >= recoveryResetInterval {
-            recoveryUsed = false
-        }
-        goodPlaySince = nil
         if reportsError, let context = eventContext {
             var event = PlaybackEvent(event: "media-error")
             event.strategy = context.strategy
@@ -600,15 +598,15 @@ final class PlaybackModel: ObservableObject, Identifiable {
         let failedContext = eventContext
         clearItem()
         // Build 27: two device errors have a known cure, tried once instead of
-        // (and counting as) the C2 recovery. Never forced, never repeated.
-        if !recoveryUsed, let fallback = PlaybackFallback.for(errorCodes) {
+        // (and counting as) a recovery. Never forced, never repeated.
+        if let fallback = PlaybackFallback.for(errorCodes), canRecover {
             switch fallback {
             case .streamPlaylist:
                 // -11868: the TV cannot show the master playlist's (HDR)
                 // variant. Play the same session's media playlist instead,
                 // with no display criteria.
                 if let failedURL, let failedStrategy, let url = Self.streamPlaylistURL(for: failedURL) {
-                    recoveryUsed = true
+                    _ = takeRecoverySlot()
                     handlingFailure = false
                     reconnecting = hasPlayed
                     var context = failedContext ?? PlaybackEvent(event: "play-start")
@@ -626,32 +624,47 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 // 'fmt?': the copied audio cannot be decoded here. Resolve
                 // again with re-encoded audio, and remember the channel.
                 if !audioEncodeRequested {
-                    recoveryUsed = true
+                    _ = takeRecoverySlot()
                     AudioEncodeMemory.remember(channel.identityKey)
                     reconnecting = hasPlayed
-                    let pending = resolveTask
-                    Task { [weak self] in
-                        await pending?.value
-                        await self?.recoverAfterFailure(session: failedSession)
-                    }
+                    scheduleRecovery(after: 0, session: failedSession)
                     return
                 }
             }
         }
-        if hasPlayed && !recoveryUsed {
-            recoveryUsed = true
+        if hasPlayed, let delay = takeRecoverySlot() {
             reconnecting = true
-            // A callback can arrive while start() is finishing. Wait for it,
-            // then check dismissal before issuing exactly one new resolve.
-            let pending = resolveTask
-            Task { [weak self] in
-                await pending?.value
-                await self?.recoverAfterFailure(session: failedSession)
-            }
+            scheduleRecovery(after: delay, session: failedSession)
         } else {
             reconnecting = false
             error = hasPlayed ? "The stream ended. Try again to reconnect." : "Playback could not start. \(detail)"
             canRetry = true
+        }
+    }
+
+    private var canRecover: Bool {
+        let now = clock()
+        return recoveries.filter { now.timeIntervalSince($0) < recoveryWindow }.count < recoveryDelays.count
+    }
+
+    /// Uses one of the window's recoveries and says how long to wait before it; nil when none is left.
+    private func takeRecoverySlot() -> TimeInterval? {
+        let now = clock()
+        recoveries.removeAll { now.timeIntervalSince($0) >= recoveryWindow }
+        guard recoveries.count < recoveryDelays.count else { return nil }
+        let delay = recoveryDelays[recoveries.count]
+        recoveries.append(now)
+        return delay
+    }
+
+    /// A callback can arrive while start() is finishing: wait for it (and the spacing), then check dismissal
+    /// before issuing exactly one new resolve.
+    private func scheduleRecovery(after delay: TimeInterval, session: String?) {
+        let pending = resolveTask
+        Task { [weak self] in
+            await pending?.value
+            if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+            await self?.recoverAfterFailure(session: session)
         }
     }
 
@@ -671,8 +684,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
 
     func retry() {
         guard canRetry, resolveTask == nil, !ended else { return }
-        recoveryUsed = false
-        goodPlaySince = nil
+        recoveries = []
         hasPlayed = false
         error = nil
         clearItem()

@@ -185,35 +185,39 @@ final class ProviderFailoverTests: XCTestCase {
 
     final class ClockBox2 { var now = Date(timeIntervalSince1970: 1_800_000_000) }
 
-    /// After a recovery, two minutes of good playback renew the allowance:
-    /// the backup provider failing later gets one more re-resolve. A failure
-    /// within two minutes of a recovery still ends in the error.
-    func testRecoveryAllowanceRenewsAfterTwoMinutesOfGoodPlayback() async throws {
+    /// #5 (FOX Kansas City, 29 Oct: two relay losses 2 min 20 s apart ended the play): three failures a minute
+    /// apart each get a re-resolve and play again; a fourth inside 10 minutes is the error; once the first has left
+    /// the window, a failure recovers again.
+    func testThreeFailuresInTenMinutesRecoverAndTheFourthIsTheError() async throws {
         try requireFixture()
         let server = try FakePigTVServer()
         let box = ClockBox2()
         let playback = PlaybackModel(channel: channel(), client: try server.client())
         playback.clock = { box.now }
+        playback.recoveryDelays = [0, 0, 0]
         playback.start()
         // The model's own "it played" (playbackStarted), not just AVPlayer's: the KVO hops to
         // the main actor, and a failure arriving before that hop is (correctly) not recovered.
         try await waitFor("first stream") { self.isPlaying(playback) && playback.hasPlayed }
-        // First failure: the ordinary single recovery.
-        playback.playbackFailed(detail: "Synthetic 1")
-        try await waitFor("second resolve") { server.resolves.count == 2 }
-        try await waitFor("second stream") { self.isPlaying(playback) && (playback.player.currentItem?.asset as? AVURLAsset)?.url.path.contains("/s2/") == true && playback.goodPlaySince != nil }
-        // Two minutes of good playback later, another failure: one more re-resolve.
-        box.now.addTimeInterval(121)
-        playback.playbackFailed(detail: "Synthetic 2")
-        try await waitFor("third resolve") { server.resolves.count == 3 }
-        XCTAssertNil(playback.error)
-        try await waitFor("third stream") { self.isPlaying(playback) && (playback.player.currentItem?.asset as? AVURLAsset)?.url.path.contains("/s3/") == true && playback.goodPlaySince != nil }
-        // A failure only 30 s after that recovery is not renewed: the error.
-        box.now.addTimeInterval(30)
-        playback.playbackFailed(detail: "Synthetic 3")
+        for n in 2...4 {
+            playback.playbackFailed(detail: "Synthetic \(n - 1)")
+            try await waitFor("resolve \(n)") { server.resolves.count == n }
+            try await waitFor("stream \(n)") { self.isPlaying(playback) && !playback.reconnecting && (playback.player.currentItem?.asset as? AVURLAsset)?.url.path.contains("/s\(n)/") == true }
+            XCTAssertNil(playback.error)
+            box.now.addTimeInterval(60)
+        }
+        // 3 minutes after the first: the fourth failure in the window.
+        playback.playbackFailed(detail: "Synthetic 4")
         try await waitFor("the error") { playback.error != nil }
-        XCTAssertEqual(server.resolves.count, 3, "no retry loop: at most one re-resolve per failure")
+        XCTAssertEqual(server.resolves.count, 4, "no retry loop: at most three re-resolves in the window")
         XCTAssertTrue(playback.canRetry)
+        playback.retry()
+        try await waitFor("Retry plays") { self.isPlaying(playback) && playback.hasPlayed && server.resolves.count == 5 }
+        // Retry starts a fresh window; 10 minutes on, the old failures are gone either way.
+        box.now.addTimeInterval(601)
+        playback.playbackFailed(detail: "Synthetic 5")
+        try await waitFor("resolve 6") { server.resolves.count == 6 }
+        XCTAssertNil(playback.error)
         _ = await playback.stop()
         server.http.stop()
     }

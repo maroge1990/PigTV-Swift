@@ -316,8 +316,11 @@ From the 3 Oct audit (`../PigTV/docs/archive/audit-2026-10-03/ROADMAP.md`) and t
   player closes; needs `providerReminders`, never runs while `playerPresented`, at most one banner per local day per device
   (`pigtv.providerReminderDay`, set only when one is shown). The banner is an **overlay** on the root view (no cover, so no
   W6 focus trap), dismissed after 15 s, by OK (iOS) or when playback starts; **on tvOS it is deliberately not focusable**.
-- **Recovery allowance.** `PlaybackModel.recoveryUsed` is renewed after 120 s (`recoveryResetInterval`) of unbroken good
-  playback since the last recovery (`goodPlaySince`; `clock` injectable). Still at most one re-resolve per failure.
+- **Recovery window (build 66, #5).** Once a play has shown a picture, up to three automatic re-resolves in any 10 minutes
+  (`recoveryWindow`, `recoveries`; `clock` injectable), the first at once, then after 3 and 10 s (`recoveryDelays`), with
+  the Reconnecting card and Back meanwhile; a reconnect whose resolve fails tries again inside the same window. Only
+  failures count (stalls do not); simultaneous signals are one failure; never forced; Retry starts a fresh window. The
+  build-27 fallbacks use a slot too. Replaces one recovery per 120 s of stall-free play, which a bursty feed never renewed.
 - **Removed with the server's tuner model (build 39):** Start over, the dated timeshift scrub, growing recordings. An older
   server's `timeshift` and `recordingHls` flags are ignored. Siri / App Shortcuts were removed in build 37.
 
@@ -422,7 +425,7 @@ a recording).
   never uses the network.
 - **Channel health** depends on `play-end` for plays of 10 s or more; a killed app sends nothing, so stalls are under-counted.
 - Provider behaviour the client can't fix (server `docs/PRODUCT.md` › Known limitations): some channels are cut ~38 s in and ~19 s resent (a short
-  repeat); a channel may still fail during an outage after the server's retries and this client's one recovery.
+  repeat); a channel may still fail during an outage after the server's retries and this client's three recoveries in 10 minutes.
 - `docs/evidence` screenshots use offline fixture data, not the real feed.
 - A0.2 (a SwiftUI "Environment accessed outside a View" warning seen only in an accessibility-heavy UI test) is parked.
 
