@@ -113,6 +113,8 @@ struct CustomPlayerView: View {
             favourite = browse?.isFavourite(playback.channel) ?? false
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
         }
+        // #132: the tuning card held focus until the first picture.
+        .onChange(of: playback.hasPlayed) { _, played in if played { focused = true } }
         .task(id: playback.ready) { if playback.ready { await playback.loadTracks() } }
         .onMoveCommand(perform: move)
         .onPlayPauseCommand(perform: togglePause)

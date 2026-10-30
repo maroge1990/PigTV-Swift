@@ -398,25 +398,26 @@ struct PlayerScreen: View {
                 Group {
                     #if os(tvOS)
                     CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
+                        // #132: no remote input reaches the hidden player's actions until it shows a picture (it
+                        // takes focus then).
+                        .disabled(!playback.hasPlayed)
                     #else
                     touchPlayer
                     #endif
                 }
                 .overlay {
                     // #6: the item is installed but there is no picture yet (HDMI mode switch, first segments). The
-                    // player stays underneath so it loads, and on tvOS keeps focus, so Menu still leaves.
+                    // player stays underneath so it loads; the card owns the remote (Cancel, Menu).
                     if !playback.hasPlayed {
                         ZStack {
                             Color.black.ignoresSafeArea()
                             VStack(spacing: 24) {
                                 TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
-                                #if os(iOS)
-                                Button("Cancel") { dismiss() }
-                                #endif
+                                Button("Cancel") { dismiss() }.playerStateFocus($stateFocus)
                             }
                         }
                         #if os(tvOS)
-                        .allowsHitTesting(false)
+                        .onExitCommand { dismiss() }
                         #endif
                     }
                 }
@@ -517,6 +518,8 @@ struct PlayerScreen: View {
         if playback.recordingConflict != nil { return "recording" }
         if playback.error != nil { return playback.canRetry ? "error-retry" : "error" }
         if playback.reconnecting { return "reconnecting" }
+        // #132: an installed player with no picture yet shows the tuning card, whose Cancel claims focus.
+        if playback.ready && !playback.hasPlayed { return "starting" }
         return playback.ready ? "ready" : "tuning"
     }
 

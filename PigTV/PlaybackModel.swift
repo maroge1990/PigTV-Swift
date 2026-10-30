@@ -447,12 +447,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             }
         }
         itemPlayed = false
-        let startTimeout = startTimeout
-        startTimer = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(startTimeout))
-            guard !Task.isCancelled, let self, self.itemGeneration == generation else { return }
-            self.startTimedOut()
-        }
+        armStartTimer(generation: generation)
         player.replaceCurrentItem(with: item)
         ready = true
         player.play()
@@ -472,6 +467,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
         } else if state == "player-error" {
             error = "The local review stream is unavailable. Try again or return to channels."
             canRetry = true
+        } else if state == "player-starting" {
+            // #132: an installed player that has not shown a picture yet (the tuning card covers it).
+            ready = true
         } else if state == "player-buffering" {
             ready = true
             hasPlayed = true
@@ -498,7 +496,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
             cancelWaitTimers()
             playbackStarted()
         case .waitingToPlayAtSpecifiedRate:
-            guard itemPlayed, stallTimer == nil else { return }
+            if !itemPlayed {
+                // #131: playing again after a pause before the first picture re-arms the start deadline.
+                if startTimer == nil { armStartTimer(generation: itemGeneration) }
+                return
+            }
+            guard stallTimer == nil else { return }
             let generation = itemGeneration
             let (hint, limit) = (bufferingAfter, stallTimeout)
             stallTimer = Task { [weak self] in
@@ -512,9 +515,23 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 self.playbackFailed(detail: "The stream stopped for \(Int(limit)) seconds.", codeName: "StallTimeout")
             }
         default:
+            // A pause is the viewer's: it times nothing, before the first picture (#131) or after it.
+            if !itemPlayed {
+                startTimer?.cancel()
+                startTimer = nil
+            }
             stallTimer?.cancel()
             stallTimer = nil
             buffering = false
+        }
+    }
+
+    private func armStartTimer(generation: UUID) {
+        let startTimeout = startTimeout
+        startTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(startTimeout))
+            guard !Task.isCancelled, let self, self.itemGeneration == generation else { return }
+            self.startTimedOut()
         }
     }
 

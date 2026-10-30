@@ -692,4 +692,23 @@ final class RealPlaybackTests: XCTestCase {
         _ = await playback.stop()
         server.http.stop()
     }
+
+    /// #131: a pause before the first picture suspends the start timeout; playing again re-arms it.
+    func testAPauseBeforeTheFirstPictureSuspendsTheStartTimeout() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(resolve: { count, _ in FakePigTVServer.decision(session: "hang\(count)") })
+        let playback = PlaybackModel(channel: channel(), client: try server.client())
+        playback.startTimeout = 1.5
+        playback.start()
+        try await waitFor("item installed") { playback.ready }
+        playback.player.pause()
+        try await Task.sleep(for: .seconds(3))
+        XCTAssertNil(playback.error, "paused, not hung")
+        XCTAssertTrue(server.clientEventBodies("start-timeout").isEmpty)
+        playback.player.play()
+        try await waitFor("the re-armed start timeout", timeout: 6) { playback.error != nil }
+        try await waitFor("the start-timeout report") { server.clientEventBodies("start-timeout").count == 1 }
+        _ = await playback.stop()
+        server.http.stop()
+    }
 }
