@@ -2,7 +2,7 @@
 
 These handovers are preserved unchanged for historical reference. They contain superseded paths, plans and testing claims. Do not update them or use them as current instructions.
 
-Read [the client blueprint](../../blueprint.md) for current state, roadmap and transition notes.
+Read [`../../AGENTS.md`](../../AGENTS.md) and [`../ARCHITECTURE.md`](../ARCHITECTURE.md) instead; the roadmap is the server repo's `ROADMAP.md` and its issues.
 
 - [Original running handover](HANDOVER.md)
 - [16 September server-agent handover](HANDOVER-server-agent-2026-09-16.md)
@@ -12,3 +12,4 @@ Read [the client blueprint](../../blueprint.md) for current state, roadmap and t
 - [Blueprint as of 13 October 2026](blueprint-2026-10-13.md): before the trim, with per-build notes for builds 21–39 and the device-verification state
 - [Server requests SR-1, SR-2](SERVER-REQUESTS-2026-09-26.md): both resolved; requests are now raised in the server repo
 - [Brand standard 1.0](brand-standard-1.0-2026-10-02.md): superseded by the Pig family kit 1.6.0 (blueprint §4)
+- [Blueprint as of 30 October 2026](blueprint-2026-10-30.md): retired in the documentation reset; its architecture lives on in `../ARCHITECTURE.md` (lessons kept intact), its rules in `../../AGENTS.md`, its deferrals in the server's `docs/DECISIONS.md` (D-8, D-12)
