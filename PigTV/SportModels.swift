@@ -23,16 +23,20 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
     var number: Int? = nil
     var logo: String? = nil
     var quality: SportQuality? = nil
+    /// #20 (server 0337): when **this** channel airs the event, in ms; nil from an older server.
+    var startTime: Double? = nil
+    var endTime: Double? = nil
 
     var id: String { "\(sourceId):\(rawID)" }
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
 
-    enum CodingKeys: String, CodingKey { case sourceId, rawID = "id", stableId, name, number, logo, quality }
+    enum CodingKeys: String, CodingKey { case sourceId, rawID = "id", stableId, name, number, logo, quality, start, end }
 
     init(sourceId: Int, rawID: String, stableId: String? = nil, name: String, number: Int? = nil,
-         logo: String? = nil, quality: SportQuality? = nil) {
+         logo: String? = nil, quality: SportQuality? = nil, startTime: Double? = nil, endTime: Double? = nil) {
         self.sourceId = sourceId; self.rawID = rawID; self.stableId = stableId; self.name = name
         self.number = number; self.logo = logo; self.quality = quality
+        self.startTime = startTime; self.endTime = endTime
     }
 
     init(from decoder: Decoder) throws {
@@ -45,6 +49,8 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
         logo = ((try? c.decodeIfPresent(String.self, forKey: .logo)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
         quality = ((try? c.decodeIfPresent(String.self, forKey: .quality)) ?? nil)
             .flatMap { SportQuality(rawValue: $0.uppercased()) }
+        startTime = (try? c.decodeIfPresent(Double.self, forKey: .start)) ?? nil
+        endTime = (try? c.decodeIfPresent(Double.self, forKey: .end)) ?? nil
     }
 }
 
@@ -74,6 +80,22 @@ nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
     /// The event as a guide programme on one of its channels (Record).
     var programme: GuideProgramme {
         GuideProgramme(title: title, description: nil, startTime: startTime, endTime: endTime)
+    }
+
+    /// #20: when `channel` airs this event. The event's own span covers every channel's airing merged, so Watch,
+    /// Record and "Watch when it starts" on a chosen channel use the channel's times; an older server's channel
+    /// (or a nonsensical pair) falls back to the event's.
+    func airing(on channel: SportEventChannel) -> (start: Double, end: Double) {
+        guard let start = channel.startTime, let end = channel.endTime, end > start else { return (startTime, endTime) }
+        return (start, end)
+    }
+    func start(on channel: SportEventChannel) -> Date { Date(timeIntervalSince1970: airing(on: channel).start / 1000) }
+    func end(on channel: SportEventChannel) -> Date { Date(timeIntervalSince1970: airing(on: channel).end / 1000) }
+    func isLive(on channel: SportEventChannel, at now: Date) -> Bool { start(on: channel) <= now && now < end(on: channel) }
+    /// The event as a guide programme on `channel` (Record), with that channel's times.
+    func programme(on channel: SportEventChannel) -> GuideProgramme {
+        let airing = airing(on: channel)
+        return GuideProgramme(title: title, description: nil, startTime: airing.start, endTime: airing.end)
     }
 
     enum CodingKeys: String, CodingKey { case id, title, league, start, end, channels, kind }
@@ -346,7 +368,11 @@ nonisolated enum SportRows {
     /// choice (Record / Watch when it starts) instead. One rule shared by
     /// the event page's primary action, its channel list and the long-press
     /// channel picker, so all three agree.
-    static func playsChannelNow(_ event: SportEvent, now: Date) -> Bool {
-        event.isLive(at: now) || event.start.timeIntervalSince(now) <= watchNowWindow
+    /// #20: judged on `channel`'s own airing (the best channel when none is named).
+    static func playsChannelNow(_ event: SportEvent, on channel: SportEventChannel? = nil, now: Date) -> Bool {
+        guard let channel = channel ?? event.best else {
+            return event.isLive(at: now) || event.start.timeIntervalSince(now) <= watchNowWindow
+        }
+        return event.isLive(on: channel, at: now) || event.start(on: channel).timeIntervalSince(now) <= watchNowWindow
     }
 }

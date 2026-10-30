@@ -88,7 +88,7 @@ struct SportsDashboardView: View {
           {
             RecordSheet(
               model: browse, channel: browse.recordingRow(selection.event, on: selection.channel),
-              programme: selection.event.programme
+              programme: selection.event.programme(on: selection.channel)
             ) { _ in recording = nil }
           } else {
             Text("Event details hidden until your account settings are refreshed.")

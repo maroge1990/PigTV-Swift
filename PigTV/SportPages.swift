@@ -208,9 +208,10 @@ struct SportChannelList: View {
     }
 
     var body: some View {
-        let playsNow = SportRows.playsChannelNow(event, now: clock)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(event.channels.enumerated()), id: \.element.id) { index, channel in
+                // #20: each row on its own channel's airing.
+                let playsNow = SportRows.playsChannelNow(event, on: channel, now: clock)
                 let scheduled = !playsNow && browse.isScheduled(event, on: channel)
                 SportChannelRow(channel: channel, browse: browse, isBest: index == 0 && event.channels.count > 1,
                                  playsNow: playsNow, scheduled: scheduled) {
@@ -238,7 +239,7 @@ struct SportChannelList: View {
             Text(SportRows.timing(event, now: clock))
         }
         .detailCover(item: $recording) { channel in
-            RecordSheet(model: browse, channel: browse.recordingRow(event, on: channel), programme: event.programme) { _ in
+            RecordSheet(model: browse, channel: browse.recordingRow(event, on: channel), programme: event.programme(on: channel)) { _ in
                 recording = nil
             }
         }
@@ -295,7 +296,7 @@ struct SportEventDetails: View {
         }
         .detailCover(isPresented: $recordSheet) {
             if let best = event.best {
-                RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme) { _ in
+                RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme(on: best)) { _ in
                     recordSheet = false
                 }
             }
@@ -329,7 +330,7 @@ struct SportEventDetails: View {
             if let best {
                 DetailActions {
                     if pending {
-                        Button("Don't watch at \(event.start.formatted(date: .omitted, time: .shortened))",
+                        Button("Don't watch at \((app.pendingWatch?.at ?? event.start).formatted(date: .omitted, time: .shortened))",
                                systemImage: "xmark") { app.cancelPendingWatch() }
                             .focused($focus, equals: .watch)
                     } else if playsNow {
@@ -350,7 +351,7 @@ struct SportEventDetails: View {
                         .focused($focus, equals: .watch)
                         .accessibilityIdentifier("sport.watch")
                     }
-                    if event.end > now && !browse.isScheduled(event, on: best) {
+                    if event.end(on: best) > now && !browse.isScheduled(event, on: best) {
                         Button("Record", systemImage: "record.circle") { recordSheet = true }
                             .disabled(browse.mutationBusy)
                             .accessibilityIdentifier("sport.record")
@@ -369,7 +370,7 @@ struct SportEventDetails: View {
                     Text(error).font(DetailType.meta).foregroundStyle(.secondary)
                 }
                 if pending {
-                    Text("PigTV will start \(best.name) at \(event.start.formatted(date: .omitted, time: .shortened)) while the app stays open.")
+                    Text("PigTV will start \(best.name) at \(event.start(on: best).formatted(date: .omitted, time: .shortened)) while the app stays open.")
                         .font(DetailType.meta).foregroundStyle(.secondary)
                 }
             }

@@ -405,11 +405,13 @@ final class AppModel: ObservableObject {
     func watchWhenStarts(_ event: SportEvent, channel: SportEventChannel? = nil, now: Date = Date()) {
         guard let chosen = channel ?? event.best else { return }
         cancelPendingWatch()
-        if event.start.timeIntervalSince(now) <= SportRows.watchNowWindow {
+        // #20: when the chosen channel starts showing it, not the earliest of every channel.
+        let start = event.start(on: chosen)
+        if start.timeIntervalSince(now) <= SportRows.watchNowWindow {
             playSportEvent(event, channel: chosen)
             return
         }
-        let pending = PendingWatch(eventID: event.id, title: event.title, channelName: chosen.name, at: event.start)
+        let pending = PendingWatch(eventID: event.id, title: event.title, channelName: chosen.name, at: start)
         pendingWatch = pending
         pendingWatchTask = Task { [weak self] in
             let wait = max(0, pending.at.timeIntervalSinceNow)

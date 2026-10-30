@@ -596,12 +596,12 @@ final class BrowseModel: ObservableObject {
     /// is the only programme, so `schedule` records exactly its times.
     func recordingRow(_ event: SportEvent, on channel: SportEventChannel) -> GuideChannel {
         GuideChannel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: logo(for: channel),
-                     category: nil, programmes: [event.programme], stableId: channel.stableId, number: channel.number)
+                     category: nil, programmes: [event.programme(on: channel)], stableId: channel.stableId, number: channel.number)
     }
 
     /// True when a recording of this event on this channel is scheduled.
     func isScheduled(_ event: SportEvent, on channel: SportEventChannel) -> Bool {
-        scheduledKeys.contains(ScheduledRecording.key(channel: channel.name, start: event.startTime))
+        scheduledKeys.contains(ScheduledRecording.key(channel: channel.name, start: event.airing(on: channel).start))
     }
 
     // Matched on the stable identity (server 0097): one favourite covers every

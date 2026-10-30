@@ -263,6 +263,43 @@ final class SportModelTests: XCTestCase {
         server.http.stop()
     }
 
+    /// #20 (server 0337): an event airs on two channels at different times (its own span merges them). Watch when it
+    /// starts, Record and the Watch-now rule on the later channel use that channel's airing, not the event's start.
+    /// Written against JSON and the old entry points so it runs (and fails) on build 73 too.
+    func testTheChosenChannelsOwnAiringDrivesWatchWhenStartsAndRecord() async throws {
+        let server = try FakePigTVServer()
+        let client = try server.client()
+        let browse = BrowseModel(client: client)
+        let app = AppModel()
+        app.configureClientForTesting(client, browse: browse)
+        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
+        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
+        let now = Date()
+        let ms = { (seconds: Double) in Int64((now.timeIntervalSince1970 + seconds) * 1000) }
+        let json = """
+        {"id":"q","title":"Mexico City GP · Qualifying","league":"F1","start":\(ms(240)),"end":\(ms(3600 + 5400)),
+         "channels":[{"sourceId":1,"id":"live1","name":"Live One","start":\(ms(240)),"end":\(ms(3840))},
+                     {"sourceId":1,"id":"late2","name":"Delayed Two","start":\(ms(3600)),"end":\(ms(3600 + 5400))}]}
+        """
+        let event = try JSONDecoder().decode(SportEvent.self, from: Data(json.utf8))
+        let late = event.channels[1]
+        app.watchWhenStarts(event, channel: late, now: now)
+        XCTAssertNil(app.playback, "the delayed channel starts in an hour: nothing plays yet")
+        XCTAssertEqual(app.pendingWatch?.channelName, "Delayed Two")
+        XCTAssertEqual(try XCTUnwrap(app.pendingWatch?.at).timeIntervalSince1970, now.timeIntervalSince1970 + 3600, accuracy: 0.01,
+                       "it waits for that channel's own start")
+        app.cancelPendingWatch()
+        let row = browse.recordingRow(event, on: late)
+        XCTAssertEqual(row.programmes.first?.startTime, Double(ms(3600)), "Record covers the delayed airing")
+        XCTAssertEqual(row.programmes.first?.endTime, Double(ms(3600 + 5400)))
+        XCTAssertFalse(SportRows.playsChannelNow(event, on: late, now: now), "the late channel offers a choice")
+        XCTAssertTrue(SportRows.playsChannelNow(event, on: event.channels[0], now: now), "the live channel plays now")
+        // An older server's channel has no times: the event's own.
+        let old = SportEventChannel(sourceId: 1, rawID: "old", name: "Old")
+        XCTAssertEqual(event.airing(on: old).start, event.startTime)
+        server.http.stop()
+    }
+
     func testWatchWhenStartsPlaysAtOnceWithinFiveMinutesElseWaits() async throws {
         let server = try FakePigTVServer()
         let client = try server.client()
