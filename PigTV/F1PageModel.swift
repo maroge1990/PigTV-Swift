@@ -36,6 +36,8 @@ final class F1PageModel: ObservableObject {
     private var savingFields: [Field: Int] = [:]
     /// #172: moves whenever a save answers; a refresh that started before it is older than that answer.
     private var answers = 0
+    /// Apple 90 (Codex round 2, high): moves on every preferences read and every invalidation; only the latest read applies.
+    private var readGeneration = 0
     /// Saves are sent one after another, in the order they were made.
     private var saveQueue: Task<Void, Never>?
     private enum Field: CaseIterable { case spoilerFree, following, nflFollowing, sports, teams }
@@ -92,16 +94,11 @@ final class F1PageModel: ObservableObject {
         inFlight = nil
     }
 
-    /// #185: the household's preferences alone (another sport page refreshes them without fetching the F1 page).
-    func refreshPreferences() async {
-        guard !isFixture else { return }
-        await loadPreferences()
-    }
-
     /// Apple 90 (Codex round 1, high): the household's choice is forgotten (spoilers hidden) until a load answers it
     /// again: a sport page reappearing may have been switched to spoiler-free on another device meanwhile.
     func invalidatePreferences() {
         guard !isFixture else { return }
+        readGeneration += 1
         preferencesKnown = false
     }
 
@@ -109,33 +106,41 @@ final class F1PageModel: ObservableObject {
     /// that fails (other than an older server's 404) leaves the choice unknown, so the scores stay hidden.
     func revalidatePreferences() async {
         guard !isFixture else { return }
-        if await !loadPreferences() { preferencesKnown = false }
+        if await loadPreferences() == .failed { preferencesKnown = false }
     }
 
-    /// True when the server (or, on an older server, this device) answered.
+    enum PreferencesRead: Equatable { case answered, failed, superseded }
+
+    /// Whether the server (or, on an older server, this device) answered. Apple 90 (Codex round 2, high): only the latest
+    /// read counts; one that began before a newer read or an `invalidatePreferences()` changes nothing when it answers
+    /// (`superseded`), so a slow old answer (an F1 backdrop load that outlived the front page) cannot undo a newer one.
     @discardableResult
-    private func loadPreferences() async -> Bool {
+    private func loadPreferences() async -> PreferencesRead {
+        readGeneration += 1
+        let read = readGeneration
         let startedFields = fieldGeneration
         let startedAnswers = answers
         do {
             let answer: SportPagePreferences = try await client.request("sports/pages/preferences")
+            guard read == readGeneration else { return .superseded }
             serverPreferences = true
             // #171, #172: per field, and only where nothing changed it, or is saving it, or answered since this began.
             merge(answer) { field in
                 (self.savingFields[field] ?? 0) > 0 || self.fieldGeneration[field] != startedFields[field] || self.answers != startedAnswers
             }
-            return true
+            return .answered
         } catch {
+            guard read == readGeneration else { return .superseded }
             if error as? PigTVError == .http(404) {
                 serverPreferences = false
                 let local = defaults.data(forKey: Self.localKey).flatMap { try? JSONDecoder().decode(SportPagePreferences.self, from: $0) }
                     ?? SportPagePreferences()
                 merge(local) { field in self.fieldGeneration[field] != startedFields[field] }
                 preferencesKnown = true
-                return true
+                return .answered
             }
             // Anything else keeps what is on screen, and an unknown choice stays unknown (#162).
-            return false
+            return .failed
         }
     }
 

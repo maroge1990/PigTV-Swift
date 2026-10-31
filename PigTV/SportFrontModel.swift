@@ -108,9 +108,11 @@ final class SportFrontModel: ObservableObject {
     }
 
     /// Loads now, then on the interval until the calling task is cancelled (the page went away).
-    /// The household's spoiler-free switch as the sport pages hold it (`preferences`) is refreshed with each load, so a
-    /// change made elsewhere hides scores before the next answer arrives.
+    /// The household's spoiler-free switch as the sport pages hold it (`preferences`) is revalidated before each load, so
+    /// a change made elsewhere hides scores before the next answer arrives. Apple 90 (Codex round 2, high): the page
+    /// (re)appearing forgets the choice first, so cached scores stay hidden until it is confirmed again.
     func keepFresh(preferences: F1PageModel? = nil) async {
+        preferences?.invalidatePreferences()
         await refresh(preferences: preferences)
         while !Task.isCancelled {
             do { try await Task.sleep(for: interval) } catch { return }
@@ -118,8 +120,10 @@ final class SportFrontModel: ObservableObject {
         }
     }
 
+    /// The preferences, then the answer (published only after them); a failed preferences read leaves the choice
+    /// unknown, and the scores hidden (Apple 90, Codex round 2, high).
     func refresh(preferences: F1PageModel?) async {
-        await preferences?.refreshPreferences()
+        await preferences?.revalidatePreferences()
         await load()
     }
 
