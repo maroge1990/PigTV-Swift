@@ -482,6 +482,8 @@ final class AppModel: ObservableObject {
     /// app stays in the foreground (backgrounding or signing out cancels).
     func watchWhenStarts(_ event: SportEvent, channel: SportEventChannel? = nil, now: Date = Date()) {
         guard let chosen = channel ?? event.best else { return }
+        // Apple 89 (Codex round 2): an airing that has ended is never waited for (it would tune what follows).
+        guard SportRows.channelAction(event, on: chosen, now: now) != .ended else { return }
         cancelPendingWatch()
         // #20: when the chosen channel starts showing it, not the earliest of every channel.
         let start = event.start(on: chosen)

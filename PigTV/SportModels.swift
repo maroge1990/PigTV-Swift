@@ -369,10 +369,22 @@ nonisolated enum SportRows {
     /// the event page's primary action, its channel list and the long-press
     /// channel picker, so all three agree.
     /// #20: judged on `channel`'s own airing (the best channel when none is named).
+    /// Apple 89 (Codex round 2): never once the channel's airing has ended, whatever follows on that channel.
     static func playsChannelNow(_ event: SportEvent, on channel: SportEventChannel? = nil, now: Date) -> Bool {
-        guard let channel = channel ?? event.best else {
-            return event.isLive(at: now) || event.start.timeIntervalSince(now) <= watchNowWindow
+        channelAction(event, on: channel, now: now) == .play
+    }
+
+    /// What choosing a channel does: play (on, or starting within `watchNowWindow`), wait (Record / Watch when it
+    /// starts), or nothing: its airing has ended ("Not on now").
+    enum ChannelAction: Equatable, Sendable { case play, wait, ended }
+    static func channelAction(_ event: SportEvent, on channel: SportEventChannel? = nil, now: Date) -> ChannelAction {
+        let start: Date, end: Date
+        if let channel = channel ?? event.best {
+            start = event.start(on: channel); end = event.end(on: channel)
+        } else {
+            start = event.start; end = event.end
         }
-        return event.isLive(on: channel, at: now) || event.start(on: channel).timeIntervalSince(now) <= watchNowWindow
+        if end <= now { return .ended }
+        return start.timeIntervalSince(now) <= watchNowWindow ? .play : .wait
     }
 }

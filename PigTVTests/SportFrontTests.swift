@@ -349,6 +349,36 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(SportFrontText.action(game, now: SportFrontText.date(Self.cricketEnd - 1000)), .watch, "until its end")
     }
 
+    // Codex round 2 (HIGH): an expired card opens the event page, whose Watch and channel rows played any channel whose
+    // airing had started, even after it ended (`playsChannelNow` had no end), tuning what followed the game.
+    func testAnExpiredCardsEventPageOffersNoWatch() throws {
+        let event = try XCTUnwrap(SportFrontText.event(try XCTUnwrap(try front().game(Self.cricket))))
+        let later = SportFrontText.date(Self.cricketEnd + 60_000)
+        XCTAssertFalse(SportRows.playsChannelNow(event, now: later), "the page's primary Watch")
+        XCTAssertEqual(SportRows.channelAction(event, now: later), .ended, "Not on now")
+        XCTAssertFalse(SportRows.playsChannelNow(event, on: event.channels[0], now: later), "its channel row")
+    }
+
+    func testAChannelRowWithAPastEndIsNotWatchable() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let ms = now.timeIntervalSince1970 * 1000
+        let ended = SportEventChannel(sourceId: 1, rawID: "a", name: "Early", startTime: ms - 3 * 3_600_000, endTime: ms - 600_000)
+        let airing = SportEventChannel(sourceId: 1, rawID: "b", name: "Late", startTime: ms - 3_600_000, endTime: ms + 3_600_000)
+        let event = SportEvent(id: "e", title: "A v B", league: "NFL", startTime: ms - 3 * 3_600_000, endTime: ms + 3_600_000,
+                               channels: [ended, airing])
+        XCTAssertFalse(SportRows.playsChannelNow(event, on: ended, now: now), "its airing ended ten minutes ago")
+        XCTAssertEqual(SportRows.channelAction(event, on: ended, now: now), .ended)
+        XCTAssertTrue(SportRows.playsChannelNow(event, on: airing, now: now), "the other channel is still on")
+        XCTAssertEqual(SportRows.channelAction(event, on: airing, now: now), .play)
+    }
+
+    func testAChannelAiringNowIsStillWatchableOnTheEventPage() throws {
+        let f = try front()
+        let event = try XCTUnwrap(SportFrontText.event(try XCTUnwrap(f.game(Self.cricket))))
+        XCTAssertTrue(SportRows.playsChannelNow(event, now: SportFrontText.date(f.now)))
+        XCTAssertTrue(SportRows.playsChannelNow(event, now: SportFrontText.date(Self.cricketEnd - 1000)), "until its end")
+    }
+
     // D-39: the app opens on Sport when the server has it, Sport first and TV second; Home is "TV" with the tag "home".
     func testTheAppOpensOnSport() {
         XCTAssertEqual(LibraryView.openingTab(sportEnabled: true), "sport")

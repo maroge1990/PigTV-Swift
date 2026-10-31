@@ -106,6 +106,8 @@ struct SportChannelRow: View {
     var isBest = false
     var playsNow = true
     var scheduled = false
+    /// Its airing has ended: nothing to play or wait for.
+    var ended = false
     let action: () -> Void
 
     var body: some View {
@@ -126,6 +128,9 @@ struct SportChannelRow: View {
                     if scheduled {
                         Text("Recording scheduled").font(DetailType.rowDetail).foregroundStyle(.secondary)
                     }
+                    if ended {
+                        Text("Not on now").font(DetailType.rowDetail).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 16)
                 if let quality = channel.quality { QualityBadge(quality: quality) }
@@ -145,12 +150,13 @@ struct SportChannelRow: View {
     }
 
     private var icon: String {
+        if ended { return "xmark.circle" }
         if playsNow { return "play.fill" }
         return scheduled ? "record.circle" : "alarm"
     }
 
     private var accessibilityLabel: String {
-        let text = playsNow ? "Watch on \(channel.name)"
+        let text = ended ? "Not on now on \(channel.name)" : playsNow ? "Watch on \(channel.name)"
             : scheduled ? "Recording scheduled on \(channel.name)" : "Record or watch \(channel.name) when it starts"
         return text + (channel.quality.map { ", \($0.rawValue)" } ?? "")
     }
@@ -169,12 +175,18 @@ struct SportChannelPicker: View {
 
     var body: some View {
         DetailPage(title: "Choose a channel") {
-            VStack(alignment: .leading, spacing: 8) {
-                Eyebrow(text: event.league)
-                Text(event.title).font(DetailType.channel)
-                Text(SportRows.timing(event, now: clock)).font(DetailType.meta).foregroundStyle(.secondary)
+            // The clock moves while the picker is open (it may have been presented minutes ago).
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                let now = max(context.date, clock)
+                VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Eyebrow(text: event.league)
+                        Text(event.title).font(DetailType.channel)
+                        Text(SportRows.timing(event, now: now)).font(DetailType.meta).foregroundStyle(.secondary)
+                    }
+                    SportChannelList(event: event, app: app, browse: browse, clock: now, play: play)
+                }
             }
-            SportChannelList(event: event, app: app, browse: browse, clock: clock, play: play)
         }
     }
 }
@@ -215,12 +227,16 @@ struct SportChannelList: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(event.channels.enumerated()), id: \.element.id) { index, channel in
                 // #20: each row on its own channel's airing.
-                let playsNow = SportRows.playsChannelNow(event, on: channel, now: clock)
-                let scheduled = !playsNow && browse.isScheduled(event, on: channel)
+                let action = SportRows.channelAction(event, on: channel, now: clock)
+                let scheduled = action != .play && browse.isScheduled(event, on: channel)
                 SportChannelRow(channel: channel, browse: browse, isBest: index == 0 && event.channels.count > 1,
-                                 playsNow: playsNow, scheduled: scheduled) {
-                    if playsNow { play { app.playSportEvent(event, channel: channel) } }
-                    else { choosing = channel }
+                                 playsNow: action == .play, scheduled: scheduled, ended: action == .ended) {
+                    // Decided again at the press: the page may have been open since before the airing ended.
+                    switch SportRows.channelAction(event, on: channel, now: Date()) {
+                    case .play: play { app.playSportEvent(event, channel: channel) }
+                    case .wait: choosing = channel
+                    case .ended: break
+                    }
                 }
             }
         }
@@ -310,7 +326,7 @@ struct SportEventDetails: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let live = event.isLive(at: now)
-        let playsNow = SportRows.playsChannelNow(event, now: now)
+        let action = SportRows.channelAction(event, now: now)
         let pending = app.pendingWatch?.eventID == event.id
         let best = event.best
         VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
@@ -337,9 +353,21 @@ struct SportEventDetails: View {
                         Button("Don't watch at \((app.pendingWatch?.at ?? event.start).formatted(date: .omitted, time: .shortened))",
                                systemImage: "xmark") { app.cancelPendingWatch() }
                             .focused($focus, equals: .watch)
-                    } else if playsNow {
+                    } else if action == .ended {
+                        // Apple 89 (Codex round 2): the airing is over; the channel shows something else now.
+                        Button("Not on now", systemImage: "xmark.circle") {}
+                            .disabled(true)
+                            .focused($focus, equals: .watch)
+                            .accessibilityIdentifier("sport.notOnNow")
+                    } else if action == .play {
                         Button("Watch \(best.name)", systemImage: "play.fill") {
-                            play { app.playSportEvent(event) }
+                            // Decided again at the press (the page may have been open since before the airing ended).
+                            let at = Date()
+                            switch SportRows.channelAction(event, now: at) {
+                            case .play: play { app.playSportEvent(event) }
+                            case .wait: play { app.watchWhenStarts(event, now: at) }
+                            case .ended: break
+                            }
                         }
                         .pigPrimaryButton()
                         .focused($focus, equals: .watch)
