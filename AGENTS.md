@@ -42,6 +42,17 @@ sh Tools/bump-build.sh                                                          
 the end: a booted tvOS simulator left running crash-loops its daemons and loads the Mac. Do the same (`xcrun simctl shutdown
 all`) after a plain `xcodebuild test`. A new UI suite runs in the push tier unless it is listed in `VISUAL` in the script.
 
+## Installing on Mark's devices (until TestFlight)
+
+When Mark asks for a build on a device, sync this tree to `mac:~/pigtv-build/b3-swift` (only when no test run uses it),
+then run the installer **in the Claude desktop app's Terminal panel** (`run_in_terminal`), never through Bash:
+`ssh -t mac 'cd ~/pigtv-build/b3-swift && sh Tools/install-device.sh "iPad"'`. Signing needs the Mac's login keychain,
+which a plain SSH session cannot unlock (`errSecInternalComponent`): the script asks for the Mac password in that tab,
+and Mark types it there (tell him: open the tab, type the password, nothing shows, press Return). Never ask for the
+password in chat or store it. Devices by name: `iPad`, `PiGPhone`, `Downstairs Living Room`, `Upstairs Living Room`,
+`Mark Office`; on, awake, on the home network. Quote the `~` (else the local shell expands it). On the free team a
+build stops opening after 7 days; installing again renews it. TestFlight (`Tools/testflight.sh`) replaces this.
+
 ## How changes ship
 
 **Commit to `main`; push once the batch has passed its reviews** (server D-34). Work on `main`; `git pull --rebase`
