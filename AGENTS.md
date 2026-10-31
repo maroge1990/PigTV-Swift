@@ -90,7 +90,7 @@ server's `AGENTS.md` › Session checklist (issues first; the end-of-session doc
   changing the production server, or opening a real provider connection.
 - Server changes are made in `../PigTV` under its `AGENTS.md`; a new endpoint this client calls needs an entry in the server's
   `APPLE_CLIENT_ROUTES`.
-- The lead session may delegate to sub-agents (never Haiku) and reviews every diff before it's committed.
+- The lead session may delegate to sub-agents and reviews every diff before it's committed.
 - **Adversarial review:** the server's `AGENTS.md` › Reviews (Claude launches Codex itself; at most two rounds; findings
   become issues). For this repo the threshold is any functional change to playback, the caches or other shared
   ownership/accounting, the Top Shelf, pairing/auth, or anything the server's `docs/CLIENT-CONTRACT.md` covers; any fix
