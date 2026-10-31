@@ -184,6 +184,13 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(SportFrontText.monogram("Bears"), "B")
     }
 
+    // Build 89 review: a badge whose logo failed (the fixture's Packers) drew an empty disc.
+    func testABadgeFallsBackToTheMonogram() {
+        XCTAssertFalse(SportFrontText.badgeShowsLogo(logo: nil, decoded: false), "no logo")
+        XCTAssertFalse(SportFrontText.badgeShowsLogo(logo: "/api/logo/espn-gb", decoded: false), "loading or failed")
+        XCTAssertTrue(SportFrontText.badgeShowsLogo(logo: "/api/logo/espn-gb", decoded: true))
+    }
+
     func testCompactFollowsPutLiveFirstThenSoonest() throws {
         let f = try front()
         XCTAssertEqual(SportFrontText.compactOrder(f.follows), [1, 0])
@@ -293,6 +300,55 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(event.endTime, 1793424762249)
     }
 
+    // Codex round 1 (HIGH): a cached live card stayed watchable after its channel's airing ended, so Watch tuned the
+    // channel after the game. Watch now needs the channel to air it at the clock of the press; `canWatch` never
+    // outlasts the channel's own end.
+    static let cricket = "guide:ev-cricket"
+    static let cricketEnd = 1793428062249.0
+
+    func testACachedWatchableCardIsNotWatchableAfterItsChannelsAiringEnds() throws {
+        let game = try XCTUnwrap(try front().game(Self.cricket))
+        XCTAssertTrue(game.canWatch, "the answer said it could be watched")
+        let later = SportFrontText.date(Self.cricketEnd + 60_000)
+        XCTAssertNotEqual(SportFrontText.action(game, now: later), .watch)
+        XCTAssertNil(SportFrontText.playable(game, at: later))
+        XCTAssertEqual(SportFrontText.action(game, now: later), .details, "Record and the channels instead")
+    }
+
+    func testAfterAFailedRefreshTheOldLiveCardIsNotWatchableOnceItsAiringEnds() async throws {
+        FrontRoutes.asked = []
+        FrontRoutes.status = 200
+        defer { FrontRoutes.status = 200 }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FrontRoutes.self]
+        let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
+                               session: URLSession(configuration: configuration))
+        let m = SportFrontModel(client: client)
+        await m.load()
+        XCTAssertFalse(m.stale)
+        FrontRoutes.status = 500
+        await m.load()
+        XCTAssertTrue(m.stale, "the answer shown is an old one")
+        XCTAssertNotNil(m.updatedAt)
+        let kept = try XCTUnwrap(m.front?.game(Self.cricket), "a failed refresh keeps the previous answer")
+        let later = SportFrontText.date(Self.cricketEnd + 1000)
+        XCTAssertNotEqual(SportFrontText.action(kept, now: later), .watch)
+        XCTAssertNil(SportFrontText.playable(kept, at: later))
+        FrontRoutes.status = 200
+        await m.load()
+        XCTAssertFalse(m.stale)
+    }
+
+    func testACardOnAChannelAiringNowIsStillWatchable() throws {
+        let f = try front()
+        let game = try XCTUnwrap(f.game(Self.cricket))
+        let now = SportFrontText.date(f.now)
+        XCTAssertEqual(SportFrontText.action(game, now: now), .watch)
+        let event = try XCTUnwrap(SportFrontText.playable(game, at: now))
+        XCTAssertEqual(event.best?.name, "Fox Cricket")
+        XCTAssertEqual(SportFrontText.action(game, now: SportFrontText.date(Self.cricketEnd - 1000)), .watch, "until its end")
+    }
+
     // D-39: the app opens on Sport when the server has it, Sport first and TV second; Home is "TV" with the tag "home".
     func testTheAppOpensOnSport() {
         XCTAssertEqual(LibraryView.openingTab(sportEnabled: true), "sport")
@@ -317,15 +373,16 @@ final class SportFrontTests: XCTestCase {
 
 private final class FrontRoutes: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var asked: [String] = []
+    nonisolated(unsafe) static var status = 200
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let path = request.url?.path ?? ""
         Self.asked.append(path)
         let body = path.hasSuffix("sports/front") ? ((try? SportFrontTests.fixture()) ?? Data("{}".utf8)) : Data("{}".utf8)
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: Self.status, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocol(self, didLoad: Self.status == 200 ? body : Data(#"{"error":"down"}"#.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}

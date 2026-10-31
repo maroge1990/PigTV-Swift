@@ -12,6 +12,10 @@ final class SportFrontModel: ObservableObject {
     @Published private(set) var front: SportFront?
     @Published private(set) var loaded = false
     @Published private(set) var error: String?
+    /// The last refresh failed: what is shown is an older answer (`updatedAt`).
+    @Published private(set) var stale = false
+    /// When the answer shown was received.
+    @Published private(set) var updatedAt: Date?
     /// The game the hero band shows (`SportFrontHero`).
     @Published private(set) var heroID: String?
     /// The follow the viewer flipped the hero to, by key (league and name), so a list reordered on another device keeps
@@ -90,9 +94,11 @@ final class SportFrontModel: ObservableObject {
                 let answer: SportFront = try await self.client.decodedOffMain("sports/front")
                 self.apply(answer)
                 self.error = nil
+                self.stale = false
+                self.updatedAt = Date()
             } catch is CancellationError {
             } catch {
-                if self.front == nil { self.error = UserMessage.text(for: error) }
+                if self.front == nil { self.error = UserMessage.text(for: error) } else { self.stale = true }
             }
             self.loaded = true
         }

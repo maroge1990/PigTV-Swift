@@ -146,6 +146,11 @@ private struct SportFrontPage: View {
             VStack(alignment: .leading, spacing: FrontMetrics.section) {
                 PigPageHeader(title: "Sport", subtitle: Text(now, format: .dateTime.weekday(.wide).day().month(.wide)))
                 if let front = model.front {
+                    if model.stale, let updated = model.updatedAt {
+                        Text("Couldn't refresh. Last updated \(updated.formatted(date: .omitted, time: .shortened)).")
+                            .font(FrontMetrics.detail).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("sport.front.stale")
+                    }
                     if front.scoresUnavailable { scoresBanner }
                     tiles(front, now: now)
                     if front.isEmpty {
@@ -331,7 +336,7 @@ private struct SportFrontPage: View {
             HStack(spacing: 18) {
                 switch SportFrontText.action(game, now: now) {
                 case .watch:
-                    Button("Watch", systemImage: "play.fill") { play(event) }
+                    Button("Watch", systemImage: "play.fill") { watch(game, event: event) }
                         .pigPrimaryButton()
                         .accessibilityIdentifier("sport.front.hero.watch")
                 case .remind:
@@ -504,10 +509,16 @@ private struct SportFrontPage: View {
     private func select(_ game: SportsGame, now: Date) {
         guard let event = SportFrontText.event(game) else { return }
         switch SportFrontText.action(game, now: now) {
-        case .watch: play(event)
+        case .watch: watch(game, event: event)
         case .remind, .details: presenter?.open(event, .details)
         case .none: break
         }
+    }
+
+    /// Watch, revalidated at the press: an answer drawn earlier (or kept after a failed refresh) may describe an
+    /// airing that has ended, and the player would tune the channel whatever it shows now. Then the details instead.
+    private func watch(_ game: SportsGame, event: SportEvent) {
+        if let live = SportFrontText.playable(game, at: Date()) { play(live) } else { presenter?.open(event, .details) }
     }
 
     private func play(_ event: SportEvent) {
@@ -551,19 +562,20 @@ private struct SportFrontPage: View {
     }
 }
 
-/// A team's badge: its logo (a logo-cache path, as channel logos) or, without one, a monogram disc in the league's
-/// colour (C-R, D-39).
+/// A team's badge: its logo (a logo-cache path, as channel logos, through the same cache) or a monogram disc in the
+/// league's colour: without a logo, while it loads, and when it fails (C-R, D-39), never an empty disc.
 struct SportBadge: View {
     let name: String
     let logo: String?
     let league: String
     let client: APIClient?
     var size: CGFloat
+    @State private var decoded: DecodedLogo?
 
     var body: some View {
         Group {
-            if let logo {
-                ChannelArtwork(logo: logo, client: client, fill: true)
+            if SportFrontText.badgeShowsLogo(logo: logo, decoded: decoded != nil), let decoded {
+                Image(uiImage: decoded.image).resizable().scaledToFit()
                     .frame(width: size, height: size)
             } else {
                 Text(SportFrontText.monogram(name)).font(.system(size: size * 0.38, weight: .heavy)).foregroundStyle(.white)
@@ -573,5 +585,12 @@ struct SportBadge: View {
             }
         }
         .accessibilityHidden(true)
+        .task(id: logo) {
+            decoded = nil
+            guard let logo, let client, let key = client.artworkKey(logo) else { return }
+            let result = await ChannelArtwork.decodedLogo(key: key, logo: logo, client: client)
+            guard !Task.isCancelled else { return }
+            decoded = result
+        }
     }
 }

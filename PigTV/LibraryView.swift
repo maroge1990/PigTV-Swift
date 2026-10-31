@@ -5,6 +5,8 @@ struct LibraryView: View {
     /// The tab the app opens on (nil: `LibraryView.openingTab`; the offline fixtures may pick their own).
     var initialTab: String? = nil
     @State private var tab: String?
+    /// The viewer (or a link) chose a tab: the opening decision never overrides it.
+    @State private var chosen = false
 
     /// D-39 (Apple 89): the app opens on Sport when the server has it, else on TV (tag "home", as `pigtv://home`).
     nonisolated static func openingTab(sportEnabled: Bool) -> String { sportEnabled ? "sport" : "home" }
@@ -13,12 +15,27 @@ struct LibraryView: View {
         (sportEnabled ? ["sport"] : []) + ["home", "guide", "recordings", "settings"]
     }
 
+    /// The tab shown: the chosen one, else the opening tab (Settings until signed in).
+    private var selection: String {
+        tab ?? model.browse.map { initialTab ?? Self.openingTab(sportEnabled: $0.sportEnabled) } ?? "settings"
+    }
+
+    /// Moves when the session or whether it has sport changes.
+    private var openingKey: String {
+        model.browse.map { "\(ObjectIdentifier($0))|\($0.sportEnabled)" } ?? ""
+    }
+
     var body: some View {
         // Accent tint on the TabView so the selected tab reads pink — the
         // white selection was hard to distinguish from unselected tabs.
-        // Until the opening tab is decided (once, below), the first tab there is.
-        TabView(selection: Binding(get: { tab ?? (model.browse == nil ? "settings" : (initialTab ?? "home")) },
-                                   set: { PigTVSignpost.tabSelected($0); tab = $0 })) {
+        // Until the opening tab is written (below), the selection is what it will be, so a selection the tab bar writes
+        // back at launch is the opening tab, not TV.
+        TabView(selection: Binding(get: { selection },
+                                   set: { new in
+                                       if new != selection { chosen = true }
+                                       PigTVSignpost.tabSelected(new)
+                                       tab = new
+                                   })) {
             if let browse = model.browse {
                 // C-I (build 30): only when the server has sport events. D-39 (Apple 89): first, as the app opens on it.
                 // Five tabs fit the iPhone's bar, so it is a tab there too.
@@ -56,13 +73,15 @@ struct LibraryView: View {
         // Deciding the opening tab (nil → a tab) is not a switch.
         .onChange(of: tab) { old, _ in if old != nil && TabSwitchProbe.enabled { TabSwitchProbe.shared.tabChanged() } }
         #endif
-        // D-39: the opening tab is decided once, when the session's browse model is there (not on every render).
-        .onChange(of: model.browse.map(ObjectIdentifier.init), initial: true) {
-            guard tab == nil, let browse = model.browse else { return }
+        // D-39: the opening tab is written when the session's browse model and its sport availability are known, and again
+        // only if that availability changes before the viewer has chosen a tab: a chosen tab is never overridden.
+        .onChange(of: openingKey, initial: true) {
+            guard !chosen, let browse = model.browse else { return }
             tab = initialTab ?? Self.openingTab(sportEnabled: browse.sportEnabled)
         }
         .onChange(of: model.requestedTab, initial: true) { _, requested in
             guard let requested else { return }
+            chosen = true
             tab = requested
             model.requestedTab = nil
         }

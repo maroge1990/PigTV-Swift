@@ -283,13 +283,19 @@ nonisolated enum SportFrontText {
     }
 
     enum Action: Equatable { case watch, remind, details, none }
-    /// What selecting a card does: Watch while it is on a channel now, Remind me before, the details otherwise.
+    /// What selecting a card does: Watch only while its channel airs it now (that channel's own `start`/`end`, C-R; a
+    /// cached `canWatch` never outlasts them, as an answer may be minutes old or kept after a failed refresh), Remind me
+    /// before, the details (Record, the channels) otherwise. Called again at the moment of the press (`playable`).
     static func action(_ game: SportsGame, now: Date) -> Action {
-        guard !game.terminal, let event = event(game) else { return .none }
-        if SportFrontHero.ongoing.contains(game.status) || game.broadcastStatus == "on-tv" {
-            return game.canWatch || event.isLive(at: now) ? .watch : .details
-        }
-        return event.start > now ? .remind : .details
+        guard !game.terminal, let event = event(game), let best = event.best else { return .none }
+        if event.isLive(on: best, at: now) { return .watch }
+        return event.start(on: best) > now ? .remind : .details
+    }
+
+    /// The event to play if the game's channel airs it at `now`, else nil (open the details instead). Checked when
+    /// Watch is pressed, never from what was drawn.
+    static func playable(_ game: SportsGame, at now: Date) -> SportEvent? {
+        action(game, now: now) == .watch ? event(game) : nil
     }
 
     static func actionLabel(_ game: SportsGame, now: Date) -> String {
@@ -300,6 +306,10 @@ nonisolated enum SportFrontText {
         case .none: return game.terminal ? "" : "Not on your channels"
         }
     }
+
+    /// A badge draws its logo only once the logo has loaded; without one, while loading, or after a failed load it
+    /// draws the monogram disc.
+    static func badgeShowsLogo(logo: String?, decoded: Bool) -> Bool { logo != nil && decoded }
 
     /// "Green Bay Packers" → "GP", "Bears" → "B".
     static func monogram(_ name: String) -> String {
