@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import PigTV
 
 // C-S (#21, Apple 90): the Cricket page. `cricket-page-0387-stumps.json` and `cricket-page-0387-live.json` are the server's
@@ -241,5 +242,102 @@ final class CricketPageRefreshTests: XCTestCase {
         XCTAssertEqual(prefs.preferences.teams["Cricket"], ["Australia"])
         XCTAssertEqual(CricketRoutes.asked.filter { $0.hasSuffix("sports/pages/cricket") }.count, 1)
         XCTAssertFalse(CricketRoutes.asked.contains { $0.hasSuffix("sports/pages/f1") || $0.hasSuffix("sports/pages/nfl") })
+    }
+}
+
+/// A server whose preferences answer can be delayed or fail, and whose Cricket answer can change between loads.
+private final class CricketSpoilerRoutes: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var spoilerFree = false
+    nonisolated(unsafe) static var preferencesStatus = 200
+    nonisolated(unsafe) static var preferencesDelay: TimeInterval = 0
+    nonisolated(unsafe) static var answer = "stumps"
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let path = request.url?.path ?? ""
+        let preferences = path.hasSuffix("sports/pages/preferences")
+        let status = preferences ? Self.preferencesStatus : 200
+        let body = preferences ? Data(#"{"spoilerFree":\#(Self.spoilerFree),"sports":["Cricket"],"teams":{"Cricket":["Australia"]},"following":{"F1":null,"NFL":null}}"#.utf8)
+            : path.hasSuffix("sports/pages/cricket") ? ((try? CricketPageTests.fixture(Self.answer)) ?? Data("{}".utf8)) : Data(#"{"available":false}"#.utf8)
+        let send = { [self] in
+            client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: status == 200 ? body : Data(#"{"error":"down"}"#.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        }
+        if preferences && Self.preferencesDelay > 0 { DispatchQueue.global().asyncAfter(deadline: .now() + Self.preferencesDelay, execute: send) } else { send() }
+    }
+    override func stopLoading() {}
+}
+
+// Apple 90 (Codex round 1, high): spoiler-free switched on at another device must hide the scores before any new answer
+// is drawn: the page published its answer before asking for the preferences, a failed preferences request kept the old
+// choice, and a page opened again drew its cached scores under the old choice.
+@MainActor
+final class CricketPageSpoilerTests: XCTestCase {
+    private var cancellables: Set<AnyCancellable> = []
+
+    private func models() throws -> (CricketPageModel, F1PageModel) {
+        CricketSpoilerRoutes.spoilerFree = false
+        CricketSpoilerRoutes.preferencesStatus = 200
+        CricketSpoilerRoutes.preferencesDelay = 0
+        CricketSpoilerRoutes.answer = "stumps"
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CricketSpoilerRoutes.self]
+        let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", session: URLSession(configuration: configuration))
+        return (CricketPageModel(client: client), F1PageModel(client: client, defaults: UserDefaults(suiteName: "cricket-spoilers-\(UUID())")!))
+    }
+
+    func testNewScoresAreNeverDrawnBeforeASlowSpoilerFreeAnswer() async throws {
+        let (model, prefs) = try models()
+        await model.refresh(preferences: prefs)
+        XCTAssertFalse(prefs.hidesSpoilers, "spoilers shown, as this session last learned")
+        CricketSpoilerRoutes.spoilerFree = true
+        CricketSpoilerRoutes.preferencesDelay = 1.5
+        CricketSpoilerRoutes.answer = "live"
+        var drawnUnredacted: [Bool] = []
+        model.$page.dropFirst().sink { page in if page?.lead?.status == .live { drawnUnredacted.append(!prefs.hidesSpoilers) } }.store(in: &cancellables)
+        await model.refresh(preferences: prefs)
+        XCTAssertEqual(model.page?.lead?.status, .live)
+        XCTAssertEqual(drawnUnredacted, [false], "the new answer is published only once spoiler-free has answered")
+        XCTAssertTrue(prefs.hidesSpoilers)
+    }
+
+    func testAFailedPreferencesRequestHidesTheScores() async throws {
+        let (model, prefs) = try models()
+        await model.refresh(preferences: prefs)
+        XCTAssertFalse(prefs.hidesSpoilers)
+        CricketSpoilerRoutes.preferencesStatus = 500
+        CricketSpoilerRoutes.answer = "live"
+        await model.refresh(preferences: prefs)
+        XCTAssertTrue(prefs.hidesSpoilers, "the household's choice could not be confirmed: hidden")
+        CricketSpoilerRoutes.preferencesStatus = 200
+        await model.refresh(preferences: prefs)
+        XCTAssertFalse(prefs.hidesSpoilers, "shown again once it answers")
+    }
+
+    func testAPageOpenedAgainHidesItsCachedScoresUntilThePreferencesAnswer() async throws {
+        let (model, prefs) = try models()
+        await model.refresh(preferences: prefs)
+        XCTAssertFalse(prefs.hidesSpoilers)
+        XCTAssertNotNil(model.page, "scores on hand from the last visit")
+        CricketSpoilerRoutes.spoilerFree = true
+        CricketSpoilerRoutes.preferencesDelay = 2
+        let visit = Task { await model.keepFresh(preferences: prefs) }
+        defer { visit.cancel() }
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertTrue(prefs.hidesSpoilers, "reopened: hidden while the preferences are asked again")
+        let answered = await waitFor(5) { prefs.preferences.spoilerFree }
+        XCTAssertTrue(answered)
+        XCTAssertTrue(prefs.hidesSpoilers)
+    }
+
+    private func waitFor(_ seconds: TimeInterval, _ condition: @MainActor () -> Bool) async -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return condition()
     }
 }

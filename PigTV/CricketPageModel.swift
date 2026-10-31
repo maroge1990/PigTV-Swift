@@ -26,30 +26,48 @@ final class CricketPageModel: ObservableObject {
         guard !isFixture else { loaded = true; return }
         let task = Task { [weak self] in
             guard let self else { return }
-            do {
-                let answer: CricketPage = try await self.client.decodedOffMain("sports/pages/cricket")
-                // "Not ready yet" keeps what is on screen; a later load has it.
-                if answer.available || self.page == nil, answer != self.page { self.page = answer }
-                self.error = nil
-            } catch is CancellationError {
-            } catch {
-                if self.page == nil { self.error = UserMessage.text(for: error) }
-            }
-            self.loaded = true
+            self.publish(await self.fetch())
         }
         inFlight = task
         await task.value
         inFlight = nil
     }
 
-    /// The page and the household's preferences (spoiler-free switched on elsewhere reaches an open page).
-    func refresh(preferences: F1PageModel?) async {
-        await load()
-        await preferences?.refreshPreferences()
+    private func fetch() async -> Result<CricketPage, Error>? {
+        guard !isFixture else { return nil }
+        do { return .success(try await client.decodedOffMain("sports/pages/cricket")) } catch { return .failure(error) }
     }
 
-    /// Refreshes now, then again on the interval until the calling task is cancelled (the page went away).
+    private func publish(_ result: Result<CricketPage, Error>?) {
+        switch result {
+        case .success(let answer):
+            // "Not ready yet" keeps what is on screen; a later load has it.
+            if answer.available || page == nil, answer != page { page = answer }
+            error = nil
+        case .failure(let failure):
+            if !(failure is CancellationError), page == nil { error = UserMessage.text(for: failure) }
+        case nil:
+            break
+        }
+        loaded = true
+    }
+
+    /// The page and the household's preferences (spoiler-free switched on elsewhere reaches an open page). Apple 90
+    /// (Codex round 1, high): the answer is fetched alongside the preferences but published only once they have
+    /// answered, so new scores never show under a spoiler choice that has since changed; a failed preferences request
+    /// leaves the choice unknown, and the scores hidden.
+    func refresh(preferences: F1PageModel?) async {
+        guard let preferences else { await load(); return }
+        async let answer = fetch()
+        await preferences.revalidatePreferences()
+        publish(await answer)
+    }
+
+    /// Refreshes now, then again on the interval until the calling task is cancelled (the page went away). The page
+    /// (re)appearing forgets the household's spoiler choice until it is answered again: the scores already on hand stay
+    /// hidden meanwhile.
     func keepFresh(preferences: F1PageModel? = nil) async {
+        preferences?.invalidatePreferences()
         await refresh(preferences: preferences)
         while !Task.isCancelled {
             do { try await Task.sleep(for: hasLiveMatch ? Self.liveRefreshInterval : Self.refreshInterval) } catch { return }

@@ -96,7 +96,23 @@ final class F1PageModel: ObservableObject {
         await loadPreferences()
     }
 
-    private func loadPreferences() async {
+    /// Apple 90 (Codex round 1, high): the household's choice is forgotten (spoilers hidden) until a load answers it
+    /// again: a sport page reappearing may have been switched to spoiler-free on another device meanwhile.
+    func invalidatePreferences() {
+        guard !isFixture else { return }
+        preferencesKnown = false
+    }
+
+    /// Apple 90 (Codex round 1, high): the preferences again, for a page that publishes scores only after them; a request
+    /// that fails (other than an older server's 404) leaves the choice unknown, so the scores stay hidden.
+    func revalidatePreferences() async {
+        guard !isFixture else { return }
+        if await !loadPreferences() { preferencesKnown = false }
+    }
+
+    /// True when the server (or, on an older server, this device) answered.
+    @discardableResult
+    private func loadPreferences() async -> Bool {
         let startedFields = fieldGeneration
         let startedAnswers = answers
         do {
@@ -106,6 +122,7 @@ final class F1PageModel: ObservableObject {
             merge(answer) { field in
                 (self.savingFields[field] ?? 0) > 0 || self.fieldGeneration[field] != startedFields[field] || self.answers != startedAnswers
             }
+            return true
         } catch {
             if error as? PigTVError == .http(404) {
                 serverPreferences = false
@@ -113,8 +130,10 @@ final class F1PageModel: ObservableObject {
                     ?? SportPagePreferences()
                 merge(local) { field in self.fieldGeneration[field] != startedFields[field] }
                 preferencesKnown = true
+                return true
             }
             // Anything else keeps what is on screen, and an unknown choice stays unknown (#162).
+            return false
         }
     }
 
