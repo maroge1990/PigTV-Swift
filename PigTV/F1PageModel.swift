@@ -73,7 +73,9 @@ final class F1PageModel: ObservableObject {
         let task = Task { [weak self] in
             guard let self else { return }
             async let pageAnswer: F1Page = self.client.decodedOffMain("sports/pages/f1")
-            await self.loadPreferences()
+            // Apple 90 (Codex round 1, high): the answer is published only after the preferences, and a failed request
+            // leaves the spoiler choice unknown (the scores hidden) rather than keeping the last one.
+            await self.revalidatePreferences()
             do {
                 let answer = try await pageAnswer
                 // "Not ready yet" keeps what is on screen; a later load has it.
@@ -223,7 +225,9 @@ final class F1PageModel: ObservableObject {
     }
 
     /// Loads now, then every 60 s until the calling task is cancelled (the page went away).
+    /// Apple 90 (Codex round 1, high): the page (re)appearing forgets the spoiler choice until the first load answers it.
     func keepFresh() async {
+        invalidatePreferences()
         await load()
         while !Task.isCancelled {
             do { try await Task.sleep(for: Self.refreshInterval) } catch { return }
