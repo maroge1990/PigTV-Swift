@@ -226,13 +226,15 @@ private struct SportFrontPage: View {
         .accessibilityIdentifier("sport.front.addSport")
     }
 
-    /// A tile's page: Formula 1 and the NFL have their own; any other sport opens the Sport tab's list on that league.
+    /// A tile's page: Formula 1, the NFL and Cricket have their own; any other sport opens the Sport tab's list on that league.
     @ViewBuilder
     private func destination(_ league: String) -> some View {
         if league == "F1" && browse.sportPagesEnabled {
             F1PageView(app: app, browse: browse, model: browse.f1Page)
         } else if league == "NFL" && browse.nflPageEnabled {
             NFLPageView(app: app, browse: browse)
+        } else if league == "Cricket" && browse.cricketPageEnabled {
+            CricketPageView(app: app, browse: browse)
         } else {
             SportView(app: app, browse: browse, sport: browse.sport, initialLeague: league, embedded: true,
                       origin: SportFrontView.origin)

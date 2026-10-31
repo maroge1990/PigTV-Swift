@@ -685,6 +685,34 @@ enum ContractChecks {
         let olderPrefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":false,"following":{"F1":null,"NFL":"GB"}}"#.utf8))
         try expect(olderPrefs.sports.isEmpty && olderPrefs.teams.isEmpty && olderPrefs.nflFollowing == "GB", "C-R: a server before 0381 has no sports or teams")
 
+        // C-S (server 0383): the Cricket page; unknown fields ignored, nulls never guessed, not batted is no innings.
+        let cricketInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9","apiVersion":1,"features":{"library":true,"playbackResolve":true,"sportPageCricket":true}}"#.utf8))
+        try expect(cricketInfo.features.sportPageCricket == true, "C-S: the sportPageCricket flag is decoded")
+        try expect(frontInfo.features.sportPageCricket != true, "C-S: no flag, no Cricket page")
+        let cricket = try JSONDecoder().decode(CricketPage.self, from: Data(#"""
+            {"available":true,"updatedAt":1793411760000,
+             "lead":{"id":"1525661","seriesId":"24203","competition":"Australia in South Africa","label":"3rd Test","format":"test","venue":"Newlands, Cape Town","city":"Cape Town",
+                     "start":1793089800000,"end":1793458800000,"status":"break","breakLabel":"Stumps","day":"Day 4","session":null,
+                     "teams":[{"abbr":"SA","name":"South Africa","logo":"/api/logo/espn-cricket-3"},{"abbr":"AUS","name":"Australia","logo":null}],
+                     "innings":[[{"runs":329,"wickets":10,"overs":"82.3","declared":false,"current":false},{"runs":200,"wickets":5,"overs":"71.4","declared":false,"current":true}],[{"runs":406,"wickets":5,"overs":"120","declared":true,"current":false}]],
+                     "summary":"South Africa lead by 100 runs","crease":[{"name":"RD Rickelton","runs":31,"balls":70}],"seriesLine":"Series level 1–1",
+                     "days":[{"number":4,"date":1793278800000,"state":"done"},{"number":5,"date":1793365200000,"state":"next"}],"nextStart":1793435400000,
+                     "channels":[{"sourceId":8,"id":"fox","name":"Fox Cricket","start":1793433600000,"end":1793462400000,"overrun":true}],"future":1},
+             "series":{"id":"24203","name":"Australia in South Africa","season":"2026/27","matches":[{"id":"1","label":"1st Test","start":1,"end":2,"status":"done","result":"Australia won by 214 runs","current":false},{"id":"1525661","label":"3rd Test","start":3,"end":4,"status":"break","result":null,"current":true}]},
+             "others":[{"id":"9","seriesId":"8","competition":"WBBL","teams":[{"abbr":"ST","name":"Adelaide Strikers Women","logo":null},{"abbr":"MS","name":"Melbourne Stars Women","logo":null}],"scores":["161/6",null],"line":"Stars need 99","status":"live","start":5,"nextStart":null,"channels":[]},{"broken":true}]}
+            """#.utf8))
+        try expect(cricket.available && cricket.lead?.status == .onBreak && cricket.lead?.breakLabel == "Stumps" && cricket.lead?.session == nil, "C-S: the lead at stumps")
+        try expect(cricket.lead.map { CricketPageText.innings($0.innings[0]) } == "329 & 200/5" && cricket.lead.map { CricketPageText.innings($0.innings[1]) } == "406/5d", "C-S: innings per team, declared")
+        try expect(cricket.lead?.channels.first?.startTime == 1793433600000 && cricket.lead?.channels.first?.endTime == 1793462400000, "C-S: each channel's own airing, overrun ignored")
+        try expect(cricket.series?.matches.count == 2 && cricket.series?.matches[1].current == true && cricket.series?.matches[1].result == nil, "C-S: the series")
+        try expect(cricket.others.count == 1 && cricket.others[0].scores == ["161/6", nil], "C-S: an other match that does not decode is dropped; a team not batted has no score")
+        let cricketHidden = CricketPageText.visible(cricket, spoilerFree: true)
+        try expect(cricketHidden.lead?.innings.allSatisfy(\.isEmpty) == true && cricketHidden.lead?.summary == nil && cricketHidden.lead?.crease == nil
+                   && cricketHidden.lead?.seriesLine == nil && cricketHidden.series?.matches[0].result == nil
+                   && cricketHidden.others[0].scores == [nil, nil] && cricketHidden.others[0].line == nil, "C-S: spoiler-free hides innings, summary, crease, series line, results, others' scores and line")
+        try expect(cricketHidden.lead?.days == cricket.lead?.days && cricketHidden.lead?.nextStart == cricket.lead?.nextStart && cricketHidden.lead?.day == "Day 4"
+                   && cricketHidden.lead?.teams == cricket.lead?.teams, "C-S: spoiler-free keeps the day, status, days, next start and teams")
+
         // R11: POST playback/warm sends resolve's body; a 204 means nothing was warmed.
         let warmBody = ResolveBody(sourceId: 3, channelId: "c9", capabilities: ["hevc": true], audioEncode: true)
         FixtureProtocol.responseStatus = 204

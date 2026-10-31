@@ -167,7 +167,10 @@ private struct NFLTestScreen: View {
 
 // C-R (#21, D-39, Apple 89): the app on the Home fixture with the server's Sport front page, opening where the app opens
 // (Sport), on the server's own answer given base64 in PIGTV_UI_TEST_FRONT_JSON (PigTVTests/Fixtures/sport-front-0381.json).
+// C-S (Apple 90): with PIGTV_UI_TEST_CRICKET_JSON (the Cricket page's answer, base64) the server also has the Cricket
+// page, and a Watch reaches the real player, whose resolve goes to a non-routable TEST-NET address (the tuning card).
 private struct SportFrontTestScreen: View {
+    static let cricket = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_CRICKET_JSON"].flatMap { Data(base64Encoded: $0) }
     @StateObject private var model = AppModel()
     var body: some View {
         LibraryView(model: model)
@@ -176,7 +179,7 @@ private struct SportFrontTestScreen: View {
             #endif
             .preferredColorScheme(fixtureScheme)
             .task {
-                model.injectHomeFixture(sportFront: true)
+                model.injectHomeFixture(sportFront: true, cricket: Self.cricket != nil)
                 guard let browse = model.browse,
                       let base64 = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_JSON"],
                       let data = Data(base64Encoded: base64),
@@ -184,6 +187,18 @@ private struct SportFrontTestScreen: View {
                 browse.sportFront.setFixture(front)
                 browse.f1Page.setFixture(F1Page(available: false))
                 browse.nflPage.setFixture(NFLPage(available: false))
+                if let cricket = Self.cricket, let page = try? JSONDecoder().decode(CricketPage.self, from: cricket) {
+                    browse.cricketPage.setFixture(page)
+                    browse.f1Page.setFixture(F1Page(available: false), preferences: SportPagePreferences(
+                        sports: ["Cricket"], teams: ["Cricket": ["Australia"]]))
+                    if let address = try? ServerAddress("http://192.0.2.1:3000") {
+                        model.configureClientForTesting(APIClient(address: address, token: "fixture", info: model.serverInfo))
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: Binding(get: { Self.cricket != nil && model.playerPresented },
+                                                  set: { model.playerPresented = $0 })) {
+                PlayerHost(app: model).tint(Color("AccentColor"))
             }
     }
 }

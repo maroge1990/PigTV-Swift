@@ -1,0 +1,451 @@
+{
+  "available": true,
+  "updatedAt": 1793411760000,
+  "lead": {
+    "id": "1525661",
+    "seriesId": "24203",
+    "competition": "Australia in South Africa",
+    "label": "3rd Test",
+    "format": "test",
+    "venue": "Newlands, Cape Town",
+    "city": "Cape Town",
+    "start": 1793089800000,
+    "end": 1793458800000,
+    "status": "live",
+    "breakLabel": null,
+    "day": "Day 4",
+    "session": 3,
+    "teams": [
+      {
+        "abbr": "SA",
+        "name": "South Africa",
+        "logo": "/api/logo/espn-cricket-3"
+      },
+      {
+        "abbr": "AUS",
+        "name": "Australia",
+        "logo": "/api/logo/espn-cricket-2"
+      }
+    ],
+    "innings": [
+      [
+        {
+          "runs": 329,
+          "wickets": 10,
+          "overs": "82.3",
+          "declared": false,
+          "current": false
+        },
+        {
+          "runs": 294,
+          "wickets": 5,
+          "overs": "103",
+          "declared": false,
+          "current": true
+        }
+      ],
+      [
+        {
+          "runs": 429,
+          "wickets": 10,
+          "overs": "125.1",
+          "declared": false,
+          "current": false
+        }
+      ]
+    ],
+    "summary": "South Africa lead by 194 runs",
+    "crease": [
+      {
+        "name": "RD Rickelton",
+        "runs": 101,
+        "balls": 219
+      },
+      {
+        "name": "PWA Mulder",
+        "runs": 115,
+        "balls": 221
+      }
+    ],
+    "seriesLine": "Series level 1–1 · third of three Tests",
+    "days": [
+      {
+        "number": 1,
+        "date": 1793019600000,
+        "state": "done"
+      },
+      {
+        "number": 2,
+        "date": 1793106000000,
+        "state": "done"
+      },
+      {
+        "number": 3,
+        "date": 1793192400000,
+        "state": "done"
+      },
+      {
+        "number": 4,
+        "date": 1793278800000,
+        "state": "live"
+      },
+      {
+        "number": 5,
+        "date": 1793365200000,
+        "state": "next"
+      }
+    ],
+    "nextStart": null,
+    "channels": [
+      {
+        "sourceId": 8,
+        "id": "fox-test",
+        "name": "Fox Cricket",
+        "number": 501,
+        "logo": null,
+        "quality": "HD",
+        "start": 1793404800000,
+        "end": 1793431800000
+      },
+      {
+        "sourceId": 8,
+        "id": "kayo-test",
+        "name": "Kayo Cricket 2",
+        "number": 521,
+        "logo": null,
+        "quality": "HD",
+        "start": 1793397600000,
+        "end": 1793413800000,
+        "overrun": true
+      }
+    ]
+  },
+  "series": {
+    "id": "24203",
+    "name": "Australia in South Africa",
+    "season": "2026/27",
+    "matches": [
+      {
+        "id": "1525655",
+        "label": "1st ODI",
+        "start": 1790236800000,
+        "end": 1790269200000,
+        "status": "done",
+        "result": "South Africa won by 67 runs",
+        "current": false
+      },
+      {
+        "id": "1525656",
+        "label": "2nd ODI",
+        "start": 1790496000000,
+        "end": 1790528400000,
+        "status": "done",
+        "result": "South Africa won by 32 runs",
+        "current": false
+      },
+      {
+        "id": "1525657",
+        "label": "3rd ODI",
+        "start": 1790767800000,
+        "end": 1790800200000,
+        "status": "done",
+        "result": "Australia won by 45 runs (DLS)",
+        "current": false
+      },
+      {
+        "id": "1525658",
+        "label": "Tour Match",
+        "start": 1791014400000,
+        "end": 1791037800000,
+        "status": "done",
+        "result": "Match drawn",
+        "current": false
+      },
+      {
+        "id": "1525659",
+        "label": "1st Test",
+        "start": 1791531000000,
+        "end": 1791900000000,
+        "status": "done",
+        "result": "Australia won by 214 runs",
+        "current": false
+      },
+      {
+        "id": "1525660",
+        "label": "2nd Test",
+        "start": 1792310400000,
+        "end": 1792679400000,
+        "status": "done",
+        "result": "South Africa won by an inns & 31 runs",
+        "current": false
+      },
+      {
+        "id": "1525661",
+        "label": "3rd Test",
+        "start": 1793089800000,
+        "end": 1793458800000,
+        "status": "live",
+        "result": null,
+        "current": true
+      }
+    ]
+  },
+  "others": [
+    {
+      "id": "1544870",
+      "seriesId": "8043",
+      "competition": "Sheffield Shield",
+      "teams": [
+        {
+          "abbr": "WA",
+          "name": "Western Australia",
+          "logo": "/api/logo/espn-cricket-602"
+        },
+        {
+          "abbr": "SOA",
+          "name": "South Australia",
+          "logo": "/api/logo/espn-cricket-520"
+        }
+      ],
+      "scores": [
+        "406/5d & 169",
+        "154 & 235/5 (70.4 ov, target 422)"
+      ],
+      "line": "South Aust require 184 runs",
+      "status": "live",
+      "start": 1793145600000,
+      "nextStart": null,
+      "channels": [
+        {
+          "sourceId": 8,
+          "id": "kayo-shield",
+          "name": "Kayo Cricket 1",
+          "number": 520,
+          "logo": null,
+          "quality": "HD",
+          "start": 1793403000000,
+          "end": 1793430000000
+        }
+      ]
+    },
+    {
+      "id": "1544871",
+      "seriesId": "8043",
+      "competition": "Sheffield Shield",
+      "teams": [
+        {
+          "abbr": "TAS",
+          "name": "Tasmania",
+          "logo": "/api/logo/espn-cricket-560"
+        },
+        {
+          "abbr": "NSW",
+          "name": "New South Wales",
+          "logo": "/api/logo/espn-cricket-387"
+        }
+      ],
+      "scores": [
+        "397/9 (114 ov)",
+        null
+      ],
+      "line": "NSW won toss & fielded",
+      "status": "live",
+      "start": 1793316600000,
+      "nextStart": null,
+      "channels": []
+    },
+    {
+      "id": "1543947",
+      "seriesId": "21284",
+      "competition": "WBBL",
+      "teams": [
+        {
+          "abbr": "AS-W",
+          "name": "Adelaide Strikers Women",
+          "logo": "/api/logo/espn-cricket-896431"
+        },
+        {
+          "abbr": "MS-W",
+          "name": "Melbourne Stars Women",
+          "logo": "/api/logo/espn-cricket-896399"
+        }
+      ],
+      "scores": [
+        "161/6",
+        "63/2 (7.3/20 ov, target 162)"
+      ],
+      "line": "Stars need 99 from 75 balls",
+      "status": "live",
+      "start": 1793421600000,
+      "nextStart": null,
+      "channels": [
+        {
+          "sourceId": 8,
+          "id": "fox-wbbl",
+          "name": "Fox Cricket",
+          "number": 501,
+          "logo": null,
+          "quality": "HD",
+          "start": 1793420100000,
+          "end": 1793433600000
+        }
+      ]
+    },
+    {
+      "id": "1544872",
+      "seriesId": "8043",
+      "competition": "Sheffield Shield",
+      "teams": [
+        {
+          "abbr": "VIC",
+          "name": "Victoria",
+          "logo": "/api/logo/espn-cricket-584"
+        },
+        {
+          "abbr": "QLD",
+          "name": "Queensland",
+          "logo": "/api/logo/espn-cricket-459"
+        }
+      ],
+      "scores": [
+        "93/0 (22.1 ov)",
+        null
+      ],
+      "line": "Queensland won toss & fielded",
+      "status": "live",
+      "start": 1793404800000,
+      "nextStart": null,
+      "channels": []
+    },
+    {
+      "id": "1553295",
+      "seriesId": "24756",
+      "competition": "West Indies in Bangladesh",
+      "teams": [
+        {
+          "abbr": "BAN",
+          "name": "Bangladesh",
+          "logo": "/api/logo/espn-cricket-25"
+        },
+        {
+          "abbr": "WI",
+          "name": "West Indies",
+          "logo": "/api/logo/espn-cricket-4"
+        }
+      ],
+      "scores": [
+        "272 & 79/6 (29 ov)",
+        "245"
+      ],
+      "line": "Bangladesh lead by 106 runs",
+      "status": "break",
+      "start": 1793158200000,
+      "nextStart": 1793417400000,
+      "channels": []
+    },
+    {
+      "id": "1543948",
+      "seriesId": "21284",
+      "competition": "WBBL",
+      "teams": [
+        {
+          "abbr": "PS-W",
+          "name": "Perth Scorchers Women",
+          "logo": "/api/logo/espn-cricket-896405"
+        },
+        {
+          "abbr": "MR-W",
+          "name": "Melbourne Renegades Women",
+          "logo": "/api/logo/espn-cricket-896407"
+        }
+      ],
+      "scores": [
+        null,
+        null
+      ],
+      "line": "Starts at 16:10 local time",
+      "status": "scheduled",
+      "start": 1793434200000,
+      "nextStart": 1793434200000,
+      "channels": []
+    },
+    {
+      "id": "1543949",
+      "seriesId": "21284",
+      "competition": "WBBL",
+      "teams": [
+        {
+          "abbr": "ST-W",
+          "name": "Sydney Thunder Women",
+          "logo": "/api/logo/espn-cricket-896401"
+        },
+        {
+          "abbr": "BH-W",
+          "name": "Brisbane Heat Women",
+          "logo": "/api/logo/espn-cricket-896397"
+        }
+      ],
+      "scores": [
+        null,
+        null
+      ],
+      "line": "Starts at 15:40 local time",
+      "status": "scheduled",
+      "start": 1793508000000,
+      "nextStart": 1793508000000,
+      "channels": []
+    },
+    {
+      "id": "1539436",
+      "seriesId": "24469",
+      "competition": "India in New Zealand",
+      "teams": [
+        {
+          "abbr": "NZ",
+          "name": "New Zealand",
+          "logo": "/api/logo/espn-cricket-5"
+        },
+        {
+          "abbr": "IND",
+          "name": "India",
+          "logo": "/api/logo/espn-cricket-6"
+        }
+      ],
+      "scores": [
+        null,
+        null
+      ],
+      "line": "Starts at 20:00 local time",
+      "status": "scheduled",
+      "start": 1793516400000,
+      "nextStart": 1793516400000,
+      "channels": []
+    },
+    {
+      "id": "1543950",
+      "seriesId": "21284",
+      "competition": "WBBL",
+      "teams": [
+        {
+          "abbr": "SS-W",
+          "name": "Sydney Sixers Women",
+          "logo": "/api/logo/espn-cricket-896403"
+        },
+        {
+          "abbr": "HH-W",
+          "name": "Hobart Hurricanes Women",
+          "logo": "/api/logo/espn-cricket-896433"
+        }
+      ],
+      "scores": [
+        null,
+        null
+      ],
+      "line": "Starts at 19:10 local time",
+      "status": "scheduled",
+      "start": 1793520600000,
+      "nextStart": 1793520600000,
+      "channels": []
+    }
+  ]
+}

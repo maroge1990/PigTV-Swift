@@ -6,7 +6,7 @@ mkdir -p "$BUILD_DIR"
 xcrun swiftc -parse-as-library -module-name PigTVContractTests \
   -module-cache-path "$BUILD_DIR/module-cache" \
   PigTV/Models.swift PigTV/DVRModels.swift PigTV/APIClient.swift PigTV/PrivateCaches.swift PigTV/PlaybackCapabilities.swift PigTV/Labs.swift PigTV/ProviderReminders.swift \
-  PigTV/SportModels.swift PigTV/SportsDashboardModels.swift PigTV/F1PageModels.swift PigTV/SportFrontModels.swift \
+  PigTV/SportModels.swift PigTV/SportsDashboardModels.swift PigTV/F1PageModels.swift PigTV/SportFrontModels.swift PigTV/CricketPageModels.swift \
   PigTVTests/ContractChecks.swift \
   Tools/RunContractChecks.swift -o "$BUILD_DIR/contracts"
 "$BUILD_DIR/contracts"

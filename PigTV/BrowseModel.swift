@@ -581,6 +581,9 @@ final class BrowseModel: ObservableObject {
     /// C-Q (#21): the NFL page, only with the server's `sportPageNfl` flag.
     private(set) lazy var nflPage = NFLPageModel(client: client)
     var nflPageEnabled: Bool { client.info?.features.sportPageNfl == true }
+    /// C-S (#21): the Cricket page, only with the server's `sportPageCricket` flag.
+    private(set) lazy var cricketPage = CricketPageModel(client: client)
+    var cricketPageEnabled: Bool { client.info?.features.sportPageCricket == true }
     /// C-R (#21, D-39): the Sport front page, only with the server's `sportFront` flag.
     private(set) lazy var sportFront = SportFrontModel(client: client)
     var sportFrontEnabled: Bool { client.info?.features.sportFront == true }

@@ -506,7 +506,7 @@ extension Color {
     }
 }
 
-/// The Sport tab's way in: one card per sport page the server offers (Formula 1, and the NFL since Apple 86).
+/// The Sport tab's way in: one card per sport page the server offers (Formula 1, the NFL since Apple 86, Cricket since Apple 90).
 struct SportPageLinks: View {
     let app: AppModel
     let browse: BrowseModel
@@ -549,6 +549,25 @@ struct SportPageLinks: View {
                     }
                     .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportMetrics.radius))
                     .accessibilityIdentifier("sport.page.nfl")
+                }
+                // C-S (#21): the Cricket page, with the server's `sportPageCricket` flag.
+                if browse.cricketPageEnabled {
+                    NavigationLink {
+                        CricketPageView(app: app, browse: browse)
+                    } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: "figure.cricket").font(.system(size: 30, weight: .semibold))
+                                .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Cricket").font(SportMetrics.title)
+                                Text("The match, its series, other games").font(SportMetrics.detail).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(SportMetrics.cardPadding)
+                        .frame(width: SportMetrics.cardWidth, alignment: .leading)
+                    }
+                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportMetrics.radius))
+                    .accessibilityIdentifier("sport.page.cricket")
                 }
             }
             .padding(.vertical, 24)

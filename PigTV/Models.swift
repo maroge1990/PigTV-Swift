@@ -43,6 +43,8 @@ struct ServerInfo: Decodable {
         var sportPages: Bool? = nil
         // C-Q (server 0379, #21): `GET sports/pages/nfl`, the NFL page, and `following.NFL` in the preferences.
         var sportPageNfl: Bool? = nil
+        // C-S (server 0383, #21): `GET sports/pages/cricket`, the Cricket page.
+        var sportPageCricket: Bool? = nil
         // C-R (server 0381, #21, D-39): `GET sports/front`, the Sport front page, and `sports`/`teams` in the preferences.
         var sportFront: Bool? = nil
         // Server 0207: per-login recording positions (`GET`/`PUT
