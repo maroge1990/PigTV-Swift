@@ -3,7 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+    # A docs-only push runs nothing (server D-38).
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    paths-ignore: ['docs/**', '**.md']
 
 env:
   # The project targets iOS/tvOS 26.5 and was made with Xcode 27. A

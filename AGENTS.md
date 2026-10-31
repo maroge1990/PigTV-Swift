@@ -25,7 +25,7 @@ system setting). Simulators are named, not UDIDs (they differ per Mac); the 26.5
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
 sh Tools/test.sh fast      # contract checks, then the unit tests: while developing (~1 min after the build)
-sh Tools/test.sh push      # fast, then the regression UI tests: before every commit
+sh Tools/test.sh push      # fast, then the regression UI tests: once per batch, before its review and before the push
 sh Tools/test.sh visual    # screenshot/appearance UI tests: before a release or a brand change (CI runs them on every push)
 sh Tools/test.sh all       # everything, as CI does
 
@@ -61,13 +61,15 @@ batches by area (server D-35, its `AGENTS.md` › Work in batches): a batch is S
 commit and build number, `Tools/test.sh push` once before the first review round and again before the push. Session start and end follow the
 server's `AGENTS.md` › Session checklist (issues first; the end-of-session docs check; ask Mark about pushed-but-open issues).
 
-1. Before every commit: `sh Tools/test.sh push` passes, plus the iOS build when shared code changed. If something
-   can't be run, say so in the commit message and to Mark.
+1. Before every commit: `sh Tools/test.sh fast` passes, plus the iOS build when shared code changed; `push` runs once
+   per batch before its review round and again before the push, and CI is the full gate (D-38). If something can't be
+   run, say so in the commit message and to Mark.
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets) and its
    subject starts with the build number (`63: what changed`); Settings → Version identifies the installed copy.
-3. Commits write `Refs maroge1990/PigTV#n`, never `Fixes`/`Closes`; issues are closed only after Mark confirms.
-4. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push and PR; a red run is fixed or
-   reverted at once.
+3. Commits write `Refs maroge1990/PigTV#n`, never `Fixes`/`Closes`; issues close as the server's `AGENTS.md` › Work
+   tracking says (on T1–T3 evidence; device-check ones after Mark's report, D-38).
+4. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push and PR (a docs-only push skips
+   it, D-38); a red run is fixed or reverted at once.
 5. Device-dependent work ends with numbered T5 steps for Mark; nothing is *Verified* until he reports it. A simulator pass
    is not a device pass.
 
@@ -91,8 +93,8 @@ server's `AGENTS.md` › Session checklist (issues first; the end-of-session doc
 - Server changes are made in `../PigTV` under its `AGENTS.md`; a new endpoint this client calls needs an entry in the server's
   `APPLE_CLIENT_ROUTES`.
 - The lead session may delegate to sub-agents and reviews every diff before it's committed.
-- **Adversarial review:** the server's `AGENTS.md` › Reviews (Claude launches Codex itself; at most two rounds; findings
-  become issues). For this repo the threshold is any functional change to playback, the caches or other shared
+- **Adversarial review:** the server's `AGENTS.md` › Reviews (Claude launches Codex itself; one round, a second only on
+  a high; highs and unfixed findings become issues, D-38). For this repo the threshold is any functional change to playback, the caches or other shared
   ownership/accounting, the Top Shelf, pairing/auth, or anything the server's `docs/CLIENT-CONTRACT.md` covers; any fix
   for a review finding; or more than ~150 changed non-test lines. Docs-only and test-only commits are exempt.
 - Docs describe the present and are edited in place; open work goes in issues, never in a doc.

@@ -2,7 +2,7 @@
 # The tvOS tests in tiers, cheapest first, so a failure shows within a minute instead of after the UI suites.
 #
 #   sh Tools/test.sh fast     contract checks, then the unit tests (~1 min after the build)
-#   sh Tools/test.sh push     fast, then the regression UI tests (before every push, ~6-7 min)
+#   sh Tools/test.sh push     fast, then the regression UI tests (once per batch: before its review and before the push)
 #   sh Tools/test.sh visual   the screenshot and appearance UI tests (CI, and before a release or a brand change, ~18 min with the review media)
 #   sh Tools/test.sh all      push, then visual: what CI runs
 #
