@@ -38,13 +38,15 @@ final class F1PageModel: ObservableObject {
     private var answers = 0
     /// Saves are sent one after another, in the order they were made.
     private var saveQueue: Task<Void, Never>?
-    private enum Field: CaseIterable { case spoilerFree, following, nflFollowing }
+    private enum Field: CaseIterable { case spoilerFree, following, nflFollowing, sports, teams }
 
     private static func copy(_ field: Field, from source: SportPagePreferences, to target: inout SportPagePreferences) {
         switch field {
         case .spoilerFree: target.spoilerFree = source.spoilerFree
         case .following: target.f1Following = source.f1Following
         case .nflFollowing: target.nflFollowing = source.nflFollowing
+        case .sports: target.sports = source.sports
+        case .teams: target.teams = source.teams
         }
     }
 

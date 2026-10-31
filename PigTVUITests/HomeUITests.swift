@@ -1,9 +1,11 @@
 import XCTest
 
 #if os(tvOS)
-// Build 28: the app opens on Home. On the offline Home fixture
-// (PIGTV_UI_TEST_SCREEN=home; no server), Down from the tab bar lands on the
-// hero's Watch button and Down again on the first Recently watched card.
+// Build 28: Home's hero Watch is one step down. Apple 89 (D-39): Home is the
+// "TV" tab, second after Sport, and the app opens on Sport when the server has
+// it (SportFrontUITests); the offline Home fixture (PIGTV_UI_TEST_SCREEN=home;
+// no server) still opens on TV. Down from the tab bar lands on the hero's
+// Watch button and Down again on the first Recently watched card.
 final class HomeUITests: XCTestCase {
     private func focused(_ app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
@@ -17,12 +19,12 @@ final class HomeUITests: XCTestCase {
     }
 
     @MainActor
-    func testHomeOpensFirstAndTheHeroWatchIsOneStepDown() throws {
+    func testTheTVHeroWatchIsOneStepDown() throws {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "home"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         app.launch()
-        XCTAssertTrue(app.buttons["home.watch"].waitForExistence(timeout: 10), "Home is not the first tab")
+        XCTAssertTrue(app.buttons["home.watch"].waitForExistence(timeout: 10), "the fixture did not open on TV")
         XCUIRemote.shared.press(.down)
         XCTAssertTrue(focused(app).identifier == "home.watch" || focused(app).label.hasPrefix("Watch"),
                       "focus after Down: \(focused(app).label)")

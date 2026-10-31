@@ -4,8 +4,10 @@ import XCTest
 // Build 31 (Mark: "switching between the five tabs is slow … it seems to get
 // stuck loading the one you moved from"), tightened for audit R03. On the Home
 // fixture enlarged to 1,000 channels and the production-sized Sport feed (215
-// events), moves along the tab bar Home → Guide → Sport → Recordings →
-// Settings and back, twice, reading the app's `TabSwitchProbe` (the longest
+// events), moves along the tab bar Sport → TV → Guide → Recordings →
+// Settings and back (Apple 89, D-39: Sport first, Home is "TV" second; the
+// fixture opens on TV, so each lap goes left to Sport, right to Settings and
+// left back to TV), twice, reading the app's `TabSwitchProbe` (the longest
 // main-thread stall and the frame time lost in the 1.5 s after each switch).
 // The probe must report for every switch, both numbers must parse, and after
 // each switch the remote must be able to act: Down moves focus into the tab's
@@ -31,9 +33,9 @@ final class TabSwitchUITests: XCTestCase {
 
     /// The gate's arithmetic, with no app: CI's spike of 25 Oct passes, a stall on both laps fails.
     func testTheGateIgnoresAOneLapSpikeButNotAStallOnBothLaps() {
-        let ci = [("Home→TV Guide", 585.0), ("TV Guide→Sport", 517), ("Sport→Recordings", 313), ("Home→TV Guide", 285), ("TV Guide→Sport", 300), ("Sport→Recordings", 193)]
+        let ci = [("TV→TV Guide", 585.0), ("TV Guide→Recordings", 517), ("Sport→TV", 313), ("TV→TV Guide", 285), ("TV Guide→Recordings", 300), ("Sport→TV", 193)]
         XCTAssertEqual(Self.consistentWorst(ci), 300, "per switch the lesser lap (285, 300, 193), then the worst of those")
-        let stalls = [("Home→TV Guide", 620.0), ("TV Guide→Sport", 150), ("Home→TV Guide", 640), ("TV Guide→Sport", 160)]
+        let stalls = [("TV→TV Guide", 620.0), ("TV Guide→Recordings", 150), ("TV→TV Guide", 640), ("TV Guide→Recordings", 160)]
         XCTAssertEqual(Self.consistentWorst(stalls), 620, "a switch slow on both laps is slow")
         XCTAssertEqual(Self.consistentWorst([]), 0)
     }
@@ -48,8 +50,8 @@ final class TabSwitchUITests: XCTestCase {
         app.launchEnvironment["PIGTV_UI_TEST_TABPROBE"] = "1"
         app.launch()
         XCTAssertTrue(app.buttons["home.watch"].waitForExistence(timeout: 15))
-        let tabs = ["Home", "TV Guide", "Sport", "Recordings", "Settings"]
-        var index = 0
+        let tabs = ["Sport", "TV", "TV Guide", "Recordings", "Settings"]
+        var index = 1 // the fixture opens on TV
         var times: [(String, Double)] = []
         var lines: [String] = []
         var switches = 0
@@ -103,8 +105,9 @@ final class TabSwitchUITests: XCTestCase {
             proveRemoteActs(in: to)
         }
         for _ in 0..<2 {
+            press(.left)
             for _ in 0..<4 { press(.right) }
-            for _ in 0..<4 { press(.left) }
+            for _ in 0..<3 { press(.left) }
         }
         let report = times.map { String(format: "%@ %.0f ms", $0.0, $0.1) }.joined(separator: "\n")
         let attachment = XCTAttachment(string: report)

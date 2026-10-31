@@ -2,25 +2,25 @@ import SwiftUI
 
 struct LibraryView: View {
     @ObservedObject var model: AppModel
-    /// The tab the app opens on (Home; the offline fixtures pick their own).
-    var initialTab = "home"
+    /// The tab the app opens on (nil: `LibraryView.openingTab`; the offline fixtures may pick their own).
+    var initialTab: String? = nil
     @State private var tab: String?
+
+    /// D-39 (Apple 89): the app opens on Sport when the server has it, else on TV (tag "home", as `pigtv://home`).
+    nonisolated static func openingTab(sportEnabled: Bool) -> String { sportEnabled ? "sport" : "home" }
+    /// D-39: the tab bar's order by tag, as `body` builds it (Sport first when the server has it, then TV).
+    nonisolated static func tabOrder(sportEnabled: Bool) -> [String] {
+        (sportEnabled ? ["sport"] : []) + ["home", "guide", "recordings", "settings"]
+    }
+
     var body: some View {
         // Accent tint on the TabView so the selected tab reads pink — the
         // white selection was hard to distinguish from unselected tabs.
-        TabView(selection: Binding(get: { tab ?? (model.browse == nil ? "settings" : initialTab) },
+        // Until the opening tab is decided (once, below), the first tab there is.
+        TabView(selection: Binding(get: { tab ?? (model.browse == nil ? "settings" : (initialTab ?? "home")) },
                                    set: { PigTVSignpost.tabSelected($0); tab = $0 })) {
             if let browse = model.browse {
-                // Build 28: Home opens with the app.
-                HomeView(app: model, model: browse, openGuide: { tab = "guide" }, openSport: { tab = "sport" })
-                    .tabItem { Label("Home", systemImage: "house") }
-                    .tag("home")
-                .onAppear { PigTVSignpost.tabContentAppeared("home") }
-                GuideView(app: model, model: browse)
-                    .tabItem { Label("TV Guide", systemImage: "calendar") }
-                    .tag("guide")
-                .onAppear { PigTVSignpost.tabContentAppeared("guide") }
-                // C-I (build 30): only when the server has sport events.
+                // C-I (build 30): only when the server has sport events. D-39 (Apple 89): first, as the app opens on it.
                 // Five tabs fit the iPhone's bar, so it is a tab there too.
                 if browse.sportEnabled {
                     SportsLandingView(app: model, browse: browse)
@@ -29,6 +29,15 @@ struct LibraryView: View {
                         .tag("sport")
                     .onAppear { PigTVSignpost.tabContentAppeared("sport") }
                 }
+                // D-39 (Apple 89): Home is "TV", second (Recently watched, Favourites on now, Starting soon); the tag stays "home".
+                HomeView(app: model, model: browse, openGuide: { tab = "guide" }, openSport: { tab = "sport" })
+                    .tabItem { Label("TV", systemImage: "tv") }
+                    .tag("home")
+                .onAppear { PigTVSignpost.tabContentAppeared("home") }
+                GuideView(app: model, model: browse)
+                    .tabItem { Label("TV Guide", systemImage: "calendar") }
+                    .tag("guide")
+                .onAppear { PigTVSignpost.tabContentAppeared("guide") }
                 RecordingsView(model: browse)
                     .tabItem { Label("Recordings", systemImage: "record.circle") }
                     .tag("recordings")
@@ -44,8 +53,14 @@ struct LibraryView: View {
         .overlay(alignment: .bottomTrailing) {
             if TabSwitchProbe.enabled { TabSwitchProbeLabel() }
         }
-        .onChange(of: tab) { if TabSwitchProbe.enabled { TabSwitchProbe.shared.tabChanged() } }
+        // Deciding the opening tab (nil → a tab) is not a switch.
+        .onChange(of: tab) { old, _ in if old != nil && TabSwitchProbe.enabled { TabSwitchProbe.shared.tabChanged() } }
         #endif
+        // D-39: the opening tab is decided once, when the session's browse model is there (not on every render).
+        .onChange(of: model.browse.map(ObjectIdentifier.init), initial: true) {
+            guard tab == nil, let browse = model.browse else { return }
+            tab = initialTab ?? Self.openingTab(sportEnabled: browse.sportEnabled)
+        }
         .onChange(of: model.requestedTab, initial: true) { _, requested in
             guard let requested else { return }
             tab = requested

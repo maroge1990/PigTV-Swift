@@ -221,12 +221,19 @@ nonisolated struct SportPagePreferences: Codable, Equatable, Sendable {
     var f1Following: String?
     /// The followed team on the NFL page, by abbreviation ("GB"; server 0379, C-Q).
     var nflFollowing: String?
+    /// C-R (server 0381, D-39): the followed sports in the household's order (canonical league names); empty from an
+    /// older server.
+    var sports: [String] = []
+    /// C-R: the followed teams or drivers inside each followed sport, by league.
+    var teams: [String: [String]] = [:]
 
-    enum CodingKeys: String, CodingKey { case spoilerFree, following }
+    enum CodingKeys: String, CodingKey { case spoilerFree, following, sports, teams }
     private enum Pages: String, CodingKey { case f1 = "F1", nfl = "NFL" }
 
-    init(spoilerFree: Bool = false, f1Following: String? = nil, nflFollowing: String? = nil) {
+    init(spoilerFree: Bool = false, f1Following: String? = nil, nflFollowing: String? = nil,
+         sports: [String] = [], teams: [String: [String]] = [:]) {
         self.spoilerFree = spoilerFree; self.f1Following = f1Following; self.nflFollowing = nflFollowing
+        self.sports = sports; self.teams = teams
     }
 
     init(from decoder: Decoder) throws {
@@ -235,6 +242,8 @@ nonisolated struct SportPagePreferences: Codable, Equatable, Sendable {
         let pages = try? c.nestedContainer(keyedBy: Pages.self, forKey: .following)
         f1Following = ((try? pages?.decodeIfPresent(String.self, forKey: .f1)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
         nflFollowing = ((try? pages?.decodeIfPresent(String.self, forKey: .nfl)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
+        sports = ((try? c.decodeIfPresent([String].self, forKey: .sports)) ?? nil) ?? []
+        teams = ((try? c.decodeIfPresent([String: [String]].self, forKey: .teams)) ?? nil) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -243,6 +252,9 @@ nonisolated struct SportPagePreferences: Codable, Equatable, Sendable {
         var pages = c.nestedContainer(keyedBy: Pages.self, forKey: .following)
         try pages.encode(f1Following, forKey: .f1)
         try pages.encode(nflFollowing, forKey: .nfl)
+        // Only on this device's own copy (an older server); every PUT sends one field of its own.
+        if !sports.isEmpty { try c.encode(sports, forKey: .sports) }
+        if !teams.isEmpty { try c.encode(teams, forKey: .teams) }
     }
 }
 

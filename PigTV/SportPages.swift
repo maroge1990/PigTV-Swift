@@ -25,11 +25,13 @@ final class SportPresenter: ObservableObject {
     @Published var presented: SportPresentation?
     private var afterDismiss: (() -> Void)?
     private let app: AppModel
+    /// D-39: the tab the screen belongs to ("sport-front", "tv"), recorded with every play started here.
+    let origin: String?
 
-    init(app: AppModel) { self.app = app }
+    init(app: AppModel, origin: String? = nil) { self.app = app; self.origin = origin }
 
     func open(_ event: SportEvent, _ page: SportPage) { presented = SportPresentation(event: event, page: page) }
-    func play(_ event: SportEvent) { app.playSportEvent(event) }
+    func play(_ event: SportEvent) { app.playSportEvent(event, origin: origin) }
 
     func close(then action: @escaping () -> Void) {
         afterDismiss = action
@@ -40,7 +42,8 @@ final class SportPresenter: ObservableObject {
     func dismissed() {
         let action = afterDismiss
         afterDismiss = nil
-        action?()
+        guard let action else { return }
+        app.withPlayOrigin(origin, action)
     }
 }
 
@@ -61,11 +64,11 @@ private struct SportPages: ViewModifier {
     let clock: Date
     @StateObject private var presenter: SportPresenter
 
-    init(app: AppModel, browse: BrowseModel, clock: Date) {
+    init(app: AppModel, browse: BrowseModel, clock: Date, origin: String?) {
         self.app = app
         self.browse = browse
         self.clock = clock
-        _presenter = StateObject(wrappedValue: SportPresenter(app: app))
+        _presenter = StateObject(wrappedValue: SportPresenter(app: app, origin: origin))
     }
 
     func body(content: Content) -> some View {
@@ -85,8 +88,9 @@ private struct SportPages: ViewModifier {
 
 extension View {
     /// Presents the Sport event page and channel picker for the cards below.
-    func sportPages(app: AppModel, browse: BrowseModel, clock: Date) -> some View {
-        modifier(SportPages(app: app, browse: browse, clock: clock))
+    /// `origin`: the tab, recorded with the plays started from these pages (D-39).
+    func sportPages(app: AppModel, browse: BrowseModel, clock: Date, origin: String? = nil) -> some View {
+        modifier(SportPages(app: app, browse: browse, clock: clock, origin: origin))
     }
 }
 

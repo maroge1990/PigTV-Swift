@@ -3,7 +3,8 @@ import XCTest
 #if os(tvOS)
 // Build 32 (Mark, on device: "a white flash when moving between the top
 // tabs"). On the offline Home fixture, in dark and then light appearance,
-// moves along the tab bar Home → Guide → Sport → Recordings → Settings and
+// moves along the tab bar Sport → TV → Guide → Recordings → Settings and
+// (Apple 89, D-39: the fixture opens on TV, second: left to Sport, right to Settings, left back to TV)
 // back while taking screenshots as fast as XCUITest allows (roughly every
 // 60–150 ms) for about a second after each press. Each screenshot is
 // reduced to a 32×18 grid and the share of cells in the wrong page colour
@@ -26,7 +27,7 @@ final class TabFlashUITests: XCTestCase {
             var worst: (share: Double, label: String) = (0, "")
             var frames = 0
             var shot = 0
-            let presses: [XCUIRemote.Button] = Array(repeating: .right, count: 4) + Array(repeating: .left, count: 4)
+            let presses: [XCUIRemote.Button] = [.left] + Array(repeating: .right, count: 4) + Array(repeating: .left, count: 3)
             for (step, button) in presses.enumerated() {
                 XCUIRemote.shared.press(button)
                 let start = Date()

@@ -648,6 +648,43 @@ enum ContractChecks {
         let warmJSON = String(decoding: try JSONEncoder().encode(warmEvent), as: UTF8.self)
         try expect(warmJSON.contains(#""warm":true"#), "R11: the play-start event carries warm")
 
+        // D-39 (Apple 89): the play-start event says which tab the play came from; no key when unknown.
+        var originEvent = PlaybackEvent(event: "play-start")
+        let noOrigin = String(decoding: try JSONEncoder().encode(originEvent), as: UTF8.self)
+        try expect(!noOrigin.contains("origin"), "D-39: no origin key unless known")
+        originEvent.origin = "sport-front"
+        let withOrigin = String(decoding: try JSONEncoder().encode(originEvent), as: UTF8.self)
+        try expect(withOrigin.contains(#""origin":"sport-front""#), "D-39: the play-start event carries its origin")
+
+        // C-R (server 0381): the Sport front page and the household's following.
+        let frontInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9","apiVersion":1,"features":{"library":true,"playbackResolve":true,"sportFront":true}}"#.utf8))
+        try expect(frontInfo.features.sportFront == true, "C-R: the sportFront flag is decoded")
+        let front = try JSONDecoder().decode(SportFront.self, from: Data(#"""
+            {"now":1793410062253,"timezone":"Etc/GMT-9","spoilerFree":false,"scores":"fresh",
+             "sports":[{"league":"NFL","live":1,"next":{"gameId":"g2","start":1793413362249},"line":"live"},{"league":"Cricket","live":0,"next":null,"line":"quiet"}],
+             "follows":[{"league":"NFL","name":"Green Bay Packers","logo":"/api/logo/espn-gb","state":"live","gameId":"g1","start":1793406462249},
+                        {"league":"F1","name":"Oscar Piastri","logo":null,"state":"none","gameId":null,"start":null}],
+             "hero":{"reason":"follow-live","followIndex":0,"gameId":"g1"},
+             "rails":[{"league":"NFL","gameIds":["g1","missing"]},{"league":"Cricket","gameIds":[]}],
+             "games":[{"id":"g1","league":"NFL","title":"Packers v Bears","start":1793406462249,"end":null,"session":null,"circuit":null,"format":null,
+                       "competitors":[{"id":"9","name":"Packers","logo":"/api/logo/espn-gb"},{"id":"3","name":"Bears","logo":null}],
+                       "status":"live","freshness":"fresh","observedAt":1793409962249,"progress":{"clock":"5:00","period":2},
+                       "availability":"matched","broadcastStatus":"on-tv",
+                       "channels":[{"sourceId":1,"id":"pos_5","stableId":"s5","name":"ESPN HD","number":null,"logo":null,"quality":"HD","start":1793406162249,"end":1793418462249}],
+                       "events":[{"id":"ev-gb","start":1793406462249,"end":1793418162249}],"canWatch":true,"scores":["7","3"],"situation":{"down":3},"followed":true},
+                      {"id":"bad"}]}
+            """#.utf8))
+        try expect(front.sports.count == 2 && front.follows.count == 2 && front.rails.count == 2 && front.games.count == 1, "C-R: a card that does not decode is dropped, the rest stays")
+        try expect(front.hero.reason == "follow-live" && front.hero.followIndex == 0 && front.hero.gameId == "g1", "C-R: the server's hero")
+        try expect(front.games[0].followed == true && front.games[0].channels.first?.startTime == 1793406162249 && front.games[0].channels.first?.endTime == 1793418462249, "C-R: followed, and each channel's own airing")
+        try expect(front.games(in: front.rails[0]).map(\.id) == ["g1"], "C-R: a rail's ids point into games")
+        try expect(front.follows[0].cachedLogo == "/api/logo/espn-gb" && front.follows[1].gameId == nil && front.follows[1].state == "none", "C-R: follows")
+        try expect(!front.scoresUnavailable && !front.isEmpty && front.hasLiveGame, "C-R: fresh scores, followed sports, a live game")
+        let prefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":true,"sports":["F1","NFL"],"teams":{"NFL":["Green Bay Packers"],"F1":["Oscar Piastri"]},"following":{"F1":"Oscar Piastri","NFL":"Green Bay Packers"}}"#.utf8))
+        try expect(prefs.spoilerFree && prefs.sports == ["F1", "NFL"] && prefs.teams["NFL"] == ["Green Bay Packers"] && prefs.f1Following == "Oscar Piastri", "C-R: the extended preferences")
+        let olderPrefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":false,"following":{"F1":null,"NFL":"GB"}}"#.utf8))
+        try expect(olderPrefs.sports.isEmpty && olderPrefs.teams.isEmpty && olderPrefs.nflFollowing == "GB", "C-R: a server before 0381 has no sports or teams")
+
         // R11: POST playback/warm sends resolve's body; a 204 means nothing was warmed.
         let warmBody = ResolveBody(sourceId: 3, channelId: "c9", capabilities: ["hevc": true], audioEncode: true)
         FixtureProtocol.responseStatus = 204

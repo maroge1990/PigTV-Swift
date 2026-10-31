@@ -174,7 +174,7 @@ struct HomeView: View {
         }
         // The sport event page and channel picker belong to the screen, not
         // to a card (a card can be scrolled away or recycled while open).
-        .sportPages(app: app, browse: model, clock: clock)
+        .sportPages(app: app, browse: model, clock: clock, origin: "tv")
         // Kept current while Home is on screen: now/next, progress,
         // "in 12 min", history and recordings, once a minute. Not while the
         // tab is hidden (`visible`); returning restarts it.
@@ -225,7 +225,7 @@ struct HomeView: View {
     }
 
     private var header: some View {
-        PigPageHeader(title: "Home", subtitle: Text(clock, format: .dateTime.weekday(.wide).day().month(.wide)))
+        PigPageHeader(title: "TV", subtitle: Text(clock, format: .dateTime.weekday(.wide).day().month(.wide)))
     }
 
     // MARK: Shelves
@@ -274,7 +274,7 @@ struct HomeView: View {
     /// #13: a shelf zaps through that shelf; the hero (no row) through the guide, never a one-channel list.
     private func play(_ channel: HomeChannel, from row: [HomeChannel]?) {
         app.zapList = row?.map(model.playable) ?? []
-        app.beginPlayback(model.playable(channel))
+        app.beginPlayback(model.playable(channel), origin: "tv")
     }
 
     private func showDetails(_ item: HomeSoonItem) {
@@ -299,7 +299,7 @@ struct HomeView: View {
             DispatchQueue.main.async { schedule = channel }
             return
         }
-        if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel) }
+        if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel, origin: "tv") }
     }
 }
 

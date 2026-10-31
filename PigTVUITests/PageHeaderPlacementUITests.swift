@@ -14,7 +14,9 @@ final class PageHeaderPlacementUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "home"
         app.launch()
-        let tabs = ["Home", "TV Guide", "Sport", "Recordings", "Settings"]
+        // Apple 89 (D-39): Sport first, Home is "TV" second. The Home fixture opens on TV (the app itself opens on Sport:
+        // SportFrontUITests), so the cycle starts by moving to Sport.
+        let tabs = ["Sport", "TV", "TV Guide", "Recordings", "Settings"]
         var frames: [(String, CGRect)] = []
 
         func title(_ name: String) -> XCUIElement {
@@ -35,6 +37,12 @@ final class PageHeaderPlacementUITests: XCTestCase {
             return last
         }
 
+        XCTAssertTrue(title("TV").waitForExistence(timeout: 15), "the fixture did not open on TV")
+        #if os(tvOS)
+        XCUIRemote.shared.press(.left)
+        #else
+        app.tabBars.buttons["Sport"].firstMatch.tap()
+        #endif
         for (index, name) in tabs.enumerated() {
             if index > 0 {
                 #if os(tvOS)
@@ -49,9 +57,9 @@ final class PageHeaderPlacementUITests: XCTestCase {
         }
         let reference = frames[0].1
         for (name, frame) in frames.dropFirst() {
-            XCTAssertEqual(frame.minX, reference.minX, accuracy: 0.5, "\(name): title x \(frame.minX), Home \(reference.minX)")
-            XCTAssertEqual(frame.minY, reference.minY, accuracy: 0.5, "\(name): title y \(frame.minY), Home \(reference.minY)")
-            XCTAssertEqual(frame.height, reference.height, accuracy: 0.5, "\(name): title height \(frame.height), Home \(reference.height)")
+            XCTAssertEqual(frame.minX, reference.minX, accuracy: 0.5, "\(name): title x \(frame.minX), Sport \(reference.minX)")
+            XCTAssertEqual(frame.minY, reference.minY, accuracy: 0.5, "\(name): title y \(frame.minY), Sport \(reference.minY)")
+            XCTAssertEqual(frame.height, reference.height, accuracy: 0.5, "\(name): title height \(frame.height), Sport \(reference.height)")
         }
     }
 }

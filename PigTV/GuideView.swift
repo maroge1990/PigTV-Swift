@@ -553,7 +553,7 @@ struct GuideView: View {
     // Start a channel and hand the player the current row order for channel up/down.
     private func play(_ channel: GuideChannel) {
         app.zapList = rows.map(model.asChannel)
-        app.beginPlayback(asChannel(channel))
+        app.beginPlayback(asChannel(channel), origin: "guide")
     }
     private func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
@@ -671,7 +671,7 @@ struct GuideView: View {
         // focus when it closes).
         if usesGridView && pendingWatch == nil { gridFocusRestore += 1; claimGridFocus() }
         Task { await model.loadFavourites() }
-        if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel) }
+        if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel, origin: "guide") }
     }
 }
 

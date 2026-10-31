@@ -31,6 +31,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
     @Published private(set) var displayCriteria: AVDisplayCriteria?
     #endif
     private var eventContext: PlaybackEvent?
+    /// D-39: the tab this play was started from, sent with its play-start event ("sport-front", "tv", "guide").
+    var origin: String?
     private var resolveBegan = Date()
     private var firstPlayReported = false
     private var playingSince: Date?
@@ -357,6 +359,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 context.container = ["hls", "mp4", "fmp4", "mpegts"].contains(decision.container ?? "") ? decision.container : nil
                 context.videoMode = ["copy", "encode"].contains(decision.videoMode ?? "") ? decision.videoMode : nil
                 context.warm = warmAdopted ? true : nil
+                context.origin = origin
                 context.path = url.path // URL query (including token/provider URL) is never sent.
                 context.resolveMs = Date().timeIntervalSince(resolveBegan) * 1000
                 eventContext = context

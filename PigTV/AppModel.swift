@@ -334,10 +334,23 @@ final class AppModel: ObservableObject {
         if currentPlayback === model { playerShown = true }
     }
 
-    func beginPlayback(_ channel: Channel) {
+    /// D-39: the origin of the plays started inside `withPlayOrigin` (a page's action that runs once its cover closed).
+    private var scopedPlayOrigin: String?
+
+    /// D-39: runs `action` with plays it starts recorded as coming from `origin` (when they name none themselves).
+    func withPlayOrigin(_ origin: String?, _ action: () -> Void) {
+        let saved = scopedPlayOrigin
+        scopedPlayOrigin = origin ?? saved
+        defer { scopedPlayOrigin = saved }
+        action()
+    }
+
+    /// `origin`: the tab the play starts from (D-39), sent with the play-start event.
+    func beginPlayback(_ channel: Channel, origin: String? = nil) {
         cancelHandoff() // #178: whatever starts now wins over a play still waiting for pages to close
         guard !playbackBusy, currentPlayback == nil, let client else { return }
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
+        model.origin = origin ?? scopedPlayOrigin
         currentPlayback = model
         playback = model
         remember(channel)
@@ -367,11 +380,13 @@ final class AppModel: ObservableObject {
 
     // Change channel without leaving the player. The old session is released
     // first (the provider allows one stream), then the new one resolves.
-    func switchPlayback(to channel: Channel) {
+    func switchPlayback(to channel: Channel, origin: String? = nil) {
         cancelHandoff() // #178
         guard let old = currentPlayback, let client, old.channel.id != channel.id else { return }
         previousChannel = old.channel
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
+        // D-39: a zap inside the player keeps the play's origin; a new choice from a page names its own.
+        model.origin = origin ?? scopedPlayOrigin ?? old.origin
         model.prerequisite = Task { _ = await old.stop() }
         currentPlayback = model
         playback = model
@@ -449,16 +464,16 @@ final class AppModel: ObservableObject {
 
     /// Plays one of an event's channels (the best, first, by default) with
     /// the event's channels as the zap list. Switches when already playing.
-    func playSportEvent(_ event: SportEvent, channel: SportEventChannel? = nil) {
+    func playSportEvent(_ event: SportEvent, channel: SportEventChannel? = nil, origin: String? = nil) {
         guard let browse else { return }
         let channels = event.channels.map(browse.playable)
         guard let chosen = channel.map(browse.playable) ?? channels.first else { return }
         if pendingWatch?.eventID == event.id { cancelPendingWatch() }
         zapList = channels
         if let currentPlayback {
-            if currentPlayback.channel.id != chosen.id { switchPlayback(to: chosen) }
+            if currentPlayback.channel.id != chosen.id { switchPlayback(to: chosen, origin: origin) }
         } else {
-            beginPlayback(chosen)
+            beginPlayback(chosen, origin: origin)
         }
     }
 
@@ -548,9 +563,11 @@ final class AppModel: ObservableObject {
 
     // Offline Home fixture (PIGTV_UI_TEST_SCREEN=home): the guide fixture
     // plus favourites, history, recordings, sport events and logos.
-    func injectHomeFixture(firstRun: Bool = false) {
+    /// `sportFront`: the server also has the Sport front page (C-R; PIGTV_UI_TEST_SCREEN=front).
+    func injectHomeFixture(firstRun: Bool = false, sportFront: Bool = false) {
+        let front = sportFront ? #","sportFront":true,"sportPages":true,"sportPageNfl":true"# : ""
         guard let address = try? ServerAddress("http://127.0.0.1:3000"),
-              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true}}"#.utf8)) else { return }
+              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data((#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true"# + front + "}}").utf8)) else { return }
         let client = APIClient(address: address, token: "fixture", info: info, accountID: 1)
         let model = BrowseModel(client: client, accountID: 1)
         model.isFixture = true

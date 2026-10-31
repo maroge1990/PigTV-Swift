@@ -14,7 +14,10 @@ struct SportsLandingView: View {
         refreshActivity: { [weak browse] in await browse?.loadRecordingsIfStale(maxAge: 15) }))
   }
   var body: some View {
-    if dashboard.enabled && !dashboard.legacy {
+    // C-R (Apple 89, D-39): the front page ("Blend 1") with the server's `sportFront`; else as before.
+    if browse.sportFrontEnabled {
+      SportFrontView(app: app, browse: browse)
+    } else if dashboard.enabled && !dashboard.legacy {
       SportsDashboardView(app: app, browse: browse, model: dashboard)
     } else {
       SportView(app: app, browse: browse, sport: browse.sport)

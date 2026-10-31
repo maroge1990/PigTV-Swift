@@ -66,6 +66,8 @@ struct PigTVApp: App {
             F1TestScreen(screen: screen)
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"], screen.hasPrefix("nfl") {
             NFLTestScreen(screen: screen)
+        } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "front" {
+            SportFrontTestScreen()
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
                   DesignTestScreen.screens.contains(screen) {
             DesignTestScreen(screen: screen)
@@ -160,6 +162,29 @@ private struct NFLTestScreen: View {
             browse.f1Page.setFixture(F1Page(available: false), preferences: SportPagePreferences(
                 spoilerFree: screen == "nfl-spoilers", nflFollowing: screen == "nfl" ? nil : "GB"))
         }
+    }
+}
+
+// C-R (#21, D-39, Apple 89): the app on the Home fixture with the server's Sport front page, opening where the app opens
+// (Sport), on the server's own answer given base64 in PIGTV_UI_TEST_FRONT_JSON (PigTVTests/Fixtures/sport-front-0381.json).
+private struct SportFrontTestScreen: View {
+    @StateObject private var model = AppModel()
+    var body: some View {
+        LibraryView(model: model)
+            #if os(tvOS)
+            .buttonStyle(TVActionStyle())
+            #endif
+            .preferredColorScheme(fixtureScheme)
+            .task {
+                model.injectHomeFixture(sportFront: true)
+                guard let browse = model.browse,
+                      let base64 = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_JSON"],
+                      let data = Data(base64Encoded: base64),
+                      let front = try? JSONDecoder().decode(SportFront.self, from: data) else { return }
+                browse.sportFront.setFixture(front)
+                browse.f1Page.setFixture(F1Page(available: false))
+                browse.nflPage.setFixture(NFLPage(available: false))
+            }
     }
 }
 

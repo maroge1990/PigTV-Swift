@@ -50,8 +50,15 @@ struct SportView: View {
     let app: AppModel
     let browse: BrowseModel
     @ObservedObject var sport: SportModel
+    /// C-R (Apple 89): the league chip to open on (a front page tile), and whether the page is pushed inside another
+    /// screen's NavigationStack (the front page's) instead of being the tab.
+    var initialLeague: String? = nil
+    var embedded = false
+    /// D-39: recorded with the plays started here.
+    var origin: String? = nil
     /// The chosen league chip (nil: All).
     @State private var league: String?
+    @State private var tookInitialLeague = false
     @FocusState private var chipFocus: String?
 
     var body: some View {
@@ -61,7 +68,7 @@ struct SportView: View {
         let chosen = league.flatMap { leagues.contains($0) ? $0 : nil }
         // Precomputed per league with the snapshot, not filtered per render.
         let shown = sport.rows(league: chosen)
-        NavigationStack {
+        stack {
             ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 // Lazy: with 200+ events (most of them replays) only the
@@ -111,13 +118,24 @@ struct SportView: View {
             }
             .pigPageBackdrop()
             #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
+            .toolbar(embedded ? .automatic : .hidden, for: .navigationBar)
             #endif
         }
         // The event page and channel picker live here, not on each card:
         // a recycled lazy cell cannot dismiss an open page.
-        .sportPages(app: app, browse: browse, clock: sport.clock)
+        .sportPages(app: app, browse: browse, clock: sport.clock, origin: origin)
         .whileVisible { await sport.keepFresh() }
+        .onAppear {
+            guard !tookInitialLeague else { return }
+            tookInitialLeague = true
+            if let initialLeague { league = initialLeague }
+        }
+    }
+
+    /// The tab's own NavigationStack; none when pushed inside another screen's.
+    @ViewBuilder
+    private func stack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if embedded { content() } else { NavigationStack { content() } }
     }
 
     private var header: some View {

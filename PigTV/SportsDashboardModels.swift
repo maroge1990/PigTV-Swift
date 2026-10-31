@@ -38,6 +38,8 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   let events: [Airing]
   let canWatch: Bool
   let dataSource: String?
+  /// C-R (server 0381): the card is a followed team's or driver's game; absent on the C-O routes.
+  var followed: Bool? = nil
 
   struct Competitor: Decodable, Equatable, Sendable, Identifiable {
     let id: String

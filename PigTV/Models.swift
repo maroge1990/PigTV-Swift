@@ -43,6 +43,8 @@ struct ServerInfo: Decodable {
         var sportPages: Bool? = nil
         // C-Q (server 0379, #21): `GET sports/pages/nfl`, the NFL page, and `following.NFL` in the preferences.
         var sportPageNfl: Bool? = nil
+        // C-R (server 0381, #21, D-39): `GET sports/front`, the Sport front page, and `sports`/`teams` in the preferences.
+        var sportFront: Bool? = nil
         // Server 0207: per-login recording positions (`GET`/`PUT
         // recordings/{id}/position`, and `position_sec`/`watched` on list rows).
         var recordingPositions: Bool? = nil
@@ -484,4 +486,7 @@ struct PlaybackEvent: Encodable {
     var warm: Bool?
     // #6, start-timeout only: how long nothing played.
     var waitedSec: Double?
+    // D-39 (Apple 89): which tab the play was started from ("sport-front", "tv", "guide"); absent when unknown. The
+    // server's client-event route ignores fields it does not log.
+    var origin: String?
 }
