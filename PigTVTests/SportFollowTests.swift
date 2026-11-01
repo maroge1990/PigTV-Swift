@@ -139,6 +139,8 @@ final class SportFollowSettingsModelTests: XCTestCase {
         let puts = Locked<[Data]>([])
         let rules = Locked(#"[{"id":3,"kind":"team","match":"Arsenal","sport":"Football","enabled":true,"createdByName":"tester"}]"#)
         let rulesStatus = Locked(200)
+        /// A PUT is kept but answers 500, and the follows can no longer be read (its answer was lost).
+        let commitThenFail = Locked(false)
     }
 
     private static let catalogJSON = #"{"sports":[{"sport":"Football","leagues":[{"league":"Premier League","label":"Premier League","heading":null},{"league":"League Cup","label":"League Cup","heading":"Cups"},{"league":"Europa League","label":"Europa League","heading":"Europe"}]}]}"#
@@ -152,6 +154,13 @@ final class SportFollowSettingsModelTests: XCTestCase {
                 return account.followsStatus.value == 200 ? .json(account.follows.value) : .json(#"{"error":"x"}"#, status: account.followsStatus.value)
             case ("PUT", "/api/sports/follows"):
                 account.puts.value.append(request.body)
+                if account.commitThenFail.value {
+                    account.follows.value = String(decoding: request.body, as: UTF8.self)
+                    account.followsStatus.value = 500
+                    var r = LocalHTTPServer.Response.json(#"{"error":"lost"}"#, status: 500)
+                    r.delay = account.firstPutDelay.value
+                    return r
+                }
                 guard account.putStatus.value == 200 else { return .json(#"{"error":"bad"}"#, status: account.putStatus.value) }
                 account.follows.value = String(decoding: request.body, as: UTF8.self)
                 var r = LocalHTTPServer.Response.json(account.follows.value)
@@ -215,6 +224,33 @@ final class SportFollowSettingsModelTests: XCTestCase {
         XCTAssertTrue(model.message.hasPrefix("Not saved: "), model.message)
         XCTAssertEqual(http.requests(path: "/api/sports/follows", method: "GET").count, reads + 1, "what the server has is read again")
         XCTAssertEqual(model.follows?.entry("Football")?.leagues, ["Premier League"])
+    }
+
+    /// Apple 92 Codex round 1 (high): a change the server kept but whose answer was lost, with the re-read failing too,
+    /// never lets a queued change replace the list from the old copy.
+    func testALostAnswerThatCannotBeReadAgainStopsQueuedChanges() async throws {
+        let account = Account()
+        let http = try server(account)
+        defer { http.stop() }
+        let model = try model(http)
+        var asked = 0
+        model.onSpoilerFreeChange = { asked += 1 }
+        await model.load()
+        account.commitThenFail.value = true
+        account.firstPutDelay.value = 0.6
+        async let first: Void = model.addLeague("Football", "League Cup")
+        try await Task.sleep(for: .milliseconds(150))
+        await model.addLeague("Football", "Europa League")
+        await first
+        XCTAssertEqual(account.puts.value.count, 1, "the queued change was not sent from the old list")
+        XCTAssertEqual(leagues(Data(account.follows.value.utf8)), ["Premier League", "League Cup"], "the kept change stands")
+        XCTAssertFalse(model.canEdit)
+        XCTAssertEqual(asked, 1, "the sport pages ask for Hide scores again")
+        account.commitThenFail.value = false
+        account.followsStatus.value = 200
+        await model.load()
+        XCTAssertTrue(model.canEdit, "a load that reads the server again allows changes")
+        XCTAssertEqual(model.follows?.entry("Football")?.leagues, ["Premier League", "League Cup"])
     }
 
     func testOfflineShowsTheLastCopyAndCannotBeChanged() async throws {

@@ -197,6 +197,13 @@ final class SportFollowSettingsModel: ObservableObject {
                     if again.spoilerFree != current.spoilerFree { self.onSpoilerFreeChange?() }
                     self.follows = again
                     self.keepCopy()
+                } else {
+                    // Apple 92 Codex round 1 (high): the change may have been kept although its answer was lost, so the
+                    // list shown may be old. Nothing more is sent until a load reads the server again (a queued change
+                    // finds `offline` and drops), and the sport pages ask for Hide scores again in case it changed.
+                    self.offline = true
+                    self.onSpoilerFreeChange?()
+                    self.message += " The server could not be read again, so nothing more can be changed until it answers."
                 }
             }
         }
