@@ -127,7 +127,7 @@ private struct SearchResultRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 18))
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
         .accessibilityLabel("\(programme.title), \(channel.name), \(DetailText.day(programme.start, now: now)) \(programme.timeRange)")
     }
 }

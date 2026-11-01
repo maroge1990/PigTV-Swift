@@ -149,7 +149,7 @@ struct LibrarySettings: View {
                         #if os(tvOS)
                         .font(.system(size: 24))
                         .padding(.horizontal, 24).padding(.vertical, 16)
-                        .background(appearance == value ? Color.pigAccent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                        .background(appearance == value ? Color.pigAccent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: PigRadius.compact))
                         #endif
                         .overlay(alignment: .leading) {
                             if appearance == value {
@@ -306,7 +306,7 @@ private struct SettingsRow: View {
         }
         .font(.system(size: 24))
         .padding(.horizontal, 24).padding(.vertical, 16)
-        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.compact))
         #else
         LabeledContent(title, value: value)
         #endif

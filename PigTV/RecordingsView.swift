@@ -19,7 +19,7 @@ private enum RecordingsMetrics {
     static let title: Font = .subheadline.weight(.semibold)
     static let detail: Font = .caption
     #endif
-    static let radius: CGFloat = 14
+    static let radius = PigRadius.card
     static let artRatio: CGFloat = 1.7
 }
 
@@ -755,7 +755,7 @@ private struct RecordingRulesSheet: View {
                 }
                 // A3: a rule change that failed says so (the reload after it shows the rule unchanged).
                 if let failure = actions.actionError {
-                    Text(failure).font(.caption).foregroundStyle(.red).accessibilityIdentifier("rules-action-error")
+                    Text(failure).font(.caption).foregroundStyle(Color.pigDanger).accessibilityIdentifier("rules-action-error")
                 } else if let message = actions.actionMessage {
                     Text(message).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("rules-action-message")
                 }

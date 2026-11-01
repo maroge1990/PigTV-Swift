@@ -398,7 +398,7 @@ private struct SportsDashboardShelf: View {
                       }
                       if game.channels.contains(where: { marks.isRecording($0) }) {
                         Label("Recording", systemImage: "record.circle.fill")
-                          .foregroundStyle(.red).fixedSize()
+                          .foregroundStyle(Color.pigDanger).fixedSize()
                       }
                     }.font(SportMetrics.detail)
                   }.padding(SportMetrics.cardPadding).frame(
@@ -472,7 +472,7 @@ private struct SportsGameContent: View {
           Image(
             systemName: game.availability == "unmatched" ? "exclamationmark.circle" : "xmark.circle"
           )
-          .foregroundStyle(game.availability == "unmatched" ? Color.yellow : Color.red)
+          .foregroundStyle(game.availability == "unmatched" ? Color.pigWarning : Color.pigDanger)
           .accessibilityLabel(game.availabilityLabel)
         }
       }
@@ -486,7 +486,7 @@ private struct SportsGameContent: View {
               .fixedSize(horizontal: false, vertical: true).frame(
                 maxWidth: .infinity, alignment: .leading)
             if let scores = game.visibleScores(hidden: hidden) {
-              Text(scores[index]).font(SportMetrics.title).monospacedDigit().lineLimit(1)
+              Text(scores[index]).font(SportMetrics.title).fontDesign(.rounded).monospacedDigit().lineLimit(1)
                 .minimumScaleFactor(0.7)
             }
           }
@@ -503,7 +503,7 @@ private struct SportsGameContent: View {
         }
       }
       if !game.progressLabel().isEmpty && game.status != "scheduled" {
-        Text(game.progressLabel()).font(SportMetrics.detail).monospacedDigit()
+        Text(game.progressLabel()).font(SportMetrics.detail).fontDesign(.rounded).monospacedDigit()
       } else {
         Text(
           Date(timeIntervalSince1970: game.start / 1000),

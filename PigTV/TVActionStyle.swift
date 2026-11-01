@@ -6,7 +6,7 @@ extension Color {
     /// on tvOS it resolved to white outside a NavigationStack (the
     /// unreachable and sign-in screens showed blank white primary buttons).
     static let pigAccent = Color("AccentColor")
-    static let pigMediaAccent = Color(red: 239/255, green: 122/255, blue: 174/255)
+    // The rose over video (kit §7) is the catalog's PigMediaAccent (Color.pigMediaAccent).
 }
 
 // The shared focus treatment: bright pink outline + translucent pink fill.
@@ -39,7 +39,7 @@ struct TVActionStyle: ButtonStyle {
 // content already draws one (`drawSurface: false`).
 struct PigSurfaceButtonStyle: ButtonStyle {
     var drawSurface = true
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = PigRadius.compact
     @Environment(\.isFocused) private var focused
     @Environment(\.colorScheme) private var scheme
 
@@ -205,22 +205,9 @@ nonisolated enum PigPageHeaderMetrics {
     #endif
 }
 
-struct PigWordmark: View {
-    #if os(tvOS)
-    private let height: CGFloat = 52
-    #else
-    @ScaledMetric(relativeTo: .title) private var height: CGFloat = 28
-    #endif
-    var body: some View {
-        Image("BrandWordmark").resizable().scaledToFit()
-            .frame(width: height * BrandLayout.wordmarkAspect, height: height)
-            .accessibilityLabel("PigTV")
-    }
-}
-
 /// Sign-in brand block: a static halo (the splash's values) centred on the pig mark only, on top of the page's
 /// corner-bloom canvas (OnboardingView sits on `PigPageBackground`). No card fill, and nothing behind the text fields:
-/// radiance stays off forms. The mark is `PigBrandMark(width: 150, ...)` at the block's top leading padding.
+/// radiance stays off forms. The pig is the stacked lockup's, `markInkWidth` wide, at the block's top leading padding.
 struct PigIdentityBackdrop: View {
     static let markInkWidth: CGFloat = 150
     @Environment(\.colorScheme) private var scheme
@@ -233,7 +220,7 @@ struct PigIdentityBackdrop: View {
                                center: .center, startRadius: 0, endRadius: r)
                     .frame(width: 2 * r, height: 2 * r)
                     .offset(x: DetailMetrics.heroPadding + Self.markInkWidth / 2 - r,
-                            y: DetailMetrics.heroPadding + 60 - r)
+                            y: DetailMetrics.heroPadding + PigLockup.pigInkHeight(forWidth: Self.markInkWidth) / 2 - r)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

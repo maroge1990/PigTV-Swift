@@ -142,15 +142,15 @@ struct TopShelfCardView: View {
 
     private var tint: Color {
         guard let rgb = look?.tint else { return Color.pigAccent }
-        return Color(red: rgb[0], green: rgb[1], blue: rgb[2])
+        return Color(artworkRGB: rgb)
     }
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(white: 0.14), Color(white: 0.05)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Color.pigMediaSolidPanel, Color.pigMediaCanvas], startPoint: .top, endPoint: .bottom)
             RadialGradient(colors: [tint.opacity(look?.tint == nil && logo != nil ? 0.16 : 0.34), .clear],
                            center: UnitPoint(x: 0.5, y: 0.22), startRadius: 10, endRadius: 560)
-            LinearGradient(colors: [.clear, .black.opacity(0.45)], startPoint: .center, endPoint: .bottom)
+            LinearGradient(colors: [.clear, Color.pigMediaCanvas.opacity(0.45)], startPoint: .center, endPoint: .bottom)
             VStack(spacing: 0) {
                 logoArea.frame(maxWidth: .infinity).frame(height: 268)
                 Spacer(minLength: 0)
@@ -170,21 +170,21 @@ struct TopShelfCardView: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: size.width, height: size.height)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: PigRadius.inner, style: .continuous))
                 .padding(look?.needsPlate == true ? 18 : 0)
                 .background {
                     if look?.needsPlate == true {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(white: 0.92))
+                        RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).fill(Color.pigMediaText.opacity(0.92))
                     }
                 }
-                .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
+                .shadow(color: Color.pigShadow.opacity(0.35), radius: 18, y: 8)
                 .padding(.top, 30)
         } else {
             // No logo: the pig, small and quiet, and the channel's name.
             VStack(spacing: 14) {
                 PigBrandMark(width: 84, height: 68).opacity(0.85)
                 if content.title != nil {
-                    Text(content.channel).font(.system(size: 30, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
+                    Text(content.channel).font(.system(size: 30, weight: .semibold)).foregroundStyle(Color.pigMediaText.opacity(0.8))
                         .lineLimit(1)
                 }
             }
@@ -196,7 +196,7 @@ struct TopShelfCardView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(content.title ?? content.channel)
                 .font(.system(size: 44, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.pigMediaText)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -205,21 +205,21 @@ struct TopShelfCardView: View {
                     Text("LIVE")
                         .font(.system(size: 19, weight: .heavy))
                         .tracking(1)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.pigMediaText)
                         .padding(.horizontal, 10).padding(.vertical, 3)
-                        .background(Color.white.opacity(0.18), in: Capsule())
+                        .background(Color.pigMediaText.opacity(0.18), in: Capsule())
                 }
                 if !content.line.isEmpty {
                     Text(content.line)
                         .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(Color.pigMediaText.opacity(0.72))
                         .lineLimit(1)
                 }
             }
             if let progress = content.progress {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.18))
+                        Capsule().fill(Color.pigMediaText.opacity(0.18))
                         Capsule().fill(Color.pigAccent)
                             .frame(width: max(6, geometry.size.width * min(1, max(0, progress))))
                     }

@@ -1,24 +1,26 @@
 #!/bin/sh
-# Copies the Pig family brand kit (1.6.0) into the app and renders the launch image. Idempotent: running it twice
+# Copies the Pig family brand kit (1.7.0) into the app and renders the launch image. Idempotent: running it twice
 # changes nothing. There is no brand generator any more; every brand image comes from the kit.
 #
-#   sh Tools/sync-brand.sh [path to Pig-Branding]     # default ../Pig-Branding
+#   sh Tools/sync-brand.sh [path to PigBrand]     # default ../PigBrand (~/code/PigBrand)
 #
 # Copies (kit: assets/products/pigtv):
 #   mark.svg                           -> PigLogo.imageset (vector)
-#   wordmark-light.svg / -dark.svg     -> BrandWordmark.imageset (vector, any + dark)
+#   lockup-horizontal-light/-dark.svg  -> LockupHorizontal.imageset (vector, any + dark)
+#   lockup-stacked-light/-dark.svg     -> LockupStacked.imageset (vector, any + dark)
 #   tokens/PigColors.xcassets/Pig{Success,Warning,Danger,Hover}.colorset -> same names in the app catalogue
 #   AppleTV/dark/.../*.brandassets     -> "App Icon & Top Shelf Image.brandassets" (tvOS icon and Top Shelf; dark only)
 #   Apple/IconComposer/*               -> PigTV/AppIcon.icon/Assets (halo-*.png, body.svg, face.svg, body-mono.svg, face-mono.svg)
 # Renders: LaunchBrand.imageset (transparent: static halo + mark) with Tools/render-launch.swift + PigTV/BrandLayout.swift.
-# PigTV/AppIcon.icon/icon.json is hand-maintained (Icon Composer) and is never touched.
+# PigTV/AppIcon.icon/icon.json is hand-maintained (Icon Composer) and is never touched. So are the playback and shadow
+# colours (PigMedia*.colorset, PigShadow.colorset): the kit has them as tokens (media.*, glass shadows), not as PigColors.
 
 set -e
 cd "$(dirname "$0")/.."
-kit=${1:-../Pig-Branding}
+kit=${1:-../PigBrand}
 src="$kit/assets/products/pigtv"
 if [ ! -f "$src/mark.svg" ]; then
-    echo "error: $src/mark.svg not found (pass the Pig-Branding path as the first argument)" >&2
+    echo "error: $src/mark.svg not found (pass the PigBrand path as the first argument)" >&2
     exit 1
 fi
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -26,55 +28,23 @@ export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer
 assets=PigTV/Assets.xcassets
 icon=PigTV/AppIcon.icon/Assets
 
-# Vector mark and wordmark.
-mkdir -p "$assets/PigLogo.imageset" "$assets/BrandWordmark.imageset"
-cp "$src/mark.svg" "$assets/PigLogo.imageset/mark.svg"
-cat > "$assets/PigLogo.imageset/Contents.json" <<'JSON'
-{
-  "images" : [
-    {
-      "filename" : "mark.svg",
-      "idiom" : "universal"
-    }
-  ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
-  },
-  "properties" : {
-    "preserves-vector-representation" : true
-  }
+# Vector mark and lockups.
+vector_set() { # name, light file, dark file (or "" for one file)
+    rm -rf "$assets/$1.imageset"
+    mkdir -p "$assets/$1.imageset"
+    cp "$src/$2" "$assets/$1.imageset/$2"
+    if [ -n "$3" ]; then
+        cp "$src/$3" "$assets/$1.imageset/$3"
+        dark=$(printf ',\n    {\n      "appearances" : [\n        {\n          "appearance" : "luminosity",\n          "value" : "dark"\n        }\n      ],\n      "filename" : "%s",\n      "idiom" : "universal"\n    }' "$3")
+    else
+        dark=""
+    fi
+    printf '{\n  "images" : [\n    {\n      "filename" : "%s",\n      "idiom" : "universal"\n    }%b\n  ],\n  "info" : {\n    "author" : "xcode",\n    "version" : 1\n  },\n  "properties" : {\n    "preserves-vector-representation" : true\n  }\n}\n' "$2" "$dark" > "$assets/$1.imageset/Contents.json"
 }
-JSON
-cp "$src/wordmark-light.svg" "$assets/BrandWordmark.imageset/wordmark-light.svg"
-cp "$src/wordmark-dark.svg" "$assets/BrandWordmark.imageset/wordmark-dark.svg"
-cat > "$assets/BrandWordmark.imageset/Contents.json" <<'JSON'
-{
-  "images" : [
-    {
-      "filename" : "wordmark-light.svg",
-      "idiom" : "universal"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "dark"
-        }
-      ],
-      "filename" : "wordmark-dark.svg",
-      "idiom" : "universal"
-    }
-  ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
-  },
-  "properties" : {
-    "preserves-vector-representation" : true
-  }
-}
-JSON
+vector_set PigLogo mark.svg ""
+vector_set LockupHorizontal lockup-horizontal-light.svg lockup-horizontal-dark.svg
+vector_set LockupStacked lockup-stacked-light.svg lockup-stacked-dark.svg
+rm -rf "$assets/BrandWordmark.imageset"
 
 # Status colours (the kit's PigColors; names match the app's own colour roles).
 for colour in PigSuccess PigWarning PigDanger PigHover; do

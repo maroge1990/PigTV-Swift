@@ -12,14 +12,14 @@ enum PlayerMetrics {
     static let tuningNext: CGFloat = 16, tuningBar: CGFloat = 360, tuningPadding: CGFloat = 48, tuningWidth: CGFloat = 640
     static let rowLogo = CGSize(width: 120, height: 66)
     static let rowName: CGFloat = 20, rowNumber: CGFloat = 16, rowTitle: CGFloat = 24, rowIcon: CGFloat = 16
-    static let rowPadding = CGSize(width: 16, height: 10), rowRadius: CGFloat = 14, rowBar: CGFloat = 4
+    static let rowPadding = CGSize(width: 16, height: 10), rowRadius = PigRadius.compact, rowBar: CGFloat = 4
     #else
     static let tuningLogo = CGSize(width: 150, height: 84)
     static let tuningName: CGFloat = 17, tuningTitle: CGFloat = 22, tuningDetail: CGFloat = 14
     static let tuningNext: CGFloat = 13, tuningBar: CGFloat = 260, tuningPadding: CGFloat = 28, tuningWidth: CGFloat = 440
     static let rowLogo = CGSize(width: 92, height: 52)
     static let rowName: CGFloat = 14, rowNumber: CGFloat = 12, rowTitle: CGFloat = 17, rowIcon: CGFloat = 13
-    static let rowPadding = CGSize(width: 12, height: 8), rowRadius: CGFloat = 12, rowBar: CGFloat = 3
+    static let rowPadding = CGSize(width: 12, height: 8), rowRadius = PigRadius.compact, rowBar: CGFloat = 3
     #endif
 }
 
@@ -57,7 +57,7 @@ struct LogoTile: View {
     let name: String
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile(.dark))
+            RoundedRectangle(cornerRadius: PigRadius.compact).fill(Color.logoTile(.dark))
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client).padding(.horizontal, 14).padding(.vertical, 10)
             } else {
@@ -92,7 +92,7 @@ struct BufferingPill: View {
             Text("Buffering…").font(.headline)
         }
         .padding(.horizontal, 24).padding(.vertical, 12)
-        .background(.black.opacity(0.7), in: Capsule())
+        .background(Color.pigMediaPanel, in: Capsule())
         .foregroundStyle(.white)
         .padding(.top, 48)
         .accessibilityElement(children: .combine)
@@ -148,7 +148,7 @@ struct TuningCard: View {
         .foregroundStyle(.white)
         .padding(PlayerMetrics.tuningPadding)
         .frame(maxWidth: PlayerMetrics.tuningWidth)
-        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 24))
+        .background(Color.pigMediaPanel, in: RoundedRectangle(cornerRadius: PigRadius.hero))
         .accessibilityElement(children: .combine)
     }
 }
@@ -197,7 +197,7 @@ struct PlayerChannelRow: View {
         .padding(.horizontal, PlayerMetrics.rowPadding.width).padding(.vertical, PlayerMetrics.rowPadding.height)
         .background(highlighted ? Color.pigMediaAccent.opacity(0.14) : Color.clear,
                     in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
-        .background(Color.black.opacity(0.82),
+        .background(Color.pigMediaPanel,
                     in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
         .overlay {
             RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius)

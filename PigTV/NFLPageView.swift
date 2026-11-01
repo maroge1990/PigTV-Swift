@@ -29,7 +29,7 @@ private enum NFLMetrics {
     /// The front page's badge sizes (#205): a game's or a standings row's (its `smallBadge`), the followed team's (`badge`).
     static let badge: CGFloat = 36
     static let teamBadge: CGFloat = 56
-    static let radius: CGFloat = 22
+    static let radius = PigRadius.card
     static let cardPadding = EdgeInsets(top: 16, leading: 22, bottom: 16, trailing: 22)
     #else
     static let title: Font = .largeTitle.bold()
@@ -46,7 +46,7 @@ private enum NFLMetrics {
     static let gameWidth: CGFloat = 340
     static let badge: CGFloat = 28
     static let teamBadge: CGFloat = 40
-    static let radius: CGFloat = 16
+    static let radius = PigRadius.card
     static let cardPadding = EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
     #endif
 }

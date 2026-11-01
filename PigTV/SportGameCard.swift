@@ -12,7 +12,7 @@ enum SportCardMetrics {
     static let width: CGFloat = 334
     static let height: CGFloat = 132
     static let spacing: CGFloat = 14
-    static let radius: CGFloat = 18
+    static let radius = PigRadius.card
     static let padding = EdgeInsets(top: 14, leading: 18, bottom: 14, trailing: 18)
     static let badge: CGFloat = 32
     static let team: Font = .system(size: 21, weight: .bold)
@@ -25,7 +25,7 @@ enum SportCardMetrics {
     static let width: CGFloat = 260
     static let height: CGFloat = 112
     static let spacing: CGFloat = 12
-    static let radius: CGFloat = 14
+    static let radius = PigRadius.card
     static let padding = EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
     static let badge: CGFloat = 26
     static let team: Font = .subheadline.weight(.bold)

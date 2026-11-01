@@ -56,7 +56,9 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
   event's secondary channel offers Record/Watch when it starts instead of tuning immediately.
 - `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, no switch may stall over `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms) on both laps (a one-lap spike of a loaded simulator is reported, not failed; 26 Oct), and after each switch Down must move focus into the tab's content.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
-- `BrandSplashUITests`: the 1.6 splash draws in light and dark and stays up through a breathing half-cycle (`PIGTV_UI_TEST_SCREEN=splash`, `PIGTV_UI_TEST_APPEARANCE`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
+- `BrandRulesTests` (unit): no typed-in colours, system red/yellow, greys, sub-82 % playback panels or literal radii in `PigTV/`
+  (allowlist: files of a build under review, each with its reason), and the kit's lockups in the catalog (#190).
+- `BrandSplashUITests`: the 1.7 splash (launch pig, then the stacked lockup) draws in light and dark and stays up through a breathing half-cycle (`PIGTV_UI_TEST_SCREEN=splash`, `PIGTV_UI_TEST_APPEARANCE`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
 - `SportSettingsUITests` (#200): Settings › Sport shows a suggestion, Hide scores and the followed sports; a sport opens its
   page (leagues, Add a league, Record every game, Follow a team…) and Menu returns.
 - `SportBannerUITests` (D-43, build 97; `front` on `sport-front-0427.json`, times moved to the clock): no tiles, the

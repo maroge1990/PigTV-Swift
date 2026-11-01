@@ -124,8 +124,8 @@ struct RecordingTouchPlayer: View {
                     .frame(minWidth: 56, alignment: .trailing)
             }
             .padding(12)
-            .background(reduceTransparency ? AnyShapeStyle(Color(white: 0.08)) : AnyShapeStyle(Color.black.opacity(0.45)),
-                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(reduceTransparency ? AnyShapeStyle(Color.pigMediaSolidPanel) : AnyShapeStyle(Color.pigMediaPanel),
+                        in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         }
     }
 }

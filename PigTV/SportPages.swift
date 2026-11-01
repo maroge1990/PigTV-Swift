@@ -144,7 +144,7 @@ struct SportChannelRow: View {
             .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 16))
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
         .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier("sport.channel.\(channel.id)")
     }

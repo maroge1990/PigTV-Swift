@@ -19,7 +19,7 @@ struct ChannelTile: View {
             // The only app-provided artwork backing: one neutral translucent
             // tile, the same for every channel, with the logo inset so it
             // never touches the tile edge.
-            RoundedRectangle(cornerRadius: 10).fill(Color.logoTile(scheme))
+            RoundedRectangle(cornerRadius: PigRadius.compact).fill(Color.logoTile(scheme))
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client)
                     .padding(.horizontal, 20).padding(.vertical, 10)
@@ -42,7 +42,7 @@ struct RetryBanner: View {
             Text(message).font(.callout)
             Spacer()
             Button("Retry", action: retry)
-        }.padding().background(Color.pigRaised, in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal)
+        }.padding().background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card)).padding(.horizontal)
     }
 }
 

@@ -214,7 +214,7 @@ private struct SportSuggestionRow: View {
         }
         .font(.system(size: 24))
         .padding(.horizontal, 24).padding(.vertical, 12)
-        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.compact))
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.sport.suggestion")
@@ -615,7 +615,7 @@ private struct SportItemRow<Title: View, Actions: View>: View {
             actions.font(DetailType.button)
         }
         .padding(.horizontal, 24).padding(.vertical, 10)
-        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.compact))
         .focusSection()
         #else
         HStack(spacing: 16) {

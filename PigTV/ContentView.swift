@@ -141,9 +141,9 @@ private extension View {
     /// The provider reminder floats over the content, so on iOS it is Liquid Glass; tvOS keeps its material.
     @ViewBuilder func reminderBackground() -> some View {
         #if os(tvOS)
-        background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        background(.regularMaterial, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         #else
-        glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        glassEffect(in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         #endif
     }
 }
@@ -233,12 +233,10 @@ struct OnboardingView: View {
         }
     }
 
-    /// The pig, the name and what PigTV is, with a static halo behind the pig only.
+    /// The kit's stacked lockup and what PigTV is, with a static halo behind the pig only.
     private var brand: some View {
         VStack(alignment: .leading, spacing: 20) {
-            PigBrandMark(width: 150, height: 120)
-                .accessibilityHidden(true)
-            PigWordmark()
+            PigLockup(kind: .stacked, pigInkWidth: PigIdentityBackdrop.markInkWidth, trimmedToInk: true)
             Text("Your channels. Your server.").font(DetailType.pageTitle)
             Text("Connect to your PigTV server to watch live TV, browse the guide and play your recordings.")
                 .font(DetailType.meta).foregroundStyle(.secondary)
@@ -271,7 +269,7 @@ struct OnboardingView: View {
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
                 DetailActions {
                     Button("Cancel pairing", systemImage: "xmark") { model.cancelPairing() }
                 }

@@ -121,7 +121,7 @@ enum GuideFixtures {
             let image = UIGraphicsImageRenderer(size: size).image { context in
                 let rect = CGRect(origin: .zero, size: size).insetBy(dx: 10, dy: 22)
                 colours[index % colours.count].setFill()
-                UIBezierPath(roundedRect: rect, cornerRadius: 22).fill()
+                UIBezierPath(roundedRect: rect, cornerRadius: PigRadius.hero).fill()
                 let style = NSMutableParagraphStyle()
                 style.alignment = .center
                 let text = entry.0.uppercased() as NSString

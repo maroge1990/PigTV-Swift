@@ -1,7 +1,7 @@
 // Hand-maintained: the shared numbers for the launch screen, the splash, the in-app canvas and the identity halo
-// (Pig family brand 1.6.0). Tools/render-launch.swift is compiled together with this file to draw the LaunchBrand
+// (Pig family brand 1.7.0). Tools/render-launch.swift is compiled together with this file to draw the LaunchBrand
 // images, and the SwiftUI views read the same values, so the launch screen and the splash's first frame agree.
-// Colour and stop values come from Pig-Branding/tokens/pig-radiance.css (the `radiatingLight` tokens).
+// Colour and stop values come from PigBrand/tokens/pig-radiance.css (the `radiatingLight` tokens).
 
 import CoreGraphics
 
@@ -38,12 +38,25 @@ nonisolated enum BrandLayout {
     static let bloomCoreRadius: CGFloat = 0.75
     static let bloomWideRadius: CGFloat = 1.6
 
-    /// wordmark-*.svg: viewBox 363 x 129.
-    static let wordmarkAspect: CGFloat = 363.0 / 129.0
-    /// The wordmark's width and the distance from the pig's centre to its top edge (fractions of S). It sits below the pig.
-    static let wordmarkWidth: CGFloat = 0.26
-    static let wordmarkTop: CGFloat = 0.225
-    static var wordmarkHeight: CGFloat { wordmarkWidth / wordmarkAspect }
+    /// The kit's lockups (lockup-*.svg): the canvas (viewBox) and the pig's ink box inside it, in the file's units. The
+    /// pig is the same drawing as mark.svg, so sizing a lockup by `pigInk.width` gives the same pig as `PigBrandMark`.
+    nonisolated enum LockupKind: Sendable { case horizontal, stacked }
+    nonisolated struct LockupGeometry: Sendable {
+        let canvas: CGSize
+        let pigInk: CGRect
+        /// How far the canvas centre is from the pig's centre, in units of the pig's ink width (to centre the pig).
+        var canvasCentreFromPig: CGPoint {
+            CGPoint(x: (canvas.width / 2 - pigInk.midX) / pigInk.width, y: (canvas.height / 2 - pigInk.midY) / pigInk.width)
+        }
+    }
+    static func lockup(_ kind: LockupKind) -> LockupGeometry {
+        switch kind {
+        case .horizontal: LockupGeometry(canvas: CGSize(width: 570, height: 254),
+                                         pigInk: CGRect(x: 47.66, y: 53.85, width: 166.08, height: 146.46))
+        case .stacked: LockupGeometry(canvas: CGSize(width: 473, height: 436),
+                                      pigInk: CGRect(x: 107.77, y: 57.07, width: 257.45, height: 227.04))
+        }
+    }
 
     // MARK: Canvas colours (PigCanvas / LaunchEdge)
 

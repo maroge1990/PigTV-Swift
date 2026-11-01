@@ -25,9 +25,9 @@ struct GuideGridProgrammeView: View {
 
     var body: some View {
         let clippedLeading = clip.clipped
-        let shape = UnevenRoundedRectangle(topLeadingRadius: clippedLeading ? 0 : 10,
-                                           bottomLeadingRadius: clippedLeading ? 0 : 10,
-                                           bottomTrailingRadius: 10, topTrailingRadius: 10)
+        let shape = UnevenRoundedRectangle(topLeadingRadius: clippedLeading ? 0 : PigRadius.compact,
+                                           bottomLeadingRadius: clippedLeading ? 0 : PigRadius.compact,
+                                           bottomTrailingRadius: PigRadius.compact, topTrailingRadius: PigRadius.compact)
         let finished = info.programme.map { $0.end <= info.clock } ?? false
         // Keep the title on screen while a long programme is clipped on the
         // left, until the visible part gets narrower than the text needs;
@@ -94,7 +94,7 @@ struct GuideGridTileView: View {
                 }
                 .padding(6)
             }
-            .overlay { RoundedRectangle(cornerRadius: 10).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
+            .overlay { RoundedRectangle(cornerRadius: PigRadius.compact).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
     }
 }
 

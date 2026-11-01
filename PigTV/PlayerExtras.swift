@@ -65,7 +65,7 @@ struct PlayerSidePanel: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            Color.black.opacity(0.2).ignoresSafeArea()
+            Color.pigMediaCanvas.opacity(0.2).ignoresSafeArea() // brand: scrim (dims the video behind the panel; not a panel)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
                 .accessibilityHidden(true)
@@ -83,11 +83,11 @@ struct PlayerSidePanel: View {
             .frame(width: 420)
             .frame(maxHeight: .infinity)
             .background {
-                if reduceTransparency { Color(white: 0.08).ignoresSafeArea() }
+                if reduceTransparency { Color.pigMediaSolidPanel.ignoresSafeArea() }
                 else {
                     ZStack {
                         Rectangle().fill(.ultraThinMaterial)
-                        LinearGradient(colors: [.black.opacity(0.6), .black.opacity(0.35)], startPoint: .leading, endPoint: .trailing)
+                        Color.pigMediaPanel
                     }
                     .ignoresSafeArea()
                 }
@@ -258,8 +258,8 @@ struct TouchPlayerChrome: View {
             }
         }
         .padding(regular ? 20 : 12)
-        .background(reduceTransparency ? AnyShapeStyle(Color(white: 0.08)) : AnyShapeStyle(Color.black.opacity(0.45)),
-                    in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(reduceTransparency ? AnyShapeStyle(Color.pigMediaSolidPanel) : AnyShapeStyle(Color.pigMediaPanel),
+                    in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
     }
 
     private func programmeInfo(programme: GuideProgramme?, next: GuideProgramme?, watching: Date) -> some View {
@@ -323,7 +323,7 @@ struct TouchPlayerChrome: View {
     private func liveControl(live: Bool) -> some View {
         if live {
             HStack(spacing: 6) {
-                Circle().fill(Color.red).frame(width: 9, height: 9)
+                Circle().fill(Color.pigMediaAccent).frame(width: 9, height: 9)
                 Text("LIVE").font(.footnote.bold())
             }
             .padding(.horizontal, 12).frame(minHeight: 44)
@@ -374,10 +374,10 @@ struct TouchPlayerChrome: View {
 
     private var shades: some View {
         VStack(spacing: 0) {
-            LinearGradient(colors: [.black.opacity(reduceTransparency ? 0.9 : 0.7), .clear], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Color.pigMediaCanvas.opacity(reduceTransparency ? 0.9 : 0.82), .clear], startPoint: .top, endPoint: .bottom)
                 .frame(height: regular ? 170 : 130)
             Spacer(minLength: 0)
-            LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.95 : 0.75)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [.clear, Color.pigMediaCanvas.opacity(reduceTransparency ? 0.95 : 0.82)], startPoint: .top, endPoint: .bottom)
                 .frame(height: regular ? 340 : 260)
         }
         .ignoresSafeArea()
@@ -396,7 +396,7 @@ struct PlayerCircleButton: View {
             Image(systemName: icon)
                 .font(.system(size: size * 0.4, weight: .semibold))
                 .frame(width: size, height: size)
-                .background(Circle().fill(Color.black.opacity(0.55)))
+                .background(Circle().fill(Color.pigMediaPanel))
                 .overlay(Circle().strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
                 .contentShape(Circle())
         }
@@ -431,7 +431,7 @@ struct PlayerPillButton: View {
                 }
             }
             .font(prominent ? .body.weight(.semibold) : .subheadline.weight(.semibold))
-            .background(Capsule().fill(prominent ? Color.white.opacity(0.2) : Color.black.opacity(0.55)))
+            .background(Capsule().fill(prominent ? Color.white.opacity(0.2) : Color.pigMediaPanel))
             .background(Capsule().fill(.ultraThinMaterial).opacity(prominent ? 1 : 0))
             .overlay(Capsule().strokeBorder(Color.white.opacity(prominent ? 0.45 : 0.22), lineWidth: 1))
             .contentShape(Capsule())

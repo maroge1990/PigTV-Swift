@@ -28,8 +28,8 @@ private enum HomeMetrics {
     static let heroHeight: CGFloat = 270
     static let heroPadding = CGSize(width: 56, height: 26)
     static let heroSpacing: CGFloat = 6
-    static let heroRadius: CGFloat = 32
-    static let cardRadius: CGFloat = 18
+    static let heroRadius = PigRadius.hero
+    static let cardRadius = PigRadius.card
     static let heroTitle: Font = .system(size: 40, weight: .bold)
     static let heroChannel: Font = .system(size: 22, weight: .semibold)
     static let heroDetail: Font = .system(size: 22, weight: .medium)
@@ -53,8 +53,8 @@ private enum HomeMetrics {
     static let heroHeight: CGFloat = 0
     static let heroPadding = CGSize(width: 20, height: 18)
     static let heroSpacing: CGFloat = 6
-    static let heroRadius: CGFloat = 22
-    static let cardRadius: CGFloat = 14
+    static let heroRadius = PigRadius.hero
+    static let cardRadius = PigRadius.card
     static let heroTitle: Font = .title2.bold()
     static let heroChannel: Font = .subheadline.weight(.semibold)
     static let heroDetail: Font = .subheadline
@@ -344,9 +344,9 @@ private struct HomeHero: View {
         .clipShape(RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: HomeMetrics.heroRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(scheme == .dark ? 0.08 : 0.06), lineWidth: 1)
+                .strokeBorder(Color.pigBorder, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(scheme == .dark ? 0.5 : 0.14), radius: 24, y: 12)
+        .shadow(color: Color.pigShadow.opacity(scheme == .dark ? 0.5 : 0.14), radius: 24, y: 12)
         #else
         Group {
             // Build 31: iPad (regular width) lays the hero out like the TV,
@@ -373,7 +373,7 @@ private struct HomeHero: View {
 
     private var logo: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.logoTile(scheme))
+            RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).fill(Color.logoTile(scheme))
             if channel.logo != nil {
                 ChannelArtwork(logo: channel.logo, client: model.client)
                     .padding(.horizontal, HomeMetrics.heroLogoInset.width).padding(.vertical, HomeMetrics.heroLogoInset.height)
@@ -383,7 +383,7 @@ private struct HomeHero: View {
             }
         }
         .frame(width: HomeMetrics.heroLogo.width, height: HomeMetrics.heroLogo.height)
-        .shadow(color: .black.opacity(0.3), radius: 14, y: 8)
+        .shadow(color: Color.pigShadow.opacity(0.3), radius: 14, y: 8)
         .accessibilityHidden(true)
     }
 
@@ -495,7 +495,7 @@ struct HomeCardButtonStyle: ButtonStyle {
             .clipShape(shape)
             .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .scaleEffect(focused && !reduceMotion ? 1.07 : (configuration.isPressed ? 0.98 : 1))
-            .shadow(color: .black.opacity(focused ? (scheme == .dark ? 0.6 : 0.25) : 0), radius: focused ? 26 : 0, y: focused ? 16 : 0)
+            .shadow(color: Color.pigShadow.opacity(focused ? (scheme == .dark ? 0.6 : 0.25) : 0), radius: focused ? 26 : 0, y: focused ? 16 : 0)
             .animation(.easeOut(duration: 0.18), value: focused)
     }
 }

@@ -346,7 +346,7 @@ struct ChannelScheduleView: View {
                             Eyebrow(text: "On now")
                             Text(current.title).font(DetailType.title).lineLimit(2)
                             Text("\(current.timeRange) · \(DetailText.duration(current.end.timeIntervalSince(now).rounded(.up))) left")
-                                .font(DetailType.meta).foregroundStyle(.secondary)
+                                .font(DetailType.meta).fontDesign(.rounded).monospacedDigit().foregroundStyle(.secondary)
                             PigProgressBar(fraction: row.progress, height: 6).frame(maxWidth: 640)
                         } else {
                             Text("No programme information right now").font(DetailType.meta).foregroundStyle(.secondary)
@@ -435,7 +435,7 @@ private struct ScheduleRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 18))
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
         .accessibilityLabel("\(programme.start.formatted(date: .omitted, time: .shortened)), \(programme.title)\(live ? ", on now" : "")\(scheduled ? ", recording scheduled" : "")")
     }
 }
@@ -475,7 +475,7 @@ struct ChannelDetails: View {
                             Eyebrow(text: "On now")
                             Text(current.title).font(DetailType.title).lineLimit(2)
                             Text("\(current.timeRange) · \(DetailText.duration(current.end.timeIntervalSince(now).rounded(.up))) left")
-                                .font(DetailType.meta).foregroundStyle(.secondary)
+                                .font(DetailType.meta).fontDesign(.rounded).monospacedDigit().foregroundStyle(.secondary)
                             PigProgressBar(fraction: row.progress, height: 6).frame(maxWidth: 640)
                         } else {
                             Text("Programme information unavailable").font(DetailType.meta).foregroundStyle(.secondary)
@@ -527,6 +527,6 @@ private struct UpNextCard: View {
         .padding(14)
         #endif
         .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
-        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
     }
 }

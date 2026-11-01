@@ -60,8 +60,8 @@ private struct PlayerBottomShade: ViewModifier {
         content
             .background(alignment: .bottom) {
                 LinearGradient(stops: [.init(color: .clear, location: 0),
-                                       .init(color: .black.opacity(reduceTransparency ? 0.95 : opacity), location: 0.22),
-                                       .init(color: .black.opacity(reduceTransparency ? 0.95 : max(opacity, 0.9)), location: 1)],
+                                       .init(color: Color.pigMediaCanvas.opacity(reduceTransparency ? 0.95 : max(opacity, 0.82)), location: 0.22),
+                                       .init(color: Color.pigMediaCanvas.opacity(reduceTransparency ? 0.95 : max(opacity, 0.9)), location: 1)],
                                startPoint: .top, endPoint: .bottom)
                     .frame(height: height).ignoresSafeArea()
             }

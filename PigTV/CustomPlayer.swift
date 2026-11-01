@@ -248,7 +248,7 @@ struct CustomPlayerView: View {
     // MARK: Info overlay
 
     private var panelFill: AnyShapeStyle {
-        reduceTransparency ? AnyShapeStyle(Color(white: 0.1)) : AnyShapeStyle(Color.black.opacity(0.82))
+        reduceTransparency ? AnyShapeStyle(Color.pigMediaSolidPanel) : AnyShapeStyle(Color.pigMediaPanel)
     }
 
     private func infoOverlay(now: Date) -> some View {
@@ -284,7 +284,7 @@ struct CustomPlayerView: View {
                         ForEach(qualityTags, id: \.self) { tag in
                             Text(tag).font(.system(size: 18, weight: .semibold))
                                 .padding(.horizontal, 10).padding(.vertical, 4)
-                                .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
+                                .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: PigRadius.inner))
                         }
                     }
                     if showsStreamInfo { StreamInfoLine(playback: playback) }
@@ -299,8 +299,8 @@ struct CustomPlayerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background(alignment: .bottom) {
             LinearGradient(stops: [.init(color: .clear, location: 0),
-                                   .init(color: .black.opacity(reduceTransparency ? 0.95 : 0.78), location: 0.22),
-                                   .init(color: .black.opacity(reduceTransparency ? 0.95 : 0.9), location: 1)],
+                                   .init(color: Color.pigMediaCanvas.opacity(reduceTransparency ? 0.95 : 0.82), location: 0.22),
+                                   .init(color: Color.pigMediaCanvas.opacity(reduceTransparency ? 0.95 : 0.9), location: 1)],
                            startPoint: .top, endPoint: .bottom)
                 .frame(height: 620).ignoresSafeArea()
         }
@@ -365,7 +365,7 @@ struct CustomPlayerView: View {
         .foregroundStyle(.white)
         .frame(maxWidth: 620, alignment: .leading)
         .padding(40)
-        .background(RoundedRectangle(cornerRadius: 24).fill(panelFill))
+        .background(RoundedRectangle(cornerRadius: PigRadius.hero).fill(panelFill))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .padding(.leading, 80)
         .transition(.opacity)
@@ -383,8 +383,8 @@ struct CustomPlayerView: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 18).padding(.vertical, 12)
-                .background(highlighted ? Color.pigMediaAccent.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
-                .overlay { RoundedRectangle(cornerRadius: 12).stroke(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3) }
+                .background(highlighted ? Color.pigMediaAccent.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: PigRadius.compact))
+                .overlay { RoundedRectangle(cornerRadius: PigRadius.compact).stroke(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3) }
             }
         }
     }
@@ -414,8 +414,8 @@ struct CustomPlayerView: View {
                     Text(programme?.start.formatted(date: .omitted, time: .shortened) ?? "")
                     Spacer()
                     HStack(spacing: 8) {
-                        if !paused && !playback.behindLive { Circle().fill(Color.red).frame(width: 12, height: 12) }
-                        Text(paused || playback.behindLive ? "BEHIND LIVE" : "LIVE").foregroundStyle(paused || playback.behindLive ? .white : .red)
+                        if !paused && !playback.behindLive { Circle().fill(Color.pigMediaAccent).frame(width: 12, height: 12) }
+                        Text(paused || playback.behindLive ? "BEHIND LIVE" : "LIVE").foregroundStyle(paused || playback.behindLive ? Color.white : Color.pigMediaAccent)
                         Text(now.formatted(date: .omitted, time: .shortened))
                     }
                 }.font(.system(size: 22, weight: .semibold))
@@ -447,8 +447,8 @@ struct CustomPlayerView: View {
                 Spacer()
                 if live {
                     HStack(spacing: 8) {
-                        Circle().fill(Color.red).frame(width: 12, height: 12)
-                        Text("LIVE").foregroundStyle(.red)
+                        Circle().fill(Color.pigMediaAccent).frame(width: 12, height: 12)
+                        Text("LIVE").foregroundStyle(Color.pigMediaAccent)
                     }
                 } else {
                     Text("\(PlayerTimeMath.behindText(behind)) behind live")
@@ -461,7 +461,7 @@ struct CustomPlayerView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 90).padding(.bottom, 50)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .playerBottomShade(height: 260, opacity: 0.75)
+        .playerBottomShade(height: 260, opacity: 0.82)
         .transition(.opacity)
     }
 
@@ -490,7 +490,7 @@ struct CustomPlayerView: View {
                                  startPoint: .top, endPoint: .bottom))
             .padding(.leading, 60)
             .background(alignment: .leading) {
-                LinearGradient(colors: [.black.opacity(reduceTransparency ? 0.95 : 0.7), .clear],
+                LinearGradient(colors: [Color.pigMediaCanvas.opacity(reduceTransparency ? 0.95 : 0.82), .clear],
                                startPoint: .leading, endPoint: .trailing)
                     .frame(width: 900).ignoresSafeArea()
             }

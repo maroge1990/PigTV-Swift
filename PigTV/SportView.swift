@@ -17,7 +17,7 @@ enum SportMetrics {
     static let cardSpacing: CGFloat = 30
     static let sectionSpacing: CGFloat = 30
     static let pagePadding: CGFloat = 0
-    static let radius: CGFloat = 20
+    static let radius = PigRadius.card
     static let logo = CGSize(width: 112, height: 63)
     static let rowLogo = CGSize(width: 136, height: 76)
     static let league: Font = .system(size: 18, weight: .bold)
@@ -30,7 +30,7 @@ enum SportMetrics {
     static let cardSpacing: CGFloat = 14
     static let sectionSpacing: CGFloat = 24
     static let pagePadding: CGFloat = 20
-    static let radius: CGFloat = 16
+    static let radius = PigRadius.card
     static let logo = CGSize(width: 64, height: 36)
     static let rowLogo = CGSize(width: 72, height: 40)
     static let league: Font = .caption.bold()
@@ -324,6 +324,6 @@ private struct SportEmptyState: View {
         .padding(.vertical, 70).padding(.horizontal, 40)
         .frame(maxWidth: .infinity)
         .tvFocusSection()
-        .background(Color.guideCell(scheme).opacity(0.7), in: RoundedRectangle(cornerRadius: 36, style: .continuous))
+        .background(Color.guideCell(scheme).opacity(0.7), in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
     }
 }

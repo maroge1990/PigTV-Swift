@@ -13,7 +13,7 @@ import ImageIO
 enum SportBannerMetrics {
     #if os(tvOS)
     static let height: CGFloat = 250
-    static let radius: CGFloat = 26
+    static let radius = PigRadius.hero
     static let padding = EdgeInsets(top: 20, leading: 32, bottom: 20, trailing: 22)
     static let listWidth: CGFloat = 540
     static let gap: CGFloat = 28
@@ -34,7 +34,7 @@ enum SportBannerMetrics {
     static let map = CGSize(width: 420, height: 220)
     #else
     static let height: CGFloat = 220
-    static let radius: CGFloat = 20
+    static let radius = PigRadius.hero
     static let padding = EdgeInsets(top: 16, leading: 20, bottom: 16, trailing: 16)
     static let listWidth: CGFloat = 340
     static let gap: CGFloat = 18
@@ -107,7 +107,7 @@ struct SportBanner<Actions: View>: View {
                     Image(systemName: "chevron.left").font(.system(size: 24, weight: .bold))
                         .frame(width: SportBannerMetrics.back, height: SportBannerMetrics.back)
                 }
-                .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 16))
+                .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
                 .accessibilityLabel("Back to Sport")
                 .accessibilityIdentifier("sport.banner.back")
             }
@@ -218,7 +218,7 @@ struct SportBanner<Actions: View>: View {
                 }
             }
         }
-        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: 10))
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact))
         .focused($focusedItem, equals: index)
         .contextMenu {
             if let second = secondary?(index) {

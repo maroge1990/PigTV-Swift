@@ -41,14 +41,14 @@ enum DetailMetrics {
     static let heroPadding: CGFloat = 52
     static let logo = CGSize(width: 208, height: 117)
     static let spacing: CGFloat = 30
-    static let radius: CGFloat = 32
+    static let radius = PigRadius.hero
     #else
     static let pageWidth: CGFloat = 820
     static let readingWidth: CGFloat = 680
     static let heroPadding: CGFloat = 20
     static let logo = CGSize(width: 112, height: 63)
     static let spacing: CGFloat = 20
-    static let radius: CGFloat = 22
+    static let radius = PigRadius.hero
     #endif
 }
 
@@ -117,11 +117,12 @@ struct LogoWash: View {
                     RadialGradient(colors: [Color.pigAccent.opacity(scheme == .dark ? 0.45 : 0.25), .clear],
                                    center: .topTrailing, startRadius: 40, endRadius: 900)
                 }
+                // The wash fades into the page canvas (its role, both appearances) so text reads over the artwork.
                 LinearGradient(colors: scheme == .dark
-                               ? [.black.opacity(0.82), .black.opacity(0.55), .black.opacity(0.2)]
-                               : [.white.opacity(0.9), .white.opacity(0.7), .white.opacity(0.35)],
+                               ? [Color.pigCanvas.opacity(0.82), Color.pigCanvas.opacity(0.55), Color.pigCanvas.opacity(0.2)]
+                               : [Color.pigCanvas.opacity(0.9), Color.pigCanvas.opacity(0.7), Color.pigCanvas.opacity(0.35)],
                                startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, (scheme == .dark ? Color.black : Color.white).opacity(0.35)],
+                LinearGradient(colors: [.clear, Color.pigCanvas.opacity(0.35)],
                                startPoint: .top, endPoint: .bottom)
             }
         }
@@ -144,9 +145,9 @@ struct DetailHero<Content: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(scheme == .dark ? 0.08 : 0.06), lineWidth: 1)
+                    .strokeBorder(Color.pigBorder, lineWidth: 1)
             }
-            .shadow(color: .black.opacity(scheme == .dark ? 0.5 : 0.12), radius: 26, y: 14)
+            .shadow(color: Color.pigShadow.opacity(scheme == .dark ? 0.5 : 0.12), radius: 26, y: 14)
     }
 }
 
@@ -160,7 +161,7 @@ struct ChannelLogoTile: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.logoTile(scheme))
+            RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).fill(Color.logoTile(scheme))
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client)
                     .padding(.horizontal, size.width * 0.1).padding(.vertical, size.height * 0.12)
@@ -210,7 +211,7 @@ struct ChannelNumberText: View {
     var onDark = false
     var body: some View {
         Text(verbatim: number).font(font).monospacedDigit().fontDesign(.rounded)
-            .foregroundStyle(onDark ? AnyShapeStyle(Color.white.opacity(0.5)) : AnyShapeStyle(.tertiary))
+            .foregroundStyle(onDark ? AnyShapeStyle(Color.pigMediaText.opacity(0.5)) : AnyShapeStyle(.tertiary))
     }
 }
 
@@ -247,7 +248,7 @@ struct PigProgressBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.15))
+                Capsule().fill(Color.pigBorder)
                 Capsule().fill(Color.pigAccent)
                     .frame(width: max(height, geometry.size.width * min(1, max(0, fraction))))
             }

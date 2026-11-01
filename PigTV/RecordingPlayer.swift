@@ -194,7 +194,7 @@ struct RecordingPlayerView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 90).padding(.bottom, 50)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .playerBottomShade(height: chrome == .info ? 520 : 300, opacity: 0.8)
+        .playerBottomShade(height: chrome == .info ? 520 : 300, opacity: 0.82)
         .transition(.opacity)
     }
 }

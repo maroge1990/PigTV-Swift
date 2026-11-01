@@ -1,7 +1,7 @@
 import SwiftUI
 
-// The branded start-up view (Pig family brand 1.6): the canvas colour, the PigTV pig with a static halo and, once the
-// wordmark has faded in, the name. The halo then breathes into a bloom and back (8 s cycle, 4 s each way) while the view is
+// The branded start-up view (Pig family brand 1.7): the canvas colour, the PigTV pig with a static halo and, once the
+// kit's stacked lockup has faded in over the pig, the name. The halo then breathes into a bloom and back (8 s cycle, 4 s each way) while the view is
 // visible. The pig, the name and the layout never move or scale. Geometry and colours come from `BrandLayout`, which
 // Tools/render-launch.swift also uses to draw the launch image, so this view's first frame (halo at full opacity, no
 // bloom, no wordmark) is the launch screen and nothing jumps.
@@ -55,9 +55,12 @@ struct BrandSplashView: View {
             }
             Image("PigLogo").resizable()
                 .frame(width: BrandLayout.markSide * s, height: BrandLayout.markSide * s)
-            Image("BrandWordmark").resizable()
-                .frame(width: BrandLayout.wordmarkWidth * s, height: BrandLayout.wordmarkHeight * s)
-                .offset(y: (BrandLayout.wordmarkTop + BrandLayout.wordmarkHeight / 2) * s)
+            // The kit's stacked lockup fades in over the launch pig: its pig lands exactly on the mark (same drawing, same
+            // ink width, centred on it), so only the name appears.
+            let pig = BrandLayout.pigInkWidth * s
+            let shift = BrandLayout.lockup(.stacked).canvasCentreFromPig
+            PigLockup(kind: .stacked, pigInkWidth: pig)
+                .offset(x: shift.x * pig, y: shift.y * pig)
                 .opacity(showWord ? 1 : 0)
             if slowStart {
                 ProgressView().controlSize(.small).opacity(0.55)
