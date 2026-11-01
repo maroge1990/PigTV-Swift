@@ -79,11 +79,17 @@ struct CricketPageView: View {
     @FocusState private var focus: Control?
     /// D-43: under a sport page's banner: no header, no scroll view of its own.
     let embedded: Bool
+    /// D-43: the league the sport page's banner selected (its lead, tour and matches first; the other leagues' below).
+    let scope: CricketLeagueScope?
+    /// What shows when the page has nothing for that league: its C-R games.
+    let fallback: AnyView?
 
-    init(app: AppModel, browse: BrowseModel, embedded: Bool = false) {
+    init(app: AppModel, browse: BrowseModel, embedded: Bool = false, scope: CricketLeagueScope? = nil, fallback: AnyView? = nil) {
         self.app = app
         self.browse = browse
         self.embedded = embedded
+        self.scope = scope
+        self.fallback = fallback
         self.model = browse.cricketPage
         self.preferences = browse.f1Page
         _appState = ObservedObject(wrappedValue: app)
@@ -134,7 +140,10 @@ struct CricketPageView: View {
         let spoilerFree = preferences.hidesSpoilers
         VStack(alignment: .leading, spacing: CricketMetrics.spacing) {
             if !embedded { header }
-            if let raw = model.page, raw.available, raw.lead != nil || !raw.others.isEmpty {
+            if let scope, let raw = model.page, raw.available {
+                scoped(CricketLeagueFilter.apply(CricketPageText.visible(raw, spoilerFree: spoilerFree), scope: scope),
+                       scope: scope, now: now, spoilerFree: spoilerFree)
+            } else if let raw = model.page, raw.available, raw.lead != nil || !raw.others.isEmpty {
                 let page = CricketPageText.visible(raw, spoilerFree: spoilerFree)
                 if wide {
                     HStack(alignment: .top, spacing: CricketMetrics.columnGap) {
@@ -164,6 +173,117 @@ struct CricketPageView: View {
         #if os(iOS)
         .padding(wide ? 32 : 16)
         #endif
+    }
+
+    // MARK: One league (D-43)
+
+    /// The selected league: its lead's scoreboard (innings by column) and days beside its tour, its other matches, then the
+    /// other leagues' matches today; its C-R games when the page has nothing for it.
+    @ViewBuilder
+    private func scoped(_ page: CricketLeagueFilter.Scoped, scope: CricketLeagueScope, now: Date, spoilerFree: Bool) -> some View {
+        let label = SportLabels.label(scope.league, in: scope.labels)
+        if let lead = page.lead {
+            HStack(alignment: .top, spacing: CricketMetrics.columnGap) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 16) {
+                        Text([lead.label ?? lead.competition ?? label, lead.venue, spoilerFree ? nil : lead.seriesLine]
+                            .compactMap { $0 }.joined(separator: " · "))
+                            .font(CricketMetrics.cardTitle).lineLimit(1)
+                            .accessibilityIdentifier("cricket.lead.title")
+                        pill(lead, now: now)
+                    }
+                    scoreboard(lead, spoilerFree: spoilerFree)
+                    days(lead, now: now)
+                    actions(lead, now: now)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                if let series = page.series, !series.matches.isEmpty {
+                    seriesPanel(series, lead: lead, now: now, spoilerFree: spoilerFree).frame(width: CricketMetrics.sideWidth)
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("cricket.lead.\(lead.id)")
+        }
+        if !page.mine.isEmpty { matches(page.lead == nil ? label : "More \(label)", page.mine, now: now) }
+        if page.isEmpty {
+            if let fallback { fallback } else { nothingOn }
+        }
+        if !page.others.isEmpty { matches("Your other cricket today", page.others, now: now) }
+    }
+
+    private func matches(_ title: String, _ list: [CricketOther], now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title).font(CricketMetrics.cardTitle).accessibilityAddTraits(.isHeader)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: CricketMetrics.otherWidth), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                ForEach(list) { other in otherCard(other, now: now) }
+            }
+            .tvFocusSection()
+        }
+    }
+
+    /// The lead's teams with their innings in columns and the open innings' overs (V2-Cricket-1); spoiler-free: the teams.
+    private func scoreboard(_ lead: CricketLead, spoilerFree: Bool) -> some View {
+        let board = CricketPageText.scoreboard(lead)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                ForEach(Array(board.headers.enumerated()), id: \.offset) { _, header in
+                    Text(header).font(CricketMetrics.otherDetail.weight(.bold)).tracking(1.2).foregroundStyle(.secondary)
+                        .frame(width: 150, alignment: .trailing)
+                }
+            }
+            ForEach(Array(lead.teams.enumerated()), id: \.offset) { index, team in
+                let list = index < lead.innings.count ? lead.innings[index] : []
+                let batting = !spoilerFree && list.contains(where: \.current) && lead.status == .live
+                HStack(spacing: 16) {
+                    SportBadge(name: team.name, logo: team.logo, league: "Cricket", client: browse.client, size: CricketMetrics.badge)
+                    if isFollowed(team.name) {
+                        Image(systemName: "star.fill").foregroundStyle(Color.pigAccentText).accessibilityLabel("Your team")
+                    }
+                    Text(team.name).font(CricketMetrics.team.weight(batting ? .heavy : .semibold)).lineLimit(1)
+                    Spacer(minLength: 8)
+                    if !spoilerFree, index < board.rows.count {
+                        HStack(spacing: 0) {
+                            ForEach(Array(board.rows[index].enumerated()), id: \.offset) { column, text in
+                                Text(text ?? "").font(column == board.rows[index].count - 1 ? CricketMetrics.detail : CricketMetrics.score)
+                                    .foregroundStyle(column == board.rows[index].count - 1 ? Color.secondary : Color.primary)
+                                    .monospacedDigit().lineLimit(1).frame(width: 150, alignment: .trailing)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("cricket.lead.score.\(index)")
+                    }
+                }
+                .padding(.horizontal, 10)
+                .frame(minHeight: CricketMetrics.badge + 6)
+                .background(isFollowed(team.name) ? Color.pigAccent.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityElement(children: .contain)
+            }
+            Divider().overlay(Color.pigBorder)
+            if spoilerFree {
+                Label("Scores hidden · spoiler-free is on", systemImage: "eye.slash").font(CricketMetrics.detail)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("cricket.lead.hidden")
+            } else if lead.summary != nil || lead.crease != nil {
+                HStack(alignment: .firstTextBaseline) {
+                    if let summary = lead.summary { Text(summary).font(CricketMetrics.detail.weight(.bold)) }
+                    Spacer(minLength: 12)
+                    if let crease = CricketPageText.crease(lead.crease) {
+                        Text(crease).font(CricketMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(CricketMetrics.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: CricketMetrics.radius, style: .continuous))
+    }
+
+    /// The account's followed cricket names (any of its leagues), exactly as the page spells them.
+    private func isFollowed(_ name: String) -> Bool {
+        let names = Set(preferences.preferences.teams.filter { scope?.leagues.contains($0.key) ?? ($0.key == "Cricket") }.flatMap(\.value)
+            .map { $0.lowercased() })
+        return names.contains(name.lowercased())
     }
 
     // MARK: Header

@@ -517,3 +517,128 @@ nonisolated enum CricketPageText {
         return SportRows.playsChannelNow(event, now: now)
     }
 }
+
+nonisolated extension CricketOther {
+    /// The lead as one of the "other leagues" cards, when it belongs to another league than the one shown (D-43).
+    init(lead: CricketLead) {
+        id = lead.id
+        seriesId = lead.seriesId
+        competition = [lead.competition, lead.label].compactMap { $0 }.joined(separator: " · ")
+        teams = lead.teams
+        scores = lead.teams.indices.map { $0 < lead.innings.count ? CricketPageText.innings(lead.innings[$0]) : nil }
+        line = lead.summary
+        status = lead.status
+        start = lead.start
+        nextStart = lead.nextStart
+        channels = lead.channels
+    }
+}
+
+/// D-43 (1 Nov): the Cricket page under a sport page's banner shows the selected league: its lead match and tour, then
+/// the other followed leagues' matches. C-S does not say which followed league a match is in, so the client works it
+/// out: the C-R card of the same ESPN match (its id ends in the match's id) names its league; else the match's
+/// competition is a followed league's name or label ("WBBL", "Sheffield Shield"); else, with one International group
+/// followed, it is that group's (a tour's competition is the tour's name). Pure (tests `CricketLeagueTests`).
+nonisolated struct CricketLeagueScope: Equatable, Sendable {
+    /// The league shown.
+    let league: String
+    /// The sport page's cricket leagues, in order.
+    let leagues: [String]
+    /// The catalogue's labels.
+    let labels: [String: String]
+    /// The C-R cricket cards' ESPN match ids (the id's last part) by league.
+    let cardLeagues: [String: String]
+
+    init(league: String, leagues: [String], labels: [String: String] = [:], cardLeagues: [String: String] = [:]) {
+        self.league = league; self.leagues = leagues; self.labels = labels; self.cardLeagues = cardLeagues
+    }
+
+    /// From the front page's answer: the cards of every cricket league on the page.
+    init(league: String, leagues: [String], labels: [String: String], games: [SportsGame]) {
+        var cards: [String: String] = [:]
+        for game in games where leagues.contains(game.league) {
+            if let last = game.id.split(separator: ":").last { cards[String(last)] = game.league }
+        }
+        self.init(league: league, leagues: leagues, labels: labels, cardLeagues: cards)
+    }
+}
+
+nonisolated enum CricketLeagueFilter {
+    static let internationalGroups: Set<String> = ["Cricket", "Women's Cricket"]
+
+    /// What the page shows for one league.
+    struct Scoped: Equatable, Sendable {
+        /// The league's lead match (with its tour), when the C-S lead is the league's.
+        var lead: CricketLead?
+        var series: CricketSeries?
+        /// The league's other matches today and tomorrow.
+        var mine: [CricketOther]
+        /// The other followed leagues' matches (the C-S lead among them when it is not this league's).
+        var others: [CricketOther]
+        /// C-S has nothing for the league: its C-R games instead.
+        var isEmpty: Bool { lead == nil && mine.isEmpty }
+    }
+
+    /// The followed league a C-S match belongs to, or nil when it cannot be told.
+    static func league(ofMatch id: String, competition: String?, scope: CricketLeagueScope) -> String? {
+        if let league = scope.cardLeagues[id] { return league }
+        if let competition = competition?.trimmingCharacters(in: .whitespaces).lowercased(), !competition.isEmpty {
+            if let league = scope.leagues.first(where: {
+                $0.lowercased() == competition || SportLabels.label($0, in: scope.labels).lowercased() == competition
+            }) { return league }
+            // Another catalogue league (not followed here): it is that league's, never an International group's.
+            if let other = scope.labels.first(where: { $0.key.lowercased() == competition || $0.value.lowercased() == competition }) {
+                return other.key
+            }
+        }
+        let groups = scope.leagues.filter(internationalGroups.contains)
+        return groups.count == 1 ? groups[0] : nil
+    }
+
+    /// The page for `scope.league`, from a page already made spoiler-safe (`CricketPageText.visible`). A match whose league
+    /// cannot be told is shown under the first league (as C-S held it) and among the others elsewhere.
+    static func apply(_ page: CricketPage, scope: CricketLeagueScope) -> Scoped {
+        let first = scope.leagues.first == scope.league
+        func isMine(_ id: String, _ competition: String?) -> Bool {
+            if let league = league(ofMatch: id, competition: competition, scope: scope) { return league == scope.league }
+            return first
+        }
+        var out = Scoped(lead: nil, series: nil, mine: [], others: [])
+        if let lead = page.lead {
+            if isMine(lead.id, lead.competition) {
+                out.lead = lead
+                out.series = page.series
+            } else {
+                out.others.append(CricketOther(lead: lead))
+            }
+        }
+        for other in page.others {
+            if isMine(other.id, other.competition) { out.mine.append(other) } else { out.others.append(other) }
+        }
+        return out
+    }
+}
+
+nonisolated extension CricketPageText {
+    /// D-43's scoreboard, innings by column: "1ST INNS", "2ND INNS" (as many as a team has batted), then "OVERS"; each
+    /// team's innings ("329", "200/5", "406/5d") and the overs of its open innings. Nothing for a team not yet in.
+    struct Scoreboard: Equatable, Sendable {
+        var headers: [String]
+        /// Per team: one text per innings column (nil: not batted), then the open innings' overs (or nil).
+        var rows: [[String?]]
+    }
+
+    static func scoreboard(_ lead: CricketLead) -> Scoreboard {
+        let columns = max(1, lead.innings.map(\.count).max() ?? 0)
+        let names = ["1ST INNS", "2ND INNS", "3RD INNS", "4TH INNS"]
+        var headers = (0..<columns).map { $0 < names.count ? names[$0] : "INNS \($0 + 1)" }
+        headers.append("OVERS")
+        let rows: [[String?]] = lead.teams.indices.map { team in
+            let list = team < lead.innings.count ? lead.innings[team] : []
+            var row: [String?] = (0..<columns).map { $0 < list.count ? innings([list[$0]]) : nil }
+            row.append(list.last(where: \.current).flatMap(\.overs))
+            return row
+        }
+        return Scoreboard(headers: headers, rows: rows)
+    }
+}

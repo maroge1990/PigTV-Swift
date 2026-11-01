@@ -408,8 +408,9 @@ nonisolated enum SportFrontLayout {
     }
 
     /// A section header's line: "EPL · 2 live", "F1 · Mon 7:00 am" (its leagues, then live or the next start).
-    static func headerLine(_ section: Section, in front: SportFront, now: Date, calendar: Calendar = .current) -> String {
-        let leagues = section.rails.map(\.league).filter { $0 != section.sport }
+    static func headerLine(_ section: Section, in front: SportFront, now: Date, labels: [String: String] = [:],
+                           calendar: Calendar = .current) -> String {
+        let leagues = section.rails.map(\.league).filter { $0 != section.sport }.map { SportLabels.label($0, in: labels) }
         let entries = front.sports.filter { $0.sportName == section.sport }
         let live = entries.reduce(0) { $0 + $1.live }
         var parts = leagues.isEmpty ? [] : [leagues.joined(separator: ", ")]
@@ -471,14 +472,19 @@ nonisolated enum SportFrontLayout {
     }
 
     /// The hero's words in the banner. `hidden`: spoiler-free (the answer's or the preference): no score, no situation.
-    static func hero(_ game: SportsGame, in front: SportFront, hidden: Bool, now: Date,
+    /// `labels`: the catalogue's league labels (D-43: "PREMIER LEAGUE", not "EPL"); a followed name is "YOUR DRIVER",
+    /// "YOUR PLAYER", "YOUR FIGHTER" or "YOUR TEAM" by sport.
+    static func hero(_ game: SportsGame, in front: SportFront, hidden: Bool, now: Date, labels: [String: String] = [:],
                      calendar: Calendar = .current) -> SportBannerHero {
         let drawn = SportFrontText.drawn(game, in: front, hidden: hidden)
         let sport = sport(of: game.league, in: front)
+        let league = SportLabels.label(game.league, in: labels)
         var kicker = [drawn.kicker]
-        if sport.caseInsensitiveCompare(game.league) != .orderedSame { kicker.append(sport.uppercased()) }
-        kicker.append(game.league.uppercased())
-        if game.followed == true { kicker.append("YOUR TEAM") }
+        if sport.caseInsensitiveCompare(game.league) != .orderedSame && sport.caseInsensitiveCompare(league) != .orderedSame {
+            kicker.append(sport.uppercased())
+        }
+        kicker.append(league.uppercased())
+        if game.followed == true { kicker.append(SportLabels.yours(sport: sport)) }
         var line: [String] = []
         if let scores = drawn.scores, scores.count == 2 { line.append(scores.joined(separator: "–")) }
         if let situation = drawn.situation { line.append(situation) }

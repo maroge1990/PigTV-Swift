@@ -169,7 +169,7 @@ final class SportBannerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["sport.banner.back"].exists, "back")
         XCTAssertEqual(any["sport.banner.hero.title"].label, "Mexico City Grand Prix", "Piastri's next race")
         XCTAssertTrue(any["sport.page.league.F1"].exists, "the F1 page under the banner")
-        XCTAssertTrue(any["f1.standings"].waitForExistence(timeout: 5), "the F1 page's standings")
+        XCTAssertTrue(any["f1.standings.drivers"].waitForExistence(timeout: 5), "the F1 page's standings (D-43: drivers and constructors apart)")
         XCTAssertFalse(any["f1.following"].exists, "without its own header")
         XCTAssertFalse(any["f1.weekend"].exists, "and without its own hero")
         attach(app, "d43-sport-one-league")

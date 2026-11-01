@@ -91,6 +91,14 @@ struct SportFrontView: View {
         }
         // The event page and channel picker belong to the screen (SportPresenter), with the plays' origin.
         .sportPages(app: app, browse: browse, clock: Date(), origin: Self.origin)
+        #if DEBUG
+        // UI tests (Apple 99): PIGTV_UI_TEST_OPEN_SPORT=<sport> opens that sport's page once the front page is up.
+        .task {
+            guard let sport = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_OPEN_SPORT"], path.isEmpty else { return }
+            try? await Task.sleep(for: .milliseconds(800))
+            path.append(SportRoute(sport: sport))
+        }
+        #endif
     }
 }
 

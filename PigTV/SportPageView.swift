@@ -4,9 +4,10 @@ import SwiftUI
 // its "Also in your sports" buttons or a follow. The banner: the hero (a follow live in this sport, else the sport's
 // league live, else your next game in it, C-R's order within the sport; with nothing live or next, the league's next
 // game with Remind me; never an empty banner) and the sport's followed leagues (C-R `sports[]` entries of that `sport`,
-// in the order sent). Selecting a league shows its page below the banner: Formula 1, the NFL and cricket their existing
-// pages (without their own header and hero, until D-43's per-sport layouts), any other league its games from C-R as
-// cards. One league: the banner runs full width. Data: the front page's own answer (`SportFrontModel`); rules
+// in the order sent). Selecting a league shows its page below the banner, D-43's per-sport layouts: Formula 1's weekend
+// (SportMotorViews), a fixture league's rounds and standings (the NFL and C-T, SportFixtureView), the selected cricket
+// league (CricketPageView with its scope), a C-V league's events (SportEventsViews), MotoGP's and Supercars' cards;
+// without a page's server flag the league's games from C-R as cards. One league: the banner runs full width. Data: the front page's own answer (`SportFrontModel`); rules
 // `SportPageRules` (tests `SportPageTests`).
 
 /// A sport page in the front page's navigation stack.
@@ -25,8 +26,13 @@ nonisolated enum SportPageRules {
         var followIndex: Int? = nil
     }
 
-    /// What a league shows below the banner.
-    enum LeagueContent: Equatable, Sendable { case f1, nfl, cricket, games }
+    /// What a league shows below the banner (D-43, "Under the banner, per sport"): Formula 1's weekend; a fixture league's
+    /// rounds and standings (the NFL, or a C-T league); the selected cricket league; a C-V league's events; MotoGP's and
+    /// Supercars' cards as session tiles; else the league's C-R games as cards.
+    enum LeagueContent: Equatable, Sendable { case f1, nfl, league, cricket(String), events, motorCards, games }
+
+    /// MotoGP and Supercars: C-R cards only (no page of their own).
+    static let motorCardLeagues: Set<String> = ["MotoGP", "Supercars"]
 
     /// The sport's followed leagues in the order sent (C-R since 0427: playing now first). Without `sports[]` entries
     /// (an older server), the leagues its rails name.
@@ -86,21 +92,28 @@ nonisolated enum SportPageRules {
     }
 
     /// The banner's list: the sport's leagues, each "2 live", its next start, or "Nothing scheduled".
-    static func leagueItems(_ sport: String, in front: SportFront, now: Date, calendar: Calendar = .current) -> [SportBannerItem] {
+    /// The rows are titled with the catalogue's labels ("Premier League"), else the league's code.
+    static func leagueItems(_ sport: String, in front: SportFront, now: Date, labels: [String: String] = [:],
+                            calendar: Calendar = .current) -> [SportBannerItem] {
         leagues(sport, in: front).map { entry in
             let live = entry.live > 0 || entry.line == "live"
             let trailing = live ? "\(max(entry.live, 1)) live"
                 : entry.next.map { SportFrontText.when(SportFrontText.date($0.start), now: now, calendar: calendar) }
                 ?? "Nothing scheduled"
-            return SportBannerItem(id: entry.league, title: entry.league, trailing: trailing, live: live)
+            return SportBannerItem(id: entry.league, title: SportLabels.label(entry.league, in: labels), trailing: trailing, live: live)
         }
     }
 
-    /// Formula 1, the NFL and cricket have pages of their own (with the server's flags); any other league shows its games.
-    static func content(league: String, sport: String, f1: Bool, nfl: Bool, cricket: Bool) -> LeagueContent {
+    /// Each page only with its server flag (`leagues`: `sportPageLeagues`' list; `events`: `sportPageEvents`); without it
+    /// the league shows its C-R games as before. A cricket league keeps its name, so selecting another changes the page.
+    static func content(league: String, sport: String, f1: Bool, nfl: Bool, cricket: Bool, leagues: [String] = [],
+                        events: Bool = false) -> LeagueContent {
         if league == "F1" && f1 { return .f1 }
         if league == "NFL" && nfl { return .nfl }
-        if (league == "Cricket" || sport == "Cricket") && cricket { return .cricket }
+        if (league == "Cricket" || sport == "Cricket") && cricket { return .cricket(league) }
+        if leagues.contains(league) { return .league }
+        if events && SportEventLeagues.all.contains(league) { return .events }
+        if sport == "Motorsport" && motorCardLeagues.contains(league) { return .motorCards }
         return .games
     }
 
@@ -140,6 +153,7 @@ struct SportPageView: View {
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .whileVisible { await model.keepFresh(preferences: f1) }
+        .task { await model.loadLabels(enabled: browse.sportFollowsEnabled) }
         .task(id: heroGame?.league == "F1") {
             // A race hero's backdrop is its circuit map: the F1 page's data, fetched once when such a hero shows.
             guard heroGame?.league == "F1", browse.sportPagesEnabled, f1.page == nil else { return }
@@ -182,9 +196,9 @@ struct SportPageView: View {
     private func banner(_ front: SportFront, hero: SportPageRules.Hero, leagues: [SportFront.Sport], shown: String?,
                         now: Date) -> some View {
         let game = front.game(hero.gameId)
-        let words = game.map { SportFrontLayout.hero($0, in: front, hidden: f1.hidesSpoilers, now: now) }
+        let words = game.map { SportFrontLayout.hero($0, in: front, hidden: f1.hidesSpoilers, now: now, labels: model.labels) }
             ?? SportPageRules.quietHero(sport)
-        let items = SportPageRules.leagueItems(sport, in: front, now: now)
+        let items = SportPageRules.leagueItems(sport, in: front, now: now, labels: model.labels)
         return SportBanner(hero: words, items: items, listTitle: "\(sport.uppercased()) · YOUR LEAGUES",
                            selected: shown.flatMap { s in leagues.firstIndex { $0.league == s } },
                            backdrop: game.flatMap { backdrop($0, follow: hero.followIndex, front: front) },
@@ -207,11 +221,26 @@ struct SportPageView: View {
     @ViewBuilder
     private func leagueContent(_ league: String, front: SportFront, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            let label = SportLabels.label(league, in: model.labels)
+            let leagues = SportPageRules.leagues(sport, in: front).map(\.league)
             switch SportPageRules.content(league: league, sport: sport, f1: browse.sportPagesEnabled,
-                                          nfl: browse.nflPageEnabled, cricket: browse.cricketPageEnabled) {
-            case .f1: F1PageView(app: app, browse: browse, model: browse.f1Page, embedded: true)
-            case .nfl: NFLPageView(app: app, browse: browse, embedded: true)
-            case .cricket: CricketPageView(app: app, browse: browse, embedded: true)
+                                          nfl: browse.nflPageEnabled, cricket: browse.cricketPageEnabled,
+                                          leagues: browse.leaguePageLeagues, events: browse.eventPagesEnabled) {
+            case .f1: SportF1Content(app: app, browse: browse)
+            case .nfl:
+                SportFixtureContent(app: app, browse: browse, source: .nfl, front: front, label: label, flow: flow)
+            case .league:
+                SportFixtureContent(app: app, browse: browse, source: .league(league), front: front, label: label, flow: flow)
+            case .cricket(let selected):
+                CricketPageView(app: app, browse: browse, embedded: true,
+                                scope: CricketLeagueScope(league: selected, leagues: leagues, labels: model.labels, games: front.games),
+                                fallback: AnyView(games(selected, front: front, now: now)))
+            case .events:
+                SportEventsContent(app: app, browse: browse, league: league, leagues: leagues, front: front,
+                                   labels: model.labels, flow: flow)
+            case .motorCards:
+                SportMotorCardsContent(app: app, league: league, front: front, hidden: f1.hidesSpoilers, now: now,
+                                       client: browse.client, label: label)
             case .games: games(league, front: front, now: now)
             }
         }
@@ -224,7 +253,7 @@ struct SportPageView: View {
     private func games(_ league: String, front: SportFront, now: Date) -> some View {
         let games = SportPageRules.games(league: league, in: front)
         VStack(alignment: .leading, spacing: 12) {
-            Text(league).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
+            Text(SportLabels.label(league, in: model.labels)).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             if games.isEmpty {
                 Text("Nothing in the next three days").font(SportCardMetrics.detail).foregroundStyle(.secondary)
                     .padding(.vertical, 12)

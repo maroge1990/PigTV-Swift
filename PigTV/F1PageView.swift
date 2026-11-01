@@ -485,7 +485,7 @@ struct F1PageView: View {
 }
 
 /// The circuit map (a logo-cache path), decoded large enough for the card; nothing while it loads or when absent.
-private struct CircuitMap: View {
+struct CircuitMap: View {
     let path: String?
     let client: APIClient
     @State private var image: UIImage?

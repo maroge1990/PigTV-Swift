@@ -28,6 +28,9 @@ final class SportFrontModel: ObservableObject {
     }
     /// A card the viewer made the hero with a long press; it wins while it is on the page.
     @Published private(set) var pinned: SportsGame.ID?
+    /// D-43: the catalogue's league labels ("EPL" → "Premier League"), read once per session with `sportFollows`.
+    @Published private(set) var labels: [String: String] = [:]
+    private var labelsLoaded = false
     var isFixture = false
     let client: APIClient
     private var inFlight: Task<Void, Never>?
@@ -127,7 +130,23 @@ final class SportFrontModel: ObservableObject {
         await load()
     }
 
+    /// The catalogue's labels, once per session (only when the server has per-account follows, C-U); a failed read is
+    /// tried again the next time a page appears, and the codes show meanwhile.
+    func loadLabels(enabled: Bool) async {
+        guard enabled, !labelsLoaded, !isFixture else { return }
+        labelsLoaded = true
+        do {
+            let catalog: SportCatalog = try await client.decodedOffMain("sports/catalog")
+            let answer = SportLabels.labels(catalog)
+            if answer != labels { labels = answer }
+        } catch {
+            labelsLoaded = false
+        }
+    }
+
     #if DEBUG
+    func setLabels(_ labels: [String: String]) { self.labels = labels }
+
     func setFixture(_ front: SportFront) {
         isFixture = true
         apply(front)

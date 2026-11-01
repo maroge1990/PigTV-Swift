@@ -584,6 +584,12 @@ final class BrowseModel: ObservableObject {
     /// C-S (#21): the Cricket page, only with the server's `sportPageCricket` flag.
     private(set) lazy var cricketPage = CricketPageModel(client: client)
     var cricketPageEnabled: Bool { client.info?.features.sportPageCricket == true }
+    /// C-T (#21, D-43): any team league's page, only for the leagues the server's `sportPageLeagues` lists.
+    private(set) lazy var leaguePages = LeaguePageModel(client: client)
+    var leaguePageLeagues: [String] { client.info?.features.sportPageLeagues?.items ?? [] }
+    /// C-V (#197, D-43): the tennis, golf, UFC, IndyCar and NASCAR pages, only with the server's `sportPageEvents` flag.
+    private(set) lazy var eventPages = SportEventsPageModel(client: client)
+    var eventPagesEnabled: Bool { client.info?.features.sportPageEvents == true }
     /// C-R (#21, D-39): the Sport front page, only with the server's `sportFront` flag.
     private(set) lazy var sportFront = SportFrontModel(client: client)
     var sportFrontEnabled: Bool { client.info?.features.sportFront == true }

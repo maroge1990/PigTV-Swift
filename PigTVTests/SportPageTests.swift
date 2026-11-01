@@ -96,7 +96,7 @@ final class SportPageTests: XCTestCase {
         XCTAssertEqual(SportPageRules.content(league: "F1", sport: "Motorsport", f1: true, nfl: true, cricket: true), .f1)
         XCTAssertEqual(SportPageRules.content(league: "F1", sport: "Motorsport", f1: false, nfl: true, cricket: true), .games)
         XCTAssertEqual(SportPageRules.content(league: "NFL", sport: "American football", f1: true, nfl: true, cricket: true), .nfl)
-        XCTAssertEqual(SportPageRules.content(league: "BBL", sport: "Cricket", f1: true, nfl: true, cricket: true), .cricket)
+        XCTAssertEqual(SportPageRules.content(league: "BBL", sport: "Cricket", f1: true, nfl: true, cricket: true), .cricket("BBL"))
         XCTAssertEqual(SportPageRules.content(league: "EPL", sport: "Football", f1: true, nfl: true, cricket: true), .games)
     }
 }

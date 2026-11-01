@@ -83,3 +83,29 @@ nonisolated enum SportBannerBackdrop: Equatable, Sendable {
         }
     }
 }
+
+/// D-43 (1 Nov): what a banner row and a kicker call a league and a followed name. Pure (tests `SportLabelsTests`).
+nonisolated enum SportLabels {
+    /// The catalogue's labels by canonical league (C-U `GET sports/catalog`: "EPL" → "Premier League", "Cricket" →
+    /// "International (men)").
+    static func labels(_ catalog: SportCatalog) -> [String: String] {
+        var out: [String: String] = [:]
+        for league in catalog.sports.flatMap(\.leagues) where !league.label.isEmpty { out[league.league] = league.label }
+        return out
+    }
+
+    /// A league's label, else its canonical code (no catalogue yet, an older server, or a league it does not list).
+    static func label(_ league: String, in labels: [String: String]) -> String {
+        labels[league].flatMap { $0.isEmpty ? nil : $0 } ?? league
+    }
+
+    /// The hero kicker's word for a followed name in the sport: a driver, a player, a fighter, else a team.
+    static func yours(sport: String) -> String {
+        switch sport {
+        case "Motorsport": return "YOUR DRIVER"
+        case "Tennis", "Golf": return "YOUR PLAYER"
+        case "Combat": return "YOUR FIGHTER"
+        default: return "YOUR TEAM"
+        }
+    }
+}

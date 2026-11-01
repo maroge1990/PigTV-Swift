@@ -778,6 +778,9 @@ enum ContractChecks {
         catch PigTVError.http(500) { count += 1 }
         FixtureProtocol.responseStatus = 200
 
+        // #52: the server's golden answers decode with these models (skipped with a note when they are not beside us).
+        count += try GoldenChecks.run()
+
         return count
     }
 }

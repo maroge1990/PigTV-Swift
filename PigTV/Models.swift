@@ -50,6 +50,10 @@ struct ServerInfo: Decodable {
         // C-U (server 0391, #193, D-41; Apple #200): per-account follows (`sports/follows`, `catalog`, `names`,
         // `suggestions`): Settings › Sport.
         var sportFollows: Bool? = nil
+        // C-T (server 0388, #21): `GET sports/pages/league/<league>`; an array of the leagues it answers, not a boolean.
+        var sportPageLeagues: FeatureList? = nil
+        // C-V (server 0428, #197, D-43): `GET sports/pages/events?league=` (tennis, golf, UFC, IndyCar, NASCAR).
+        var sportPageEvents: Bool? = nil
         // Server 0207: per-login recording positions (`GET`/`PUT
         // recordings/{id}/position`, and `position_sec`/`watched` on list rows).
         var recordingPositions: Bool? = nil
@@ -70,6 +74,15 @@ struct ServerInfo: Decodable {
         var recordingRules: Bool? = nil
         // C-N (server 0220, R6): recording and schedule rows carry `image`.
         var recordingArtwork: Bool? = nil
+    }
+
+    /// A flag sent as a list of names (`sportPageLeagues`); anything else reads as none, never failing `/api/info`.
+    struct FeatureList: Decodable, Equatable {
+        let items: [String]
+        init(_ items: [String]) { self.items = items }
+        init(from decoder: Decoder) throws {
+            items = ((try? decoder.singleValueContainer().decode([String].self)) ?? [])
+        }
     }
 
     func validate() throws {

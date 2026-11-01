@@ -188,9 +188,21 @@ private struct NFLTestScreen: View {
 // (Sport), on the server's own answer given base64 in PIGTV_UI_TEST_FRONT_JSON (PigTVTests/Fixtures/sport-front-0381.json).
 // C-S (Apple 90): with PIGTV_UI_TEST_CRICKET_JSON (the Cricket page's answer, base64) the server also has the Cricket
 // page, and a Watch reaches the real player, whose resolve goes to a non-routable TEST-NET address (the tuning card).
+// D-43 (Apple 99): with PIGTV_UI_TEST_PAGES_JSON (PigTVTests/Fixtures/sport-pages-d43.json, base64: `front`, `leagues`,
+// `events`, `cricket`) every sport page has its server page: the C-T leagues, the C-V events and two cricket leagues, the
+// catalogue's labels and the followed names; PIGTV_UI_TEST_SPOILERS=1 turns spoiler-free on.
 private struct SportFrontTestScreen: View {
     static let cricket = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_CRICKET_JSON"].flatMap { Data(base64Encoded: $0) }
+    static let pages = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_PAGES_JSON"].flatMap { Data(base64Encoded: $0) }
+        .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     @StateObject private var model = AppModel()
+
+    /// One part of the pages fixture, decoded.
+    private static func part<T: Decodable>(_ value: Any?) -> T? {
+        guard let value, let data = try? JSONSerialization.data(withJSONObject: value) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
     var body: some View {
         LibraryView(model: model)
             #if os(tvOS)
@@ -198,6 +210,7 @@ private struct SportFrontTestScreen: View {
             #endif
             .preferredColorScheme(fixtureScheme)
             .task {
+                if let pages = Self.pages { injectPages(pages); return }
                 model.injectHomeFixture(sportFront: true, cricket: Self.cricket != nil)
                 guard let browse = model.browse,
                       let base64 = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_JSON"],
@@ -221,6 +234,28 @@ private struct SportFrontTestScreen: View {
                                                   set: { model.playerPresented = $0 })) {
                 PlayerHost(app: model).tint(Color("AccentColor"))
             }
+    }
+
+    private func injectPages(_ pages: [String: Any]) {
+        let leagues = pages["leagues"] as? [String: Any] ?? [:]
+        let events = pages["events"] as? [String: Any] ?? [:]
+        model.injectHomeFixture(sportFront: true, cricket: pages["cricket"] != nil, pageLeagues: Array(leagues.keys).sorted(),
+                                events: !events.isEmpty)
+        guard let browse = model.browse, let front: SportFront = Self.part(pages["front"]) else { return }
+        browse.sportFront.setFixture(front)
+        browse.sportFront.setLabels(["F1": "Formula 1", "NASCAR": "NASCAR Cup", "Cricket": "International (men)",
+                                     "Sheffield Shield": "Sheffield Shield", "BBL": "BBL", "EPL": "Premier League"])
+        for (league, value) in leagues { if let page: LeaguePage = Self.part(value) { browse.leaguePages.setFixture(page, league: league) } }
+        for (league, value) in events { if let page: SportEventsPage = Self.part(value) { browse.eventPages.setFixture(page, league: league) } }
+        if let cricket: CricketPage = Self.part(pages["cricket"]) { browse.cricketPage.setFixture(cricket) }
+        browse.nflPage.setFixture(NFLPage(available: false))
+        var teams: [String: [String]] = [:]
+        for follow in front.follows { teams[follow.league, default: []].append(follow.name) }
+        let f1 = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_F1"] == "1"
+            ? F1PageFixtures.page(live: false, guide: browse.guide) : F1Page(available: false)
+        browse.f1Page.setFixture(f1, preferences: SportPagePreferences(
+            spoilerFree: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPOILERS"] == "1",
+            sports: front.sports.map(\.league), teams: teams))
     }
 }
 

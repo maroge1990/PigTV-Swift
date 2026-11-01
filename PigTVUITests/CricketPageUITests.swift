@@ -58,9 +58,11 @@ final class CricketPageUITests: XCTestCase {
         XCTAssertTrue(any["sport.page.league.Cricket"].waitForExistence(timeout: 10), "the Cricket page did not open")
         let title = any["cricket.lead.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        XCTAssertEqual(title.label, "South Africa v Australia")
-        XCTAssertTrue(app.staticTexts["3RD TEST · DAY 4 · SESSION 3"].exists, "the kicker")
-        XCTAssertTrue(any.matching(NSPredicate(format: "label CONTAINS '329 & 294/5'")).firstMatch.exists, "South Africa's innings")
+        // D-43 (Apple 99): under the banner the lead is headed by the match and its place; the teams are the banner's title.
+        XCTAssertTrue(title.label.hasPrefix("3rd Test"), title.label)
+        XCTAssertTrue(any["cricket.lead.pill"].exists, "the state beside it")
+        let innings = any["cricket.lead.score.0"]
+        XCTAssertTrue(innings.label.contains("329") && innings.label.contains("294/5"), "South Africa's innings, by column: \(innings.label)")
         XCTAssertTrue(app.staticTexts["Rickelton 101* · Mulder 115*"].exists, "the crease")
         XCTAssertFalse(any["cricket.following"].exists, "under the banner: no header of its own (D-43)")
         XCTAssertTrue(any["cricket.day.4.live"].exists && any["cricket.day.5.next"].exists, "the day chips")

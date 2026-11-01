@@ -1,0 +1,79 @@
+import XCTest
+@testable import PigTV
+
+// D-43 (Apple 99, part C, mock-up V2-League-1): a fixture league under its banner. The NFL from the server's own
+// answer (`nfl-page-0379.json`: weeks 7 and 8, the eight divisions) and a C-T league (the AFL in `sport-pages-d43.json`:
+// round 20 played, round 21 current with Collingwood live, one table of six columns): the rounds to switch between,
+// the standings views (Division / Conference / Overall, else one table), the followed team marked, spoilers hidden, and
+// a game's C-R card found for Watch and Record. Before Apple 99 the NFL page's own layout was embedded and a C-T league
+// showed only its C-R cards.
+final class SportFixtureTests: XCTestCase {
+    private func nfl() throws -> NFLPage { try JSONDecoder().decode(NFLPage.self, from: try NFLPageTests.fixture()) }
+    private func afl() throws -> LeaguePage { try SportPagesFixture.part(["leagues", "AFL"]) }
+
+    func testTheNFLOpensOnTheCurrentWeekAndSwitchesToTheLastOne() throws {
+        let league = FixtureText.nfl(try nfl(), following: ["Packers"], spoilerFree: false)
+        XCTAssertEqual(league.rounds.map(\.label), ["Week 7", "Week 8"])
+        XCTAssertEqual(FixtureText.openingRound(league), "8")
+        XCTAssertEqual(FixtureText.round(nil, in: league)?.label, "Week 8")
+        XCTAssertEqual(FixtureText.round("7", in: league)?.label, "Week 7", "the last week, chosen")
+        XCTAssertEqual(FixtureText.round("99", in: league)?.label, "Week 8", "a round the answer no longer has: the opening one")
+        XCTAssertTrue(league.awayFirst)
+    }
+
+    func testTheNFLsStandingsHaveThreeViewsWithTheFollowedTeamsTableFirst() throws {
+        let league = FixtureText.nfl(try nfl(), following: ["Packers"], spoilerFree: false)
+        XCTAssertEqual(league.views.map(\.name), ["Division", "Conference", "Overall"])
+        let division = try XCTUnwrap(FixtureText.view(nil, in: league))
+        XCTAssertEqual(division.tables.count, 8)
+        XCTAssertEqual(FixtureText.tables(division).first?.title, "NFC North", "the followed team's division first")
+        XCTAssertEqual(FixtureText.view("Overall", in: league)?.tables.first?.rows.count, 32)
+        XCTAssertTrue(FixtureText.tables(division).first?.rows.contains { $0.abbr == "GB" && $0.followed } == true)
+        let game = try XCTUnwrap(league.rounds[1].games.first { $0.home.abbr == "GB" })
+        XCTAssertTrue(game.followed)
+        XCTAssertEqual(game.home.score, "27")
+        XCTAssertEqual(game.home.record, "5-3")
+    }
+
+    func testSpoilerFreeHidesScoresRecordsAndDetail() throws {
+        let league = FixtureText.nfl(try nfl(), following: [], spoilerFree: true)
+        let games = league.rounds.flatMap(\.games)
+        XCTAssertTrue(games.allSatisfy { $0.home.score == nil && $0.away.score == nil && $0.home.record == nil && $0.situation == nil })
+        XCTAssertTrue(games.filter { $0.status == "done" }.allSatisfy { $0.detail == "Played" })
+    }
+
+    func testACTLeagueHasOneTableAndItsRounds() throws {
+        let league = FixtureText.league(try afl(), league: "AFL", following: [], spoilerFree: false)
+        XCTAssertEqual(league.rounds.map(\.label), ["Round 20", "Round 21"])
+        XCTAssertEqual(FixtureText.round(nil, in: league)?.label, "Round 21")
+        XCTAssertEqual(FixtureText.round("1:20", in: league)?.games.count, 3)
+        XCTAssertEqual(league.views.count, 1, "no divisions: one table")
+        let table = try XCTUnwrap(league.views.first?.tables.first)
+        XCTAssertEqual(table.columns, ["P", "W", "L", "D", "Pts", "%"])
+        XCTAssertEqual(table.rows.count, 18)
+        XCTAssertEqual(table.rows.filter(\.followed).map(\.name), ["Collingwood"], "C-T's `following` id")
+        let live = try XCTUnwrap(league.rounds[1].games.first { $0.status == "live" })
+        XCTAssertEqual(live.home.name, "Collingwood")
+        XCTAssertTrue(live.followed)
+        XCTAssertEqual(live.home.score, "45")
+        XCTAssertEqual(live.detail, "Q3 12:04")
+        XCTAssertNil(league.rounds[1].games.first { $0.status == "scheduled" }?.home.score, "no score before the start")
+    }
+
+    func testACTLeagueSpoilerFree() throws {
+        let league = FixtureText.league(try afl(), league: "AFL", following: [], spoilerFree: true)
+        let live = try XCTUnwrap(league.rounds[1].games.first { $0.status == "live" })
+        XCTAssertNil(live.home.score)
+        XCTAssertEqual(live.detail, "Live")
+    }
+
+    func testAGamesWatchAndRecordUseItsCRCard() throws {
+        let league = FixtureText.league(try afl(), league: "AFL", following: [], spoilerFree: false)
+        let front = try SportPagesFixture.front()
+        let live = try XCTUnwrap(league.rounds[1].games.first { $0.status == "live" })
+        XCTAssertEqual(FixtureText.card(for: live, league: "AFL", in: front)?.id, "espn:australian-football/afl:5")
+        let later = try XCTUnwrap(league.rounds[1].games.first { $0.home.name == "Adelaide Crows" || $0.away.name == "Adelaide Crows" })
+        XCTAssertNil(FixtureText.card(for: later, league: "AFL", in: front), "no card: its own channels")
+        XCTAssertEqual(FixtureText.event(live, league: "AFL").channels.first?.name, "Fox Footy HD")
+    }
+}

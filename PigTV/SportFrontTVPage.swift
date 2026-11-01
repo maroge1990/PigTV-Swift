@@ -37,6 +37,7 @@ struct SportFrontTVPage: View {
             content(now: context.date)
         }
         .whileVisible { await model.keepFresh(preferences: f1) }
+        .task { await model.loadLabels(enabled: browse.sportFollowsEnabled) }
         .onChange(of: f1.hidesSpoilers) { Task { await model.load() } }
         .task(id: model.heroGame?.league == "F1") {
             guard model.heroGame?.league == "F1", browse.sportPagesEnabled, f1.page == nil else { return }
@@ -81,7 +82,7 @@ struct SportFrontTVPage: View {
 
     private func banner(_ front: SportFront, now: Date) -> some View {
         let game = model.heroGame
-        let words = game.map { SportFrontLayout.hero($0, in: front, hidden: hidden, now: now) }
+        let words = game.map { SportFrontLayout.hero($0, in: front, hidden: hidden, now: now, labels: model.labels) }
             ?? SportBannerHero(kicker: "YOUR SPORTS", live: false, title: "Nothing on right now",
                                line: "Your sports' next games are below.")
         let sport = game.map { SportFrontLayout.sport(of: $0.league, in: front) }
@@ -118,7 +119,7 @@ struct SportFrontTVPage: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(section.sport).font(SportSectionMetrics.sectionTitle)
                     Text("›").font(SportSectionMetrics.sectionTitle).foregroundStyle(.secondary)
-                    Text(SportFrontLayout.headerLine(section, in: front, now: now)).font(SportSectionMetrics.sectionLine)
+                    Text(SportFrontLayout.headerLine(section, in: front, now: now, labels: model.labels)).font(SportSectionMetrics.sectionLine)
                         .foregroundStyle(.secondary).lineLimit(1)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 4)
@@ -129,7 +130,8 @@ struct SportFrontTVPage: View {
             .accessibilityIdentifier("sport.rail.header.\(section.sport)")
             ForEach(section.rails, id: \.league) { rail in
                 if section.rails.count > 1 {
-                    Text(rail.league).font(SportCardMetrics.kicker).tracking(1.4).foregroundStyle(.secondary)
+                    Text(SportLabels.label(rail.league, in: model.labels).uppercased()).font(SportCardMetrics.kicker).tracking(1.4)
+                        .foregroundStyle(.secondary)
                 }
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: SportCardMetrics.spacing) {

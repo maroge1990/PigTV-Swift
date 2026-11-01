@@ -1,0 +1,2530 @@
+{
+ "now": 1793525400000,
+ "front": {
+  "now": 1793525400000,
+  "timezone": "Australia/Melbourne",
+  "spoilerFree": false,
+  "scores": "fresh",
+  "sports": [
+   {
+    "league": "F1",
+    "sport": "Motorsport",
+    "live": 0,
+    "next": {
+     "gameId": "espn:racing/f1:1",
+     "start": 1793608200000
+    },
+    "line": "next"
+   },
+   {
+    "league": "NASCAR",
+    "sport": "Motorsport",
+    "live": 0,
+    "next": {
+     "gameId": "espn:racing/nascar-premier:202611010020",
+     "start": 1793619000000
+    },
+    "line": "next"
+   },
+   {
+    "league": "AFL",
+    "sport": "Australian football",
+    "live": 1,
+    "next": {
+     "gameId": "espn:australian-football/afl:6",
+     "start": 1793536200000
+    },
+    "line": "live"
+   },
+   {
+    "league": "Cricket",
+    "sport": "Cricket",
+    "live": 1,
+    "next": null,
+    "line": "live"
+   },
+   {
+    "league": "WBBL",
+    "sport": "Cricket",
+    "live": 1,
+    "next": null,
+    "line": "live"
+   },
+   {
+    "league": "UFC",
+    "sport": "Combat",
+    "live": 1,
+    "next": null,
+    "line": "live"
+   },
+   {
+    "league": "WTA Tour",
+    "sport": "Tennis",
+    "live": 2,
+    "next": null,
+    "line": "live"
+   },
+   {
+    "league": "PGA Tour",
+    "sport": "Golf",
+    "live": 1,
+    "next": null,
+    "line": "live"
+   }
+  ],
+  "follows": [
+   {
+    "league": "AFL",
+    "sport": "Australian football",
+    "name": "Collingwood",
+    "logo": null,
+    "state": "live",
+    "gameId": "espn:australian-football/afl:5",
+    "start": 1793521800000
+   },
+   {
+    "league": "Cricket",
+    "sport": "Cricket",
+    "name": "Australia",
+    "logo": null,
+    "state": "live",
+    "gameId": "espn:cricket/24203:1525661",
+    "start": 1793203440000
+   },
+   {
+    "league": "UFC",
+    "sport": "Combat",
+    "name": "Lucia Szabová",
+    "logo": null,
+    "state": "live",
+    "gameId": "espn:mma/ufc:600061420",
+    "start": 1793514600000
+   },
+   {
+    "league": "WTA Tour",
+    "sport": "Tennis",
+    "name": "Claire Liu",
+    "logo": null,
+    "state": "live",
+    "gameId": "espn:tennis/wta:232-2026",
+    "start": 1792728000000
+   },
+   {
+    "league": "PGA Tour",
+    "sport": "Golf",
+    "name": "Min Woo Lee",
+    "logo": null,
+    "state": "live",
+    "gameId": "espn:golf/pga:401850978",
+    "start": 1793266200000
+   },
+   {
+    "league": "F1",
+    "sport": "Motorsport",
+    "name": "Oscar Piastri",
+    "logo": null,
+    "state": "next",
+    "gameId": "espn:racing/f1:1",
+    "start": 1793608200000
+   },
+   {
+    "league": "NASCAR",
+    "sport": "Motorsport",
+    "name": "Kyle Larson",
+    "logo": null,
+    "state": "next",
+    "gameId": "espn:racing/nascar-premier:202611010020",
+    "start": 1793619000000
+   }
+  ],
+  "hero": {
+   "reason": "follow-live",
+   "followIndex": 0,
+   "gameId": "espn:australian-football/afl:5"
+  },
+  "rails": [
+   {
+    "league": "F1",
+    "sport": "Motorsport",
+    "gameIds": [
+     "espn:racing/f1:1"
+    ]
+   },
+   {
+    "league": "NASCAR",
+    "sport": "Motorsport",
+    "gameIds": [
+     "espn:racing/nascar-premier:202611010020"
+    ]
+   },
+   {
+    "league": "AFL",
+    "sport": "Australian football",
+    "gameIds": [
+     "espn:australian-football/afl:5",
+     "espn:australian-football/afl:6"
+    ]
+   },
+   {
+    "league": "Cricket",
+    "sport": "Cricket",
+    "gameIds": [
+     "espn:cricket/24203:1525661"
+    ]
+   },
+   {
+    "league": "WBBL",
+    "sport": "Cricket",
+    "gameIds": [
+     "espn:cricket/8044:1543947"
+    ]
+   },
+   {
+    "league": "UFC",
+    "sport": "Combat",
+    "gameIds": [
+     "espn:mma/ufc:600061420"
+    ]
+   },
+   {
+    "league": "WTA Tour",
+    "sport": "Tennis",
+    "gameIds": [
+     "espn:tennis/wta:232-2026",
+     "espn:tennis/wta:889-2026"
+    ]
+   },
+   {
+    "league": "PGA Tour",
+    "sport": "Golf",
+    "gameIds": [
+     "espn:golf/pga:401850978"
+    ]
+   }
+  ],
+  "games": [
+   {
+    "id": "espn:racing/f1:1",
+    "league": "F1",
+    "title": "Mexico City Grand Prix",
+    "start": 1793608200000,
+    "end": null,
+    "session": "Race",
+    "circuit": null,
+    "format": null,
+    "competitors": [],
+    "status": "scheduled",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "scheduled",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_6",
+      "stableId": "s6",
+      "name": "Fox Sports 506 UHD",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793604600000,
+      "end": 1793619000000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:racing/f1:1",
+      "start": 1793608200000,
+      "end": 1793619000000
+     }
+    ],
+    "canWatch": false,
+    "followed": true
+   },
+   {
+    "id": "espn:racing/nascar-premier:202611010020",
+    "league": "NASCAR",
+    "title": "NASCAR Cup Series at Martinsville",
+    "start": 1793619000000,
+    "end": 1793633400000,
+    "session": "Race",
+    "circuit": null,
+    "format": null,
+    "competitors": [],
+    "status": "scheduled",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "scheduled",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_7",
+      "stableId": "s7",
+      "name": "Fox Sports 507 HD",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793615400000,
+      "end": 1793633400000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:racing/nascar-premier:202611010020",
+      "start": 1793619000000,
+      "end": 1793633400000
+     }
+    ],
+    "canWatch": false,
+    "followed": true
+   },
+   {
+    "id": "espn:australian-football/afl:5",
+    "league": "AFL",
+    "title": "Collingwood v Richmond",
+    "start": 1793521800000,
+    "end": null,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [
+     {
+      "id": "17",
+      "name": "Collingwood",
+      "logo": null
+     },
+     {
+      "id": "12",
+      "name": "Richmond",
+      "logo": null
+     }
+    ],
+    "status": "live",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "on-tv",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_2",
+      "stableId": "s2",
+      "name": "Fox Footy HD",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793520000000,
+      "end": 1793530800000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:australian-football/afl:5",
+      "start": 1793521800000,
+      "end": 1793532600000
+     }
+    ],
+    "canWatch": true,
+    "followed": true
+   },
+   {
+    "id": "espn:australian-football/afl:6",
+    "league": "AFL",
+    "title": "Sydney Swans v GWS GIANTS",
+    "start": 1793536200000,
+    "end": null,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [
+     {
+      "id": "4",
+      "name": "Sydney Swans",
+      "logo": null
+     },
+     {
+      "id": "8",
+      "name": "GWS GIANTS",
+      "logo": null
+     }
+    ],
+    "status": "scheduled",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "scheduled",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_2",
+      "stableId": "s2",
+      "name": "Fox Footy HD",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793534400000,
+      "end": 1793547000000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:australian-football/afl:6",
+      "start": 1793536200000,
+      "end": 1793547000000
+     }
+    ],
+    "canWatch": false,
+    "followed": false
+   },
+   {
+    "id": "espn:cricket/24203:1525661",
+    "league": "Cricket",
+    "title": "South Africa v Australia",
+    "start": 1793203440000,
+    "end": null,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [
+     {
+      "id": "sa",
+      "name": "South Africa",
+      "logo": null
+     },
+     {
+      "id": "aus",
+      "name": "Australia",
+      "logo": null
+     }
+    ],
+    "status": "live",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "on-tv",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_1",
+      "stableId": "s1",
+      "name": "Fox Cricket",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793518200000,
+      "end": 1793543400000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:cricket/24203:1525661",
+      "start": 1793203440000,
+      "end": 1793214240000
+     }
+    ],
+    "canWatch": true,
+    "followed": true
+   },
+   {
+    "id": "espn:cricket/8044:1543947",
+    "league": "WBBL",
+    "title": "Brisbane Heat Women v Sydney Sixers Women",
+    "start": 1793518200000,
+    "end": null,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [
+     {
+      "id": "bh",
+      "name": "Brisbane Heat Women",
+      "logo": null
+     },
+     {
+      "id": "ss",
+      "name": "Sydney Sixers Women",
+      "logo": null
+     }
+    ],
+    "status": "live",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "unmatched",
+    "broadcastStatus": "scheduled",
+    "channels": [],
+    "events": [],
+    "canWatch": false,
+    "followed": false
+   },
+   {
+    "id": "espn:mma/ufc:600061420",
+    "league": "UFC",
+    "title": "UFC Fight Night: Moicano vs. Nolan",
+    "start": 1793514600000,
+    "end": 1793532600000,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [],
+    "status": "live",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "on-tv",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_5",
+      "stableId": "s5",
+      "name": "Fox Sports 505 HD",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793514600000,
+      "end": 1793532600000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:mma/ufc:600061420",
+      "start": 1793514600000,
+      "end": 1793532600000
+     }
+    ],
+    "canWatch": true,
+    "followed": true
+   },
+   {
+    "id": "espn:tennis/wta:232-2026",
+    "league": "WTA Tour",
+    "title": "Guangzhou Open",
+    "start": 1792728000000,
+    "end": 1793595540000,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [],
+    "status": "live",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "on-tv",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_9",
+      "stableId": "s9",
+      "name": "beIN Sports 1 HD",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793514600000,
+      "end": 1793547000000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:tennis/wta:232-2026",
+      "start": 1792728000000,
+      "end": 1793595540000
+     }
+    ],
+    "canWatch": true,
+    "followed": true
+   },
+   {
+    "id": "espn:tennis/wta:889-2026",
+    "league": "WTA Tour",
+    "title": "Chennai Open",
+    "start": 1793419200000,
+    "end": 1794200340000,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [],
+    "status": "live",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "unmatched",
+    "broadcastStatus": "scheduled",
+    "channels": [],
+    "events": [],
+    "canWatch": false,
+    "followed": false
+   },
+   {
+    "id": "espn:golf/pga:401850978",
+    "league": "PGA Tour",
+    "title": "VidantaWorld Mexico Open",
+    "start": 1793266200000,
+    "end": 1793554200000,
+    "session": null,
+    "circuit": null,
+    "format": null,
+    "competitors": [],
+    "status": "live",
+    "freshness": "fresh",
+    "observedAt": 1793525340000,
+    "progress": {},
+    "availability": "matched",
+    "broadcastStatus": "on-tv",
+    "channels": [
+     {
+      "sourceId": 1,
+      "id": "pos_5",
+      "stableId": "s5",
+      "name": "Fox Sports 505 HD",
+      "number": null,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793521800000,
+      "end": 1793543400000
+     }
+    ],
+    "events": [
+     {
+      "id": "ev-espn:golf/pga:401850978",
+      "start": 1793266200000,
+      "end": 1793554200000
+     }
+    ],
+    "canWatch": true,
+    "followed": true
+   }
+  ]
+ },
+ "leagues": {
+  "AFL": {
+   "available": true,
+   "following": "17",
+   "league": "AFL",
+   "rounds": [
+    {
+     "key": "1:20",
+     "label": "Round 20",
+     "current": false,
+     "games": [
+      {
+       "id": "1134001",
+       "start": 1792920600000,
+       "status": "done",
+       "detail": "Final",
+       "venue": "MCG",
+       "competition": null,
+       "home": {
+        "id": "17",
+        "abbr": "COLL",
+        "score": "92"
+       },
+       "away": {
+        "id": "9",
+        "abbr": "CARL",
+        "score": "77"
+       },
+       "channels": []
+      },
+      {
+       "id": "1134002",
+       "start": 1792931400000,
+       "status": "done",
+       "detail": "Final",
+       "venue": "Optus Stadium",
+       "competition": null,
+       "home": {
+        "id": "1",
+        "abbr": "FRE",
+        "score": "83"
+       },
+       "away": {
+        "id": "4",
+        "abbr": "SYD",
+        "score": "71"
+       },
+       "channels": []
+      },
+      {
+       "id": "1134003",
+       "start": 1793007000000,
+       "status": "done",
+       "detail": "Final",
+       "venue": "Gabba",
+       "competition": null,
+       "home": {
+        "id": "11",
+        "abbr": "BL",
+        "score": "131"
+       },
+       "away": {
+        "id": "13",
+        "abbr": "HAW",
+        "score": "122"
+       },
+       "channels": []
+      }
+     ]
+    },
+    {
+     "key": "1:21",
+     "label": "Round 21",
+     "current": true,
+     "games": [
+      {
+       "id": "1134004",
+       "start": 1793439000000,
+       "status": "done",
+       "detail": "Final",
+       "venue": "GMHBA Stadium",
+       "competition": null,
+       "home": {
+        "id": "14",
+        "abbr": "GEEL",
+        "score": "101"
+       },
+       "away": {
+        "id": "16",
+        "abbr": "ESS",
+        "score": "64"
+       },
+       "channels": []
+      },
+      {
+       "id": "1134005",
+       "start": 1793521800000,
+       "status": "live",
+       "detail": "Q3 12:04",
+       "venue": "MCG",
+       "competition": null,
+       "home": {
+        "id": "17",
+        "abbr": "COLL",
+        "score": "45"
+       },
+       "away": {
+        "id": "12",
+        "abbr": "RICH",
+        "score": "38"
+       },
+       "channels": [
+        {
+         "sourceId": 1,
+         "id": "pos_2",
+         "stableId": "s2",
+         "name": "Fox Footy HD",
+         "number": null,
+         "logo": null,
+         "quality": "HD",
+         "start": 1793520000000,
+         "end": 1793530800000
+        }
+       ]
+      },
+      {
+       "id": "1134006",
+       "start": 1793536200000,
+       "status": "scheduled",
+       "detail": null,
+       "venue": "SCG",
+       "competition": null,
+       "home": {
+        "id": "4",
+        "abbr": "SYD",
+        "score": null
+       },
+       "away": {
+        "id": "8",
+        "abbr": "GWS",
+        "score": null
+       },
+       "channels": []
+      },
+      {
+       "id": "1134007",
+       "start": 1793604600000,
+       "status": "scheduled",
+       "detail": null,
+       "venue": "Gabba",
+       "competition": null,
+       "home": {
+        "id": "11",
+        "abbr": "BL",
+        "score": null
+       },
+       "away": {
+        "id": "1",
+        "abbr": "FRE",
+        "score": null
+       },
+       "channels": []
+      },
+      {
+       "id": "1134008",
+       "start": 1793619000000,
+       "status": "scheduled",
+       "detail": null,
+       "venue": "Optus Stadium",
+       "competition": null,
+       "home": {
+        "id": "3",
+        "abbr": "WCE",
+        "score": null
+       },
+       "away": {
+        "id": "15",
+        "abbr": "ADEL",
+        "score": null
+       },
+       "channels": []
+      },
+      {
+       "id": "1134009",
+       "start": 1793691000000,
+       "status": "scheduled",
+       "detail": null,
+       "venue": "Adelaide Oval",
+       "competition": null,
+       "home": {
+        "id": "7",
+        "abbr": "PORT",
+        "score": null
+       },
+       "away": {
+        "id": "10",
+        "abbr": "SUNS",
+        "score": null
+       },
+       "channels": []
+      }
+     ]
+    }
+   ],
+   "season": {
+    "label": "2026",
+    "type": "postseason",
+    "year": 2026
+   },
+   "sport": "australian-football",
+   "standings": {
+    "groups": [
+     {
+      "name": null,
+      "columns": [
+       {
+        "key": "played",
+        "label": "P"
+       },
+       {
+        "key": "wins",
+        "label": "W"
+       },
+       {
+        "key": "losses",
+        "label": "L"
+       },
+       {
+        "key": "draws",
+        "label": "D"
+       },
+       {
+        "key": "points",
+        "label": "Pts"
+       },
+       {
+        "key": "percentage",
+        "label": "%"
+       }
+      ],
+      "rows": [
+       {
+        "id": "1",
+        "abbr": "FRE",
+        "rank": 1,
+        "values": {
+         "played": "23",
+         "wins": "18",
+         "losses": "5",
+         "draws": "0",
+         "points": "72",
+         "percentage": "137.0"
+        }
+       },
+       {
+        "id": "4",
+        "abbr": "SYD",
+        "rank": 2,
+        "values": {
+         "played": "23",
+         "wins": "17",
+         "losses": "6",
+         "draws": "0",
+         "points": "68",
+         "percentage": "134.0"
+        }
+       },
+       {
+        "id": "11",
+        "abbr": "BL",
+        "rank": 3,
+        "values": {
+         "played": "23",
+         "wins": "16",
+         "losses": "7",
+         "draws": "0",
+         "points": "64",
+         "percentage": "131.0"
+        }
+       },
+       {
+        "id": "13",
+        "abbr": "HAW",
+        "rank": 4,
+        "values": {
+         "played": "23",
+         "wins": "15",
+         "losses": "8",
+         "draws": "0",
+         "points": "60",
+         "percentage": "128.0"
+        }
+       },
+       {
+        "id": "17",
+        "abbr": "COLL",
+        "rank": 5,
+        "values": {
+         "played": "23",
+         "wins": "14",
+         "losses": "9",
+         "draws": "0",
+         "points": "56",
+         "percentage": "125.0"
+        }
+       },
+       {
+        "id": "14",
+        "abbr": "GEEL",
+        "rank": 6,
+        "values": {
+         "played": "23",
+         "wins": "13",
+         "losses": "10",
+         "draws": "0",
+         "points": "52",
+         "percentage": "122.0"
+        }
+       },
+       {
+        "id": "8",
+        "abbr": "GWS",
+        "rank": 7,
+        "values": {
+         "played": "23",
+         "wins": "12",
+         "losses": "11",
+         "draws": "0",
+         "points": "48",
+         "percentage": "119.0"
+        }
+       },
+       {
+        "id": "9",
+        "abbr": "CARL",
+        "rank": 8,
+        "values": {
+         "played": "23",
+         "wins": "11",
+         "losses": "12",
+         "draws": "0",
+         "points": "44",
+         "percentage": "116.0"
+        }
+       },
+       {
+        "id": "16",
+        "abbr": "ESS",
+        "rank": 9,
+        "values": {
+         "played": "23",
+         "wins": "10",
+         "losses": "13",
+         "draws": "0",
+         "points": "40",
+         "percentage": "113.0"
+        }
+       },
+       {
+        "id": "12",
+        "abbr": "RICH",
+        "rank": 10,
+        "values": {
+         "played": "23",
+         "wins": "9",
+         "losses": "14",
+         "draws": "0",
+         "points": "36",
+         "percentage": "110.0"
+        }
+       },
+       {
+        "id": "7",
+        "abbr": "PORT",
+        "rank": 11,
+        "values": {
+         "played": "23",
+         "wins": "8",
+         "losses": "15",
+         "draws": "0",
+         "points": "32",
+         "percentage": "107.0"
+        }
+       },
+       {
+        "id": "10",
+        "abbr": "SUNS",
+        "rank": 12,
+        "values": {
+         "played": "23",
+         "wins": "7",
+         "losses": "16",
+         "draws": "0",
+         "points": "28",
+         "percentage": "104.0"
+        }
+       },
+       {
+        "id": "3",
+        "abbr": "WCE",
+        "rank": 13,
+        "values": {
+         "played": "23",
+         "wins": "6",
+         "losses": "17",
+         "draws": "0",
+         "points": "24",
+         "percentage": "101.0"
+        }
+       },
+       {
+        "id": "15",
+        "abbr": "ADEL",
+        "rank": 14,
+        "values": {
+         "played": "23",
+         "wins": "5",
+         "losses": "18",
+         "draws": "0",
+         "points": "20",
+         "percentage": "98.0"
+        }
+       },
+       {
+        "id": "2",
+        "abbr": "MELB",
+        "rank": 15,
+        "values": {
+         "played": "23",
+         "wins": "4",
+         "losses": "19",
+         "draws": "0",
+         "points": "16",
+         "percentage": "95.0"
+        }
+       },
+       {
+        "id": "5",
+        "abbr": "NMFC",
+        "rank": 16,
+        "values": {
+         "played": "23",
+         "wins": "3",
+         "losses": "20",
+         "draws": "0",
+         "points": "12",
+         "percentage": "92.0"
+        }
+       },
+       {
+        "id": "6",
+        "abbr": "WB",
+        "rank": 17,
+        "values": {
+         "played": "23",
+         "wins": "2",
+         "losses": "21",
+         "draws": "0",
+         "points": "8",
+         "percentage": "89.0"
+        }
+       },
+       {
+        "id": "18",
+        "abbr": "STK",
+        "rank": 18,
+        "values": {
+         "played": "23",
+         "wins": "1",
+         "losses": "22",
+         "draws": "0",
+         "points": "4",
+         "percentage": "86.0"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "teams": {
+    "1": {
+     "abbr": "FRE",
+     "color": "5D368F",
+     "full": "Fremantle",
+     "id": "1",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Fremantle"
+    },
+    "2": {
+     "abbr": "MELB",
+     "color": null,
+     "full": "Melbourne",
+     "id": "2",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Melbourne"
+    },
+    "3": {
+     "abbr": "WCE",
+     "color": null,
+     "full": "West Coast Eagles",
+     "id": "3",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "West Coast Eagles"
+    },
+    "4": {
+     "abbr": "SYD",
+     "color": "B61300",
+     "full": "Sydney Swans",
+     "id": "4",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Sydney Swans"
+    },
+    "5": {
+     "abbr": "NMFC",
+     "color": null,
+     "full": "North Melbourne",
+     "id": "5",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "North Melbourne"
+    },
+    "6": {
+     "abbr": "WB",
+     "color": null,
+     "full": "Western Bulldogs",
+     "id": "6",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Western Bulldogs"
+    },
+    "7": {
+     "abbr": "PORT",
+     "color": null,
+     "full": "Port Adelaide",
+     "id": "7",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Port Adelaide"
+    },
+    "8": {
+     "abbr": "GWS",
+     "color": null,
+     "full": "GWS GIANTS",
+     "id": "8",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "GWS GIANTS"
+    },
+    "9": {
+     "abbr": "CARL",
+     "color": null,
+     "full": "Carlton",
+     "id": "9",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Carlton"
+    },
+    "10": {
+     "abbr": "SUNS",
+     "color": null,
+     "full": "Gold Coast SUNS",
+     "id": "10",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Gold Coast SUNS"
+    },
+    "11": {
+     "abbr": "BL",
+     "color": "6D144A",
+     "full": "Brisbane Lions",
+     "id": "11",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Brisbane Lions"
+    },
+    "12": {
+     "abbr": "RICH",
+     "color": null,
+     "full": "Richmond",
+     "id": "12",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Richmond"
+    },
+    "13": {
+     "abbr": "HAW",
+     "color": "462D22",
+     "full": "Hawthorn",
+     "id": "13",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Hawthorn"
+    },
+    "14": {
+     "abbr": "GEEL",
+     "color": null,
+     "full": "Geelong Cats",
+     "id": "14",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Geelong Cats"
+    },
+    "15": {
+     "abbr": "ADEL",
+     "color": null,
+     "full": "Adelaide Crows",
+     "id": "15",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Adelaide Crows"
+    },
+    "16": {
+     "abbr": "ESS",
+     "color": null,
+     "full": "Essendon",
+     "id": "16",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Essendon"
+    },
+    "17": {
+     "abbr": "COLL",
+     "color": null,
+     "full": "Collingwood",
+     "id": "17",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "Collingwood"
+    },
+    "18": {
+     "abbr": "STK",
+     "color": null,
+     "full": "St Kilda",
+     "id": "18",
+     "location": null,
+     "logo": "/api/logo/<key>",
+     "name": "St Kilda"
+    }
+   },
+   "updatedAt": 1793525340000
+  }
+ },
+ "cricket": {
+  "available": true,
+  "updatedAt": 1793525400000,
+  "lead": {
+   "id": "1525661",
+   "seriesId": "24203",
+   "competition": "Australia in South Africa",
+   "label": "3rd Test",
+   "format": "test",
+   "venue": "Newlands, Cape Town",
+   "city": "Cape Town",
+   "start": 1793203440000,
+   "end": 1793572440000,
+   "status": "live",
+   "breakLabel": null,
+   "day": "Day 4",
+   "session": 3,
+   "teams": [
+    {
+     "abbr": "SA",
+     "name": "South Africa",
+     "logo": "/api/logo/espn-cricket-3"
+    },
+    {
+     "abbr": "AUS",
+     "name": "Australia",
+     "logo": "/api/logo/espn-cricket-2"
+    }
+   ],
+   "innings": [
+    [
+     {
+      "runs": 329,
+      "wickets": 10,
+      "overs": "82.3",
+      "declared": false,
+      "current": false
+     },
+     {
+      "runs": 294,
+      "wickets": 5,
+      "overs": "103",
+      "declared": false,
+      "current": true
+     }
+    ],
+    [
+     {
+      "runs": 429,
+      "wickets": 10,
+      "overs": "125.1",
+      "declared": false,
+      "current": false
+     }
+    ]
+   ],
+   "summary": "South Africa lead by 194 runs",
+   "crease": [
+    {
+     "name": "RD Rickelton",
+     "runs": 101,
+     "balls": 219
+    },
+    {
+     "name": "PWA Mulder",
+     "runs": 115,
+     "balls": 221
+    }
+   ],
+   "seriesLine": "Series level 1–1 · third of three Tests",
+   "days": [
+    {
+     "number": 1,
+     "date": 1793133240000,
+     "state": "done"
+    },
+    {
+     "number": 2,
+     "date": 1793219640000,
+     "state": "done"
+    },
+    {
+     "number": 3,
+     "date": 1793306040000,
+     "state": "done"
+    },
+    {
+     "number": 4,
+     "date": 1793392440000,
+     "state": "live"
+    },
+    {
+     "number": 5,
+     "date": 1793478840000,
+     "state": "next"
+    }
+   ],
+   "nextStart": null,
+   "channels": [
+    {
+     "sourceId": 8,
+     "id": "fox-test",
+     "name": "Fox Cricket",
+     "number": 501,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793518440000,
+     "end": 1793545440000
+    },
+    {
+     "sourceId": 8,
+     "id": "kayo-test",
+     "name": "Kayo Cricket 2",
+     "number": 521,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793511240000,
+     "end": 1793527440000,
+     "overrun": true
+    }
+   ]
+  },
+  "series": {
+   "id": "24203",
+   "name": "Australia in South Africa",
+   "season": "2026/27",
+   "matches": [
+    {
+     "id": "1525655",
+     "label": "1st ODI",
+     "start": 1790350440000,
+     "end": 1790382840000,
+     "status": "done",
+     "result": "South Africa won by 67 runs",
+     "current": false
+    },
+    {
+     "id": "1525656",
+     "label": "2nd ODI",
+     "start": 1790609640000,
+     "end": 1790642040000,
+     "status": "done",
+     "result": "South Africa won by 32 runs",
+     "current": false
+    },
+    {
+     "id": "1525657",
+     "label": "3rd ODI",
+     "start": 1790881440000,
+     "end": 1790913840000,
+     "status": "done",
+     "result": "Australia won by 45 runs (DLS)",
+     "current": false
+    },
+    {
+     "id": "1525658",
+     "label": "Tour Match",
+     "start": 1791128040000,
+     "end": 1791151440000,
+     "status": "done",
+     "result": "Match drawn",
+     "current": false
+    },
+    {
+     "id": "1525659",
+     "label": "1st Test",
+     "start": 1791644640000,
+     "end": 1792013640000,
+     "status": "done",
+     "result": "Australia won by 214 runs",
+     "current": false
+    },
+    {
+     "id": "1525660",
+     "label": "2nd Test",
+     "start": 1792424040000,
+     "end": 1792793040000,
+     "status": "done",
+     "result": "South Africa won by an inns & 31 runs",
+     "current": false
+    },
+    {
+     "id": "1525661",
+     "label": "3rd Test",
+     "start": 1793203440000,
+     "end": 1793572440000,
+     "status": "live",
+     "result": null,
+     "current": true
+    }
+   ]
+  },
+  "others": [
+   {
+    "id": "1544870",
+    "seriesId": "8043",
+    "competition": "Sheffield Shield",
+    "teams": [
+     {
+      "abbr": "WA",
+      "name": "Western Australia",
+      "logo": "/api/logo/espn-cricket-602"
+     },
+     {
+      "abbr": "SOA",
+      "name": "South Australia",
+      "logo": "/api/logo/espn-cricket-520"
+     }
+    ],
+    "scores": [
+     "406/5d & 169",
+     "154 & 235/5 (70.4 ov, target 422)"
+    ],
+    "line": "South Aust require 184 runs",
+    "status": "live",
+    "start": 1793259240000,
+    "nextStart": null,
+    "channels": [
+     {
+      "sourceId": 8,
+      "id": "kayo-shield",
+      "name": "Kayo Cricket 1",
+      "number": 520,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793516640000,
+      "end": 1793543640000
+     }
+    ]
+   },
+   {
+    "id": "1544871",
+    "seriesId": "8043",
+    "competition": "Sheffield Shield",
+    "teams": [
+     {
+      "abbr": "TAS",
+      "name": "Tasmania",
+      "logo": "/api/logo/espn-cricket-560"
+     },
+     {
+      "abbr": "NSW",
+      "name": "New South Wales",
+      "logo": "/api/logo/espn-cricket-387"
+     }
+    ],
+    "scores": [
+     "397/9 (114 ov)",
+     null
+    ],
+    "line": "NSW won toss & fielded",
+    "status": "live",
+    "start": 1793430240000,
+    "nextStart": null,
+    "channels": []
+   },
+   {
+    "id": "1543947",
+    "seriesId": "21284",
+    "competition": "WBBL",
+    "teams": [
+     {
+      "abbr": "AS-W",
+      "name": "Adelaide Strikers Women",
+      "logo": "/api/logo/espn-cricket-896431"
+     },
+     {
+      "abbr": "MS-W",
+      "name": "Melbourne Stars Women",
+      "logo": "/api/logo/espn-cricket-896399"
+     }
+    ],
+    "scores": [
+     "161/6",
+     "63/2 (7.3/20 ov, target 162)"
+    ],
+    "line": "Stars need 99 from 75 balls",
+    "status": "live",
+    "start": 1793535240000,
+    "nextStart": null,
+    "channels": [
+     {
+      "sourceId": 8,
+      "id": "fox-wbbl",
+      "name": "Fox Cricket",
+      "number": 501,
+      "logo": null,
+      "quality": "HD",
+      "start": 1793533740000,
+      "end": 1793547240000
+     }
+    ]
+   },
+   {
+    "id": "1544872",
+    "seriesId": "8043",
+    "competition": "Sheffield Shield",
+    "teams": [
+     {
+      "abbr": "VIC",
+      "name": "Victoria",
+      "logo": "/api/logo/espn-cricket-584"
+     },
+     {
+      "abbr": "QLD",
+      "name": "Queensland",
+      "logo": "/api/logo/espn-cricket-459"
+     }
+    ],
+    "scores": [
+     "93/0 (22.1 ov)",
+     null
+    ],
+    "line": "Queensland won toss & fielded",
+    "status": "live",
+    "start": 1793518440000,
+    "nextStart": null,
+    "channels": []
+   },
+   {
+    "id": "1553295",
+    "seriesId": "24756",
+    "competition": "West Indies in Bangladesh",
+    "teams": [
+     {
+      "abbr": "BAN",
+      "name": "Bangladesh",
+      "logo": "/api/logo/espn-cricket-25"
+     },
+     {
+      "abbr": "WI",
+      "name": "West Indies",
+      "logo": "/api/logo/espn-cricket-4"
+     }
+    ],
+    "scores": [
+     "272 & 79/6 (29 ov)",
+     "245"
+    ],
+    "line": "Bangladesh lead by 106 runs",
+    "status": "break",
+    "start": 1793271840000,
+    "nextStart": 1793531040000,
+    "channels": []
+   },
+   {
+    "id": "1543948",
+    "seriesId": "21284",
+    "competition": "WBBL",
+    "teams": [
+     {
+      "abbr": "PS-W",
+      "name": "Perth Scorchers Women",
+      "logo": "/api/logo/espn-cricket-896405"
+     },
+     {
+      "abbr": "MR-W",
+      "name": "Melbourne Renegades Women",
+      "logo": "/api/logo/espn-cricket-896407"
+     }
+    ],
+    "scores": [
+     null,
+     null
+    ],
+    "line": "Starts at 16:10 local time",
+    "status": "scheduled",
+    "start": 1793547840000,
+    "nextStart": 1793547840000,
+    "channels": []
+   },
+   {
+    "id": "1543949",
+    "seriesId": "21284",
+    "competition": "WBBL",
+    "teams": [
+     {
+      "abbr": "ST-W",
+      "name": "Sydney Thunder Women",
+      "logo": "/api/logo/espn-cricket-896401"
+     },
+     {
+      "abbr": "BH-W",
+      "name": "Brisbane Heat Women",
+      "logo": "/api/logo/espn-cricket-896397"
+     }
+    ],
+    "scores": [
+     null,
+     null
+    ],
+    "line": "Starts at 15:40 local time",
+    "status": "scheduled",
+    "start": 1793621640000,
+    "nextStart": 1793621640000,
+    "channels": []
+   },
+   {
+    "id": "1539436",
+    "seriesId": "24469",
+    "competition": "India in New Zealand",
+    "teams": [
+     {
+      "abbr": "NZ",
+      "name": "New Zealand",
+      "logo": "/api/logo/espn-cricket-5"
+     },
+     {
+      "abbr": "IND",
+      "name": "India",
+      "logo": "/api/logo/espn-cricket-6"
+     }
+    ],
+    "scores": [
+     null,
+     null
+    ],
+    "line": "Starts at 20:00 local time",
+    "status": "scheduled",
+    "start": 1793630040000,
+    "nextStart": 1793630040000,
+    "channels": []
+   },
+   {
+    "id": "1543950",
+    "seriesId": "21284",
+    "competition": "WBBL",
+    "teams": [
+     {
+      "abbr": "SS-W",
+      "name": "Sydney Sixers Women",
+      "logo": "/api/logo/espn-cricket-896403"
+     },
+     {
+      "abbr": "HH-W",
+      "name": "Hobart Hurricanes Women",
+      "logo": "/api/logo/espn-cricket-896433"
+     }
+    ],
+    "scores": [
+     null,
+     null
+    ],
+    "line": "Starts at 19:10 local time",
+    "status": "scheduled",
+    "start": 1793634240000,
+    "nextStart": 1793634240000,
+    "channels": []
+   }
+  ]
+ },
+ "events": {
+  "UFC": {
+   "available": true,
+   "events": [
+    {
+     "bouts": [
+      {
+       "id": "401914101",
+       "start": 1793514600000,
+       "status": "finished",
+       "weightClass": "W Flyweight",
+       "card": "prelims",
+       "fighters": [
+        {
+         "name": "Tainara Lisboa",
+         "winner": false
+        },
+        {
+         "name": "Lucia Szabová",
+         "winner": true
+        }
+       ],
+       "result": {
+        "round": 3,
+        "clock": "3:20"
+       }
+      },
+      {
+       "id": "401914102",
+       "start": 1793514600000,
+       "status": "finished",
+       "weightClass": "W Strawweight",
+       "card": "prelims",
+       "fighters": [
+        {
+         "name": "Piera Rodriguez",
+         "winner": true
+        },
+        {
+         "name": "Talita Alencar",
+         "winner": false
+        }
+       ],
+       "result": {
+        "round": 3,
+        "clock": "5:00"
+       }
+      },
+      {
+       "id": "401914103",
+       "start": 1793514600000,
+       "status": "finished",
+       "weightClass": "Bantamweight",
+       "card": "prelims",
+       "fighters": [
+        {
+         "name": "Joe Kropschot",
+         "winner": true
+        },
+        {
+         "name": "Nick Klein",
+         "winner": false
+        }
+       ],
+       "result": {
+        "round": 2,
+        "clock": "1:25"
+       }
+      },
+      {
+       "id": "401914104",
+       "start": 1793522700000,
+       "status": "finished",
+       "weightClass": "Welterweight",
+       "card": "main",
+       "fighters": [
+        {
+         "name": "Jean-Paul Lebosnoyani",
+         "winner": true
+        },
+        {
+         "name": "Farman Hasanov",
+         "winner": false
+        }
+       ],
+       "result": {
+        "round": 3,
+        "clock": "2:11"
+       }
+      },
+      {
+       "id": "401914105",
+       "start": 1793522700000,
+       "status": "live",
+       "weightClass": "W Bantamweight",
+       "card": "main",
+       "fighters": [
+        {
+         "name": "Yana Santos",
+         "winner": null
+        },
+        {
+         "name": "Luana Santos",
+         "winner": null
+        }
+       ],
+       "result": null
+      },
+      {
+       "id": "401914106",
+       "start": 1793522700000,
+       "status": "scheduled",
+       "weightClass": "Flyweight",
+       "card": "main",
+       "fighters": [
+        {
+         "name": "Ode' Osbourne",
+         "winner": null
+        },
+        {
+         "name": "Cody Durden",
+         "winner": null
+        }
+       ],
+       "result": null
+      },
+      {
+       "id": "401914107",
+       "start": 1793522700000,
+       "status": "scheduled",
+       "weightClass": "Lightweight",
+       "card": "main",
+       "fighters": [
+        {
+         "name": "Renato Moicano",
+         "winner": null
+        },
+        {
+         "name": "Tom Nolan",
+         "winner": null
+        }
+       ],
+       "result": null
+      }
+     ],
+     "end": 1793532600000,
+     "followed": [
+      "Lucia Szabová"
+     ],
+     "id": "espn:mma/ufc:600061420",
+     "name": "UFC Fight Night: Moicano vs. Nolan",
+     "start": 1793514600000,
+     "status": "live",
+     "venue": {
+      "city": "Las Vegas",
+      "country": "USA",
+      "name": "Meta APEX"
+     }
+    },
+    {
+     "bouts": [
+      {
+       "card": "prelims",
+       "fighters": [
+        {
+         "name": "Jonny Parsons",
+         "winner": null
+        },
+        {
+         "name": "Jose Henrique",
+         "winner": null
+        }
+       ],
+       "id": "401928118",
+       "result": null,
+       "start": 1794088800000,
+       "status": "scheduled",
+       "weightClass": "Welterweight"
+      },
+      {
+       "card": "main",
+       "fighters": [
+        {
+         "name": "Waldo Cortes Acosta",
+         "winner": null
+        },
+        {
+         "name": "Johnny Walker",
+         "winner": null
+        }
+       ],
+       "id": "401932715",
+       "result": null,
+       "start": 1794099600000,
+       "status": "scheduled",
+       "weightClass": "Heavyweight"
+      }
+     ],
+     "end": 1794114000000,
+     "followed": [],
+     "id": "espn:mma/ufc:600061268",
+     "name": "UFC Fight Night: Cortes Acosta vs. Walker",
+     "start": 1794088800000,
+     "status": "scheduled",
+     "venue": {
+      "city": "Las Vegas",
+      "country": "USA",
+      "name": "Meta APEX"
+     }
+    }
+   ],
+   "kind": "fight",
+   "league": "UFC",
+   "sport": "Combat",
+   "updatedAt": 1793525400000
+  },
+  "WTA Tour": {
+   "available": true,
+   "events": [
+    {
+     "draws": [
+      {
+       "name": "Women's Singles",
+       "rounds": [
+        {
+         "matchIds": [
+          "185706"
+         ],
+         "name": "Round 2"
+        },
+        {
+         "matchIds": [
+          "185729"
+         ],
+         "name": "Quarterfinal"
+        }
+       ]
+      },
+      {
+       "name": "Women's Doubles",
+       "rounds": [
+        {
+         "matchIds": [
+          "185747"
+         ],
+         "name": "Quarterfinal"
+        },
+        {
+         "matchIds": [
+          "185749"
+         ],
+         "name": "Semifinal"
+        }
+       ]
+      }
+     ],
+     "end": 1793595540000,
+     "followed": [
+      "Claire Liu"
+     ],
+     "id": "espn:tennis/wta:232-2026",
+     "matches": [
+      {
+       "court": "Court 2",
+       "draw": "Women's Doubles",
+       "id": "185747",
+       "players": [
+        {
+         "country": null,
+         "name": "Mariia Kozyreva / Maia Lumsden",
+         "seed": 1,
+         "winner": false
+        },
+        {
+         "country": null,
+         "name": "Isabelle Haverlag / Zhibek Kulambayeva",
+         "seed": null,
+         "winner": true
+        }
+       ],
+       "round": "Quarterfinal",
+       "sets": [
+        [
+         6,
+         3
+        ],
+        [
+         3,
+         6
+        ]
+       ],
+       "start": 1793175900000,
+       "status": "finished"
+      },
+      {
+       "court": null,
+       "draw": "Women's Singles",
+       "id": "185706",
+       "players": [
+        {
+         "country": "USA",
+         "name": "Claire Liu",
+         "seed": null,
+         "winner": true
+        },
+        {
+         "country": "Czechia",
+         "name": "Katerina Siniakova",
+         "seed": null,
+         "winner": false
+        }
+       ],
+       "round": "Round 2",
+       "sets": null,
+       "start": 1793250000000,
+       "status": "finished"
+      },
+      {
+       "court": "Center Court",
+       "draw": "Women's Singles",
+       "id": "185735",
+       "players": [
+        {
+         "country": "Austria",
+         "name": "Lilli Tagger",
+         "seed": 4,
+         "winner": null
+        },
+        {
+         "country": "Great Britain",
+         "name": "Harriet Dart",
+         "seed": null,
+         "winner": null
+        }
+       ],
+       "round": "Final",
+       "sets": [
+        [
+         5,
+         4
+        ]
+       ],
+       "start": 1793522100000,
+       "status": "live"
+      }
+     ],
+     "name": "Guangzhou Open",
+     "start": 1792728000000,
+     "status": "live",
+     "venue": {
+      "city": "Guangzhou",
+      "country": "China PR",
+      "name": "Guangzhou, China PR"
+     }
+    },
+    {
+     "draws": [
+      {
+       "name": "Women's Singles",
+       "rounds": [
+        {
+         "matchIds": [
+          "187324"
+         ],
+         "name": "Qualifying 1st Round"
+        },
+        {
+         "matchIds": [
+          "187332",
+          "187333"
+         ],
+         "name": "Qualifying Final"
+        }
+       ]
+      },
+      {
+       "name": "Women's Doubles",
+       "rounds": [
+        {
+         "matchIds": [
+          "186608",
+          "186612"
+         ],
+         "name": "Round 1"
+        }
+       ]
+      }
+     ],
+     "end": 1794200340000,
+     "followed": [],
+     "id": "espn:tennis/wta:889-2026",
+     "matches": [
+      {
+       "court": "Centre Court",
+       "draw": "Women's Singles",
+       "id": "187324",
+       "players": [
+        {
+         "country": "Russia",
+         "name": "Mariia Tkacheva",
+         "seed": null,
+         "winner": false
+        },
+        {
+         "country": "Russia",
+         "name": "Rada Zolotareva",
+         "seed": null,
+         "winner": true
+        }
+       ],
+       "round": "Qualifying 1st Round",
+       "sets": [
+        [
+         1,
+         6
+        ],
+        [
+         1,
+         2
+        ]
+       ],
+       "start": 1793518200000,
+       "status": "finished"
+      },
+      {
+       "court": "Centre Court",
+       "draw": "Women's Singles",
+       "id": "187332",
+       "players": [
+        {
+         "country": "Japan",
+         "name": "Kyoka Okamura",
+         "seed": null,
+         "winner": null
+        },
+        {
+         "country": "Japan",
+         "name": "Momoko Kobori",
+         "seed": null,
+         "winner": null
+        }
+       ],
+       "round": "Qualifying Final",
+       "sets": [
+        [
+         3,
+         5
+        ]
+       ],
+       "start": 1793521800000,
+       "status": "live"
+      },
+      {
+       "court": "Centre Court",
+       "draw": "Women's Singles",
+       "id": "187333",
+       "players": [
+        {
+         "country": "Japan",
+         "name": "Mei Yamaguchi",
+         "seed": null,
+         "winner": null
+        },
+        {
+         "country": "Kazakhstan",
+         "name": "Zhibek Kulambayeva",
+         "seed": null,
+         "winner": null
+        }
+       ],
+       "round": "Qualifying Final",
+       "sets": null,
+       "start": 1793526000000,
+       "status": "scheduled"
+      },
+      {
+       "court": null,
+       "draw": "Women's Singles",
+       "id": "186569",
+       "players": [
+        {
+         "country": "Thailand",
+         "name": "Mananchaya Sawangkaew",
+         "seed": 5,
+         "winner": null
+        },
+        {
+         "country": "Japan",
+         "name": "Mai Hontama",
+         "seed": null,
+         "winner": null
+        }
+       ],
+       "round": "Round 1",
+       "sets": null,
+       "start": 1793595600000,
+       "status": "scheduled"
+      },
+      {
+       "court": null,
+       "draw": "Women's Doubles",
+       "id": "186608",
+       "players": [
+        {
+         "country": null,
+         "name": "Momoko Kobori / Peangtarn Plipuech",
+         "seed": 1,
+         "winner": null
+        },
+        {
+         "country": "Great Britain",
+         "name": "Freya Christie / Eden Silva",
+         "seed": null,
+         "winner": null
+        }
+       ],
+       "round": "Round 1",
+       "sets": null,
+       "start": 1793543400000,
+       "status": "scheduled"
+      }
+     ],
+     "name": "Chennai Open",
+     "start": 1793419200000,
+     "status": "live",
+     "venue": {
+      "city": "Chennai",
+      "country": "India",
+      "name": "Chennai, India"
+     }
+    }
+   ],
+   "kind": "tennis",
+   "league": "WTA Tour",
+   "sport": "Tennis",
+   "updatedAt": 1793525400000
+  },
+  "PGA Tour": {
+   "available": true,
+   "events": [
+    {
+     "end": 1793554200000,
+     "followed": [
+      "Min Woo Lee",
+      "Adam Scott"
+     ],
+     "id": "espn:golf/pga:401850978",
+     "leaderboard": [
+      {
+       "pos": "1",
+       "name": "Andrew Novak",
+       "country": null,
+       "toPar": "-23",
+       "rounds": [
+        63,
+        65,
+        66,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "2",
+       "name": "Matthieu Pavon",
+       "country": null,
+       "toPar": "-17",
+       "rounds": [
+        66,
+        67,
+        68,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "3",
+       "name": "Doug Ghim",
+       "country": null,
+       "toPar": "-16",
+       "rounds": [
+        67,
+        66,
+        68,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "T4",
+       "name": "Pierceson Coody",
+       "country": null,
+       "toPar": "-15",
+       "rounds": [
+        68,
+        66,
+        67,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "T4",
+       "name": "Max Greyserman",
+       "country": null,
+       "toPar": "-15",
+       "rounds": [
+        65,
+        69,
+        68,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "T6",
+       "name": "Min Woo Lee",
+       "country": null,
+       "toPar": "-14",
+       "rounds": [
+        67,
+        68,
+        67,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "T6",
+       "name": "Sungjae Im",
+       "country": null,
+       "toPar": "-14",
+       "rounds": [
+        66,
+        70,
+        66,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "8",
+       "name": "Alex Norén",
+       "country": null,
+       "toPar": "-13",
+       "rounds": [
+        68,
+        67,
+        68,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "T9",
+       "name": "Adam Scott",
+       "country": null,
+       "toPar": "-12",
+       "rounds": [
+        69,
+        66,
+        69,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "T9",
+       "name": "Akshay Bhatia",
+       "country": null,
+       "toPar": "-12",
+       "rounds": [
+        67,
+        70,
+        67,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "11",
+       "name": "Ryo Hisatsune",
+       "country": null,
+       "toPar": "-11",
+       "rounds": [
+        70,
+        66,
+        68,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": "12",
+       "name": "Eric Cole",
+       "country": null,
+       "toPar": "-10",
+       "rounds": [
+        70,
+        68,
+        68,
+        null
+       ],
+       "status": null
+      },
+      {
+       "pos": null,
+       "name": "Eli Ortego",
+       "country": "USA",
+       "toPar": "+4",
+       "rounds": [
+        71,
+        75,
+        null,
+        null
+       ],
+       "status": "cut"
+      }
+     ],
+     "name": "VidantaWorld Mexico Open",
+     "round": 4,
+     "start": 1793266200000,
+     "status": "live",
+     "venue": null
+    },
+    {
+     "id": "espn:golf/pga:401850990",
+     "name": "Butterfield Bermuda Championship",
+     "start": 1793784600000,
+     "end": 1794043800000,
+     "status": "scheduled",
+     "venue": null,
+     "followed": [],
+     "round": null,
+     "leaderboard": []
+    }
+   ],
+   "kind": "golf",
+   "league": "PGA Tour",
+   "sport": "Golf",
+   "updatedAt": 1793525400000
+  },
+  "NASCAR": {
+   "available": true,
+   "events": [
+    {
+     "end": 1793633400000,
+     "entryList": [
+      {
+       "name": "Alex Bowman"
+      },
+      {
+       "name": "Austin Cindric"
+      },
+      {
+       "name": "Brad Keselowski"
+      },
+      {
+       "name": "Bubba Wallace"
+      },
+      {
+       "name": "Chase Briscoe"
+      },
+      {
+       "name": "Chase Elliott"
+      },
+      {
+       "name": "Chris Buescher"
+      },
+      {
+       "name": "Christopher Bell"
+      },
+      {
+       "name": "Denny Hamlin"
+      },
+      {
+       "name": "Joey Logano"
+      },
+      {
+       "name": "Kyle Busch"
+      },
+      {
+       "name": "Kyle Larson"
+      },
+      {
+       "name": "Ross Chastain"
+      },
+      {
+       "name": "Ryan Blaney"
+      },
+      {
+       "name": "Ryan Preece"
+      },
+      {
+       "name": "Ty Gibbs"
+      },
+      {
+       "name": "Tyler Reddick"
+      },
+      {
+       "name": "William Byron"
+      }
+     ],
+     "followed": [
+      "Kyle Larson"
+     ],
+     "id": "espn:racing/nascar-premier:202611010020",
+     "name": "NASCAR Cup Series at Martinsville",
+     "start": 1793619000000,
+     "status": "scheduled",
+     "venue": null
+    }
+   ],
+   "kind": "race",
+   "lastWinner": {
+    "date": 1792951200000,
+    "name": "Kyle Larson",
+    "race": "NASCAR Cup Series at Talladega"
+   },
+   "league": "NASCAR",
+   "next": {
+    "name": "NASCAR Cup Series at Martinsville",
+    "start": 1793619000000
+   },
+   "sport": "Motorsport",
+   "updatedAt": 1793525400000
+  }
+ }
+}
