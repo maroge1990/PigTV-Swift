@@ -84,11 +84,14 @@ struct F1PageView: View {
     @State private var choosingDriver = false
     /// The page's width: an iPad in portrait gets the single column (the approved iPad mock-up's note).
     @State private var width: CGFloat = 0
+    /// D-43: under a sport page's banner, which holds the hero: no header, no weekend hero, no scroll view of its own.
+    let embedded: Bool
 
-    init(app: AppModel, browse: BrowseModel, model: F1PageModel) {
+    init(app: AppModel, browse: BrowseModel, model: F1PageModel, embedded: Bool = false) {
         self.app = app
         self.browse = browse
         self.model = model
+        self.embedded = embedded
         _appState = ObservedObject(wrappedValue: app)
     }
 
@@ -104,7 +107,7 @@ struct F1PageView: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             content(now: context.date)
         }
-        .pigPageBackdrop()
+        .pigPageBackdrop(unless: embedded)
         #if os(iOS)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .navigationTitle("Formula 1")
@@ -134,47 +137,56 @@ struct F1PageView: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
+        if embedded {
+            // A container, so the page's identifier is not copied onto each of its texts (the sport page names it).
+            stack(now: now).accessibilityElement(children: .contain)
+        } else {
+            ScrollView(.vertical) { stack(now: now) }.scrollClipDisabled()
+        }
+    }
+
+    @ViewBuilder
+    private func stack(now: Date) -> some View {
         // #162: hidden too while the household's choice is not known yet.
         let spoilerFree = model.hidesSpoilers
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: F1Metrics.spacing) {
-                header
-                if let page = model.page, page.available, let weekend = page.weekend {
-                    if wide {
-                        HStack(alignment: .top, spacing: F1Metrics.columnGap) {
+        VStack(alignment: .leading, spacing: F1Metrics.spacing) {
+            if !embedded { header }
+            if let page = model.page, page.available, let weekend = page.weekend {
+                if wide {
+                    HStack(alignment: .top, spacing: F1Metrics.columnGap) {
+                        if !embedded {
                             hero(weekend, now: now)
                                 .frame(maxWidth: F1Metrics.heroWidth > 0 ? F1Metrics.heroWidth : .infinity, alignment: .leading)
-                            circuit(weekend).frame(width: F1Metrics.circuitWidth)
-                            sessions(weekend, now: now, spoilerFree: spoilerFree).frame(maxWidth: .infinity)
                         }
-                        .frame(minHeight: F1Metrics.topHeight, alignment: .top)
-                        // Side by side and the same height (DESIGN.md › Sport pages: symmetric lists).
-                        HStack(alignment: .top, spacing: F1Metrics.columnGap + 4) {
-                            results(page, spoilerFree: spoilerFree).frame(maxWidth: .infinity, maxHeight: .infinity)
-                            standings(page, spoilerFree: spoilerFree).frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        hero(weekend, now: now)
-                        circuit(weekend)
-                        sessions(weekend, now: now, spoilerFree: spoilerFree)
-                        results(page, spoilerFree: spoilerFree)
-                        standings(page, spoilerFree: spoilerFree)
+                        circuit(weekend).frame(width: F1Metrics.circuitWidth)
+                        sessions(weekend, now: now, spoilerFree: spoilerFree).frame(maxWidth: .infinity)
                     }
-                } else if !model.loaded || model.page?.available == false {
-                    ProgressView("Loading Formula 1…").frame(maxWidth: .infinity).padding(.top, 80)
+                    .frame(minHeight: F1Metrics.topHeight, alignment: .top)
+                    // Side by side and the same height (DESIGN.md › Sport pages: symmetric lists).
+                    HStack(alignment: .top, spacing: F1Metrics.columnGap + 4) {
+                        results(page, spoilerFree: spoilerFree).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        standings(page, spoilerFree: spoilerFree).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    unavailable
+                    if !embedded { hero(weekend, now: now) }
+                    circuit(weekend)
+                    sessions(weekend, now: now, spoilerFree: spoilerFree)
+                    results(page, spoilerFree: spoilerFree)
+                    standings(page, spoilerFree: spoilerFree)
                 }
-                if let error = model.saveError {
-                    Text(error).font(F1Metrics.rowDetail).foregroundStyle(.secondary)
-                }
+            } else if !model.loaded || model.page?.available == false {
+                ProgressView("Loading Formula 1…").frame(maxWidth: .infinity).padding(.top, 80)
+            } else {
+                unavailable
             }
-            #if os(iOS)
-            .padding(wide ? 32 : 16)
-            #endif
+            if let error = model.saveError {
+                Text(error).font(F1Metrics.rowDetail).foregroundStyle(.secondary)
+            }
         }
-        .scrollClipDisabled()
+        #if os(iOS)
+        .padding(wide ? 32 : 16)
+        #endif
     }
 
     // MARK: Header

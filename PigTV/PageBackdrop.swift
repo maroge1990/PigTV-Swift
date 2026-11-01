@@ -124,3 +124,11 @@ extension View {
         }
     }
 }
+
+extension View {
+    /// The page canvas, except on a page embedded under a sport page's banner (D-43), which already sits on one.
+    @ViewBuilder
+    func pigPageBackdrop(unless embedded: Bool) -> some View {
+        if embedded { self } else { pigPageBackdrop() }
+    }
+}

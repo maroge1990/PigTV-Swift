@@ -14,16 +14,20 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
         let next: Next?
         /// "live" | "next" | "quiet" (the client words it).
         let line: String
+        /// C-U since 0391: the league's sport ("Football"); nil from an older server.
+        var sport: String? = nil
+        /// The sport the league belongs to: the server's, else the league itself (an older server).
+        var sportName: String { sport ?? league }
 
         struct Next: Decodable, Equatable, Sendable {
             let gameId: String
             let start: Double
         }
 
-        enum CodingKeys: String, CodingKey { case league, live, next, line }
+        enum CodingKeys: String, CodingKey { case league, live, next, line, sport }
 
-        init(league: String, live: Int, next: Next?, line: String) {
-            self.league = league; self.live = live; self.next = next; self.line = line
+        init(league: String, live: Int, next: Next?, line: String, sport: String? = nil) {
+            self.league = league; self.live = live; self.next = next; self.line = line; self.sport = sport
         }
 
         init(from decoder: Decoder) throws {
@@ -32,6 +36,7 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
             live = ((try? c.decodeIfPresent(Int.self, forKey: .live)) ?? nil) ?? 0
             next = (try? c.decodeIfPresent(Next.self, forKey: .next)) ?? nil
             line = ((try? c.decodeIfPresent(String.self, forKey: .line)) ?? nil) ?? "quiet"
+            sport = ((try? c.decodeIfPresent(String.self, forKey: .sport)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
         }
     }
 
@@ -44,6 +49,9 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
         let state: String
         let gameId: String?
         let start: Double?
+        /// C-U since 0391: the follow's sport; nil from an older server.
+        var sport: String? = nil
+        var sportName: String { sport ?? league }
 
         var key: String { "\(league)|\(name)" }
         /// Only cached same-server logos (as `SportsGame.Competitor.cachedLogo`).
@@ -51,7 +59,7 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
             logo.flatMap { $0.hasPrefix("/api/logo/") && !$0.contains("?") && !$0.contains("..") ? $0 : nil }
         }
 
-        enum CodingKeys: String, CodingKey { case league, name, logo, state, gameId, start }
+        enum CodingKeys: String, CodingKey { case league, name, logo, state, gameId, start, sport }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -61,6 +69,7 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
             state = ((try? c.decodeIfPresent(String.self, forKey: .state)) ?? nil) ?? "none"
             gameId = (try? c.decodeIfPresent(String.self, forKey: .gameId)) ?? nil
             start = (try? c.decodeIfPresent(Double.self, forKey: .start)) ?? nil
+            sport = ((try? c.decodeIfPresent(String.self, forKey: .sport)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
         }
     }
 
@@ -89,6 +98,22 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
     struct Rail: Decodable, Equatable, Sendable {
         let league: String
         let gameIds: [String]
+        /// C-U since 0391: the league's sport; nil from an older server.
+        var sport: String? = nil
+        var sportName: String { sport ?? league }
+
+        enum CodingKeys: String, CodingKey { case league, gameIds, sport }
+
+        init(league: String, gameIds: [String], sport: String? = nil) {
+            self.league = league; self.gameIds = gameIds; self.sport = sport
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            league = try c.decode(String.self, forKey: .league)
+            gameIds = ((try? c.decodeIfPresent([String].self, forKey: .gameIds)) ?? nil) ?? []
+            sport = ((try? c.decodeIfPresent(String.self, forKey: .sport)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
+        }
     }
 
     let now: Double
@@ -174,6 +199,13 @@ nonisolated enum SportFrontHero {
 nonisolated enum SportFrontText {
     static let scoresUnavailable = "Live scores are not available right now. The guide's channels and times are shown."
 
+    /// The empty state's help: Settings › Sport when the server has per-account follows (C-U), else the web app.
+    static func followHelp(settings: Bool) -> String {
+        settings
+            ? "Choose the sports, leagues and teams you follow in Settings › Sport. They appear here on every device."
+            : "Choose the sports, teams and drivers you follow in the PigTV web app, under Settings → Sports."
+    }
+
     /// The tile's line: "Race live", "2 live", a start time, "Nothing scheduled".
     static func tileLine(_ sport: SportFront.Sport, in front: SportFront, now: Date, calendar: Calendar = .current) -> String {
         if sport.line == "live" || sport.live > 0 {
@@ -205,18 +237,6 @@ nonisolated enum SportFrontText {
         case "next": return follow.start.map { when(date($0), now: now, calendar: calendar) } ?? "Next"
         default: return "—"
         }
-    }
-
-    /// The compact list's order (more than three follows): live first, then the soonest start (a next game without a
-    /// start after those with one), then the rest, each in the household's order.
-    static func compactOrder(_ follows: [SportFront.Follow]) -> [Int] {
-        func key(_ index: Int) -> (Int, Int, Double, Int) {
-            let f = follows[index]
-            let rank = f.state == "live" ? 0 : f.state == "next" ? 1 : 2
-            let start = rank == 1 ? f.start : nil
-            return (rank, rank == 1 && start == nil ? 1 : 0, start ?? 0, index)
-        }
-        return follows.indices.sorted { key($0) < key($1) }
     }
 
     /// "5:30 pm" today, else "Sat 5:30 pm" (the device's zone, as the sport pages).
@@ -340,4 +360,134 @@ nonisolated enum SportFrontText {
     }
 
     static func date(_ ms: Double) -> Date { Date(timeIntervalSince1970: ms / 1000) }
+}
+
+/// D-43 (1 Nov): the Apple TV front page's layout, from the answer. Pure (tests `SportFrontLayoutTests`). Everything keeps
+/// the server's order (C-R since 0427: the account's order, anything playing now first); nothing is re-sorted here.
+nonisolated enum SportFrontLayout {
+    /// A sport's rails under one header ("Football ›"): its leagues' rails in the server's order.
+    struct Section: Equatable, Identifiable, Sendable {
+        let sport: String
+        let rails: [SportFront.Rail]
+        var id: String { sport }
+    }
+
+    /// One section per sport that has a rail with a game, in the order its first rail comes (rails put the leagues
+    /// with a game on now first); a rail whose ids match no card counts as no rail.
+    static func sections(_ front: SportFront) -> [Section] {
+        var order: [String] = []
+        var rails: [String: [SportFront.Rail]] = [:]
+        for rail in front.rails where !front.games(in: rail).isEmpty {
+            let sport = sport(of: rail.league, railSport: rail.sport, in: front)
+            if rails[sport] == nil { order.append(sport) }
+            rails[sport, default: []].append(rail)
+        }
+        return order.map { Section(sport: $0, rails: rails[$0] ?? []) }
+    }
+
+    /// "Also in your sports": the followed sports with nothing in the next 72 hours (no rail), in the server's order.
+    static func alsoInYourSports(_ front: SportFront) -> [String] {
+        let shown = Set(sections(front).map(\.sport))
+        return sports(front).filter { !shown.contains($0) }
+    }
+
+    /// Every followed sport once, in the order of `sports[]` (then any only a rail names).
+    static func sports(_ front: SportFront) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for name in front.sports.map(\.sportName) + front.rails.map({ sport(of: $0.league, railSport: $0.sport, in: front) })
+        where seen.insert(name).inserted {
+            out.append(name)
+        }
+        return out
+    }
+
+    /// The sport a league belongs to: the rail's own, else its `sports[]` entry's, else the league itself.
+    static func sport(of league: String, railSport: String? = nil, in front: SportFront) -> String {
+        railSport ?? front.sports.first { $0.league == league }?.sport ?? league
+    }
+
+    /// A section header's line: "EPL · 2 live", "F1 · Mon 7:00 am" (its leagues, then live or the next start).
+    static func headerLine(_ section: Section, in front: SportFront, now: Date, calendar: Calendar = .current) -> String {
+        let leagues = section.rails.map(\.league).filter { $0 != section.sport }
+        let entries = front.sports.filter { $0.sportName == section.sport }
+        let live = entries.reduce(0) { $0 + $1.live }
+        var parts = leagues.isEmpty ? [] : [leagues.joined(separator: ", ")]
+        if live > 0 {
+            parts.append("\(live) live")
+        } else if let next = entries.compactMap(\.next).map(\.start).min() {
+            parts.append(SportFrontText.when(SportFrontText.date(next), now: now, calendar: calendar))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// An "Also in your sports" button's line: the next start when the server has one, else nothing.
+    static func alsoLine(_ sport: String, in front: SportFront, now: Date, calendar: Calendar = .current) -> String? {
+        front.sports.filter { $0.sportName == sport }.compactMap(\.next).map(\.start).min()
+            .map { SportFrontText.when(SportFrontText.date($0), now: now, calendar: calendar) }
+    }
+
+    /// The banner's list on the front page: the follows in the server's order.
+    static func followItems(_ front: SportFront, now: Date, calendar: Calendar = .current) -> [SportBannerItem] {
+        front.follows.map { follow in
+            SportBannerItem(id: follow.key, title: follow.name,
+                            trailing: followTrailing(follow, in: front, now: now, calendar: calendar),
+                            live: follow.state == "live",
+                            badge: .init(name: follow.name, logo: follow.cachedLogo, league: follow.league))
+        }
+    }
+
+    /// A follow row's right-hand words: "LIVE · v Man City", "Race · Mon 7:00 am", "Mon 5:00 am", "Nothing in 3 days".
+    static func followTrailing(_ follow: SportFront.Follow, in front: SportFront, now: Date,
+                               calendar: Calendar = .current) -> String {
+        let game = front.game(follow.gameId)
+        switch follow.state {
+        case "live":
+            guard let game, let other = opponent(of: follow, in: game) else { return "LIVE" }
+            return "LIVE · v \(other)"
+        case "next":
+            guard let start = follow.start ?? game?.start else { return "Next" }
+            let when = SportFrontText.when(SportFrontText.date(start), now: now, calendar: calendar)
+            return game?.session.map { "\($0) · \(when)" } ?? when
+        default:
+            return "Nothing in 3 days"
+        }
+    }
+
+    /// The other side of a two-sided game, when the follow is one of them.
+    static func opponent(of follow: SportFront.Follow, in game: SportsGame) -> String? {
+        guard game.competitors.count == 2, let mine = followedSide(game, names: [follow.name]) else { return nil }
+        return game.competitors[1 - mine].name
+    }
+
+    /// Which competitor is a followed team (its name or the follow's, either ending the other: "Packers" in "Green Bay
+    /// Packers"), for the card's star; nil when none matches.
+    static func followedSide(_ game: SportsGame, names: [String]) -> Int? {
+        let wanted = names.map { $0.lowercased() }
+        return game.competitors.firstIndex { competitor in
+            let name = competitor.name.lowercased()
+            return wanted.contains { $0 == name || $0.hasSuffix(" " + name) || name.hasSuffix(" " + $0) }
+        }
+    }
+
+    /// The hero's words in the banner. `hidden`: spoiler-free (the answer's or the preference): no score, no situation.
+    static func hero(_ game: SportsGame, in front: SportFront, hidden: Bool, now: Date,
+                     calendar: Calendar = .current) -> SportBannerHero {
+        let drawn = SportFrontText.drawn(game, in: front, hidden: hidden)
+        let sport = sport(of: game.league, in: front)
+        var kicker = [drawn.kicker]
+        if sport.caseInsensitiveCompare(game.league) != .orderedSame { kicker.append(sport.uppercased()) }
+        kicker.append(game.league.uppercased())
+        if game.followed == true { kicker.append("YOUR TEAM") }
+        var line: [String] = []
+        if let scores = drawn.scores, scores.count == 2 { line.append(scores.joined(separator: "–")) }
+        if let situation = drawn.situation { line.append(situation) }
+        if game.status == "scheduled" {
+            let when = SportFrontText.when(SportFrontText.date(game.start), now: now, calendar: calendar)
+            line.append(game.session.map { "\($0) · \(when)" } ?? when)
+        }
+        line.append(game.channels.first?.name ?? (game.terminal ? game.availabilityLabel : "No TV listing found"))
+        return SportBannerHero(kicker: kicker.joined(separator: " · "), live: drawn.kicker == "LIVE",
+                               title: game.title, line: line.joined(separator: " · "))
+    }
 }

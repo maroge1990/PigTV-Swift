@@ -247,6 +247,28 @@ controls are not used for live play.
   `StagingF1UITests` (iPad against the Unraid staging server; skipped unless `TEST_RUNNER_PIGTV_STAGING_URL`, `_USER`,
   `_PASS` are given).
 
+### Apple TV front page and sport pages (C-R, D-43, build 97)
+
+- **One banner** (`SportBanner.swift`; pure parts `SportBannerModels.swift`): 250 pt under the tabs, the hero on the left
+  (kicker, title, one line, `SportHeroButtons`: Watch or Remind me, Record, and on the front page "Open <sport>") over the
+  faded badge or the circuit map (C-P `info.map`, `mapDark` in dark mode), and a list on the right behind a thin line:
+  four rows in a fixed-height scroll view, then "N more · …" (`SportBannerWindow`: focus moving past the window scrolls
+  it one row, the banner never grows). One item or none: full width, no list (`SportBannerLayout.fullWidth`). Rows are
+  drawn in the order sent (C-R since 0427: playing now first); the client never re-sorts.
+- **Front page (tvOS, `SportFrontTVPage`)**: no tiles. The banner's list is `follows[]`, selecting one flips the hero
+  (`SportFrontModel.select`, the C-R hero rule unchanged; a long press on a row offers its sport's page). Below, a section
+  per sport (`SportFrontLayout.sections`: rails grouped by C-U's `sport`, in the rails' order) with a header button
+  ("Football ›", `sport.rail.header.<sport>`) and its leagues' rails of `SportGameCard`s (334 × 132; a followed team's
+  card has the pink outline and its team a star). Sports with no rail: "Also in your sports" buttons
+  (`sport.also.<sport>`). iPad and iPhone keep the earlier tiles-and-hero-band page (`SportFrontPage`) until their mock-ups.
+- **Sport page (`SportPageView`, pushed in the front page's `NavigationStack` by `SportRoute`)**: the banner with the
+  sport's leagues (`sports[]` of that `sport`, as sent) and a back button; hero by `SportPageRules.hero` (a follow live →
+  the sport's league live → a follow's soonest next → the league's soonest scheduled game, Remind me → the sport's quiet
+  words). The selected league's content below: F1, NFL and cricket embed their pages (`embedded: true`: no header, no F1
+  weekend hero, no scroll view of their own); any other league its C-R games as cards. Fixture: `PIGTV_UI_TEST_SCREEN=front`
+  with `PigTVTests/Fixtures/sport-front-0427.json` (`PIGTV_UI_TEST_FRONT_F1=1` embeds the F1 fixture); tests
+  `SportBannerTests`, `SportFrontLayoutTests`, `SportPageTests`, `SportBannerUITests`.
+
 ### Settings › Sport (C-U, #200)
 
 - **What the account follows, synced through the server (D-41).** Only with `sportFollows`: a Sport section after

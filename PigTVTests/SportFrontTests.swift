@@ -191,10 +191,12 @@ final class SportFrontTests: XCTestCase {
         XCTAssertTrue(SportFrontText.badgeShowsLogo(logo: "/api/logo/espn-gb", decoded: true))
     }
 
-    func testCompactFollowsPutLiveFirstThenSoonest() throws {
+    /// D-43 (C-R since 0427): the follows are drawn in the order sent (the server puts what is playing first); the
+    /// client no longer re-sorts them (before Apple 97: live first, then the soonest start).
+    func testFollowsKeepTheOrderSent() throws {
         let f = try front()
-        XCTAssertEqual(SportFrontText.compactOrder(f.follows), [1, 0])
-        // A next game without a start goes after those with one; nothing scheduled last.
+        XCTAssertEqual(SportFrontLayout.followItems(f, now: Date(timeIntervalSince1970: f.now / 1000)).map(\.title),
+                       ["Oscar Piastri", "Green Bay Packers"], "the live Packers stay second, as sent")
         let more = try front { json in
             var follows = json["follows"] as? [[String: Any]] ?? []
             follows.append(["league": "NBA", "name": "Lakers", "logo": NSNull(), "state": "next", "gameId": NSNull(), "start": NSNull()])
@@ -204,7 +206,8 @@ final class SportFrontTests: XCTestCase {
             json["follows"] = follows
         }
         XCTAssertEqual(more.follows.map(\.name), ["Celtics", "Oscar Piastri", "Green Bay Packers", "Lakers", "Collingwood", "Chicago Bears"])
-        XCTAssertEqual(SportFrontText.compactOrder(more.follows), [2, 5, 1, 0, 3, 4])
+        XCTAssertEqual(SportFrontLayout.followItems(more, now: Date(timeIntervalSince1970: f.now / 1000)).map(\.title),
+                       ["Celtics", "Oscar Piastri", "Green Bay Packers", "Lakers", "Collingwood", "Chicago Bears"])
         let now = Date(timeIntervalSince1970: f.now / 1000)
         XCTAssertEqual(SportFrontText.followLine(more.follows[4], in: more, now: now), "Nothing in the next three days")
         XCTAssertEqual(SportFrontText.shortWhen(more.follows[4], now: now), "—")

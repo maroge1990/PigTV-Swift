@@ -1,0 +1,632 @@
+{
+ "now": 1793410062253,
+ "timezone": "Australia/Melbourne",
+ "spoilerFree": false,
+ "scores": "fresh",
+ "sports": [
+  {
+   "league": "EPL",
+   "sport": "Football",
+   "live": 2,
+   "next": {
+    "gameId": "espn:soccer/eng.1:4",
+    "start": 1793414262253
+   },
+   "line": "live"
+  },
+  {
+   "league": "Champions League",
+   "sport": "Football",
+   "live": 0,
+   "next": {
+    "gameId": "espn:soccer/uefa.champions:1",
+    "start": 1793554062253
+   },
+   "line": "next"
+  },
+  {
+   "league": "F1",
+   "sport": "Motorsport",
+   "live": 0,
+   "next": {
+    "gameId": "espn:racing/f1:1",
+    "start": 1793507262253
+   },
+   "line": "next"
+  },
+  {
+   "league": "NBA",
+   "sport": "Basketball",
+   "live": 0,
+   "next": {
+    "gameId": "espn:basketball/nba:2",
+    "start": 1793420862253
+   },
+   "line": "next"
+  },
+  {
+   "league": "NBL",
+   "sport": "Basketball",
+   "live": 0,
+   "next": {
+    "gameId": "espn:basketball/nbl:1",
+    "start": 1793518062253
+   },
+   "line": "next"
+  },
+  {
+   "league": "ATP Tour",
+   "sport": "Tennis",
+   "live": 0,
+   "next": null,
+   "line": "quiet"
+  }
+ ],
+ "follows": [
+  {
+   "league": "EPL",
+   "sport": "Football",
+   "name": "Liverpool",
+   "logo": "/api/logo/espn-liv",
+   "state": "live",
+   "gameId": "espn:soccer/eng.1:1",
+   "start": 1793406042253
+  },
+  {
+   "league": "EPL",
+   "sport": "Football",
+   "name": "Chelsea",
+   "logo": null,
+   "state": "live",
+   "gameId": "espn:soccer/eng.1:2",
+   "start": 1793406762253
+  },
+  {
+   "league": "F1",
+   "sport": "Motorsport",
+   "name": "Oscar Piastri",
+   "logo": null,
+   "state": "next",
+   "gameId": "espn:racing/f1:1",
+   "start": 1793507262253
+  },
+  {
+   "league": "Champions League",
+   "sport": "Football",
+   "name": "Arsenal",
+   "logo": null,
+   "state": "next",
+   "gameId": "espn:soccer/uefa.champions:1",
+   "start": 1793554062253
+  },
+  {
+   "league": "NBA",
+   "sport": "Basketball",
+   "name": "Chicago Bulls",
+   "logo": null,
+   "state": "none",
+   "gameId": null,
+   "start": null
+  },
+  {
+   "league": "NBL",
+   "sport": "Basketball",
+   "name": "Sydney Kings",
+   "logo": null,
+   "state": "none",
+   "gameId": null,
+   "start": null
+  },
+  {
+   "league": "ATP Tour",
+   "sport": "Tennis",
+   "name": "Alex de Minaur",
+   "logo": null,
+   "state": "none",
+   "gameId": null,
+   "start": null
+  }
+ ],
+ "hero": {
+  "reason": "follow-live",
+  "followIndex": 0,
+  "gameId": "espn:soccer/eng.1:1"
+ },
+ "rails": [
+  {
+   "league": "EPL",
+   "sport": "Football",
+   "gameIds": [
+    "espn:soccer/eng.1:1",
+    "espn:soccer/eng.1:2",
+    "espn:soccer/eng.1:3",
+    "espn:soccer/eng.1:4"
+   ]
+  },
+  {
+   "league": "Champions League",
+   "sport": "Football",
+   "gameIds": [
+    "espn:soccer/uefa.champions:1",
+    "espn:soccer/uefa.champions:2"
+   ]
+  },
+  {
+   "league": "F1",
+   "sport": "Motorsport",
+   "gameIds": [
+    "espn:racing/f1:1"
+   ]
+  },
+  {
+   "league": "NBA",
+   "sport": "Basketball",
+   "gameIds": [
+    "espn:basketball/nba:2",
+    "espn:basketball/nba:1"
+   ]
+  },
+  {
+   "league": "NBL",
+   "sport": "Basketball",
+   "gameIds": [
+    "espn:basketball/nbl:1"
+   ]
+  }
+ ],
+ "games": [
+  {
+   "id": "espn:soccer/eng.1:1",
+   "league": "EPL",
+   "title": "Liverpool v Man City",
+   "start": 1793406042253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Liverpool",
+     "logo": "/api/logo/espn-liv"
+    },
+    {
+     "id": "1",
+     "name": "Man City",
+     "logo": null
+    }
+   ],
+   "status": "live",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {
+    "clock": "67'",
+    "half": "2nd"
+   },
+   "availability": "matched",
+   "broadcastStatus": "on-tv",
+   "channels": [
+    {
+     "sourceId": 1,
+     "id": "pos_3",
+     "stableId": "s3",
+     "name": "Optus Sport 1 HD",
+     "number": null,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793405562253,
+     "end": 1793413662253
+    }
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "start": 1793406042253,
+     "end": 1793413242253
+    }
+   ],
+   "canWatch": true,
+   "followed": true,
+   "scores": [
+    "1",
+    "1"
+   ]
+  },
+  {
+   "id": "espn:soccer/eng.1:2",
+   "league": "EPL",
+   "title": "Chelsea v Newcastle",
+   "start": 1793406762253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Chelsea",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "Newcastle",
+     "logo": null
+    }
+   ],
+   "status": "live",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {
+    "clock": "55'",
+    "half": "2nd"
+   },
+   "availability": "matched",
+   "broadcastStatus": "on-tv",
+   "channels": [
+    {
+     "sourceId": 1,
+     "id": "pos_4",
+     "stableId": "s4",
+     "name": "Optus Sport 2 HD",
+     "number": null,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793406462253,
+     "end": 1793414262253
+    }
+   ],
+   "events": [
+    {
+     "id": "ev-2",
+     "start": 1793406762253,
+     "end": 1793413962253
+    }
+   ],
+   "canWatch": true,
+   "followed": true,
+   "scores": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "espn:soccer/eng.1:3",
+   "league": "EPL",
+   "title": "Arsenal v Tottenham",
+   "start": 1793395662253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Arsenal",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "Tottenham",
+     "logo": null
+    }
+   ],
+   "status": "finished",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "unmatched",
+   "broadcastStatus": "unavailable",
+   "channels": [],
+   "events": [],
+   "canWatch": false,
+   "followed": true,
+   "scores": [
+    "2",
+    "0"
+   ]
+  },
+  {
+   "id": "espn:soccer/eng.1:4",
+   "league": "EPL",
+   "title": "Man United v Aston Villa",
+   "start": 1793414262253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Man United",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "Aston Villa",
+     "logo": null
+    }
+   ],
+   "status": "scheduled",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "matched",
+   "broadcastStatus": "scheduled",
+   "channels": [
+    {
+     "sourceId": 1,
+     "id": "pos_3",
+     "stableId": "s3",
+     "name": "Optus Sport 1 HD",
+     "number": null,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793413662253,
+     "end": 1793421462253
+    }
+   ],
+   "events": [
+    {
+     "id": "ev-4",
+     "start": 1793414262253,
+     "end": 1793421462253
+    }
+   ],
+   "canWatch": false,
+   "followed": false
+  },
+  {
+   "id": "espn:soccer/uefa.champions:1",
+   "league": "Champions League",
+   "title": "Arsenal v PSG",
+   "start": 1793554062253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Arsenal",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "PSG",
+     "logo": null
+    }
+   ],
+   "status": "scheduled",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "matched",
+   "broadcastStatus": "scheduled",
+   "channels": [
+    {
+     "sourceId": 1,
+     "id": "pos_9",
+     "stableId": "s9",
+     "name": "Stan Sport",
+     "number": null,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793553462253,
+     "end": 1793561262253
+    }
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "start": 1793554062253,
+     "end": 1793561262253
+    }
+   ],
+   "canWatch": false,
+   "followed": true
+  },
+  {
+   "id": "espn:soccer/uefa.champions:2",
+   "league": "Champions League",
+   "title": "Real Madrid v Bayern",
+   "start": 1793554062253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Real Madrid",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "Bayern",
+     "logo": null
+    }
+   ],
+   "status": "scheduled",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "unmatched",
+   "broadcastStatus": "unavailable",
+   "channels": [],
+   "events": [],
+   "canWatch": false,
+   "followed": false
+  },
+  {
+   "id": "espn:racing/f1:1",
+   "league": "F1",
+   "title": "Mexico City Grand Prix",
+   "start": 1793507262253,
+   "end": null,
+   "session": "Race",
+   "circuit": null,
+   "format": null,
+   "competitors": [],
+   "status": "scheduled",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "matched",
+   "broadcastStatus": "scheduled",
+   "channels": [
+    {
+     "sourceId": 1,
+     "id": "pos_6",
+     "stableId": "s6",
+     "name": "Fox Sports 506 UHD",
+     "number": null,
+     "logo": null,
+     "quality": "UHD",
+     "start": 1793505462253,
+     "end": 1793518062253
+    }
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "start": 1793507262253,
+     "end": 1793514462253
+    }
+   ],
+   "canWatch": false,
+   "followed": true
+  },
+  {
+   "id": "espn:basketball/nba:1",
+   "league": "NBA",
+   "title": "Lakers v Celtics",
+   "start": 1793428062253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Lakers",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "Celtics",
+     "logo": null
+    }
+   ],
+   "status": "scheduled",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "matched",
+   "broadcastStatus": "scheduled",
+   "channels": [
+    {
+     "sourceId": 1,
+     "id": "pos_7",
+     "stableId": "s7",
+     "name": "ESPN 2 HD",
+     "number": null,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793427762253,
+     "end": 1793438862253
+    }
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "start": 1793428062253,
+     "end": 1793435262253
+    }
+   ],
+   "canWatch": false,
+   "followed": false
+  },
+  {
+   "id": "espn:basketball/nba:2",
+   "league": "NBA",
+   "title": "Warriors v Suns",
+   "start": 1793420862253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Warriors",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "Suns",
+     "logo": null
+    }
+   ],
+   "status": "scheduled",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "matched",
+   "broadcastStatus": "scheduled",
+   "channels": [
+    {
+     "sourceId": 1,
+     "id": "pos_7",
+     "stableId": "s7",
+     "name": "ESPN 2 HD",
+     "number": null,
+     "logo": null,
+     "quality": "HD",
+     "start": 1793420562253,
+     "end": 1793428062253
+    }
+   ],
+   "events": [
+    {
+     "id": "ev-2",
+     "start": 1793420862253,
+     "end": 1793428062253
+    }
+   ],
+   "canWatch": false,
+   "followed": false
+  },
+  {
+   "id": "espn:basketball/nbl:1",
+   "league": "NBL",
+   "title": "Melbourne United v Perth Wildcats",
+   "start": 1793518062253,
+   "end": null,
+   "session": null,
+   "circuit": null,
+   "format": null,
+   "competitors": [
+    {
+     "id": "0",
+     "name": "Melbourne United",
+     "logo": null
+    },
+    {
+     "id": "1",
+     "name": "Perth Wildcats",
+     "logo": null
+    }
+   ],
+   "status": "scheduled",
+   "freshness": "fresh",
+   "observedAt": 1793410002253,
+   "progress": {},
+   "availability": "unmatched",
+   "broadcastStatus": "unavailable",
+   "channels": [],
+   "events": [],
+   "canWatch": false,
+   "followed": false
+  }
+ ]
+}

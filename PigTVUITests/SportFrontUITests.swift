@@ -3,8 +3,9 @@ import XCTest
 #if os(tvOS)
 // C-R (#21, D-39, Apple 89): the Sport front page on the server's own answer (PigTVTests/Fixtures/sport-front-0381.json,
 // read from the source tree: simulator runs are on the Mac), inside the app's tab bar with no server. The app opens on
-// Sport; the tab bar reads Sport · TV · TV Guide · Recordings · Settings; the page shows the hero, the follows and a rail
-// per followed sport; selecting the other follow flips the hero. Screenshots are attached for review (T3).
+// Sport; the tab bar reads Sport · TV · TV Guide · Recordings · Settings; the page shows the banner (the hero and the
+// follows, D-43) and a rail per followed sport; selecting the other follow flips the hero. Screenshots are attached for
+// review (T3).
 final class SportFrontUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
@@ -42,33 +43,30 @@ final class SportFrontUITests: XCTestCase {
         // does not always report isSelected, so focus counts too.
         let sportTab = app.tabBars.buttons["Sport"]
         XCTAssertTrue(waitUntil(5) { sportTab.isSelected || sportTab.hasFocus }, "Sport is the selected tab")
-        XCTAssertTrue(app.staticTexts.matching(identifier: "page.header.title").matching(NSPredicate(format: "label == 'Sport'")).firstMatch.exists)
         XCTAssertFalse(app.buttons["home.watch"].exists, "not on TV")
-        XCTAssertTrue(any["sport.front.hero"].exists)
-        XCTAssertTrue(any["sport.front.follow.0"].exists && any["sport.front.follow.1"].exists, "both follows")
+        XCTAssertTrue(any["sport.banner.hero"].exists)
+        XCTAssertTrue(any["sport.banner.item.0"].exists && any["sport.banner.item.1"].exists, "both follows")
         for league in ["F1", "NFL", "NBA", "Cricket"] {
             XCTAssertTrue(any["sport.front.rail.\(league)"].exists, "the \(league) rail")
         }
-        let title = any["sport.front.hero.title"]
+        let title = any["sport.banner.hero.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5), "the hero's title")
         XCTAssertTrue(waitUntil(5) { title.label == "Packers v Bears" }, "the server's hero, the followed Packers live: \(title.label)")
         attach(app, "sport-front")
 
-        // Into the page and over to the follows on the right (the hero may have no buttons: the fixture's live game has
-        // no channel): along the tiles to "Follow a sport", which sits above the follows, then down. Then onto the other
-        // follow (Oscar Piastri) and select it.
-        for _ in 0..<14 where !focused(app).identifier.hasPrefix("sport.front.follow.") {
+        // Into the banner and over to the follows on the right (the fixture's live game has no channel: the hero offers
+        // only its sport's page). Then onto the other follow (Oscar Piastri) and select it.
+        for _ in 0..<14 where !focused(app).identifier.hasPrefix("sport.banner.item.") {
             let id = focused(app).identifier
             let button: XCUIRemote.Button
-            if id == "sport.front.addSport" { button = .down }
-            else if id.hasPrefix("sport.front.tile.") || id.hasPrefix("sport.front.hero.") { button = .right }
-            else if id.hasPrefix("sport.front.game.") { button = .up }
+            if id.hasPrefix("sport.banner.") { button = .right }
+            else if id.hasPrefix("sport.front.game.") || id.hasPrefix("sport.rail.header.") { button = .up }
             else { button = .down }
             XCUIRemote.shared.press(button)
         }
-        XCTAssertTrue(focused(app).identifier.hasPrefix("sport.front.follow."), "focus: \(focused(app).identifier)")
-        for _ in 0..<3 where focused(app).identifier != "sport.front.follow.0" { XCUIRemote.shared.press(.up) }
-        XCTAssertEqual(focused(app).identifier, "sport.front.follow.0")
+        XCTAssertTrue(focused(app).identifier.hasPrefix("sport.banner.item."), "focus: \(focused(app).identifier)")
+        for _ in 0..<3 where focused(app).identifier != "sport.banner.item.0" { XCUIRemote.shared.press(.up) }
+        XCTAssertEqual(focused(app).identifier, "sport.banner.item.0")
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(waitUntil(5) { title.label == "Mexico City Grand Prix" }, "the hero flipped: \(title.label)")
         attach(app, "sport-front-flipped")
@@ -92,10 +90,13 @@ final class SportFrontUITests: XCTestCase {
         }
         let any = app.descendants(matching: .any)
         XCTAssertTrue(any["sport.front"].waitForExistence(timeout: 15), "the Sport front page")
-        XCTAssertTrue(app.buttons["sport.front.hero.record"].waitForExistence(timeout: 5), "the hero's Record")
-        for _ in 0..<8 where !focused(app).identifier.hasPrefix("sport.front.hero.") { XCUIRemote.shared.press(.down) }
-        for _ in 0..<3 where focused(app).identifier != "sport.front.hero.record" { XCUIRemote.shared.press(.right) }
-        XCTAssertEqual(focused(app).identifier, "sport.front.hero.record")
+        XCTAssertTrue(app.buttons["sport.banner.hero.record"].waitForExistence(timeout: 5), "the hero's Record")
+        for _ in 0..<8 where !focused(app).identifier.hasPrefix("sport.banner.hero.") {
+            XCUIRemote.shared.press(focused(app).identifier.hasPrefix("sport.banner.item.") ? .left : .down)
+        }
+        for _ in 0..<3 where focused(app).identifier != "sport.banner.hero.watch" { XCUIRemote.shared.press(.left) }
+        for _ in 0..<3 where focused(app).identifier != "sport.banner.hero.record" { XCUIRemote.shared.press(.right) }
+        XCTAssertEqual(focused(app).identifier, "sport.banner.hero.record")
         XCUIRemote.shared.press(.select)
         let best = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'ESPN HD · '")).firstMatch
         let other = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Fox Footy · '")).firstMatch

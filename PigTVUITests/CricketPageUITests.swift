@@ -2,8 +2,8 @@ import XCTest
 
 #if os(tvOS)
 // C-S (#21, Apple 90): the Cricket page on the server's own answer (PigTVTests/Fixtures/cricket-page-0387-live.json, read
-// from the source tree: simulator runs are on the Mac) with no server, opened from the Sport front page's Cricket tile
-// (PigTVTests/Fixtures/sport-front-0381.json). The lead's best channel is moved to air now, so "Watch live" is offered
+// from the source tree: simulator runs are on the Mac) with no server, opened from the Sport front page's Cricket rail
+// header (PigTVTests/Fixtures/sport-front-0381.json; D-43: Cricket's sport page, its one league's page under the banner). The lead's best channel is moved to air now, so "Watch live" is offered
 // and focused; pressing it reaches the player, which tunes (its resolve goes to a TEST-NET address). Screenshots are
 // attached for review against the mock-up (T3).
 final class CricketPageUITests: XCTestCase {
@@ -42,28 +42,27 @@ final class CricketPageUITests: XCTestCase {
     }
 
     @MainActor
-    func testTheCricketTileOpensThePageAndWatchLivePlays() throws {
+    func testTheCricketRailHeaderOpensThePageAndWatchLivePlays() throws {
         let app = try launch()
         let any = app.descendants(matching: .any)
         XCTAssertTrue(any["sport.front"].waitForExistence(timeout: 15), "the app did not open on the Sport front page")
-        let tile = any["sport.front.tile.Cricket"]
-        XCTAssertTrue(tile.waitForExistence(timeout: 5), "the Cricket tile")
-        // From the tab bar down to the tiles, then along to Cricket.
-        for _ in 0..<12 where focused(app).identifier != "sport.front.tile.Cricket" {
-            let id = focused(app).identifier
-            XCUIRemote.shared.press(id.hasPrefix("sport.front.tile.") ? .right : id.hasPrefix("sport.front.") ? .up : .down)
-        }
-        XCTAssertEqual(focused(app).identifier, "sport.front.tile.Cricket")
+        let header = any["sport.rail.header.Cricket"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5), "the Cricket rail's header")
+        // From the tab bar down the page, header by header, to Cricket's (the last rail).
+        for _ in 0..<16 where focused(app).identifier != "sport.rail.header.Cricket" { XCUIRemote.shared.press(.down) }
+        XCTAssertEqual(focused(app).identifier, "sport.rail.header.Cricket")
         XCUIRemote.shared.press(.select)
+        XCTAssertTrue(any["sport.page.Cricket"].waitForExistence(timeout: 10), "Cricket's sport page")
+        XCTAssertFalse(any["sport.banner.list"].exists, "one league: a full-width banner")
 
-        XCTAssertTrue(any["cricket.page"].waitForExistence(timeout: 10), "the Cricket page did not open")
+        XCTAssertTrue(any["sport.page.league.Cricket"].waitForExistence(timeout: 10), "the Cricket page did not open")
         let title = any["cricket.lead.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         XCTAssertEqual(title.label, "South Africa v Australia")
         XCTAssertTrue(app.staticTexts["3RD TEST · DAY 4 · SESSION 3"].exists, "the kicker")
         XCTAssertTrue(any.matching(NSPredicate(format: "label CONTAINS '329 & 294/5'")).firstMatch.exists, "South Africa's innings")
         XCTAssertTrue(app.staticTexts["Rickelton 101* · Mulder 115*"].exists, "the crease")
-        XCTAssertTrue(any["cricket.following"].exists, "Following Australia")
+        XCTAssertFalse(any["cricket.following"].exists, "under the banner: no header of its own (D-43)")
         XCTAssertTrue(any["cricket.day.4.live"].exists && any["cricket.day.5.next"].exists, "the day chips")
         XCTAssertTrue(any["cricket.series.1525661"].exists, "the series, the current match")
         let watch = app.buttons["cricket.action.watch"]

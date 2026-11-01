@@ -68,10 +68,13 @@ struct NFLPageView: View {
     @State private var chosen: NFLGame?
     @State private var recording: SportEvent?
     @State private var choosingTeam = false
+    /// D-43: under a sport page's banner, which holds the hero: no header, no scroll view of its own.
+    let embedded: Bool
 
-    init(app: AppModel, browse: BrowseModel) {
+    init(app: AppModel, browse: BrowseModel, embedded: Bool = false) {
         self.app = app
         self.browse = browse
+        self.embedded = embedded
         self.model = browse.nflPage
         self.preferences = browse.f1Page
         _appState = ObservedObject(wrappedValue: app)
@@ -89,7 +92,7 @@ struct NFLPageView: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             content(now: context.date)
         }
-        .pigPageBackdrop()
+        .pigPageBackdrop(unless: embedded)
         #if os(iOS)
         .navigationTitle("NFL")
         .navigationBarTitleDisplayMode(.inline)
@@ -127,36 +130,43 @@ struct NFLPageView: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let spoilerFree = preferences.hidesSpoilers
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: NFLMetrics.spacing) {
-                header
-                if let page = model.page, page.available, !page.weeks.isEmpty {
-                    let shown = page.weeks.first { $0.number == (week ?? NFLPageText.openingWeek(page)) } ?? page.weeks[page.weeks.count - 1]
-                    if wide {
-                        HStack(alignment: .top, spacing: NFLMetrics.columnGap) {
-                            weekColumn(page, shown: shown, now: now, spoilerFree: spoilerFree).frame(maxWidth: .infinity, alignment: .topLeading)
-                            side(page, now: now, spoilerFree: spoilerFree).frame(width: NFLMetrics.sideWidth)
-                        }
-                    } else {
-                        if preferences.preferences.nflFollowing != nil { teamCard(page, now: now, spoilerFree: spoilerFree) }
-                        weekColumn(page, shown: shown, now: now, spoilerFree: spoilerFree)
-                        standings(page, spoilerFree: spoilerFree)
-                    }
-                } else if !model.loaded || model.page?.available == false {
-                    ProgressView("Loading the NFL…").frame(maxWidth: .infinity).padding(.top, 80)
-                } else {
-                    unavailable
-                }
-                if let error = preferences.saveError {
-                    Text(error).font(NFLMetrics.detail).foregroundStyle(.secondary)
-                }
-            }
-            #if os(iOS)
-            .padding(wide ? 32 : 16)
-            #endif
+        if embedded {
+            // A container, so the page's identifier is not copied onto each of its texts (the sport page names it).
+            stack(now: now).accessibilityElement(children: .contain)
+        } else {
+            ScrollView(.vertical) { stack(now: now) }.scrollClipDisabled()
         }
-        .scrollClipDisabled()
+    }
+
+    @ViewBuilder
+    private func stack(now: Date) -> some View {
+        let spoilerFree = preferences.hidesSpoilers
+        VStack(alignment: .leading, spacing: NFLMetrics.spacing) {
+            if !embedded { header }
+            if let page = model.page, page.available, !page.weeks.isEmpty {
+                let shown = page.weeks.first { $0.number == (week ?? NFLPageText.openingWeek(page)) } ?? page.weeks[page.weeks.count - 1]
+                if wide {
+                    HStack(alignment: .top, spacing: NFLMetrics.columnGap) {
+                        weekColumn(page, shown: shown, now: now, spoilerFree: spoilerFree).frame(maxWidth: .infinity, alignment: .topLeading)
+                        side(page, now: now, spoilerFree: spoilerFree).frame(width: NFLMetrics.sideWidth)
+                    }
+                } else {
+                    if preferences.preferences.nflFollowing != nil { teamCard(page, now: now, spoilerFree: spoilerFree) }
+                    weekColumn(page, shown: shown, now: now, spoilerFree: spoilerFree)
+                    standings(page, spoilerFree: spoilerFree)
+                }
+            } else if !model.loaded || model.page?.available == false {
+                ProgressView("Loading the NFL…").frame(maxWidth: .infinity).padding(.top, 80)
+            } else {
+                unavailable
+            }
+            if let error = preferences.saveError {
+                Text(error).font(NFLMetrics.detail).foregroundStyle(.secondary)
+            }
+        }
+        #if os(iOS)
+        .padding(wide ? 32 : 16)
+        #endif
     }
 
     // MARK: Header

@@ -204,7 +204,9 @@ private struct SportFrontTestScreen: View {
                       let data = Data(base64Encoded: base64),
                       let front = try? JSONDecoder().decode(SportFront.self, from: data) else { return }
                 browse.sportFront.setFixture(front)
-                browse.f1Page.setFixture(F1Page(available: false))
+                // D-43: PIGTV_UI_TEST_FRONT_F1=1 gives the Motorsport page the F1 fixture's weekend to embed.
+                browse.f1Page.setFixture(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_F1"] == "1"
+                                         ? F1PageFixtures.page(live: false, guide: browse.guide) : F1Page(available: false))
                 browse.nflPage.setFixture(NFLPage(available: false))
                 if let cricket = Self.cricket, let page = try? JSONDecoder().decode(CricketPage.self, from: cricket) {
                     browse.cricketPage.setFixture(page)

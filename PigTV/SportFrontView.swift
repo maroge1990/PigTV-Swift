@@ -69,14 +69,25 @@ struct SportFrontView: View {
     static let origin = "sport-front"
     let app: AppModel
     let browse: BrowseModel
+    /// D-43: the sport pages pushed from the front page (a rail header, "Also in your sports", a follow).
+    @State private var path: [SportRoute] = []
 
     var body: some View {
-        NavigationStack {
-            SportFrontPage(app: app, browse: browse)
-                .pigPageBackdrop()
-                #if os(iOS)
-                .toolbar(.hidden, for: .navigationBar)
+        NavigationStack(path: $path) {
+            Group {
+                #if os(tvOS)
+                SportFrontTVPage(app: app, browse: browse) { sport in path.append(SportRoute(sport: sport)) }
+                #else
+                SportFrontPage(app: app, browse: browse)
                 #endif
+            }
+            .pigPageBackdrop()
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+            .navigationDestination(for: SportRoute.self) { route in
+                SportPageView(app: app, browse: browse, sport: route.sport)
+            }
         }
         // The event page and channel picker belong to the screen (SportPresenter), with the plays' origin.
         .sportPages(app: app, browse: browse, clock: Date(), origin: Self.origin)
@@ -375,7 +386,8 @@ private struct SportFrontPage: View {
 
     private func follows(_ front: SportFront, now: Date) -> some View {
         let compact = front.follows.count > 3
-        let order = compact ? SportFrontText.compactOrder(front.follows) : Array(front.follows.indices)
+        // C-R since 0427 (D-43): the server's order (the account's, playing now first); never re-sorted here.
+        let order = Array(front.follows.indices)
         let shown = compact && !allFollows ? Array(order.prefix(4)) : order
         return ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: compact ? 8 : 12) {

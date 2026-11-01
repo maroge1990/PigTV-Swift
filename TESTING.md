@@ -59,6 +59,9 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
 - `BrandSplashUITests`: the 1.6 splash draws in light and dark and stays up through a breathing half-cycle (`PIGTV_UI_TEST_SCREEN=splash`, `PIGTV_UI_TEST_APPEARANCE`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
 - `SportSettingsUITests` (#200): Settings › Sport shows a suggestion, Hide scores and the followed sports; a sport opens its
   page (leagues, Add a league, Record every game, Follow a team…) and Menu returns.
+- `SportBannerUITests` (D-43, build 97; `front` on `sport-front-0427.json`, times moved to the clock): no tiles, the
+  banner's list scrolls in place, a rail header opens a sport page whose banner lists its leagues and flips the content,
+  Menu restores focus, a one-league sport is full width, the quiet and nothing-in-72-hours banners.
 - `TopShelfCardsUITests`: renders the Top Shelf cards through the real export, then focuses PigTV on the Home Screen.
 
 ## Offline fixtures (DEBUG builds only)
@@ -76,6 +79,7 @@ data, not the real feed.
 | `PIGTV_UI_TEST_HOME_SCROLL`, `PIGTV_UI_TEST_SPORT_SCROLL` | A shelf or section title to scroll into view (e.g. `Sport now & next`, `Replays`) |
 | `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens on Scheduled |
 | `PIGTV_UI_TEST_CLASH` | `1`: the Recordings fixture adds two schedules that clash; one loses (`beatenBy`) and offers "Record this one instead" (#12) |
+| `PIGTV_UI_TEST_FRONT_F1` | `1` (with `front`): the Motorsport page embeds the F1 fixture's weekend |
 | `PIGTV_UI_TEST_TABPROBE` | `1`: measure the longest stall after each tab switch (`debug.tabSwitch`) |
 | `TEST_RUNNER_PIGTV_SCREENSHOT_DIR` | Passed to `xcodebuild test`: `TopShelfCardsUITests` saves its screenshots there |
 

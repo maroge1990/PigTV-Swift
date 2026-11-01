@@ -77,10 +77,13 @@ struct CricketPageView: View {
     @State private var recording: SportEvent?
     private enum Control: Hashable { case primary }
     @FocusState private var focus: Control?
+    /// D-43: under a sport page's banner: no header, no scroll view of its own.
+    let embedded: Bool
 
-    init(app: AppModel, browse: BrowseModel) {
+    init(app: AppModel, browse: BrowseModel, embedded: Bool = false) {
         self.app = app
         self.browse = browse
+        self.embedded = embedded
         self.model = browse.cricketPage
         self.preferences = browse.f1Page
         _appState = ObservedObject(wrappedValue: app)
@@ -98,7 +101,7 @@ struct CricketPageView: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             content(now: context.date)
         }
-        .pigPageBackdrop()
+        .pigPageBackdrop(unless: embedded)
         #if os(iOS)
         .navigationTitle("Cricket")
         .navigationBarTitleDisplayMode(.inline)
@@ -116,43 +119,51 @@ struct CricketPageView: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
+        if embedded {
+            // A container, so the page's identifier is not copied onto each of its texts (the sport page names it).
+            stack(now: now).accessibilityElement(children: .contain)
+        } else {
+            ScrollView(.vertical) { stack(now: now) }
+                .scrollClipDisabled()
+                .defaultFocus($focus, .primary)
+        }
+    }
+
+    @ViewBuilder
+    private func stack(now: Date) -> some View {
         let spoilerFree = preferences.hidesSpoilers
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: CricketMetrics.spacing) {
-                header
-                if let raw = model.page, raw.available, raw.lead != nil || !raw.others.isEmpty {
-                    let page = CricketPageText.visible(raw, spoilerFree: spoilerFree)
-                    if wide {
-                        HStack(alignment: .top, spacing: CricketMetrics.columnGap) {
-                            leadBlock(page, now: now, spoilerFree: spoilerFree).frame(maxWidth: .infinity, alignment: .topLeading)
-                            if let series = page.series, !series.matches.isEmpty {
-                                seriesPanel(series, lead: page.lead, now: now, spoilerFree: spoilerFree).frame(width: CricketMetrics.sideWidth)
-                            }
-                        }
-                    } else {
-                        leadBlock(page, now: now, spoilerFree: spoilerFree)
+        VStack(alignment: .leading, spacing: CricketMetrics.spacing) {
+            if !embedded { header }
+            if let raw = model.page, raw.available, raw.lead != nil || !raw.others.isEmpty {
+                let page = CricketPageText.visible(raw, spoilerFree: spoilerFree)
+                if wide {
+                    HStack(alignment: .top, spacing: CricketMetrics.columnGap) {
+                        leadBlock(page, now: now, spoilerFree: spoilerFree).frame(maxWidth: .infinity, alignment: .topLeading)
                         if let series = page.series, !series.matches.isEmpty {
-                            seriesPanel(series, lead: page.lead, now: now, spoilerFree: spoilerFree)
+                            seriesPanel(series, lead: page.lead, now: now, spoilerFree: spoilerFree).frame(width: CricketMetrics.sideWidth)
                         }
                     }
-                    if !page.others.isEmpty { others(page.others, now: now) }
-                } else if !model.loaded || model.page?.available == false {
-                    ProgressView("Loading cricket…").frame(maxWidth: .infinity).padding(.top, 80)
-                } else if model.page != nil {
-                    nothingOn
                 } else {
-                    unavailable
+                    leadBlock(page, now: now, spoilerFree: spoilerFree)
+                    if let series = page.series, !series.matches.isEmpty {
+                        seriesPanel(series, lead: page.lead, now: now, spoilerFree: spoilerFree)
+                    }
                 }
-                if let error = preferences.saveError {
-                    Text(error).font(CricketMetrics.detail).foregroundStyle(.secondary)
-                }
+                if !page.others.isEmpty { others(page.others, now: now) }
+            } else if !model.loaded || model.page?.available == false {
+                ProgressView("Loading cricket…").frame(maxWidth: .infinity).padding(.top, 80)
+            } else if model.page != nil {
+                nothingOn
+            } else {
+                unavailable
             }
-            #if os(iOS)
-            .padding(wide ? 32 : 16)
-            #endif
+            if let error = preferences.saveError {
+                Text(error).font(CricketMetrics.detail).foregroundStyle(.secondary)
+            }
         }
-        .scrollClipDisabled()
-        .defaultFocus($focus, .primary)
+        #if os(iOS)
+        .padding(wide ? 32 : 16)
+        #endif
     }
 
     // MARK: Header
