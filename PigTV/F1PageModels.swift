@@ -71,8 +71,10 @@ nonisolated struct F1CircuitInfo: Decodable, Equatable, Sendable {
     var lapRecord: String?
     var lapRecordYear: Int?
     var map: String?
+    /// C-P since 0424 (#201, additive): ESPN's dark-theme map, drawn the same way, or nil (D-43's banner in dark mode).
+    var mapDark: String? = nil
 
-    enum CodingKeys: String, CodingKey { case length, laps, turns, lapRecord, lapRecordYear, map }
+    enum CodingKeys: String, CodingKey { case length, laps, turns, lapRecord, lapRecordYear, map, mapDark }
 
     init(length: String? = nil, laps: Int? = nil, turns: Int? = nil, lapRecord: String? = nil, lapRecordYear: Int? = nil,
          map: String? = nil) {
@@ -88,6 +90,7 @@ nonisolated struct F1CircuitInfo: Decodable, Equatable, Sendable {
         lapRecord = (try? c.decodeIfPresent(String.self, forKey: .lapRecord)) ?? nil
         lapRecordYear = (try? c.decodeIfPresent(Int.self, forKey: .lapRecordYear)) ?? nil
         map = ((try? c.decodeIfPresent(String.self, forKey: .map)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
+        mapDark = ((try? c.decodeIfPresent(String.self, forKey: .mapDark)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 

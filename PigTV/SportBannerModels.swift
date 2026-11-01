@@ -1,0 +1,85 @@
+import Foundation
+
+// D-43 (1 Nov): the banner's pure parts (the list's window, the full-width rule, what a row and the hero say, the
+// backdrop), Foundation only so the contract checks compile them with the C-R models. The view is SportBanner.swift.
+
+/// The list's window: which four items show, and what the "N more" line says. Pure (tests `SportBannerTests`).
+nonisolated struct SportBannerWindow: Equatable, Sendable {
+    static let visible = 4
+
+    let count: Int
+    let start: Int
+
+    init(count: Int, start: Int = 0) {
+        self.count = max(0, count)
+        self.start = min(max(0, start), max(0, self.count - Self.visible))
+    }
+
+    /// The items on show.
+    var range: Range<Int> { start..<min(count, start + Self.visible) }
+    /// How many are below the window.
+    var below: Int { max(0, count - start - Self.visible) }
+
+    /// Focus moved to item `index`: the window moves the least that shows it (down one row at a time, up likewise).
+    func focusing(_ index: Int) -> SportBannerWindow {
+        guard count > 0 else { return self }
+        let index = min(max(0, index), count - 1)
+        if index < start { return SportBannerWindow(count: count, start: index) }
+        if index >= start + Self.visible { return SportBannerWindow(count: count, start: index - Self.visible + 1) }
+        return self
+    }
+
+    /// "5 more · de Minaur, Min Woo Lee, Arsenal …": the items below the window, the first three named; nil with none.
+    func moreLine(names: [String]) -> String? {
+        guard below > 0 else { return nil }
+        let rest = Array(names.dropFirst(start + Self.visible))
+        let named = rest.prefix(3).joined(separator: ", ")
+        return "\(below) more" + (named.isEmpty ? "" : " · \(named)") + (rest.count > 3 ? " …" : "")
+    }
+}
+
+/// D-43 point 4: one item (a sport with one league, or only one picked; a front page with one follow) or none runs the
+/// banner full width, with no list and no line.
+nonisolated enum SportBannerLayout {
+    static func fullWidth(itemCount: Int) -> Bool { itemCount <= 1 }
+}
+
+/// One row of the banner's list.
+nonisolated struct SportBannerItem: Identifiable, Equatable, Sendable {
+    struct Badge: Equatable, Sendable {
+        let name: String
+        let logo: String?
+        let league: String
+    }
+
+    let id: String
+    let title: String
+    /// "LIVE · v Man City", "Mon 5:00 am", "2 live".
+    let trailing: String
+    let live: Bool
+    var badge: Badge? = nil
+}
+
+/// The hero's words, spoiler-free already applied.
+nonisolated struct SportBannerHero: Equatable, Sendable {
+    /// "LIVE · FOOTBALL · PREMIER LEAGUE".
+    let kicker: String
+    /// The kicker's dot and colour: something is on now.
+    let live: Bool
+    let title: String
+    /// "1–1 · 2nd half 67' · Optus Sport 1 HD".
+    let line: String
+}
+
+/// What fades behind the hero: the hero team's badge, or a race's circuit map (C-P `info.map`; `mapDark` in dark mode).
+nonisolated enum SportBannerBackdrop: Equatable, Sendable {
+    case badge(String)
+    case map(light: String, dark: String?)
+
+    func path(dark: Bool) -> String {
+        switch self {
+        case .badge(let path): return path
+        case .map(let light, let dark2): return dark ? (dark2 ?? light) : light
+        }
+    }
+}
