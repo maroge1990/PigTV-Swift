@@ -19,13 +19,15 @@ final class SportFrontUITests: XCTestCase {
         add(shot)
     }
 
-    private func launch() throws -> XCUIApplication {
+    private func launch(_ change: (inout [String: Any]) -> Void = { _ in }) throws -> XCUIApplication {
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("PigTVTests/Fixtures/sport-front-0381.json")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+        change(&json)
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "front"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
-        app.launchEnvironment["PIGTV_UI_TEST_FRONT_JSON"] = try Data(contentsOf: fixture).base64EncodedString()
+        app.launchEnvironment["PIGTV_UI_TEST_FRONT_JSON"] = try JSONSerialization.data(withJSONObject: json).base64EncodedString()
         app.launch()
         return app
     }
@@ -70,6 +72,33 @@ final class SportFrontUITests: XCTestCase {
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(waitUntil(5) { title.label == "Mexico City Grand Prix" }, "the hero flipped: \(title.label)")
         attach(app, "sport-front-flipped")
+    }
+
+    /// C-R since 0415 (#198; maroge1990/PigTV#200): a card with a recording that loses its clash shows "Set to record"
+    /// and "Clashes with …" (the Chiefs game, with spoilers shown or not: it is not a score).
+    @MainActor
+    func testACardShowsItsRecordingAndTheClash() throws {
+        let id = "espn:football/nfl:406"
+        let app = try launch { json in
+            var games = json["games"] as? [[String: Any]] ?? []
+            for index in games.indices where games[index]["id"] as? String == id {
+                games[index]["recording"] = ["scheduleId": 93, "status": "scheduled", "ruleId": 4, "clashesWith": ["Evening Match"]]
+            }
+            json["games"] = games
+        }
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.front"].waitForExistence(timeout: 15), "the Sport front page")
+        let card = any["sport.front.game.\(id)"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "the Chiefs card")
+        let mark = any["sport.card.recording.\(id)"]
+        let shown = mark.exists ? mark.label : card.label
+        XCTAssertTrue(shown.contains("Set to record") && shown.contains("Clashes with Evening Match"), "the card's recording: \(shown)")
+        XCTAssertFalse(any["sport.front.game.espn:football/nfl:401"].label.contains("Set to record"), "only the recorded game")
+        for _ in 0..<12 where focused(app).identifier != "sport.front.game.\(id)" {
+            let current = focused(app).identifier
+            XCUIRemote.shared.press(current.hasPrefix("sport.front.game.espn:football/nfl") ? .right : .down)
+        }
+        attach(app, "sport-front-recording-clash")
     }
 }
 #endif

@@ -44,7 +44,9 @@ struct RecordingsView: View {
     @ObservedObject private var actions: ActionState
     @State private var selected: Recording?
     @State private var cancellation: ScheduledRecording?
-    @State private var section = "library"
+    /// #12 (D-42): the losing schedule whose "Record this one instead" is being confirmed.
+    @State private var choosing: ScheduledRecording?
+    @State private var section = RecordingsView.initialSection
     @State private var search = ""
     @State private var reviewing = false
     /// C-M: the recording rules sheet.
@@ -55,6 +57,14 @@ struct RecordingsView: View {
         self.model = model
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
+    }
+
+    /// The offline fixture can open on Scheduled (PIGTV_UI_TEST_RECORDINGS_SECTION=scheduled, DEBUG only).
+    private static var initialSection: String {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_RECORDINGS_SECTION"] == "scheduled" { return "scheduled" }
+        #endif
+        return "library"
     }
 
     private var failed: [Recording] { RecordingsRows.failedRecordings(model.recordings, schedules: model.schedules) }
@@ -242,7 +252,16 @@ struct RecordingsView: View {
                     Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
                         .font(.caption.monospacedDigit()).fontDesign(.rounded)
                     Text(item.statusLabel).font(.caption.bold())
-                    if let clash = item.clashText(in: model.schedules) {
+                    if let beaten = item.beatenText(in: model.schedules) {
+                        // Server 0410 (#12, D-42): it lost its clash and waits; choosing it makes the winner wait instead.
+                        Text(beaten).font(.caption).foregroundStyle(Color.pigWarning)
+                            .accessibilityIdentifier("recordings.beaten.\(item.id)")
+                        if item.canChoose {
+                            Button("Record this one instead") { choosing = item }
+                                .disabled(model.mutationBusy)
+                                .accessibilityIdentifier("recordings.choose.\(item.id)")
+                        }
+                    } else if let clash = item.clashText(in: model.schedules) {
                         Text(clash).font(.caption).foregroundStyle(Color.pigWarning)
                             .accessibilityIdentifier("recordings.clash.\(item.id)")
                     }
@@ -284,6 +303,14 @@ struct RecordingsView: View {
         .scrollContentBackground(.hidden) // brand 1.6: rows sit on the page canvas and corner bloom
         .refreshable { await model.loadRecordings() }
         #endif
+        .confirmationDialog(Text(choosing.map { "Record \($0.title) instead?" } ?? ""), isPresented: Binding(
+            get: { choosing != nil }, set: { if !$0 { choosing = nil } }
+        ), titleVisibility: .visible, presenting: choosing) { item in
+            Button("Record this one") { Task { await model.choose(item) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { item in
+            Text(item.chooseMessage(in: model.schedules))
+        }
         .overlay {
             if !model.schedules.contains(where: \.isActive) && !model.recordingsBusy && problems.isEmpty {
                 Text("Nothing scheduled. Browse Guide to choose a programme.")
@@ -710,6 +737,10 @@ private struct RecordingRulesSheet: View {
                 ForEach(rules) { rule in
                     VStack(alignment: .leading, spacing: 10) {
                         Text(rule.summary).font(.headline)
+                        if let setBy = rule.setBy {
+                            Text(setBy).font(.caption).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("rules.setBy.\(rule.id)")
+                        }
                         Text(rule.detail).font(.caption).foregroundStyle(.secondary)
                         HStack(spacing: 20) {
                             Button(rule.isOn ? "Turn off" : "Turn on") {

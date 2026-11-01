@@ -488,6 +488,8 @@ private struct SportFrontPage: View {
                     Text(SportFrontText.when(SportFrontText.date(game.start), now: now)).font(FrontMetrics.detail)
                         .foregroundStyle(.secondary)
                 }
+                // C-R (server 0415, #198): its recording, and the clash it loses. Not a score: shown with spoilers hidden too.
+                if let mark = game.recordingMark { recordingMark(mark, game: game) }
                 HStack(spacing: 8) {
                     Text(game.channels.first?.name ?? game.availabilityLabel).font(FrontMetrics.detail)
                         .foregroundStyle(.secondary).lineLimit(1)
@@ -504,6 +506,26 @@ private struct SportFrontPage: View {
             Button("Make this the hero", systemImage: "star") { model.pin(game.id) }
         }
         .accessibilityIdentifier("sport.front.game.\(game.id)")
+    }
+
+    /// "Recording" (a red dot) or "Set to record" (a red ring), and "Clashes with …" in the warning colour when it
+    /// loses its clash.
+    private func recordingMark(_ mark: SportsGame.RecordingMark, game: SportsGame) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Circle().fill(mark.isRecording ? Color.pigDanger : Color.clear)
+                    .overlay { Circle().strokeBorder(Color.pigDanger, lineWidth: 2) }
+                    .frame(width: 12, height: 12)
+                    .accessibilityHidden(true)
+                Text(mark.label).font(FrontMetrics.detail.weight(.semibold))
+                    .foregroundStyle(mark.isRecording ? Color.pigDanger : Color.secondary).lineLimit(1)
+            }
+            if let clash = mark.clashLine {
+                Text(clash).font(FrontMetrics.detail).foregroundStyle(Color.pigWarning).lineLimit(2)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("sport.card.recording.\(game.id)")
     }
 
     // MARK: Actions

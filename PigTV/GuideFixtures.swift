@@ -201,6 +201,15 @@ enum GuideFixtures {
         let target = scheduledProgramme(in: model.guide)
         let json = #"[{"id":90,"title":"\#(target.programme.title)","channel_name":"\#(target.channel.name)","program_start":\#(Int64(target.programme.startTime)),"program_end":\#(Int64(target.programme.endTime)),"status":"scheduled"},{"id":91,"title":"Evening Match","channel_name":"Fox Footy 504","program_start":\#(Int64(target.programme.startTime) - 86_400_000),"program_end":\#(Int64(target.programme.endTime) - 86_400_000),"status":"failed","error":"No signal from the provider."}]"#
         model.schedules = (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
+        if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_CLASH"] == "1" { addClash(to: model, at: target.programme.startTime) }
+    }
+
+    /// #12 (D-42, server 0410), PIGTV_UI_TEST_CLASH=1: two schedules that clash for the recording limit; the first
+    /// made (92) wins, the other (93) lists it in `beatenBy` and offers "Record this one instead".
+    @MainActor static func addClash(to model: BrowseModel, at start: Double) {
+        let from = Int64(start) + 3_600_000, to = from + 5_400_000
+        let json = #"[{"id":92,"title":"Evening Match","channel_name":"Fox Footy 504","program_start":\#(from),"program_end":\#(to),"status":"scheduled","conflictsWith":[93]},{"id":93,"title":"Late Movie","channel_name":"Movies 1","program_start":\#(from),"program_end":\#(to),"status":"scheduled","conflictsWith":[92],"beatenBy":[92]}]"#
+        model.schedules += (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
     }
 
     static func recordings(client: APIClient) -> [Recording] {

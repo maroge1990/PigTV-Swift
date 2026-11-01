@@ -40,6 +40,48 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   let dataSource: String?
   /// C-R (server 0381): the card is a followed team's or driver's game; absent on the C-O routes.
   var followed: Bool? = nil
+  /// C-R (server 0415, #198): an upcoming recording on one of the card's channels during its airing. Decoded
+  /// tolerantly: a malformed one is dropped (`recordingMark` is nil), never the card.
+  var recording: RecordingMark? = nil
+
+  /// The card's recording, when the server gave a usable one.
+  var recordingMark: RecordingMark? { recording?.isValid == true ? recording : nil }
+
+  struct RecordingMark: Decodable, Equatable, Sendable {
+    var scheduleId: Int? = nil
+    var status: String? = nil
+    var ruleId: Int? = nil
+    /// The titles of the recordings that win its clash; present only when this one loses and waits.
+    var clashesWith: [String]? = nil
+
+    enum CodingKeys: String, CodingKey { case scheduleId, status, ruleId, clashesWith }
+
+    init(scheduleId: Int? = nil, status: String? = nil, ruleId: Int? = nil, clashesWith: [String]? = nil) {
+      self.scheduleId = scheduleId
+      self.status = status
+      self.ruleId = ruleId
+      self.clashesWith = clashesWith
+    }
+
+    /// Never throws: a field of the wrong type is left out.
+    init(from decoder: Decoder) throws {
+      guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+      scheduleId = (try? c.decodeIfPresent(Int.self, forKey: .scheduleId)) ?? nil
+      status = (try? c.decodeIfPresent(String.self, forKey: .status)) ?? nil
+      ruleId = (try? c.decodeIfPresent(Int.self, forKey: .ruleId)) ?? nil
+      clashesWith = ((try? c.decodeIfPresent([String].self, forKey: .clashesWith)) ?? nil)?.filter { !$0.isEmpty }
+    }
+
+    var isValid: Bool { scheduleId != nil && !(status ?? "").isEmpty }
+    var isRecording: Bool { status == "recording" }
+    /// "Recording" while it records, else "Set to record".
+    var label: String { isRecording ? "Recording" : "Set to record" }
+    /// "Clashes with A, B" when it loses its clash; nil otherwise.
+    var clashLine: String? {
+      guard let titles = clashesWith, !titles.isEmpty else { return nil }
+      return "Clashes with \(titles.joined(separator: ", "))"
+    }
+  }
 
   struct Competitor: Decodable, Equatable, Sendable, Identifiable {
     let id: String

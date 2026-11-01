@@ -97,11 +97,41 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
         if error?.contains("recording slot") == true { return "Waiting — another recording has the slot" }
         return "Waiting — someone is watching"
     }
+    /// Server 0410 (#12, D-42, C-M "Who wins a clash"): the schedules that win this one's clash (at most ten); nil or
+    /// empty when it wins or has no clash. Older servers omit it.
+    var beatenBy: [Int]? = nil
+    /// It lost a clash: it waits whole, and only "Record this one instead" (or cancelling the winner) lets it record.
+    var isBeaten: Bool { !(beatenBy ?? []).isEmpty }
+    /// "Record this one instead" is offered only before it starts (the server answers 404 after).
+    var canChoose: Bool { isBeaten && ["scheduled", "waiting"].contains(status) }
+
     /// #12 (D-28): what to say about a clash, naming the other schedules found in `all`; nil when there is none.
+    /// A row that wins (another lists it in `beatenBy`) says so; one that loses says why it waits (`beatenText`).
     func clashText(in all: [ScheduledRecording]) -> String? {
+        if let beaten = beatenText(in: all) { return beaten }
         guard let ids = conflictsWith, !ids.isEmpty else { return nil }
         let names = ids.map { id in all.first { $0.id == id }.map { "\($0.title) (\($0.channel_name ?? "unknown channel"))" } ?? "another recording" }
-        return "Clashes with \(names.joined(separator: ", ")): one will wait or be missed."
+        let losers = ids.compactMap { id in all.first { $0.id == id && ($0.beatenBy ?? []).contains(self.id) } }
+        guard !losers.isEmpty else { return "Clashes with \(names.joined(separator: ", ")): one will wait or be missed." }
+        let waiting = losers.map(\.title).joined(separator: ", ")
+        return "Clashes with \(names.joined(separator: ", ")): this one records; \(waiting) \(losers.count == 1 ? "waits" : "wait")."
+    }
+
+    /// Server 0410: the losing row's reason, the server's `error` when it has one, else named from `all`; nil unless beaten.
+    func beatenText(in all: [ScheduledRecording]) -> String? {
+        guard isBeaten else { return nil }
+        if let error, !error.isEmpty { return error }
+        return "Clashes with \(winnerTitles(in: all).map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", ")), which was scheduled first."
+    }
+
+    /// The titles of the schedules that beat this one, "another recording" for one not in `all`.
+    func winnerTitles(in all: [ScheduledRecording]) -> [String] {
+        (beatenBy ?? []).map { id in all.first { $0.id == id }?.title ?? "another recording" }
+    }
+
+    /// The "Record this one instead" confirmation's message.
+    func chooseMessage(in all: [ScheduledRecording]) -> String {
+        "\(winnerTitles(in: all).joined(separator: ", ")) will wait instead. A recording already running is never stopped."
     }
     // Existing schedule response identity; optional for old servers. Dashboard badges never guess by name.
     var source_id: Int? = nil
@@ -212,11 +242,23 @@ nonisolated struct RecordingRule: Decodable, Identifiable, Equatable, Sendable {
     var upcoming: Int? = nil
     /// Only in POST's answer: how many it scheduled at once.
     var scheduled: Int? = nil
+    /// Server 0414 (C-M `team`, "Record every game"): the team's catalogue sport, and who set the rule.
+    var sport: String? = nil
+    var createdBy: Int? = nil
+    var createdByName: String? = nil
 
     var isOn: Bool { enabled != false }
     var summary: String {
-        kind == "series" ? "Series: \(match)\(channelName.map { " on \($0)" } ?? "")\(newOnly == true ? " (new episodes only)" : "")"
-            : "Every game: \(match)"
+        switch kind {
+        case "series": "Series: \(match)\(channelName.map { " on \($0)" } ?? "")\(newOnly == true ? " (new episodes only)" : "")"
+        case "team": "Every \(match) game\(sport.map { $0.isEmpty ? "" : " (\($0))" } ?? "")"
+        default: "Every game: \(match)"
+        }
+    }
+    /// Who set it, for Recordings (C-M `createdByName`); nil when the server does not say.
+    var setBy: String? {
+        guard let name = createdByName?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return nil }
+        return "Set by \(name)"
     }
     var detail: String {
         guard isOn else { return "Off" }

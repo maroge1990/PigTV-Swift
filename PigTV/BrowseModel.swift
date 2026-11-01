@@ -682,6 +682,24 @@ final class BrowseModel: ObservableObject {
         } catch { actionError = UserMessage.text(for: error) }
     }
 
+    /// Server 0410 (#12, D-42): "Record this one instead": the schedule wins its clashes from then on, and the ones
+    /// it beat wait. 404 when it has already started or is gone. The schedules are reloaded either way.
+    func choose(_ item: ScheduledRecording) async {
+        guard !mutationBusy else { return }
+        mutationBusy = true
+        actionError = nil
+        actionMessage = nil
+        defer { mutationBusy = false }
+        do {
+            _ = try await client.response("recordings/scheduled/\(item.id)/choose", method: "POST")
+        } catch PigTVError.http(404) {
+            actionError = "That recording has already started or no longer exists."
+        } catch {
+            actionError = UserMessage.text(for: error)
+        }
+        await loadRecordings()
+    }
+
     /// Deletes a failed or missed schedule (server 0207 also removes its
     /// partial files). The reply body is not needed, so any 2xx counts.
     func deleteSchedule(_ item: ScheduledRecording) async {
