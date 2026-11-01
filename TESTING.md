@@ -57,6 +57,8 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
 - `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, no switch may stall over `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms) on both laps (a one-lap spike of a loaded simulator is reported, not failed; 26 Oct), and after each switch Down must move focus into the tab's content.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
 - `BrandSplashUITests`: the 1.6 splash draws in light and dark and stays up through a breathing half-cycle (`PIGTV_UI_TEST_SCREEN=splash`, `PIGTV_UI_TEST_APPEARANCE`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
+- `SportSettingsUITests` (#200): Settings › Sport shows a suggestion, Hide scores and the followed sports; a sport opens its
+  page (leagues, Add a league, Record every game, Follow a team…) and Menu returns.
 - `TopShelfCardsUITests`: renders the Top Shelf cards through the real export, then focuses PigTV on the Home Screen.
 
 ## Offline fixtures (DEBUG builds only)
@@ -67,11 +69,13 @@ data, not the real feed.
 
 | Variable | Values |
 |---|---|
-| `PIGTV_UI_TEST_SCREEN` | `settings` · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` · `sport-event` · `sport-channels` |
+| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` · `sport-event` · `sport-channels` |
 | `PIGTV_UI_TEST_APPEARANCE` | `light` or `dark` (the tvOS simulator has no `simctl ui appearance`) |
 | `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the Home and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
 | `PIGTV_UI_TEST_MEDIA` | A local movie file the `player` fixture plays |
 | `PIGTV_UI_TEST_HOME_SCROLL`, `PIGTV_UI_TEST_SPORT_SCROLL` | A shelf or section title to scroll into view (e.g. `Sport now & next`, `Replays`) |
+| `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens on Scheduled |
+| `PIGTV_UI_TEST_CLASH` | `1`: the Recordings fixture adds two schedules that clash; one loses (`beatenBy`) and offers "Record this one instead" (#12) |
 | `PIGTV_UI_TEST_TABPROBE` | `1`: measure the longest stall after each tab switch (`debug.tabSwitch`) |
 | `TEST_RUNNER_PIGTV_SCREENSHOT_DIR` | Passed to `xcodebuild test`: `TopShelfCardsUITests` saves its screenshots there |
 

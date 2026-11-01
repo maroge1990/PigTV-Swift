@@ -567,8 +567,9 @@ final class AppModel: ObservableObject {
     // plus favourites, history, recordings, sport events and logos.
     /// `sportFront`: the server also has the Sport front page (C-R; PIGTV_UI_TEST_SCREEN=front).
     /// `cricket`: and the Cricket page (C-S).
-    func injectHomeFixture(firstRun: Bool = false, sportFront: Bool = false, cricket: Bool = false) {
+    func injectHomeFixture(firstRun: Bool = false, sportFront: Bool = false, cricket: Bool = false, sportFollows: Bool = false) {
         let front = (sportFront ? #","sportFront":true,"sportPages":true,"sportPageNfl":true"# : "") + (cricket ? #","sportPageCricket":true"# : "")
+            + (sportFollows ? #","sportFollows":true,"recordingRules":true"# : "")
         guard let address = try? ServerAddress("http://127.0.0.1:3000"),
               let info = try? JSONDecoder().decode(ServerInfo.self, from: Data((#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true"# + front + "}}").utf8)) else { return }
         let client = APIClient(address: address, token: "fixture", info: info, accountID: 1)

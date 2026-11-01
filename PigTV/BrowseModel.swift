@@ -587,6 +587,18 @@ final class BrowseModel: ObservableObject {
     /// C-R (#21, D-39): the Sport front page, only with the server's `sportFront` flag.
     private(set) lazy var sportFront = SportFrontModel(client: client)
     var sportFrontEnabled: Bool { client.info?.features.sportFront == true }
+    /// C-U (#200): Settings › Sport, only with the server's `sportFollows` flag. A spoiler-free change saved there makes
+    /// the sport pages (whose preferences the F1 page model holds) ask for the choice again.
+    private(set) lazy var sportFollows: SportFollowSettingsModel = {
+        let model = SportFollowSettingsModel(client: client)
+        model.onSpoilerFreeChange = { [weak self] in
+            guard let pages = self?.f1Page else { return }
+            pages.invalidatePreferences()
+            Task { await pages.revalidatePreferences() }
+        }
+        return model
+    }()
+    var sportFollowsEnabled: Bool { client.info?.features.sportFollows == true }
 
     /// The Channel the player needs for one of an event's channels: its
     /// guide row when loaded (logo fallback, stable identity), else the

@@ -174,6 +174,10 @@ struct LibrarySettings: View {
                     .accessibilityValue(appearance == value ? "Selected" : "Not selected")
                 }
             } header: { sectionHeader("Appearance") }
+            // C-U (#200): the account's sports, leagues and teams; an older server keeps the sport pages' own pickers.
+            if let browse = model.browse, browse.sportFollowsEnabled {
+                SportSettingsSection(model: browse.sportFollows, me: model.user?.username)
+            }
             Section {
                 SettingsRow("Signed in as", value: model.user?.username ?? "")
                 SettingsRow("Server", value: model.serverText)

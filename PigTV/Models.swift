@@ -47,6 +47,9 @@ struct ServerInfo: Decodable {
         var sportPageCricket: Bool? = nil
         // C-R (server 0381, #21, D-39): `GET sports/front`, the Sport front page, and `sports`/`teams` in the preferences.
         var sportFront: Bool? = nil
+        // C-U (server 0391, #193, D-41; Apple #200): per-account follows (`sports/follows`, `catalog`, `names`,
+        // `suggestions`): Settings › Sport.
+        var sportFollows: Bool? = nil
         // Server 0207: per-login recording positions (`GET`/`PUT
         // recordings/{id}/position`, and `position_sec`/`watched` on list rows).
         var recordingPositions: Bool? = nil

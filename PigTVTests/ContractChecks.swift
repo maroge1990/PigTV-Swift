@@ -259,6 +259,13 @@ enum ContractChecks {
         try expect(rule.summary == "Series: Gardening Australia on ABC (new episodes only)" && rule.detail == "2 recordings scheduled", "A series rule reads plainly")
         let sportRule = try JSONDecoder().decode(RecordingRule.self, from: Data(#"{"id":4,"kind":"sport","match":"AFL","enabled":false}"#.utf8))
         try expect(sportRule.summary == "Every game: AFL" && sportRule.detail == "Off" && !sportRule.isOn, "A sport rule that is off says so")
+        // C-M (server 0414, #198): a `team` rule ("Record every game") with its sport and who set it; additive.
+        let teamRule = try JSONDecoder().decode(RecordingRule.self, from: Data(#"{"id":5,"kind":"team","match":"Collingwood","sport":"Australian Football","createdBy":1,"createdByName":"Mark","enabled":true,"upcoming":0}"#.utf8))
+        try expect(teamRule.summary == "Every Collingwood game (Australian Football)" && teamRule.setBy == "Set by Mark", "A team rule names its sport and who set it")
+        // C-M (server 0410, #12, D-42): `beatenBy` on the losing schedule; additive (absent on older servers).
+        let clashRows = try JSONDecoder().decode([ScheduledRecording].self, from: Data(#"[{"id":1,"title":"Footy","program_start":1,"program_end":2,"status":"scheduled","conflictsWith":[2]},{"id":2,"title":"Cricket","program_start":1,"program_end":2,"status":"waiting","conflictsWith":[1],"beatenBy":[1],"error":"Clashes with “Footy”, which was scheduled first."}]"#.utf8))
+        try expect(clashRows[0].beatenBy == nil && clashRows[1].beatenBy == [1] && clashRows[1].canChoose, "A losing schedule names its winner and can be chosen")
+        try expect(clashRows[1].beatenText(in: clashRows) == "Clashes with “Footy”, which was scheduled first.", "The server's reason is shown")
         try expect(RuleChoices.sport(title: "AFL: Collingwood v Carlton", league: "AFL") == ["AFL", "Collingwood", "Carlton"], "League and both sides")
         try expect(RuleChoices.sport(title: "Kansas City Chiefs vs Buffalo Bills - Week 7", league: "NFL") == ["NFL", "Kansas City Chiefs", "Buffalo Bills"], "vs, and a suffix dropped")
         try expect(RuleChoices.sport(title: "Golf: The Open, Round 2", league: "Sport") == [], "Nothing to follow: no choices")
@@ -680,6 +687,21 @@ enum ContractChecks {
         try expect(front.games(in: front.rails[0]).map(\.id) == ["g1"], "C-R: a rail's ids point into games")
         try expect(front.follows[0].cachedLogo == "/api/logo/espn-gb" && front.follows[1].gameId == nil && front.follows[1].state == "none", "C-R: follows")
         try expect(!front.scoresUnavailable && !front.isEmpty && front.hasLiveGame, "C-R: fresh scores, followed sports, a live game")
+        // C-R since 0415 (#198): a card's `recording`, additive; `clashesWith` only when it loses its clash. A malformed
+        // one never drops the card.
+        try expect(front.games[0].recordingMark == nil, "C-R: no recording, no mark")
+        let marked = try JSONDecoder().decode(SportFront.self, from: Data(#"""
+            {"now":1,"spoilerFree":false,"scores":"fresh","sports":[],"follows":[],"hero":{"reason":"none"},"rails":[],
+             "games":[{"id":"r1","league":"NFL","title":"Chiefs v Bills","start":1,"competitors":[],"status":"scheduled","freshness":"fresh","progress":{},
+                       "availability":"matched","broadcastStatus":"scheduled","channels":[],"events":[],"canWatch":false,
+                       "recording":{"scheduleId":93,"status":"waiting","ruleId":4,"clashesWith":["Evening Match"]}},
+                      {"id":"r2","league":"NFL","title":"Packers v Bears","start":1,"competitors":[],"status":"scheduled","freshness":"fresh","progress":{},
+                       "availability":"matched","broadcastStatus":"scheduled","channels":[],"events":[],"canWatch":false,
+                       "recording":{"scheduleId":"x"}}]}
+            """#.utf8))
+        try expect(marked.games.count == 2 && marked.games[0].recordingMark?.scheduleId == 93 && marked.games[0].recordingMark?.ruleId == 4
+                   && marked.games[0].recordingMark?.clashLine == "Clashes with Evening Match" && marked.games[1].recordingMark == nil,
+                   "C-R: a card's recording and its clash")
         let prefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":true,"sports":["F1","NFL"],"teams":{"NFL":["Green Bay Packers"],"F1":["Oscar Piastri"]},"following":{"F1":"Oscar Piastri","NFL":"Green Bay Packers"}}"#.utf8))
         try expect(prefs.spoilerFree && prefs.sports == ["F1", "NFL"] && prefs.teams["NFL"] == ["Green Bay Packers"] && prefs.f1Following == "Oscar Piastri", "C-R: the extended preferences")
         let olderPrefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":false,"following":{"F1":null,"NFL":"GB"}}"#.utf8))
@@ -712,6 +734,29 @@ enum ContractChecks {
                    && cricketHidden.others[0].scores == [nil, nil] && cricketHidden.others[0].line == nil, "C-S: spoiler-free hides innings, summary, crease, series line, results, others' scores and line")
         try expect(cricketHidden.lead?.days == cricket.lead?.days && cricketHidden.lead?.nextStart == cricket.lead?.nextStart && cricketHidden.lead?.day == "Day 4"
                    && cricketHidden.lead?.teams == cricket.lead?.teams, "C-S: spoiler-free keeps the day, status, days, next start and teams")
+
+        // C-U (server 0391/0399/0413/0414/0418, Apple #200): Settings › Sport's shapes.
+        let followsInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9","apiVersion":1,"features":{"library":true,"playbackResolve":true,"sportFollows":true}}"#.utf8))
+        try expect(followsInfo.features.sportFollows == true && frontInfo.features.sportFollows != true, "C-U: the sportFollows flag is decoded; absent, Settings › Sport is not shown")
+        let follows = try JSONDecoder().decode(SportFollows.self, from: Data(#"{"spoilerFree":true,"sports":[{"sport":"Football","leagues":["Premier League","Champions League"],"teams":["Arsenal"]},{"sport":"Rugby league","leagues":["NRL"]}],"extra":1}"#.utf8))
+        try expect(follows.spoilerFree && follows.sports.map(\.sport) == ["Football", "Rugby league"] && follows.sports[0].leagues == ["Premier League", "Champions League"]
+                   && follows.sports[0].teams == ["Arsenal"] && follows.sports[1].teams.isEmpty, "C-U: follows in the account's order; a sport without teams follows none")
+        let followsSent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(follows)) as? [String: Any]
+        try expect(followsSent?.keys.sorted() == ["spoilerFree", "sports"] && ((followsSent?["sports"] as? [[String: Any]])?[1].keys.sorted() ?? []) == ["leagues", "sport", "teams"],
+                   "C-U: PUT sends the whole list, each sport with its leagues and teams, nothing else")
+        let catalog = try JSONDecoder().decode(SportCatalog.self, from: Data(#"{"sports":[{"sport":"Cricket","leagues":[{"league":"Cricket","label":"International (men)","heading":"International"},{"league":"BBL","label":"BBL","heading":null},{"bad":1}]},{"sport":"Netball","leagues":["Super Netball"]},{"broken":true}]}"#.utf8))
+        try expect(catalog.sports.map(\.sport) == ["Cricket", "Netball"] && catalog.sports[0].leagues.count == 2 && catalog.label("Cricket") == "International (men)"
+                   && catalog.sports[0].leagues[0].heading == "International" && catalog.sports[0].leagues[1].heading == nil, "C-U 0399: catalogue leagues are objects with a label and a heading; one that does not decode is dropped")
+        try expect(catalog.sports[1].leagues == [SportCatalog.League(league: "Super Netball")] && catalog.label("Super Netball") == "Super Netball", "C-U 0391–0398: a plain league name is its own label")
+        let names = try JSONDecoder().decode(SportNames.self, from: Data(#"{"league":"ATP Tour","kind":"person","names":["Carlos Alcaraz","Jannik Sinner"]}"#.utf8))
+        try expect(names.kind == "person" && names.names == ["Carlos Alcaraz", "Jannik Sinner"], "C-U 0418: the names one league offers, and whether they are people")
+        let suggestions = try JSONDecoder().decode(SportSuggestions.self, from: Data(#"{"suggestions":[{"sport":"Football","team":"Arsenal","league":"League Cup","label":"League Cup","start":1793406162249},{"sport":"Football"}]}"#.utf8))
+        try expect(suggestions.suggestions.count == 1 && suggestions.suggestions[0].start == 1793406162249 && suggestions.suggestions[0].label == "League Cup", "C-U 0413: suggestions; one that does not decode is dropped")
+        let teamRules = try SportTeamRule.list(Data(#"[{"id":3,"kind":"team","match":"Arsenal","sport":"Football","enabled":true,"createdBy":1,"createdByName":"mark","upcoming":2},{"id":4,"kind":"sport","match":"AFL","sourceId":null,"enabled":0},{"id":"x"}]"#.utf8))
+        try expect(teamRules.count == 2 && teamRules[0].sport == "Football" && teamRules[0].createdByName == "mark" && !teamRules[1].enabled && teamRules[1].sport == nil,
+                   "C-M 0414: team rules carry sport and who set them; older rules have neither")
+        try expect(SportFollowLogic.ruleFor(teamRules, sport: "Football", name: "arsenal")?.id == 3 && SportFollowLogic.ruleFor(teamRules, sport: "Cricket", name: "Arsenal") == nil,
+                   "C-M 0414: a team's rule is found by kind, sport and name (any case)")
 
         // R11: POST playback/warm sends resolve's body; a 204 means nothing was warmed.
         let warmBody = ResolveBody(sourceId: 3, channelId: "c9", capabilities: ["hevc": true], audioEncode: true)

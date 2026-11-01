@@ -46,6 +46,8 @@ struct PigTVApp: App {
         #if DEBUG
         if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "settings" {
             SettingsTestScreen()
+        } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "settings-sport" {
+            SportSettingsTestScreen()
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "guide" {
             GuideTestScreen()
         } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
@@ -91,6 +93,23 @@ private struct SettingsTestScreen: View {
             #if os(tvOS)
             .buttonStyle(TVActionStyle())
             #endif
+            .preferredColorScheme(fixtureScheme)
+    }
+}
+
+// C-U (#200): Settings › Sport offline, PIGTV_UI_TEST_SCREEN=settings-sport: Settings in the tab bar, signed in, with two
+// followed sports, a league suggestion and a "Record every game" (SportFollowFixtures).
+private struct SportSettingsTestScreen: View {
+    @StateObject private var model = AppModel()
+    var body: some View {
+        LibraryView(model: model, initialTab: "settings")
+            #if os(tvOS)
+            .buttonStyle(TVActionStyle())
+            #endif
+            .task {
+                model.injectHomeFixture(sportFollows: true)
+                SportFollowFixtures.apply(to: model.browse?.sportFollows)
+            }
             .preferredColorScheme(fixtureScheme)
     }
 }

@@ -28,7 +28,7 @@ detail, oldest feature first within each area; a later build's paragraph overrid
 | Live player | `CustomPlayerView` (no AVKit UI): info/scrub/channels/tracks overlays | `NativePlayer` (AVPlayerViewController, controls off) + PigTV's `TouchPlayerChrome` | same, bottom-sheet channel list |
 | Recording player | `RecordingPlayerView` (custom; Skip break, Auto-skip) | AVKit (`RecordingNativePlayer`) | AVKit |
 | Top Shelf | `PigTVTopShelf` extension: favourites as rendered 16:9 cards, `pigtv://play` links | — | — |
-| Settings | server, Version, appearance, **Labs** (Stream info overlay), **Diagnostics** (Top Shelf) | Labs; no Diagnostics section | same |
+| Settings | server, Version, appearance, **Sport** (C-U), **Labs** (Stream info overlay), **Diagnostics** (Top Shelf) | Sport as a Form section; Labs; no Diagnostics section | same |
 
 The bullets below are the durable detail, oldest feature first within each area; a later build's paragraph overrides an
 earlier one where they differ.
@@ -246,6 +246,24 @@ controls are not used for live play.
   (decoding the server's own answer, `PigTVTests/Fixtures/f1-page-0346.json`), `F1PageModelTests`, `F1PageUITests`, and
   `StagingF1UITests` (iPad against the Unraid staging server; skipped unless `TEST_RUNNER_PIGTV_STAGING_URL`, `_USER`,
   `_PASS` are given).
+
+### Settings › Sport (C-U, #200)
+
+- **What the account follows, synced through the server (D-41).** Only with `sportFollows`: a Sport section after
+  Appearance (`SportSettingsSection`, `SportFollowSettingsView.swift`) with league suggestions (Add / No thanks), "Hide
+  scores", a row per followed sport (its leagues and names) and "Add a sport". A sport's page (`SportFollowScreen`, a
+  `detailCover` on tvOS, a NavigationLink on iOS): its place in the order, Stop following, its leagues (Move up / Move down /
+  Remove, Add a league under the catalogue's headings; none for a one-league sport), its teams or players with "Record every
+  game" (a C-M `team` rule; only with `recordingRules` and for team sports) and Unfollow, and "Follow a team…" (a search over
+  the followed leagues' `sports/names`, 30 at most). `SportFollowLogic` (`SportFollowModels.swift`) is the web's
+  `SportFollowModel` rule for rule; `SportFollowSettingsModel` (`BrowseModel.sportFollows`) loads the follows, catalogue,
+  rules, suggestions and names each time the section appears, and sends each change as a whole-list `PUT sports/follows`
+  one after another, each built from the state its turn finds; the server's answer is what shows ("Not saved: …" and a
+  re-read otherwise). Unfollowing asks whether to keep a "Record every game" (`forgetRules`). Questions are alerts on the
+  screen that asked (`SportQuestionPresenter`). A spoiler-free change makes the sport pages' preferences
+  (`BrowseModel.f1Page`) unknown until read again. The last answer is kept per server and account (`UserDefaults`, key
+  `sportFollows.lastCopy.<CacheScope digest>`): offline it is shown read-only. Fixture `PIGTV_UI_TEST_SCREEN=settings-sport`
+  (`SportFollowFixtures`); tests `SportFollowLogicTests`, `SportFollowSettingsModelTests`, `SportSettingsUITests`.
 
 ### Live now dashboard (C-O, builds 59–63)
 
