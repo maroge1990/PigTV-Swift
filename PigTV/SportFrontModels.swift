@@ -282,6 +282,20 @@ nonisolated enum SportFrontText {
                           endTime: max(end, start + 60_000), channels: game.channels)
     }
 
+    /// #204: the channels Record offers for a game: every channel carrying it, best first (the server's order), each
+    /// on its own airing (C-I #20); one whose airing has ended is left out.
+    static func recordChoices(_ event: SportEvent, now: Date) -> [SportEventChannel] {
+        event.channels.filter { SportRows.channelAction(event, on: $0, now: now) != .ended }
+    }
+
+    /// "Fox Footy · 7:30 pm – 10:30 pm" (another day: "Sat 7:30 pm – …"): the channel's own times, under the dialog's
+    /// "Record on which channel?" (short enough for a focused tvOS button).
+    static func recordChoiceLabel(_ event: SportEvent, on channel: SportEventChannel, now: Date,
+                                  calendar: Calendar = .current) -> String {
+        let end = event.end(on: channel).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: calendar.timeZone))
+        return "\(channel.name) · \(when(event.start(on: channel), now: now, calendar: calendar)) – \(end)"
+    }
+
     enum Action: Equatable { case watch, remind, details, none }
     /// What selecting a card does: Watch only while its channel airs it now (that channel's own `start`/`end`, C-R; a
     /// cached `canWatch` never outlasts them, as an answer may be minutes old or kept after a failed refresh), Remind me

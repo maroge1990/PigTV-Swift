@@ -74,6 +74,45 @@ final class SportFrontUITests: XCTestCase {
         attach(app, "sport-front-flipped")
     }
 
+    /// #204 (maroge1990/PigTV#204): Record in the hero offers every channel carrying the game, best first, each with its
+    /// own times; choosing the second opens the record sheet on that channel. The Packers game gets two channels whose
+    /// airings are placed around the real clock (the fixture's own times are in the past by the time this runs).
+    @MainActor
+    func testRecordOffersEveryChannelBestFirst() throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let app = try launch { json in
+            var games = json["games"] as? [[String: Any]] ?? []
+            for index in games.indices where games[index]["id"] as? String == "espn:football/nfl:401" {
+                games[index]["channels"] = [
+                    ["sourceId": 1, "id": "espn-hd", "name": "ESPN HD", "start": now - 600_000, "end": now + 3 * 3_600_000],
+                    ["sourceId": 2, "id": "fox-footy", "name": "Fox Footy", "start": now + 3_600_000, "end": now + 4 * 3_600_000],
+                ]
+            }
+            json["games"] = games
+        }
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.front"].waitForExistence(timeout: 15), "the Sport front page")
+        XCTAssertTrue(app.buttons["sport.front.hero.record"].waitForExistence(timeout: 5), "the hero's Record")
+        for _ in 0..<8 where !focused(app).identifier.hasPrefix("sport.front.hero.") { XCUIRemote.shared.press(.down) }
+        for _ in 0..<3 where focused(app).identifier != "sport.front.hero.record" { XCUIRemote.shared.press(.right) }
+        XCTAssertEqual(focused(app).identifier, "sport.front.hero.record")
+        XCUIRemote.shared.press(.select)
+        let best = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'ESPN HD · '")).firstMatch
+        let other = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Fox Footy · '")).firstMatch
+        XCTAssertTrue(best.waitForExistence(timeout: 5), "the best channel is offered")
+        XCTAssertTrue(other.exists, "so is the other channel carrying the game")
+        XCTAssertLessThan(best.frame.minY, other.frame.minY, "best first")
+        XCTAssertNotEqual(best.label.split(separator: "·").last, other.label.split(separator: "·").last, "each with its own times")
+        attach(app, "sport-front-record-choice")
+        for _ in 0..<3 where !other.hasFocus { XCUIRemote.shared.press(.down) }
+        XCTAssertTrue(other.hasFocus, "Fox Footy")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["record.schedule"].waitForExistence(timeout: 5), "the record sheet")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Fox Footy · '")).firstMatch.exists,
+                      "on the chosen channel")
+        attach(app, "sport-front-record-sheet-second-channel")
+    }
+
     /// C-R since 0415 (#198; maroge1990/PigTV#200): a card with a recording that loses its clash shows "Set to record"
     /// and "Clashes with …" (the Chiefs game, with spoilers shown or not: it is not a score).
     @MainActor

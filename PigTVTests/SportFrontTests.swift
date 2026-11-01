@@ -300,6 +300,40 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(event.endTime, 1793424762249)
     }
 
+    // #204 (Mark, TestFlight 90): Record on a front-page card offered only the best channel. It offers every channel
+    // carrying the game, best first, each with its own times (C-I #20); an airing that has ended is not offered. Before
+    // this change there is no choice (`recordChoices` does not exist) and the sheet opened on the best channel only.
+    func testRecordOffersEveryChannelBestFirstOnItsOwnTimes() throws {
+        let f = try front { json in
+            var games = json["games"] as? [[String: Any]] ?? []
+            for index in games.indices where games[index]["id"] as? String == Self.chiefs {
+                var channels = games[index]["channels"] as? [[String: Any]] ?? []
+                channels.append(["sourceId": 2, "id": "fox-footy", "name": "Fox Footy", "start": 1793416662249.0, "end": 1793428362249.0])
+                channels.append(["sourceId": 3, "id": "gone", "name": "Kayo Replay", "start": 1793400000000.0, "end": 1793405000000.0])
+                games[index]["channels"] = channels
+            }
+            json["games"] = games
+        }
+        let now = Date(timeIntervalSince1970: f.now / 1000)
+        let event = try XCTUnwrap(SportFrontText.event(try XCTUnwrap(f.game(Self.chiefs))))
+        let choices = SportFrontText.recordChoices(event, now: now)
+        XCTAssertEqual(choices.map(\.name), ["ESPN HD", "Fox Footy"], "every channel still to air it, best first")
+        XCTAssertEqual(choices.map { event.programme(on: $0).startTime }, [1793413062249, 1793416662249], "each on its own start")
+        XCTAssertEqual(choices.map { event.programme(on: $0).endTime }, [1793424762249, 1793428362249], "and its own end")
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "Australia/Melbourne"))
+        let label = SportFrontText.recordChoiceLabel(event, on: choices[1], now: now, calendar: utc)
+        XCTAssertTrue(label.hasPrefix("Fox Footy · "), label)
+        let start = event.start(on: choices[1]).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: utc.timeZone))
+        let end = event.end(on: choices[1]).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: utc.timeZone))
+        XCTAssertTrue(label.contains(start) && label.hasSuffix(end), "Fox Footy's own times: \(label)")
+        XCTAssertFalse(label.contains(event.end(on: choices[0]).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: utc.timeZone))),
+                       "not the best channel's")
+        // One channel: just that one (the sheet opens at once).
+        let single = try XCTUnwrap(SportFrontText.event(try XCTUnwrap(try front().game(Self.chiefs))))
+        XCTAssertEqual(SportFrontText.recordChoices(single, now: now).map(\.name), ["ESPN HD"])
+    }
+
     // Codex round 1 (HIGH): a cached live card stayed watchable after its channel's airing ended, so Watch tuned the
     // channel after the game. Watch now needs the channel to air it at the clock of the press; `canWatch` never
     // outlasts the channel's own end.
