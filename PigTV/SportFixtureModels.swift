@@ -196,6 +196,31 @@ nonisolated enum FixtureText {
         view.tables.filter { $0.rows.contains(where: \.followed) } + view.tables.filter { !$0.rows.contains(where: \.followed) }
     }
 
+    /// A table group under the standings' buttons.
+    struct TableGroup: Equatable, Sendable {
+        var name: String
+        var tables: [FixtureLeague.Table]
+    }
+
+    /// The view's tables in groups of at most `size`, so every table is a button press away: up to `size` tables are one
+    /// group; more go by their title's first word ("AFC East" → AFC, the followed team's group first), and a group still
+    /// too big, or tables without such titles, in runs of `size` ("Tables 5–8").
+    static func groups(_ view: FixtureLeague.View, size: Int = 4) -> [TableGroup] {
+        let all = tables(view)
+        guard all.count > size else { return [TableGroup(name: "", tables: all)] }
+        var named: [TableGroup] = []
+        for table in all {
+            let word = table.title?.split(separator: " ").first.map(String.init) ?? ""
+            if let index = named.firstIndex(where: { $0.name == word }) { named[index].tables.append(table) }
+            else { named.append(TableGroup(name: word, tables: [table])) }
+        }
+        if named.count > 1, named.allSatisfy({ !$0.name.isEmpty && $0.tables.count <= size }) { return named }
+        return stride(from: 0, to: all.count, by: size).map { start in
+            let end = min(start + size, all.count)
+            return TableGroup(name: "Tables \(start + 1)–\(end)", tables: Array(all[start..<end]))
+        }
+    }
+
     /// The game's C-R card on the front page (same league, both teams named, starting within 90 minutes), whose channels
     /// and actions Watch and Record use; nil when the front page has none.
     static func card(for game: FixtureLeague.Game, league: String, in front: SportFront?) -> SportsGame? {

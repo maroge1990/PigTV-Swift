@@ -596,12 +596,10 @@ nonisolated enum CricketLeagueFilter {
     }
 
     /// The page for `scope.league`, from a page already made spoiler-safe (`CricketPageText.visible`). A match whose league
-    /// cannot be told is shown under the first league (as C-S held it) and among the others elsewhere.
+    /// cannot be told belongs to no league: it is among the others on every league's page, never a league's lead.
     static func apply(_ page: CricketPage, scope: CricketLeagueScope) -> Scoped {
-        let first = scope.leagues.first == scope.league
         func isMine(_ id: String, _ competition: String?) -> Bool {
-            if let league = league(ofMatch: id, competition: competition, scope: scope) { return league == scope.league }
-            return first
+            league(ofMatch: id, competition: competition, scope: scope) == scope.league
         }
         var out = Scoped(lead: nil, series: nil, mine: [], others: [])
         if let lead = page.lead {

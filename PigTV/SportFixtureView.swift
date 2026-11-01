@@ -35,6 +35,7 @@ struct SportFixtureContent: View {
     @Environment(\.sportPresenter) private var presenter
     @State private var round: String?
     @State private var view: String?
+    @State private var tableGroup: String?
 
     init(app: AppModel, browse: BrowseModel, source: Source, front: SportFront, label: String, flow: SportRecordFlow) {
         self.app = app
@@ -234,7 +235,18 @@ struct SportFixtureContent: View {
                     SportHiddenNote(title: "", text: "Records, positions and points reveal results while spoiler-free is on.", minHeight: 160)
                 }
             } else if let shown {
-                ForEach(Array(FixtureText.tables(shown).prefix(4).enumerated()), id: \.offset) { _, table in
+                let groups = FixtureText.groups(shown)
+                let group = groups.first { $0.name == tableGroup } ?? groups[0]
+                if groups.count > 1 {
+                    HStack(spacing: 12) {
+                        ForEach(groups, id: \.name) { item in
+                            Button { tableGroup = item.name } label: { Text(item.name).font(SportPageMetrics.rowDetail).lineLimit(1) }
+                                .buttonStyle(GuideFilterStyle(selected: group.name == item.name))
+                                .accessibilityIdentifier("sport.fixture.group.\(item.name)")
+                        }
+                    }
+                }
+                ForEach(Array(group.tables.enumerated()), id: \.offset) { _, table in
                     SportListCard(title: table.title ?? label, note: table.columns.joined(separator: " · "),
                                   identifier: "sport.fixture.table.\(table.title ?? "all")") {
                         tableRows(table)

@@ -47,6 +47,20 @@ final class CricketLeagueTests: XCTestCase {
         XCTAssertEqual(CricketLeagueFilter.league(ofMatch: "9", competition: "England in India", scope: scope), "Cricket")
     }
 
+    // Apple 99's Codex round (medium): with both International groups followed, a tour match with no C-R card leads
+    // neither, whichever group comes first; it is among the others on both pages. Before Apple 100 the first group took it.
+    func testAMatchOfNoKnownLeagueLeadsNoLeague() throws {
+        let page = try page()
+        for leagues in [["Cricket", "Women's Cricket"], ["Women's Cricket", "Cricket"]] {
+            for league in leagues {
+                let shown = CricketLeagueFilter.apply(page, scope: CricketLeagueScope(league: league, leagues: leagues, labels: labels))
+                XCTAssertNil(shown.lead, "\(league) first in \(leagues): the Test is neither group's")
+                XCTAssertTrue(shown.others.contains { $0.id == "1525661" }, "\(league): the Test among the others")
+                XCTAssertTrue(shown.mine.isEmpty, "\(league): no tour is claimed")
+            }
+        }
+    }
+
     func testTheScoreboardHasAnInningsPerColumn() throws {
         let lead = try XCTUnwrap(try page().lead)
         let board = CricketPageText.scoreboard(lead)

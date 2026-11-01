@@ -21,6 +21,22 @@ final class SportFixtureTests: XCTestCase {
         XCTAssertTrue(league.awayFirst)
     }
 
+    // Apple 99's Codex round (medium): the eight divisions in two groups, AFC and NFC, the followed team's first, each a
+    // button press away; a view of four tables or fewer is one group; untitled tables go in runs of four. Before Apple 100
+    // only the first four divisions were shown.
+    func testEveryNFLDivisionIsReachable() throws {
+        let league = FixtureText.nfl(try nfl(), following: ["Packers"], spoilerFree: false)
+        let division = try XCTUnwrap(FixtureText.view(nil, in: league))
+        let groups = FixtureText.groups(division)
+        XCTAssertEqual(groups.map(\.name), ["NFC", "AFC"])
+        XCTAssertEqual(groups.flatMap(\.tables).count, 8, "every division")
+        XCTAssertEqual(groups[0].tables.first?.title, "NFC North")
+        XCTAssertEqual(FixtureText.groups(try XCTUnwrap(FixtureText.view("Conference", in: league))).count, 1)
+        var untitled = division
+        untitled.tables = division.tables.map { var t = $0; t.title = nil; return t }
+        XCTAssertEqual(FixtureText.groups(untitled).map(\.name), ["Tables 1–4", "Tables 5–8"])
+    }
+
     func testTheNFLsStandingsHaveThreeViewsWithTheFollowedTeamsTableFirst() throws {
         let league = FixtureText.nfl(try nfl(), following: ["Packers"], spoilerFree: false)
         XCTAssertEqual(league.views.map(\.name), ["Division", "Conference", "Overall"])
