@@ -9,7 +9,8 @@ import SwiftUI
 // results, the live situation, records, seeds and streaks. No section tabs and no season calendar.
 //
 // A game is a C-I event (`NFLPageText.event`): Watch, "Watch when it starts" and Record are the Sport tab's own, on
-// each channel's airing times (#20). Team discs (colour and abbreviation) stand in for logos, as in the mock-up.
+// each channel's airing times (#20). Each team's badge (`teams[abbr].logo`, through the logo cache, as the front page)
+// sits beside every team name and score (D-39 point 4, #205); its colour disc and abbreviation only without a logo.
 
 private enum NFLMetrics {
     #if os(tvOS)
@@ -25,7 +26,9 @@ private enum NFLMetrics {
     static let columnGap: CGFloat = 40
     static let sideWidth: CGFloat = 640
     static let gameWidth: CGFloat = 520
-    static let disc: CGFloat = 40
+    /// The front page's badge sizes (#205): a game's or a standings row's (its `smallBadge`), the followed team's (`badge`).
+    static let badge: CGFloat = 36
+    static let teamBadge: CGFloat = 56
     static let radius: CGFloat = 22
     static let cardPadding = EdgeInsets(top: 16, leading: 22, bottom: 16, trailing: 22)
     #else
@@ -41,7 +44,8 @@ private enum NFLMetrics {
     static let columnGap: CGFloat = 24
     static let sideWidth: CGFloat = 420
     static let gameWidth: CGFloat = 340
-    static let disc: CGFloat = 30
+    static let badge: CGFloat = 28
+    static let teamBadge: CGFloat = 40
     static let radius: CGFloat = 16
     static let cardPadding = EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
     #endif
@@ -254,7 +258,7 @@ struct NFLPageView: View {
 
     private func teamLine(_ side: NFLGame.Side, game: NFLGame, page: NFLPage, spoilerFree: Bool) -> some View {
         HStack(spacing: 12) {
-            disc(side.abbr, page: page)
+            badge(side.abbr, page: page, size: NFLMetrics.badge)
             Text(NFLPageText.name(side.abbr, in: page)).font(NFLMetrics.team).lineLimit(1)
             if !spoilerFree, let record = side.record {
                 Text(record).font(NFLMetrics.detail).foregroundStyle(.secondary).monospacedDigit()
@@ -266,11 +270,10 @@ struct NFLPageView: View {
         }
     }
 
-    private func disc(_ abbr: String, page: NFLPage) -> some View {
-        Text(abbr).font(.system(size: NFLMetrics.disc * 0.34, weight: .heavy)).foregroundStyle(.white)
-            .frame(width: NFLMetrics.disc, height: NFLMetrics.disc)
-            .background(Color(teamHex: page.teams[abbr]?.color.flatMap { $0 == "000000" ? "3A3242" : $0 }) ?? .gray, in: Circle())
-            .accessibilityHidden(true)
+    /// The team's badge: its logo, else (no logo, loading, failed) its colour disc with the abbreviation.
+    private func badge(_ abbr: String, page: NFLPage, size: CGFloat) -> some View {
+        SportBadge(name: NFLPageText.name(abbr, in: page), logo: NFLPageText.logo(abbr, in: page), league: "NFL",
+                   client: browse.client, size: size, disc: (abbr, NFLPageText.discColor(abbr, in: page)))
     }
 
     @ViewBuilder
@@ -280,12 +283,14 @@ struct NFLPageView: View {
             ForEach(NFLPageText.actions(game, in: page, now: Date(), pendingEventID: appState.pendingWatch?.eventID), id: \.self) { action in
                 switch action {
                 case .watch, .watchLive:
-                    Button(action == .watchLive ? "Watch live" : "Watch") {
+                    Button(NFLPageText.label(action)) {
                         if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
                     }
-                case .watchAtKickOff: Button("Watch at kick-off") { app.watchWhenStarts(event, now: Date()) }
-                case .cancelKickOff: Button("Don't watch at kick-off") { app.cancelPendingWatch() }
-                case .record: Button("Record") { recording = event }
+                case .watchAtKickOff, .watchAt:
+                    Button(NFLPageText.label(action)) { app.watchWhenStarts(event, now: Date()) }
+                case .cancelKickOff, .cancelWatchAt:
+                    Button(NFLPageText.label(action)) { app.cancelPendingWatch() }
+                case .record: Button(NFLPageText.label(action)) { recording = event }
                 }
             }
         }
@@ -308,7 +313,7 @@ struct NFLPageView: View {
             let team = page.teams[abbr]
             let (last, next) = NFLPageText.lastAndNext(page, team: abbr)
             let row = page.standings.flatMap(\.teams).first { $0.abbr == abbr }
-            card(title: team?.full ?? abbr, note: nil) {
+            card(title: team?.full ?? abbr, note: nil, badge: abbr, page: page) {
                 if !spoilerFree, let row {
                     Text([row.record, row.seed.map { "Seed \($0)" }, row.streak].compactMap { $0 }.joined(separator: " · "))
                         .font(NFLMetrics.detail).foregroundStyle(.secondary)
@@ -322,8 +327,9 @@ struct NFLPageView: View {
                         .font(NFLMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
                 }
                 HStack(spacing: 14) {
-                    if let next, NFLPageText.event(next, in: page).best != nil {
-                        Button(next.status == .live ? "Watch live" : "Watch at kick-off", systemImage: "play.fill") { chosen = next }
+                    if let next, let watch = NFLPageText.teamCardWatch(next, in: page, now: now,
+                                                                      pendingEventID: appState.pendingWatch?.eventID) {
+                        Button(NFLPageText.label(watch), systemImage: NFLPageText.symbol(watch)) { chosen = next }
                             .pigPrimaryButton()
                             .accessibilityIdentifier("nfl.team.watch")
                     }
@@ -357,7 +363,7 @@ struct NFLPageView: View {
                     ForEach(group.rows, id: \.row.abbr) { item in
                         HStack(spacing: 10) {
                             Text("\(item.rank)").font(NFLMetrics.tableDetail.weight(.bold)).frame(width: 30, alignment: .trailing).monospacedDigit()
-                            disc(item.row.abbr, page: page).scaleEffect(0.7).frame(width: NFLMetrics.disc * 0.7, height: NFLMetrics.disc * 0.7)
+                            badge(item.row.abbr, page: page, size: NFLMetrics.badge)
                             Text((item.row.abbr == preferences.preferences.nflFollowing ? "★ " : "") + NFLPageText.name(item.row.abbr, in: page))
                                 .font(NFLMetrics.tableName).lineLimit(1)
                             Spacer(minLength: 6)
@@ -374,9 +380,11 @@ struct NFLPageView: View {
     // MARK: Pieces
 
     @ViewBuilder
-    private func card<Content: View>(title: String, note: String?, @ViewBuilder content: () -> Content) -> some View {
+    private func card<Content: View>(title: String, note: String?, badge abbr: String? = nil, page: NFLPage? = nil,
+                                     @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: abbr == nil ? .firstTextBaseline : .center, spacing: 16) {
+                if let abbr, let page { badge(abbr, page: page, size: NFLMetrics.teamBadge) }
                 Text(title).font(NFLMetrics.cardTitle).lineLimit(1)
                 Spacer(minLength: 8)
                 if let note { Text(note).font(NFLMetrics.detail).foregroundStyle(.secondary).lineLimit(1) }

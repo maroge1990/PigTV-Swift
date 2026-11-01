@@ -148,6 +148,17 @@ nonisolated enum NFLPageText {
     /// A team's short name ("Packers"), else its abbreviation.
     static func name(_ abbr: String, in page: NFLPage) -> String { page.teams[abbr]?.name ?? abbr }
 
+    /// #205 (D-39 point 4): the logo a team's badge draws, a same-server logo-cache path (as the front page's
+    /// `cachedLogo`), else nil: the colour disc.
+    static func logo(_ abbr: String, in page: NFLPage) -> String? {
+        page.teams[abbr]?.logo.flatMap { $0.hasPrefix("/api/logo/") && !$0.contains("?") && !$0.contains("..") ? $0 : nil }
+    }
+
+    /// The disc's colour (hex) when a team has no logo, or while it loads; black is lifted to the brand's dark plum.
+    static func discColor(_ abbr: String, in page: NFLPage) -> String? {
+        page.teams[abbr]?.color.flatMap { $0 == "000000" ? "3A3242" : $0 }
+    }
+
     /// Wins plus half the ties over games played; 0 before any.
     static func winShare(_ r: NFLDivision.Row) -> Double {
         let w = Double(r.wins ?? 0), l = Double(r.losses ?? 0), t = Double(r.ties ?? 0)
@@ -207,18 +218,69 @@ nonisolated enum NFLPageText {
         return String(s)
     }
 
-    enum Action: Equatable, Sendable { case watch, watchLive, watchAtKickOff, cancelKickOff, record }
+    enum Action: Hashable, Sendable {
+        case watch, watchLive, watchAtKickOff, cancelKickOff, record
+        /// #187: a game ESPN marks live whose channel airs it later (a delayed broadcast): play when that airing
+        /// starts, or the cancel when already asked.
+        case watchAt(Date), cancelWatchAt(Date)
+    }
 
-    /// What a game offers (#184): every play action needs a channel the guide carries it on; Watch while it can be
-    /// watched now, "Watch at kick-off" before (or its cancel when already asked), Record until it has finished.
+    /// What a game offers (#184): every play action needs a channel the guide carries it on; Watch while the best
+    /// channel airs it now, else deferred play from that channel's own airing (#187, as the F1 page decides it):
+    /// "Watch at kick-off" before kick-off, "Watch at <time>" for a live game the channel shows later, or the cancel
+    /// when already asked; nothing to play once the airing has ended. Record until the game has finished.
     static func actions(_ game: NFLGame, in page: NFLPage, now: Date, pendingEventID: String?) -> [Action] {
         let event = event(game, in: page)
-        guard event.best != nil else { return [] }
+        guard let best = event.best else { return [] }
         var out: [Action] = []
-        if game.status != .done, F1PageText.watchesNow(event, now: now) { out.append(game.status == .live ? .watchLive : .watch) }
-        else if game.status == .scheduled { out.append(pendingEventID == event.id ? .cancelKickOff : .watchAtKickOff) }
-        if game.status != .done { out.append(.record) }
+        if game.status != .done {
+            switch SportRows.channelAction(event, on: best, now: now) {
+            case .play:
+                out.append(game.status == .live ? .watchLive : .watch)
+            case .wait:
+                let pending = pendingEventID == event.id
+                if game.status == .live {
+                    let at = event.start(on: best)
+                    out.append(pending ? .cancelWatchAt(at) : .watchAt(at))
+                } else {
+                    out.append(pending ? .cancelKickOff : .watchAtKickOff)
+                }
+            case .ended:
+                break
+            }
+            out.append(.record)
+        }
         return out
+    }
+
+    /// An action's words, the same in the game's menu and on the followed team's card.
+    static func label(_ action: Action) -> String {
+        func time(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
+        switch action {
+        case .watch: return "Watch"
+        case .watchLive: return "Watch live"
+        case .watchAtKickOff: return "Watch at kick-off"
+        case .cancelKickOff: return "Don't watch at kick-off"
+        case .watchAt(let at): return "Watch at \(time(at))"
+        case .cancelWatchAt(let at): return "Don't watch at \(time(at))"
+        case .record: return "Record"
+        }
+    }
+
+    /// The SF Symbol beside a play action on the team card.
+    static func symbol(_ action: Action) -> String {
+        switch action {
+        case .cancelKickOff, .cancelWatchAt: return "xmark"
+        case .watchAtKickOff, .watchAt: return "bell"
+        case .watch, .watchLive: return "play.fill"
+        case .record: return "record.circle"
+        }
+    }
+
+    /// #187: the followed team's card names the play action its game actually offers (never "Watch live" for a game
+    /// its channel shows later); nil when there is nothing to play.
+    static func teamCardWatch(_ game: NFLGame, in page: NFLPage, now: Date, pendingEventID: String?) -> Action? {
+        actions(game, in: page, now: now, pendingEventID: pendingEventID).first { $0 != .record }
     }
 
     /// The followed team's last and next games across the weeks the page has.

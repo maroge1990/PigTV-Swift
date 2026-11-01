@@ -128,6 +128,60 @@ final class NFLPageRefreshTests: XCTestCase {
         XCTAssertEqual(NFLPageText.actions(thursday, in: p, now: Date(), pendingEventID: nil), [], "finished, no channel")
     }
 
+    // #187 (Apple 87 Codex round 2): a game ESPN marks live whose channel airs it later (a delayed broadcast) offered
+    // only Record, a pending watch could not be cancelled from it, and the team card still said "Watch live". Deferred
+    // play is now chosen from the channel's airing for live games too (as the F1 page), with the cancel kept. On the
+    // old code the first assertion gets [.record].
+    func testALiveGameOnALaterChannelOffersTheDeferredWatchAndItsCancel() throws {
+        let p = try JSONDecoder().decode(NFLPage.self, from: try NFLPageTests.fixture())
+        let ravens = try XCTUnwrap(p.weeks[1].games.first { $0.away.abbr == "BAL" })
+        let channel = try XCTUnwrap(ravens.channels.first)
+        let now = ravens.start.addingTimeInterval(600)
+        let airs = Date(timeIntervalSince1970: (now.timeIntervalSince1970 + 2 * 3600).rounded())
+        var delayed = ravens
+        delayed.status = .live
+        delayed.channels = [SportEventChannel(sourceId: channel.sourceId, rawID: channel.rawID, stableId: channel.stableId,
+                                              name: channel.name, number: channel.number, quality: channel.quality,
+                                              startTime: airs.timeIntervalSince1970 * 1000,
+                                              endTime: airs.timeIntervalSince1970 * 1000 + 3.5 * 3600 * 1000)]
+        let id = "nfl:\(ravens.id)"
+        XCTAssertEqual(NFLPageText.actions(delayed, in: p, now: now, pendingEventID: nil), [.watchAt(airs), .record])
+        XCTAssertEqual(NFLPageText.actions(delayed, in: p, now: now, pendingEventID: id), [.cancelWatchAt(airs), .record],
+                       "an existing pending watch can be cancelled")
+        let time = airs.formatted(date: .omitted, time: .shortened)
+        XCTAssertEqual(NFLPageText.label(.watchAt(airs)), "Watch at \(time)")
+        XCTAssertEqual(NFLPageText.label(.cancelWatchAt(airs)), "Don't watch at \(time)")
+        // The team card names the action actually offered, never "Watch live".
+        let card = try XCTUnwrap(NFLPageText.teamCardWatch(delayed, in: p, now: now, pendingEventID: nil))
+        XCTAssertEqual(NFLPageText.label(card), "Watch at \(time)")
+        XCTAssertEqual(NFLPageText.teamCardWatch(delayed, in: p, now: now, pendingEventID: id), .cancelWatchAt(airs))
+        // Once its channel airs it, Watch live (on the team card too); once that airing has ended, nothing to play.
+        XCTAssertEqual(NFLPageText.actions(delayed, in: p, now: airs.addingTimeInterval(60), pendingEventID: nil), [.watchLive, .record])
+        XCTAssertEqual(NFLPageText.teamCardWatch(delayed, in: p, now: airs.addingTimeInterval(60), pendingEventID: nil), .watchLive)
+        XCTAssertNil(NFLPageText.teamCardWatch(delayed, in: p, now: airs.addingTimeInterval(4 * 3600), pendingEventID: nil))
+        // A scheduled game keeps "Watch at kick-off".
+        XCTAssertEqual(NFLPageText.teamCardWatch(ravens, in: p, now: ravens.start.addingTimeInterval(-3 * 3600), pendingEventID: nil),
+                       .watchAtKickOff)
+    }
+
+    // #205 (Mark, TestFlight 90): the page drew colour discs instead of the team logos the server sends (C-Q
+    // `teams[abbr].logo`). A team with a logo draws it (a logo-cache path, as the front page's badges); no logo, the
+    // disc in the team's colour. Before this change the page never read `logo`.
+    func testATeamWithALogoDrawsItsBadgeAndNoneTheDisc() throws {
+        var p = try JSONDecoder().decode(NFLPage.self, from: try NFLPageTests.fixture())
+        XCTAssertEqual(p.teams["GB"]?.logo.map { $0.hasPrefix("/api/logo/") }, true)
+        XCTAssertEqual(NFLPageText.logo("GB", in: p), p.teams["GB"]?.logo, "the Packers' badge")
+        XCTAssertTrue(p.teams.keys.allSatisfy { NFLPageText.logo($0, in: p) != nil }, "every team in the answer has its badge")
+        p.teams["GB"]?.logo = nil
+        XCTAssertNil(NFLPageText.logo("GB", in: p), "no logo: the disc")
+        p.teams["CHI"]?.logo = "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png"
+        XCTAssertNil(NFLPageText.logo("CHI", in: p), "never a source URL, only the server's logo cache")
+        XCTAssertNil(NFLPageText.logo("XYZ", in: p), "an unknown team: the disc")
+        XCTAssertEqual(NFLPageText.discColor("GB", in: p), p.teams["GB"]?.color)
+        p.teams["LV"]?.color = "000000"
+        XCTAssertEqual(NFLPageText.discColor("LV", in: p), "3A3242", "black lifted to the dark plum, as before")
+    }
+
     // #185 (Apple 86 Codex round 1): the page reloaded only its own data, so spoiler-free switched on elsewhere never
     // reached an open page. A refresh now reloads the household's preferences too, and never the F1 page.
     func testARefreshReloadsThePreferencesWithoutTheF1Page() async throws {
