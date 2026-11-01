@@ -141,6 +141,8 @@ final class SportFollowSettingsModelTests: XCTestCase {
         let rulesStatus = Locked(200)
         /// A PUT is kept but answers 500, and the follows can no longer be read (its answer was lost).
         let commitThenFail = Locked(false)
+        /// The catalogue's answer waits this long.
+        let catalogDelay = Locked<TimeInterval>(0)
     }
 
     private static let catalogJSON = #"{"sports":[{"sport":"Football","leagues":[{"league":"Premier League","label":"Premier League","heading":null},{"league":"League Cup","label":"League Cup","heading":"Cups"},{"league":"Europa League","label":"Europa League","heading":"Europe"}]}]}"#
@@ -149,7 +151,10 @@ final class SportFollowSettingsModelTests: XCTestCase {
         let catalog = Self.catalogJSON
         return try LocalHTTPServer { request in
             switch (request.method, request.path) {
-            case ("GET", "/api/sports/catalog"): return .json(catalog)
+            case ("GET", "/api/sports/catalog"):
+                var r = LocalHTTPServer.Response.json(catalog)
+                r.delay = account.catalogDelay.value
+                return r
             case ("GET", "/api/sports/follows"):
                 return account.followsStatus.value == 200 ? .json(account.follows.value) : .json(#"{"error":"x"}"#, status: account.followsStatus.value)
             case ("PUT", "/api/sports/follows"):
@@ -251,6 +256,26 @@ final class SportFollowSettingsModelTests: XCTestCase {
         await model.load()
         XCTAssertTrue(model.canEdit, "a load that reads the server again allows changes")
         XCTAssertEqual(model.follows?.entry("Football")?.leagues, ["Premier League", "League Cup"])
+    }
+
+    /// Apple 93 Codex round 2 (high): a load that overlapped such a save (its catalogue still on the way) does not reopen
+    /// changes with the follows it read before the save.
+    func testALoadOverlappingALostAnswerDoesNotReopenChanges() async throws {
+        let account = Account()
+        let http = try server(account)
+        defer { http.stop() }
+        let model = try model(http)
+        await model.load()
+        account.catalogDelay.value = 1.0
+        async let reopened: Void = model.load()
+        try await Task.sleep(for: .milliseconds(300)) // its follows are read; its catalogue is not
+        account.commitThenFail.value = true
+        await model.addLeague("Football", "League Cup")
+        await reopened
+        XCTAssertFalse(model.canEdit, "the overlapping load kept the save's read-only state")
+        await model.addLeague("Football", "Europa League")
+        XCTAssertEqual(account.puts.value.count, 1, "no change was sent from the old list")
+        XCTAssertEqual(leagues(Data(account.follows.value.utf8)), ["Premier League", "League Cup"])
     }
 
     func testOfflineShowsTheLastCopyAndCannotBeChanged() async throws {

@@ -90,10 +90,14 @@ final class SportFollowSettingsModel: ObservableObject {
         if let catalogResult { catalog = catalogResult }
         switch followsAnswer {
         case .success(let answer):
-            if answers == startedAnswers && pending == 0 { follows = answer }
-            offline = false
-            loadFailed = false
-            keepCopy()
+            // Apple 93 Codex round 2 (high): only an answer that is shown reopens changes; one a save overtook (or that
+            // overlapped a save whose answer was lost) leaves `offline` as that save left it.
+            if answers == startedAnswers && pending == 0 {
+                follows = answer
+                offline = false
+                loadFailed = false
+                keepCopy()
+            }
         case .failure(let error):
             if UserMessage.isCancellation(error) { return }
             if let copy = lastCopy() {
