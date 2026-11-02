@@ -370,9 +370,9 @@ private struct DesignTestScreen: View {
             ProgrammeDetails(model: browse, presenter: app.presenter, channel: later.channel, programme: later.programme, watch: {},
                              openSchedule: {}, openProgramme: { _ in })
         case "schedule":
-            ChannelScheduleView(model: browse, presenter: app.presenter, channel: channel, logo: browse.logo(for: channel), watch: {})
+            ChannelPageView(model: browse, presenter: app.presenter, channel: channel, watch: {}, openProgramme: { _ in })
         case "channel":
-            ChannelDetails(channel: browse.asChannel(channel), browse: browse, watch: {}, openSchedule: {})
+            ChannelPageView(model: browse, presenter: app.presenter, channel: channel, watch: {}, openProgramme: { _ in })
         case "recordings":
             RecordingsView(model: browse)
         case "recording-player", "recording-loading", "recording-preparing", "recording-error", "recording-resume":

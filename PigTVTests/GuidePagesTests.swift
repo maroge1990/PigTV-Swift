@@ -29,4 +29,13 @@ final class GuidePagesTests: XCTestCase {
         XCTAssertEqual(AlsoOn.heading(channel: "ABC TV", programme: programme("Rage", hour: 20, minutes: 60), now: now, calendar: utc),
                        "Also on ABC TV tomorrow")
     }
+
+    func testTheChannelPageListsWhatComesAfterTheProgrammeOnNow() {
+        let live = programme("Test, Day 1", hour: -1, minutes: 480)
+        let wrap = programme("Day 1 Wrap", hour: 7, minutes: 30)
+        let gone = programme("Pre-match", hour: -2, minutes: 60)
+        let days = ScheduleDays.upcoming([gone, live, wrap], now: now, calendar: utc)
+        XCTAssertEqual(days.flatMap(\.programmes).map(\.title), ["Day 1 Wrap"], "the hero has the one on now; finished ones go")
+        XCTAssertEqual(ScheduleDays.upcoming([live], now: now, calendar: utc), [])
+    }
 }

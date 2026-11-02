@@ -117,5 +117,30 @@ final class GuidePagesUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !record.exists }, "Back did not leave the page")
         XCTAssertTrue(waitUntil { self.focusedLabel(app) == programme }, "focus did not return to the programme: \(focusedLabel(app))")
     }
+
+    /// 109: the menu's Channel schedule pushes the one channel page (hero with Watch live and the favourite, UP NEXT,
+    /// then the days); "Channel and favourites" is gone; Back returns focus to the programme.
+    @MainActor
+    func testChannelScheduleOpensTheChannelPage() throws {
+        let app = launch()
+        enterFirstRow(app)
+        let programme = focusedLabel(app)
+        XCUIRemote.shared.press(.select, forDuration: 1.5)
+        let schedule = app.buttons["menu.schedule"]
+        XCTAssertTrue(schedule.waitForExistence(timeout: 3), "no menu card")
+        for _ in 0..<6 where !schedule.hasFocus { XCUIRemote.shared.press(.down) }
+        XCUIRemote.shared.press(.select)
+        let watch = app.buttons["channel.watch"]
+        XCTAssertTrue(watch.waitForExistence(timeout: 5), "no channel page")
+        XCTAssertTrue(waitUntil { watch.hasFocus }, "Watch live is not focused: \(focusedLabel(app))")
+        XCTAssertTrue(app.staticTexts["UP NEXT"].exists, "no Up next")
+        XCTAssertTrue(app.buttons["details.favourite"].exists, "no favourite on the channel page")
+        XCTAssertTrue(app.staticTexts["Today"].exists || app.staticTexts["Tomorrow"].exists, "no days list")
+        XCTAssertFalse(app.buttons["Channel and favourites"].exists)
+        attach(app, "Channel page")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil { !watch.exists }, "Back did not leave the page")
+        XCTAssertTrue(waitUntil { self.focusedLabel(app) == programme }, "focus did not return to the programme: \(focusedLabel(app))")
+    }
 }
 #endif

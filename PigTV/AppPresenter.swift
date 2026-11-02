@@ -137,7 +137,7 @@ extension View {
                 case .recording(let recording):
                     RecordingDetails(model: browse, original: recording)
                 case .channelSchedule(let channel):
-                    ChannelScheduleView(model: browse, presenter: presenter, channel: channel, logo: browse.logo(for: channel)) {
+                    ChannelPageView(model: browse, presenter: presenter, channel: channel) {
                         presenter.dismiss { app.beginPlayback(browse.asChannel(channel)) }
                     }
                 case .record(let channel, let programme):

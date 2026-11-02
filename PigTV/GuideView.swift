@@ -76,11 +76,6 @@ struct GuideView: View {
     @State private var jumpDate = Date()
     /// D-44 (#49, Apple 108): the pages pushed on the Guide's NavigationStack (programme details, …).
     @State private var path: [GuideRoute] = []
-    @State private var channelDetails: Channel?
-    @State private var schedule: GuideChannel?
-    @State private var pendingWatch: Channel?
-    // A details page's "Channel schedule": opened once that page has closed.
-    @State private var pendingSchedule: GuideChannel?
     @State private var filterStripMetrics = FilterStripMetrics()
     // Filtered rows are cached: filtering hundreds of channels inside `body`
     // on every focus change or clock tick is what made scrolling stutter.
@@ -269,22 +264,7 @@ struct GuideView: View {
                 if closed, usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }
             .navigationDestination(for: GuideRoute.self) { route in destination(route) }
-            .fullScreenCover(item: $channelDetails, onDismiss: finishDetails) { channel in
-                ChannelDetails(channel: channel, browse: model, watch: {
-                    pendingWatch = channel
-                    channelDetails = nil
-                }, openSchedule: model.guideChannel(id: channel.id).map { row in {
-                    pendingSchedule = row
-                    channelDetails = nil
-                } })
-            }
-            .fullScreenCover(item: $schedule, onDismiss: finishDetails) { channel in
-                ChannelScheduleView(model: model, presenter: app.presenter, channel: channel, logo: model.logo(for: channel)) {
-                    pendingWatch = asChannel(channel)
-                    schedule = nil
-                }
-            }
-            .closesForOutsidePlay { path = []; channelDetails = nil; schedule = nil; menu = nil } // #179
+            .closesForOutsidePlay { path = []; menu = nil } // #179
         }
     }
 
@@ -309,7 +289,7 @@ struct GuideView: View {
                 description: Text(filter == "favourites" ? "Open a channel's schedule, then add it to favourites." : "Try another category or search."))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { schedule = $0 },
+            OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { openChannel($0) },
                       menu: { channel in menuSubject(channel, OnNowRow.make(programmes: channel.programmes, now: Date()).current) },
                       choose: { channel, item in
                           let target = GuideMenuTarget(channel: channel, programme: OnNowRow.make(programmes: channel.programmes, now: Date()).current,
@@ -708,6 +688,11 @@ struct GuideView: View {
         path.append(.programme(channel: channel.id, start: programme.startTime))
     }
 
+    /// Pushes a channel's page (D-44, Apple 109: the schedule and "Channel and favourites" in one).
+    private func openChannel(_ channel: GuideChannel) {
+        path.append(.channel(channel.id))
+    }
+
     /// A page's Watch: back to the grid, then the player (it closes onto the grid).
     private func watchFromPage(_ channel: GuideChannel) {
         path = []
@@ -720,12 +705,19 @@ struct GuideView: View {
         case .programme(let id, let start):
             if let channel = model.guideChannel(id: id), let programme = channel.programmes.first(where: { $0.startTime == start }) {
                 ProgrammeDetails(model: model, presenter: app.presenter, channel: channel, programme: programme,
-                                 watch: { watchFromPage(channel) }, openSchedule: { schedule = channel },
+                                 watch: { watchFromPage(channel) }, openSchedule: { openChannel(channel) },
                                  openProgramme: { open(channel, $0) }, pushedFrom: "TV Guide")
             } else {
                 missingPage
             }
-        case .channel, .search:
+        case .channel(let id):
+            if let channel = model.guideChannel(id: id) {
+                ChannelPageView(model: model, presenter: app.presenter, channel: channel, watch: { watchFromPage(channel) },
+                            openProgramme: { open(channel, $0) }, pushedFrom: "TV Guide")
+            } else {
+                missingPage
+            }
+        case .search:
             missingPage
         }
     }
@@ -801,7 +793,7 @@ struct GuideView: View {
             if let programme = target.programme { open(channel, programme) }
         case .schedule:
             closeMenu()
-            schedule = channel
+            openChannel(channel)
         case .favourite(_, let isFavourite):
             guard await model.setFavourite(asChannel(channel), !isFavourite) else { return "Favourites could not be changed." }
             closeMenu()
@@ -809,19 +801,6 @@ struct GuideView: View {
         return nil
     }
 
-    private func finishDetails() {
-        if let channel = pendingSchedule {
-            pendingSchedule = nil
-            // Presented after this cover has gone.
-            DispatchQueue.main.async { schedule = channel }
-            return
-        }
-        // Unless a Watch choice is about to open the player (it restores
-        // focus when it closes).
-        if usesGridView && pendingWatch == nil { gridFocusRestore += 1; claimGridFocus() }
-        Task { await model.loadFavourites() }
-        if let channel = pendingWatch { pendingWatch = nil; app.beginPlayback(channel, origin: "guide") }
-    }
 }
 
 // Fade the rendered chips, not the scrolling/focus container. No coloured
