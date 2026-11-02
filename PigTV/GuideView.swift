@@ -265,11 +265,11 @@ struct GuideView: View {
         }
     }
 
-    // A4.4: iPhone (compact width) shows the "On now" list instead of the
-    // one-hour grid; iPad (regular width) keeps the grid.
+    // A4.4, D-44: the iPhone upright shows the "On now" list instead of the
+    // grid; sideways (compact height) and the iPad keep the grid.
     private var usesOnNowList: Bool {
         #if os(iOS)
-        sizeClass == .compact
+        GuideLayout.usesOnNowList(compactWidth: sizeClass == .compact, compactHeight: verticalSizeClass == .compact)
         #else
         false
         #endif

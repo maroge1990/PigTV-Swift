@@ -11,6 +11,15 @@ nonisolated struct GuideChip: Equatable, Identifiable, Sendable {
 }
 
 /// The chips the data has. Pure; tested (GuideChromeTests).
+/// D-44: an iPhone (compact width) lists what is on now when upright and
+/// becomes the grid when turned sideways (compact height), every model alike;
+/// the iPad and the Apple TV always show the grid.
+nonisolated enum GuideLayout {
+    static func usesOnNowList(compactWidth: Bool, compactHeight: Bool) -> Bool {
+        compactWidth && !compactHeight
+    }
+}
+
 nonisolated enum GuideChips {
     /// Every category an admin marked as sport (C-H), as one chip.
     static let sport = "sport"

@@ -14,6 +14,14 @@ final class GuideChromeTests: XCTestCase {
     private let sports = Category(rawID: "sports", sourceId: 1, name: "Sports", channelCount: 2, sport: true)
     private let news = Category(rawID: "news", sourceId: 1, name: "News", channelCount: 1)
 
+    func testAnIPhoneTurnedSidewaysShowsTheGrid() {
+        XCTAssertTrue(GuideLayout.usesOnNowList(compactWidth: true, compactHeight: false), "iPhone upright: On now list")
+        XCTAssertFalse(GuideLayout.usesOnNowList(compactWidth: true, compactHeight: true),
+                       "a standard iPhone sideways is compact in both directions and still gets the grid")
+        XCTAssertFalse(GuideLayout.usesOnNowList(compactWidth: false, compactHeight: true), "Plus/Max sideways: grid")
+        XCTAssertFalse(GuideLayout.usesOnNowList(compactWidth: false, compactHeight: false), "iPad: grid")
+    }
+
     func testChipsAreAllFavouritesSportThenTheCategories() {
         XCTAssertEqual(GuideChips.make(categories: [sports, news]).map(\.title), ["All", "Favourites", "Sport", "News"],
                        "a lone sport category is the Sport chip, not listed twice")
