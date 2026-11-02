@@ -67,16 +67,26 @@ private enum FrontMetrics {
 
 struct SportFrontView: View {
     static let origin = "sport-front"
+    #if DEBUG
+    @MainActor static var openedTestSport = false
+    #endif
     let app: AppModel
     let browse: BrowseModel
-    /// D-43: the sport pages pushed from the front page (a rail header, "Also in your sports", a follow).
-    @State private var path: [SportRoute] = []
+    /// D-43: the sport pages pushed from the front page (a rail header, "Also in your sports", a follow). #214: the
+    /// session's, so the tab bar can return it to the front page.
+    @ObservedObject private var navigation: SportNavigation
+
+    init(app: AppModel, browse: BrowseModel) {
+        self.app = app
+        self.browse = browse
+        _navigation = ObservedObject(wrappedValue: browse.sportNavigation)
+    }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: $navigation.path) {
             Group {
                 #if os(tvOS)
-                SportFrontTVPage(app: app, browse: browse) { sport in path.append(SportRoute(sport: sport)) }
+                SportFrontTVPage(app: app, browse: browse) { sport in navigation.path.append(SportRoute(sport: sport)) }
                 #else
                 SportFrontPage(app: app, browse: browse)
                 #endif
@@ -92,11 +102,14 @@ struct SportFrontView: View {
         // The event page and channel picker belong to the screen (SportPresenter), with the plays' origin.
         .sportPages(app: app, browse: browse, clock: Date(), origin: Self.origin)
         #if DEBUG
-        // UI tests (Apple 99): PIGTV_UI_TEST_OPEN_SPORT=<sport> opens that sport's page once the front page is up.
+        // UI tests (Apple 99): PIGTV_UI_TEST_OPEN_SPORT=<sport> opens that sport's page once the front page is up, once
+        // per launch (#214: the task runs again each time the tab reappears, and coming back to Sport shows the front page).
         .task {
-            guard let sport = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_OPEN_SPORT"], path.isEmpty else { return }
+            guard let sport = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_OPEN_SPORT"], navigation.path.isEmpty,
+                  !SportFrontView.openedTestSport else { return }
+            SportFrontView.openedTestSport = true
             try? await Task.sleep(for: .milliseconds(800))
-            path.append(SportRoute(sport: sport))
+            navigation.path.append(SportRoute(sport: sport))
         }
         #endif
     }

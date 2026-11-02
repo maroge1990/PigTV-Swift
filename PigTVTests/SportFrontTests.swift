@@ -425,6 +425,18 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(LibraryView.tabOrder(sportEnabled: false), ["guide", "recordings", "settings"])
     }
 
+    // #214 (Apple 103): selecting Sport (again, or back from another tab) returns its stack to the front page; another
+    // tab leaves it alone. Before 103 the path was the view's own state, out of the tab bar's reach.
+    @MainActor func testSelectingTheSportTabShowsTheFrontPage() {
+        let navigation = SportNavigation()
+        navigation.path = [SportRoute(sport: "Motorsport")]
+        LibraryView.tabSelected("guide", navigation: navigation)
+        XCTAssertEqual(navigation.path, [SportRoute(sport: "Motorsport")], "another tab leaves the Sport stack as it is")
+        LibraryView.tabSelected("sport", navigation: navigation)
+        XCTAssertEqual(navigation.path, [], "Sport shows its front page")
+        LibraryView.tabSelected("sport", navigation: nil) // signed out: nothing to do
+    }
+
     func testItLoadsTheFrontRoute() async throws {
         FrontRoutes.asked = []
         let configuration = URLSessionConfiguration.ephemeral

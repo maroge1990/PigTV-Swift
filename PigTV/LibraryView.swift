@@ -23,6 +23,11 @@ struct LibraryView: View {
         tabOrder(sportEnabled: sportEnabled).contains(requested) ? requested : openingTab(sportEnabled: sportEnabled)
     }
 
+    /// #214: a selection of the Sport tab (again while on it, or coming back from another tab) shows its front page.
+    @MainActor static func tabSelected(_ tab: String, navigation: SportNavigation?) {
+        if tab == "sport" { navigation?.showFront() }
+    }
+
     /// The tab shown: the chosen one, else the opening tab (Settings until signed in).
     private var selection: String {
         tab ?? model.browse.map { initialTab ?? Self.openingTab(sportEnabled: $0.sportEnabled) } ?? "settings"
@@ -42,6 +47,7 @@ struct LibraryView: View {
                                    set: { new in
                                        if new != selection { chosen = true }
                                        PigTVSignpost.tabSelected(new)
+                                       Self.tabSelected(new, navigation: model.browse?.sportNavigation)
                                        tab = new
                                    })) {
             if let browse = model.browse {
@@ -90,6 +96,7 @@ struct LibraryView: View {
             guard let browse = model.browse else { return }
             chosen = true
             tab = Self.tab(for: requested, sportEnabled: browse.sportEnabled)
+            Self.tabSelected(tab ?? "", navigation: browse.sportNavigation)
         }
     }
 }

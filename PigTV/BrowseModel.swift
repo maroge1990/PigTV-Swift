@@ -559,6 +559,8 @@ final class BrowseModel: ObservableObject {
     var eventPagesEnabled: Bool { client.info?.features.sportPageEvents == true }
     /// C-R (#21, D-39): the Sport front page, only with the server's `sportFront` flag.
     private(set) lazy var sportFront = SportFrontModel(client: client)
+    /// #214: the Sport tab's pushed sport pages (the tab bar returns it to the front page).
+    private(set) lazy var sportNavigation = SportNavigation()
     var sportFrontEnabled: Bool { client.info?.features.sportFront == true }
     /// C-U (#200): Settings › Sport, only with the server's `sportFollows` flag. A spoiler-free change saved there makes
     /// the sport pages (whose preferences the F1 page model holds) ask for the choice again.

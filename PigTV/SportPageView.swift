@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // D-43 (1 Nov, DESIGN.md › Apple TV sport pages): a sport's page, reached from the front page's rail header ("Football ›"),
 // its "Also in your sports" buttons or a follow. The banner: the hero (a follow live in this sport, else the sport's
@@ -13,6 +14,17 @@ import SwiftUI
 /// A sport page in the front page's navigation stack.
 struct SportRoute: Hashable, Sendable {
     let sport: String
+}
+
+/// #214 (Apple 103): the Sport tab's navigation path, held by the session (`BrowseModel.sportNavigation`) rather than
+/// by the view, so the tab bar can return it to the front page: selecting Sport again while on a sport page, or coming
+/// back to Sport from another tab, shows the front page (LibraryView's selection binding, `LibraryView.tabSelected`).
+@MainActor
+final class SportNavigation: ObservableObject {
+    @Published var path: [SportRoute] = []
+
+    /// Back to the front page (publishes nothing when already there).
+    func showFront() { if !path.isEmpty { path = [] } }
 }
 
 /// The sport page's choices. Pure.
