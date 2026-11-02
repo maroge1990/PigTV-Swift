@@ -4,7 +4,7 @@ import XCTest
 // tab. Build 42 gave every tab the same PigPageHeader, but each page placed it with its own padding (0, 20, 24, 40,
 // 48 pt) and its own top inset, and the Guide's taller trailing buttons re-centred the row. Cycling through the tabs,
 // the title (and the pig beside it in the same row) must not move or change size. Runs on tvOS, iPad and iPhone
-// (portrait), on the offline Home fixture.
+// (portrait), on the offline library fixture.
 final class PageHeaderPlacementUITests: XCTestCase {
     @MainActor
     func testThePigAndTitleStayPutAcrossTabs() throws {
@@ -14,9 +14,8 @@ final class PageHeaderPlacementUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "home"
         app.launch()
-        // Apple 89 (D-39): Sport first, Home is "TV" second. The Home fixture opens on TV (the app itself opens on Sport:
-        // SportFrontUITests), so the cycle starts by moving to Sport.
-        let tabs = ["Sport", "TV", "TV Guide", "Recordings", "Settings"]
+        // #216 (D-44): Sport · TV Guide · Recordings · Settings; the fixture opens on Sport, as the app does.
+        let tabs = ["Sport", "TV Guide", "Recordings", "Settings"]
         var frames: [(String, CGRect)] = []
 
         func title(_ name: String) -> XCUIElement {
@@ -37,12 +36,7 @@ final class PageHeaderPlacementUITests: XCTestCase {
             return last
         }
 
-        XCTAssertTrue(title("TV").waitForExistence(timeout: 15), "the fixture did not open on TV")
-        #if os(tvOS)
-        XCUIRemote.shared.press(.left)
-        #else
-        app.tabBars.buttons["Sport"].firstMatch.tap()
-        #endif
+        XCTAssertTrue(title("Sport").waitForExistence(timeout: 15), "the fixture did not open on Sport")
         for (index, name) in tabs.enumerated() {
             if index > 0 {
                 #if os(tvOS)

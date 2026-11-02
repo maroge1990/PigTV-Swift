@@ -527,27 +527,6 @@ final class BrowseModel: ObservableObject {
         }
     }
 
-    // MARK: Home channels
-
-    /// A guide row as Home draws it.
-    func homeChannel(_ row: GuideChannel) -> HomeChannel {
-        HomeChannel(sourceId: row.sourceId, rawID: row.rawID, name: row.name, number: number(for: row),
-                    logo: logo(for: row), category: row.category, stableId: row.stableId, programmes: row.programmes)
-    }
-
-    /// A server channel (favourite, recent) as Home draws it: its guide row
-    /// when the guide has it (by id, else by stable identity), else its own
-    /// now/next.
-    func homeChannel(_ channel: Channel) -> HomeChannel {
-        if let row = guideRow(id: channel.id, identityKey: channel.identityKey) { return homeChannel(row) }
-        let programmes = [channel.now, channel.next].compactMap { $0 }.map {
-            GuideProgramme(title: $0.title, description: nil, startTime: $0.startTime, endTime: $0.endTime)
-        }
-        return HomeChannel(sourceId: channel.sourceId, rawID: channel.rawID, name: channel.name,
-                           number: showsChannelNumbers ? channel.number : nil, logo: logo(for: channel),
-                           category: channel.category, stableId: channel.stableId, programmes: programmes)
-    }
-
     /// The guide's row for a channel: by id, else by stable identity (a
     /// playlist reorder changes the id but not the identity).
     func guideRow(id: String, identityKey: String) -> GuideChannel? {
@@ -555,18 +534,6 @@ final class BrowseModel: ObservableObject {
         guard identityKey != id else { return nil }
         return guide.first { $0.identityKey == identityKey }
     }
-
-    /// The Channel the player needs for a Home card.
-    func playable(_ channel: HomeChannel) -> Channel {
-        Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: channel.logo,
-                category: channel.category, now: nil, next: nil, stableId: channel.stableId, number: channel.number)
-    }
-
-    // MARK: Home
-
-    /// What Home draws, built from the stores and published only when it
-    /// differs (kept here so it survives the tab being left and re-entered).
-    private(set) lazy var home = HomeModel(browse: self)
 
     // MARK: Sport (C-I)
 

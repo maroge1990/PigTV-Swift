@@ -19,8 +19,6 @@ final class ZapListTests: XCTestCase {
     func testEndingAPlayForgetsItsList() async throws {
         let (app, browse, server) = try signedIn()
         defer { server.http.stop() }
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         XCTAssertGreaterThan(browse.guide.count, 3)
         let two = browse.guide.prefix(2).map { SportEventChannel(sourceId: $0.sourceId, rawID: $0.rawID, name: $0.name) }
         let now = Date().timeIntervalSince1970 * 1000
@@ -34,8 +32,6 @@ final class ZapListTests: XCTestCase {
     func testATopShelfChannelZapsThroughTheGuide() async throws {
         let (app, browse, server) = try signedIn()
         defer { server.http.stop() }
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         app.zapList = [browse.asChannel(browse.guide[0])] // left behind by something earlier
         let target = browse.guide[2]
         let delay = AppModel.coverCloseDelay
@@ -49,18 +45,45 @@ final class ZapListTests: XCTestCase {
     }
 }
 
-/// #46: Home's minute (and foreground) refresh brings a stale guide up to date; before build 79 only the TV Guide tab
-/// did, so Home and the Top Shelf showed yesterday after an overnight resume.
+/// #46: the minute (and foreground) refresh brings a stale guide up to date; before build 79 only the TV Guide tab
+/// did, so the Top Shelf showed yesterday after an overnight resume. #216 (Apple 102): Home, which ran it, is retired;
+/// the app root runs it (`AppFreshness`, ContentView), whichever tab shows, and exports the Top Shelf each time.
 @MainActor
-final class HomeGuideRefreshTests: XCTestCase {
-    func testHomesRefreshAsksForAStaleGuide() async throws {
+final class AppFreshnessTests: XCTestCase {
+    func testTheRefreshAsksForAStaleGuideAndExportsTheTopShelf() async throws {
         let server = try FakePigTVServer()
         defer { server.http.stop() }
         let browse = BrowseModel(client: try server.client())
         browse.guide = GuideFixtures.channels() // loaded, but never stamped: as old as it gets
-        await browse.home.refreshNow()
+        var exports = 0
+        await AppFreshness.refresh(browse) { _ in exports += 1 }
         XCTAssertFalse(server.http.requests(path: "/api/library/guide", method: "GET").isEmpty,
-                       "the stale guide is fetched again from Home")
+                       "the stale guide is fetched again without any tab on screen")
+        XCTAssertEqual(exports, 1, "the Top Shelf is exported after the refresh")
+    }
+
+    func testTheRefreshDoesNothingOnTheOfflineFixture() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client())
+        browse.isFixture = true
+        var exports = 0
+        await AppFreshness.refresh(browse) { _ in exports += 1 }
+        XCTAssertEqual(exports, 0)
+        XCTAssertTrue(server.http.requests(path: "/api/library/guide", method: "GET").isEmpty)
+    }
+
+    /// The loop on an injected clock: a pass at once, then one per minute, and none after the task ends.
+    func testTheLoopRefreshesAtOnceThenEveryMinuteUntilCancelled() async {
+        var slept: [Duration] = []
+        var passes = 0
+        struct Stop: Error {}
+        await AppFreshness.run(sleep: { duration in
+            slept.append(duration)
+            if slept.count == 3 { throw Stop() } // the task is cancelled during the third minute
+        }) { passes += 1 }
+        XCTAssertEqual(passes, 3, "at once, after the first minute and after the second")
+        XCTAssertEqual(slept, [.seconds(60), .seconds(60), .seconds(60)])
     }
 }
 
@@ -75,8 +98,6 @@ final class PlayOverCoversTests: XCTestCase {
         app.injectHomeFixture()
         let browse = try XCTUnwrap(app.browse)
         app.configureClientForTesting(try server.client(), browse: browse)
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         let delay = AppModel.coverCloseDelay
         AppModel.coverCloseDelay = .milliseconds(50)
         defer { AppModel.coverCloseDelay = delay }
@@ -99,8 +120,6 @@ final class PlayOverCoversTests: XCTestCase {
         app.injectHomeFixture()
         let browse = try XCTUnwrap(app.browse)
         app.configureClientForTesting(try server.client(), browse: browse)
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         let deadline = AppModel.playerAppearDeadline
         AppModel.playerAppearDeadline = .milliseconds(200)
         defer { AppModel.playerAppearDeadline = deadline }
@@ -128,8 +147,6 @@ final class PlayOverCoversTests: XCTestCase {
         app.injectHomeFixture()
         let browse = try XCTUnwrap(app.browse)
         app.configureClientForTesting(try server.client(), browse: browse)
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         let delay = AppModel.coverCloseDelay
         AppModel.coverCloseDelay = .milliseconds(150)
         defer { AppModel.coverCloseDelay = delay }
@@ -161,8 +178,6 @@ final class PlayOverCoversTests: XCTestCase {
         app.injectHomeFixture()
         let browse = try XCTUnwrap(app.browse)
         app.configureClientForTesting(try server.client(), browse: browse)
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         let deadline = AppModel.playerAppearDeadline
         AppModel.playerAppearDeadline = .milliseconds(300)
         defer { AppModel.playerAppearDeadline = deadline }

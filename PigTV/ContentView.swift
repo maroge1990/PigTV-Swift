@@ -73,8 +73,12 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             model.warmer.setActive(phase == .active) // R11: any other phase cancels warming
             if phase == .background { Task { await model.background() } }
-            // #46: resumed the next day: a stale guide (and so Home and the Top Shelf) is brought up to date.
-            if phase == .active, model.loggedIn, let browse = model.browse { Task { await browse.home.refreshNow() } }
+        }
+        // #46, #216: while active and signed in, the guide is kept current and the Top Shelf exported, now and every
+        // minute, whichever tab shows (returning to the foreground restarts it, so a stale guide is fixed at once).
+        .task(id: scenePhase == .active ? model.browse.map(ObjectIdentifier.init) : nil) {
+            guard scenePhase == .active, let browse = model.browse else { return }
+            await AppFreshness.run { await AppFreshness.refresh(browse) }
         }
         .environment(\.channelWarmer, model.warmer)
         // A4.1: Top Shelf items open pigtv://play.

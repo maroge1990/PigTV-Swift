@@ -205,12 +205,19 @@ final class TopShelfTests: XCTestCase {
         XCTAssertEqual(built.number, 503)
     }
 
-    func testHomeLinkSwitchesToHome() {
+    // #216 (Apple 102): Home is retired; pigtv://home (older snapshots still carry it) opens Sport, or the TV Guide
+    // where the server has no sport, never the retired "home" tag.
+    func testHomeLinkOpensTheOpeningTab() {
         XCTAssertTrue(PigTVLink.isHome(PigTVLink.homeURL))
         XCTAssertNil(PigTVLink.parse(PigTVLink.homeURL))
         XCTAssertFalse(PigTVLink.isHome(PigTVLink.playURL(sourceId: 1, id: "a")))
         let app = AppModel()
         app.open(PigTVLink.homeURL)
-        XCTAssertEqual(app.requestedTab, "home")
+        let requested = app.requestedTab
+        XCTAssertEqual(requested, "sport")
+        XCTAssertEqual(LibraryView.tab(for: requested ?? "", sportEnabled: true), "sport")
+        XCTAssertEqual(LibraryView.tab(for: requested ?? "", sportEnabled: false), "guide")
+        XCTAssertEqual(LibraryView.tab(for: "home", sportEnabled: true), "sport", "the retired tag lands on the opening tab")
+        XCTAssertEqual(LibraryView.tab(for: "recordings", sportEnabled: false), "recordings")
     }
 }

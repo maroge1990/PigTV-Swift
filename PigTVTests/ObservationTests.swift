@@ -28,7 +28,6 @@ private final class RoutedProtocol: URLProtocol, @unchecked Sendable {
 private extension BrowseModel {
     var observedBy: [String: [ObservableObjectPublisher]] {
         [
-            "Home": [home.objectWillChange],
             "Guide": [guideStore.objectWillChange, library.objectWillChange, marks.objectWillChange],
             "Recordings": [recordingStore.objectWillChange, actions.objectWillChange],
             "ProgrammeDetails": [recordingStore.objectWillChange, actions.objectWillChange, artwork.objectWillChange],
@@ -96,10 +95,8 @@ final class ObservationTests: XCTestCase {
 
     func testReport() async throws {
         let browse = try makeBrowse()
-        browse.home.activate(lastWatched: nil)
         report("guide pages (3)", await measure(browse) { await browse.loadGuide(); try? await Task.sleep(for: .milliseconds(300)) })
         await browse.loadRecordings(); await browse.loadFavourites(); await browse.loadRecent()
-        try await Task.sleep(for: .milliseconds(200)) // Home's rebuild for that first data
         report("recordings refresh (unchanged)", await measure(browse) { await browse.loadRecordings() })
         report("recordings refresh (unchanged, quiet)", await measure(browse) { await browse.loadRecordings(quietly: true) })
         recordingsJSON = #"[{"id":1,"title":"News","status":"recording","channel_name":"A"}]"#
@@ -107,7 +104,6 @@ final class ObservationTests: XCTestCase {
         favouritesJSON = #"[{"id":"a","sourceId":1,"name":"A"},{"id":"b","sourceId":1,"name":"B"}]"#
         let channel = Channel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, now: nil, next: nil)
         report("favourite toggle", await measure(browse) { _ = await browse.setFavourite(channel, true) })
-        report("Home 60 s tick (unchanged)", await measure(browse) { await browse.loadRecent(); await browse.loadRecordings(quietly: true); browse.home.rebuild() })
     }
 
     // MARK: Assertions
@@ -183,73 +179,6 @@ final class ObservationTests: XCTestCase {
         browse.schedules = try JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))
         XCTAssertEqual(browse.scheduledKeys, ["A|1000", "B|3000"])
         XCTAssertEqual(browse.recordingChannels, ["A"])
-    }
-
-    // MARK: Home
-
-    private func home(_ browse: BrowseModel) -> HomeModel {
-        let home = HomeModel(browse: browse, guideDelay: .milliseconds(20))
-        home.activate(lastWatched: nil)
-        return home
-    }
-
-    func testHomePublishesNothingWhenItsInputsAreEqual() async throws {
-        let browse = try makeBrowse()
-        await browse.loadRecordings(); await browse.loadFavourites(); await browse.loadRecent()
-        let home = home(browse)
-        XCTAssertEqual(home.content.recordings.map(\.id), [1])
-        let built = home.rebuilds
-        let published = await publishes(home.objectWillChange) {
-            // The same data again, however it arrives.
-            await browse.loadRecordings(); await browse.loadFavourites(); await browse.loadRecent()
-            browse.recordings = browse.recordings
-            browse.favourites = browse.favourites
-            browse.recent = browse.recent
-            try? await Task.sleep(for: .milliseconds(100))
-            home.rebuild() // the minute's tick
-        }
-        XCTAssertEqual(published, 0)
-        XCTAssertEqual(home.rebuilds, built + 1, "only the explicit tick rebuilt; equal inputs scheduled nothing")
-    }
-
-    func testHomeContentChangesWhenARecordingsStatusChanges() async throws {
-        let browse = try makeBrowse()
-        await browse.loadRecordings()
-        let home = home(browse)
-        XCTAssertEqual(home.content.recordings.first?.status, "completed")
-        recordingsJSON = #"[{"id":1,"title":"News","status":"recording","channel_name":"A"}]"#
-        await browse.loadRecordings()
-        try await eventually { home.content.recordings.first?.status == "recording" }
-        XCTAssertEqual(home.content.recordings.map(\.id), [1], "same id, new status")
-        // And a field the old id-and-status comparison ignored.
-        recordingsJSON = #"[{"id":1,"title":"News","status":"recording","channel_name":"A","native_status":"preparing"}]"#
-        await browse.loadRecordings()
-        try await eventually { home.content.recordings.first?.native_status == "preparing" }
-    }
-
-    func testHomeKeepsItsContentWhileHiddenAndRebuildsOnlyWhatChanged() async throws {
-        let browse = try makeBrowse()
-        await browse.loadRecordings()
-        let home = home(browse)
-        let built = home.rebuilds
-        home.deactivate()
-        // Fresh and unchanged: coming back shows the retained content with no rebuild.
-        home.activate(lastWatched: nil)
-        XCTAssertEqual(home.rebuilds, built)
-        home.deactivate()
-        // A change while hidden is not worked on until Home is back.
-        recordingsJSON = #"[{"id":1,"title":"News","status":"recording","channel_name":"A"}]"#
-        await browse.loadRecordings()
-        try await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(home.rebuilds, built, "nothing is rebuilt while Home is hidden")
-        XCTAssertEqual(home.content.recordings.first?.status, "completed")
-        home.activate(lastWatched: nil)
-        XCTAssertEqual(home.rebuilds, built + 1)
-        XCTAssertEqual(home.content.recordings.first?.status, "recording")
-        // Old content is rebuilt (its countdowns move).
-        home.deactivate()
-        home.refreshIfNeeded(now: Date().addingTimeInterval(HomeModel.maxAge + 1))
-        XCTAssertEqual(home.rebuilds, built + 2)
     }
 
     private func eventually(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {

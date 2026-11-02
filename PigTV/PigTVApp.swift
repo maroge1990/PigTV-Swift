@@ -56,7 +56,7 @@ struct PigTVApp: App {
             HomeTestScreen(firstRun: false, initialTab: "sport",
                            noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty")
         } else if ["tab-guide", "tab-recordings"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
-            // The Home fixture inside the tab bar, opened on that tab (design checks).
+            // The library fixture inside the tab bar, opened on that tab (design checks).
             HomeTestScreen(firstRun: false, initialTab: String((ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").dropFirst(4)))
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "splash" {
             BrandSplashView()
@@ -259,13 +259,13 @@ private struct SportFrontTestScreen: View {
     }
 }
 
-// Offline Home (build 28): PIGTV_UI_TEST_SCREEN=home (history, favourites,
-// sport, recordings, logos) or home-empty (the first-run state).
+// The offline library (build 28): PIGTV_UI_TEST_SCREEN=home (favourites, sport, recordings, logos) or home-empty
+// (the first-run state), on the app's opening tab (Sport; #216 retired Home, the name stays).
 // C-I (build 30): PIGTV_UI_TEST_SCREEN=sport opens the Sport tab on the same
 // data (NFL, AFL, F1 and NRL events); sport-empty shows its empty state.
 private struct HomeTestScreen: View {
     let firstRun: Bool
-    var initialTab = "home"
+    var initialTab: String? = nil
     var noSport = false
     static let presentsPlayer = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_PLAY"] == "1"
     @StateObject private var model = AppModel()

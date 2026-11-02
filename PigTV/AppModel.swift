@@ -23,7 +23,7 @@ final class AppModel: ObservableObject {
     /// C-K: the licence reminder banner (shown by ContentView).
     let providerReminders = ProviderReminderModel()
     /// Build 31: a tab LibraryView should switch to ("guide" from the iOS
-    /// player's TV Guide button, "home" from a pigtv://home link);
+    /// player's TV Guide button, "sport" from a pigtv://home link);
     /// LibraryView applies it and clears it.
     @Published var requestedTab: String?
     // The tvOS player presents these over native AVKit controls. Keeping the
@@ -40,9 +40,6 @@ final class AppModel: ObservableObject {
     // channel; not touched by beginPlayback, so leaving and reopening the
     // player on the same channel keeps the previous memory.
     @Published private(set) var previousChannel: Channel?
-    // Home (build 28): the last channel played on this device, kept across
-    // launches for the "Continue watching" hero.
-    @Published private(set) var lastWatched: LastWatched? = LastWatched.load()
     // C-I: "Watch <channel> when it starts" on an upcoming sport event.
     @Published private(set) var pendingWatch: PendingWatch?
     private var pendingWatchTask: Task<Void, Never>?
@@ -235,8 +232,8 @@ final class AppModel: ObservableObject {
         cancelHandoff()
         pendingLink = nil
         TopShelfExport.clear()
-        LastWatched.clear()
-        lastWatched = nil
+        // #216: the retired Home's "Continue watching" memory (builds 28–101), so it does not outlive the session.
+        UserDefaults.standard.removeObject(forKey: Self.legacyLastChannelKey)
         client = nil
         serverInfo = nil
         browse?.retirePrivateCaches()
@@ -261,11 +258,14 @@ final class AppModel: ObservableObject {
     /// other outcome drops it (restore's defer), so a later manual sign-in
     /// never starts playback unexpectedly.
     private var pendingLink: (link: PigTVLink.Play, at: Date)?
+    /// Where builds 28–101 kept the last channel played, for Home's hero (#216 retired it).
+    nonisolated static let legacyLastChannelKey = "pigtv.home.lastChannel"
 
     /// `pigtv://play?…`: plays that channel when signed in; ignored otherwise.
     func open(_ url: URL) {
-        // Build 31: pigtv://home shows Home.
-        if PigTVLink.isHome(url) { requestedTab = "home"; return }
+        // Build 31: pigtv://home showed Home. #216 (Apple 102): Home is retired; the link (still in older Top Shelf
+        // snapshots) opens the opening tab: Sport, or the TV Guide where the server has no sport (LibraryView.tab(for:)).
+        if PigTVLink.isHome(url) { requestedTab = LibraryView.homeLinkTab; return }
         guard let link = PigTVLink.parse(url) else { return }
         if loggedIn { play(link) } else { pendingLink = (link, Date()) }
     }
@@ -353,7 +353,6 @@ final class AppModel: ObservableObject {
         model.origin = origin ?? scopedPlayOrigin
         currentPlayback = model
         playback = model
-        remember(channel)
         playbackBusy = true
         playerPresented = true
         updateWarming(for: model, justSwitched: false)
@@ -390,7 +389,6 @@ final class AppModel: ObservableObject {
         model.prerequisite = Task { _ = await old.stop() }
         currentPlayback = model
         playback = model
-        remember(channel)
         updateWarming(for: model, justSwitched: true)
         if !playerShown { armPlayerWatchdog(model) } // #179: still no player: the replacement is watched too
     }
@@ -415,14 +413,6 @@ final class AppModel: ObservableObject {
                                capabilities: PlaybackCapabilities.current(),
                                audioEncode: AudioEncodeMemory.contains(target.identityKey) ? true : nil)
         return (try? await client.warm(body))?.warm == true
-    }
-
-    private func remember(_ channel: Channel) {
-        let entry = LastWatched(sourceId: channel.sourceId, rawID: channel.rawID, name: channel.name,
-                                number: channel.number, logo: channel.logo, category: channel.category,
-                                stableId: channel.stableId)
-        entry.save()
-        lastWatched = entry
     }
 
     // A1.2: swap back to the channel switchPlayback(to:) last switched away
@@ -584,9 +574,6 @@ final class AppModel: ObservableObject {
             model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
             model.recent = GuideFixtures.recent(from: model.guide).map(model.asChannel)
             model.recordings = GuideFixtures.recordings(client: client)
-            lastWatched = GuideFixtures.lastWatched(from: model.guide)
-        } else {
-            lastWatched = nil
         }
         GuideFixtures.preloadLogos()
         let sportFixture: [SportEvent]

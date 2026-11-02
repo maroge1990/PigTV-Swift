@@ -13,16 +13,7 @@ import Combine
 @MainActor
 final class RealPlaybackTests: XCTestCase {
     private var channelKeys: [String] = []
-    private var savedLastWatched: Data?
-
-    override func setUp() async throws {
-        try await super.setUp()
-        // AppModel remembers played channels for Home; keep the host's own.
-        savedLastWatched = UserDefaults.standard.data(forKey: LastWatched.key)
-    }
-
     override func tearDown() async throws {
-        UserDefaults.standard.set(savedLastWatched, forKey: LastWatched.key)
         // Leave no audio-encode memory behind for the harness channels.
         let left = (UserDefaults.standard.stringArray(forKey: AudioEncodeMemory.key) ?? []).filter { !channelKeys.contains($0) }
         UserDefaults.standard.set(left, forKey: AudioEncodeMemory.key)

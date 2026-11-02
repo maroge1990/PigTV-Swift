@@ -404,7 +404,7 @@ private struct SportsDashboardShelf: View {
                   }.padding(SportMetrics.cardPadding).frame(
                     width: cardWidth, height: cardHeight, alignment: .topLeading
                   ).clipped()
-                }.buttonStyle(HomeCardButtonStyle())
+                }.buttonStyle(PigCardButtonStyle())
                   #if os(tvOS)
                     .highPriorityGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in details(id) })
                     .focused($focused, equals: id)
@@ -431,7 +431,7 @@ private struct SportsDashboardShelf: View {
               } label: {
                 Text("Event no longer available").padding(SportMetrics.cardPadding)
                   .frame(width: cardWidth, height: cardHeight, alignment: .topLeading)
-              }.buttonStyle(HomeCardButtonStyle()).focused($focused, equals: id)
+              }.buttonStyle(PigCardButtonStyle()).focused($focused, equals: id)
             }
           }
         }.padding(.vertical, 24)

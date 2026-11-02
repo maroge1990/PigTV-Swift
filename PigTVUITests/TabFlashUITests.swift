@@ -2,9 +2,9 @@ import XCTest
 
 #if os(tvOS)
 // Build 32 (Mark, on device: "a white flash when moving between the top
-// tabs"). On the offline Home fixture, in dark and then light appearance,
-// moves along the tab bar Sport → TV → Guide → Recordings → Settings and
-// (Apple 89, D-39: the fixture opens on TV, second: left to Sport, right to Settings, left back to TV)
+// tabs"). On the offline library fixture, in dark and then light appearance,
+// moves along the tab bar Sport → Guide → Recordings → Settings and
+// (#216, D-44: the fixture opens on Sport, first: right to Settings, left back to Sport)
 // back while taking screenshots as fast as XCUITest allows (roughly every
 // 60–150 ms) for about a second after each press. Each screenshot is
 // reduced to a 32×18 grid and the share of cells in the wrong page colour
@@ -21,13 +21,13 @@ final class TabFlashUITests: XCTestCase {
             app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "home"
             app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = mode
             app.launch()
-            XCTAssertTrue(app.buttons["home.watch"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.tabBars.buttons["Sport"].waitForExistence(timeout: 15))
             // Let the first page settle (logos, hero wash).
             Thread.sleep(forTimeInterval: 1.5)
             var worst: (share: Double, label: String) = (0, "")
             var frames = 0
             var shot = 0
-            let presses: [XCUIRemote.Button] = [.left] + Array(repeating: .right, count: 4) + Array(repeating: .left, count: 3)
+            let presses: [XCUIRemote.Button] = Array(repeating: .right, count: 3) + Array(repeating: .left, count: 3)
             for (step, button) in presses.enumerated() {
                 XCUIRemote.shared.press(button)
                 let start = Date()

@@ -182,13 +182,6 @@ enum GuideFixtures {
         [2, 11, 0, 8, 5, 12, 3].compactMap { guide.indices.contains($0) ? guide[$0] : nil }
     }
 
-    @MainActor static func lastWatched(from guide: [GuideChannel]) -> LastWatched? {
-        guard guide.indices.contains(2) else { return nil }
-        let row = guide[2]
-        return LastWatched(sourceId: row.sourceId, rawID: row.rawID, name: row.name, number: row.number,
-                           logo: row.logo, category: row.category, stableId: row.stableId)
-    }
-
     /// A programme later today on channel 0, with a schedule for it.
     static func scheduledProgramme(in guide: [GuideChannel]) -> (channel: GuideChannel, programme: GuideProgramme) {
         let channel = guide[0]

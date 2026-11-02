@@ -393,10 +393,10 @@ final class CacheTests: XCTestCase {
         }
         let preparing = try recording("completed", native: "preparing"), ready = try recording("completed", native: "ready")
         XCTAssertEqual(preparing.id, ready.id)
-        XCTAssertNotEqual([preparing], [ready], "Home's onChange(of: recordings) fires")
+        XCTAssertNotEqual([preparing], [ready], "a view's onChange(of: recordings) fires")
         XCTAssertEqual([preparing], [try recording("completed", native: "preparing")], "and not for an identical publish")
-        XCTAssertTrue(HomeRows.recordings([preparing]).first?.isPreparingForPlayback == true)
-        XCTAssertTrue(HomeRows.recordings([ready]).first?.isPreparingForPlayback == false)
+        XCTAssertTrue(preparing.isPreparingForPlayback)
+        XCTAssertFalse(ready.isPreparingForPlayback)
     }
 }
 

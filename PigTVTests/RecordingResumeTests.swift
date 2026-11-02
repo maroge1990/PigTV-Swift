@@ -4,6 +4,13 @@ import XCTest
 // Resume position: server vs local source, the Resume / Start over question
 // and when a position is worth saving.
 final class RecordingResumeTests: XCTestCase {
+    func testResumeFraction() {
+        XCTAssertEqual(Recording.resumeFraction(position: 900, duration: 1800), 0.5)
+        XCTAssertNil(Recording.resumeFraction(position: 5, duration: 1800), "barely started")
+        XCTAssertNil(Recording.resumeFraction(position: 1790, duration: 1800), "finished")
+        XCTAssertNil(Recording.resumeFraction(position: 900, duration: nil))
+    }
+
     func testServerAnswerWinsWhenTheFeatureIsOn() {
         let server = RecordingPosition(position_sec: 900, watched: false)
         let picked = RecordingResume.source(featureOn: true, server: server, local: 3000)

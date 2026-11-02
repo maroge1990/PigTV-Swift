@@ -48,10 +48,9 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
   of offline fixture data, no server needed).
 - `GuideFastScrollUITests` (build 46): on 300 channels, holding Down then Up leaves focus on a row on screen, not pulled
   back to the starting row (the fast swipe's landing scroll was clamped to a stale planned row).
-- `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all five tabs.
+- `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all four tabs.
 - `TouchLayoutUITests` (build 46, iOS only, skips on tvOS): the iPhone Guide's Search is icon-only; the touch player has no
   TV Guide button (needs the review movie from `Tools/generate-brand-review-media.sh`).
-- `HomeUITests`: Home opens first; Down reaches Watch, then a card.
 - `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page; build 33: an upcoming
   event's secondary channel offers Record/Watch when it starts instead of tuning immediately.
 - `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, no switch may stall over `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms) on both laps (a one-lap spike of a loaded simulator is reported, not failed; 26 Oct), and after each switch Down must move focus into the tab's content.
@@ -76,7 +75,7 @@ data, not the real feed.
 |---|---|
 | `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` · `sport-event` · `sport-channels` |
 | `PIGTV_UI_TEST_APPEARANCE` | `light` or `dark` (the tvOS simulator has no `simctl ui appearance`) |
-| `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the Home and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
+| `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the library and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
 | `PIGTV_UI_TEST_MEDIA` | A local movie file the `player` fixture plays |
 | `PIGTV_UI_TEST_HOME_SCROLL`, `PIGTV_UI_TEST_SPORT_SCROLL` | A shelf or section title to scroll into view (e.g. `Sport now & next`, `Replays`) |
 | `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens on Scheduled |

@@ -184,7 +184,7 @@ struct ProgrammeDetails: View {
     private func eyebrow(now: Date, live: Bool) -> String {
         if live { return "On now" }
         if programme.end <= now { return "Ended" }
-        if programme.start.timeIntervalSince(now) <= 3600 { return "Starts \(HomeRows.countdown(to: programme.start, now: now))" }
+        if programme.start.timeIntervalSince(now) <= 3600 { return "Starts \(Countdown.text(to: programme.start, now: now))" }
         return DetailText.day(programme.start, now: now)
     }
 
@@ -513,7 +513,7 @@ private struct UpNextCard: View {
         HStack(alignment: .top, spacing: 28) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(programme.start.formatted(date: .omitted, time: .shortened)).font(DetailType.rowTitle.monospacedDigit()).fontDesign(.rounded)
-                Text(HomeRows.countdown(to: programme.start, now: now)).font(DetailType.rowDetail).foregroundStyle(Color.pigAccentText)
+                Text(Countdown.text(to: programme.start, now: now)).font(DetailType.rowDetail).foregroundStyle(Color.pigAccentText)
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text(programme.title).font(DetailType.rowTitle)

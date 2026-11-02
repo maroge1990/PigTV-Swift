@@ -287,7 +287,7 @@ nonisolated enum PigTVLink {
         return parts.url!
     }
 
-    /// `pigtv://home`: open the app on Home.
+    /// `pigtv://home`: open the app on its opening tab (Home until #216, Apple 102; now Sport, or the TV Guide).
     static let homeURL = URL(string: "\(scheme)://home")!
 
     static func isHome(_ url: URL) -> Bool {

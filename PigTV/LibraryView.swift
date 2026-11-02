@@ -8,11 +8,19 @@ struct LibraryView: View {
     /// The viewer (or a link) chose a tab: the opening decision never overrides it.
     @State private var chosen = false
 
-    /// D-39 (Apple 89): the app opens on Sport when the server has it, else on TV (tag "home", as `pigtv://home`).
-    nonisolated static func openingTab(sportEnabled: Bool) -> String { sportEnabled ? "sport" : "home" }
-    /// D-39: the tab bar's order by tag, as `body` builds it (Sport first when the server has it, then TV).
+    /// D-39 (Apple 89): the app opens on Sport when the server has it. #216 (D-44, Apple 102): Home ("TV") is retired,
+    /// so without sport it opens on the TV Guide.
+    nonisolated static func openingTab(sportEnabled: Bool) -> String { sportEnabled ? "sport" : "guide" }
+    /// D-44: the tab bar's order by tag, as `body` builds it: Sport (when the server has it), TV Guide, Recordings, Settings.
     nonisolated static func tabOrder(sportEnabled: Bool) -> [String] {
-        (sportEnabled ? ["sport"] : []) + ["home", "guide", "recordings", "settings"]
+        (sportEnabled ? ["sport"] : []) + ["guide", "recordings", "settings"]
+    }
+    /// What `pigtv://home` asks for (Top Shelf snapshots written before #216 still carry it): the Sport tab.
+    nonisolated static let homeLinkTab = "sport"
+    /// The tab a request lands on: itself when the bar has it, else the opening tab (`pigtv://home`'s Sport without
+    /// sport, or the retired "home").
+    nonisolated static func tab(for requested: String, sportEnabled: Bool) -> String {
+        tabOrder(sportEnabled: sportEnabled).contains(requested) ? requested : openingTab(sportEnabled: sportEnabled)
     }
 
     /// The tab shown: the chosen one, else the opening tab (Settings until signed in).
@@ -29,7 +37,7 @@ struct LibraryView: View {
         // Accent tint on the TabView so the selected tab reads pink — the
         // white selection was hard to distinguish from unselected tabs.
         // Until the opening tab is written (below), the selection is what it will be, so a selection the tab bar writes
-        // back at launch is the opening tab, not TV.
+        // back at launch is the opening tab, not the first in the bar.
         TabView(selection: Binding(get: { selection },
                                    set: { new in
                                        if new != selection { chosen = true }
@@ -46,11 +54,7 @@ struct LibraryView: View {
                         .tag("sport")
                     .onAppear { PigTVSignpost.tabContentAppeared("sport") }
                 }
-                // D-39 (Apple 89): Home is "TV", second (Recently watched, Favourites on now, Starting soon); the tag stays "home".
-                HomeView(app: model, model: browse, openGuide: { tab = "guide" }, openSport: { tab = "sport" })
-                    .tabItem { Label("TV", systemImage: "tv") }
-                    .tag("home")
-                .onAppear { PigTVSignpost.tabContentAppeared("home") }
+                // #216 (D-44): no Home ("TV") tab; Favourites on now is the TV Guide's Favourites filter.
                 GuideView(app: model, model: browse)
                     .tabItem { Label("TV Guide", systemImage: "calendar") }
                     .tag("guide")
@@ -81,9 +85,11 @@ struct LibraryView: View {
         }
         .onChange(of: model.requestedTab, initial: true) { _, requested in
             guard let requested else { return }
-            chosen = true
-            tab = requested
             model.requestedTab = nil
+            // Before sign-in there is only Settings; the opening tab follows sign-in anyway.
+            guard let browse = model.browse else { return }
+            chosen = true
+            tab = Self.tab(for: requested, sportEnabled: browse.sportEnabled)
         }
     }
 }

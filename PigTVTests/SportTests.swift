@@ -272,8 +272,6 @@ final class SportModelTests: XCTestCase {
         let browse = BrowseModel(client: client)
         let app = AppModel()
         app.configureClientForTesting(client, browse: browse)
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         let now = Date()
         let ms = { (seconds: Double) in Int64((now.timeIntervalSince1970 + seconds) * 1000) }
         let json = """
@@ -306,8 +304,6 @@ final class SportModelTests: XCTestCase {
         let browse = BrowseModel(client: client)
         let app = AppModel()
         app.configureClientForTesting(client, browse: browse)
-        let saved = UserDefaults.standard.data(forKey: LastWatched.key)
-        defer { UserDefaults.standard.set(saved, forKey: LastWatched.key) }
         let now = Date()
         let channel = SportEventChannel(sourceId: 1, rawID: "w1", name: "Watch One")
         let far = SportEvent(id: "far", title: "Far", league: "NFL", startTime: (now.timeIntervalSince1970 + 3600) * 1000,

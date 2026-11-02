@@ -2,12 +2,11 @@ import XCTest
 
 #if os(tvOS)
 // Build 31 (Mark: "switching between the five tabs is slow … it seems to get
-// stuck loading the one you moved from"), tightened for audit R03. On the Home
+// stuck loading the one you moved from"), tightened for audit R03. On the library
 // fixture enlarged to 1,000 channels and the production-sized Sport feed (215
-// events), moves along the tab bar Sport → TV → Guide → Recordings →
-// Settings and back (Apple 89, D-39: Sport first, Home is "TV" second; the
-// fixture opens on TV, so each lap goes left to Sport, right to Settings and
-// left back to TV), twice, reading the app's `TabSwitchProbe` (the longest
+// events), moves along the tab bar Sport → Guide → Recordings → Settings and
+// back (#216, D-44: no TV tab; the fixture opens on Sport, so each lap goes
+// right to Settings and left back to Sport), twice, reading the app's `TabSwitchProbe` (the longest
 // main-thread stall and the frame time lost in the 1.5 s after each switch).
 // The probe must report for every switch, both numbers must parse, and after
 // each switch the remote must be able to act: Down moves focus into the tab's
@@ -49,9 +48,9 @@ final class TabSwitchUITests: XCTestCase {
         app.launchEnvironment["PIGTV_UI_TEST_SPORT_EVENTS"] = "215"
         app.launchEnvironment["PIGTV_UI_TEST_TABPROBE"] = "1"
         app.launch()
-        XCTAssertTrue(app.buttons["home.watch"].waitForExistence(timeout: 15))
-        let tabs = ["Sport", "TV", "TV Guide", "Recordings", "Settings"]
-        var index = 1 // the fixture opens on TV
+        XCTAssertTrue(app.tabBars.buttons["Sport"].waitForExistence(timeout: 15))
+        let tabs = ["Sport", "TV Guide", "Recordings", "Settings"]
+        var index = 0 // the fixture opens on Sport
         var times: [(String, Double)] = []
         var lines: [String] = []
         var switches = 0
@@ -105,8 +104,7 @@ final class TabSwitchUITests: XCTestCase {
             proveRemoteActs(in: to)
         }
         for _ in 0..<2 {
-            press(.left)
-            for _ in 0..<4 { press(.right) }
+            for _ in 0..<3 { press(.right) }
             for _ in 0..<3 { press(.left) }
         }
         let report = times.map { String(format: "%@ %.0f ms", $0.0, $0.1) }.joined(separator: "\n")
@@ -114,7 +112,7 @@ final class TabSwitchUITests: XCTestCase {
         attachment.name = "tab-switch-times"
         attachment.lifetime = .keepAlways
         add(attachment)
-        XCTAssertEqual(times.count, 16, "Expected 16 measured switches.")
+        XCTAssertEqual(times.count, 12, "Expected 12 measured switches.")
         let worst = times.map(\.1).max() ?? 0
         let consistent = Self.consistentWorst(times)
         print(String(format: "TABSWITCH worst stall %.0f ms, worst on every lap %.0f ms, mean %.0f ms, budget %.0f ms",

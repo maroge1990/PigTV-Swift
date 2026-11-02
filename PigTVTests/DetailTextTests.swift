@@ -3,6 +3,15 @@ import XCTest
 
 // Build 28: wording and grouping used by the redesigned detail screens.
 final class DetailTextTests: XCTestCase {
+    func testCountdownWording() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(Countdown.text(to: now.addingTimeInterval(12 * 60), now: now), "in 12 min")
+        XCTAssertEqual(Countdown.text(to: now.addingTimeInterval(30), now: now), "in 1 min")
+        XCTAssertEqual(Countdown.text(to: now.addingTimeInterval(11 * 60 + 5), now: now), "in 12 min")
+        XCTAssertEqual(Countdown.text(to: now.addingTimeInterval(60 * 60), now: now), "in 1 h")
+        XCTAssertEqual(Countdown.text(to: now, now: now), "starting now")
+    }
+
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Australia/Melbourne")!

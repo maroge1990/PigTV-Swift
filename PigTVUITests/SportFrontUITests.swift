@@ -3,7 +3,7 @@ import XCTest
 #if os(tvOS)
 // C-R (#21, D-39, Apple 89): the Sport front page on the server's own answer (PigTVTests/Fixtures/sport-front-0381.json,
 // read from the source tree: simulator runs are on the Mac), inside the app's tab bar with no server. The app opens on
-// Sport; the tab bar reads Sport · TV · TV Guide · Recordings · Settings; the page shows the banner (the hero and the
+// Sport; the tab bar reads Sport · TV Guide · Recordings · Settings (#216, D-44: no TV tab); the page shows the banner (the hero and the
 // follows, D-43) and a rail per followed sport; selecting the other follow flips the hero. Screenshots are attached for
 // review (T3).
 final class SportFrontUITests: XCTestCase {
@@ -38,12 +38,11 @@ final class SportFrontUITests: XCTestCase {
         let app = try launch()
         let any = app.descendants(matching: .any)
         XCTAssertTrue(any["sport.front"].waitForExistence(timeout: 15), "the app did not open on the Sport front page")
-        XCTAssertEqual(app.tabBars.buttons.allElementsBoundByIndex.map(\.label), ["Sport", "TV", "TV Guide", "Recordings", "Settings"])
+        XCTAssertEqual(app.tabBars.buttons.allElementsBoundByIndex.map(\.label), ["Sport", "TV Guide", "Recordings", "Settings"])
         // The Sport tab is the one shown: its page header, and (focus starts in the tab bar) its tab item. A tvOS tab item
         // does not always report isSelected, so focus counts too.
         let sportTab = app.tabBars.buttons["Sport"]
         XCTAssertTrue(waitUntil(5) { sportTab.isSelected || sportTab.hasFocus }, "Sport is the selected tab")
-        XCTAssertFalse(app.buttons["home.watch"].exists, "not on TV")
         XCTAssertTrue(any["sport.banner.hero"].exists)
         XCTAssertTrue(any["sport.banner.item.0"].exists && any["sport.banner.item.1"].exists, "both follows")
         for league in ["F1", "NFL", "NBA", "Cricket"] {

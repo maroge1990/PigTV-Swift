@@ -1,7 +1,7 @@
 import Foundation
 
 // Resume position and watched state of a recording, in one place for the
-// Recordings page and Home. With server 0207 (`features.recordingPositions`)
+// Recordings page and its cards. With server 0207 (`features.recordingPositions`)
 // the server's per-login values are used; an older server has none (or the
 // request failed), so the player's saved position on this device is the source.
 // A1 (build 47): that key is scoped to the server and account the recording
@@ -32,11 +32,17 @@ nonisolated extension Recording {
             watched = Recording.finished(position: position, duration: duration_sec)
         }
         if watched { return RecordingProgress(fraction: nil, watched: true) }
-        return RecordingProgress(fraction: HomeRows.resumeFraction(position: position, duration: duration_sec), watched: false)
+        return RecordingProgress(fraction: Recording.resumeFraction(position: position, duration: duration_sec), watched: false)
+    }
+
+    /// 0…1 of a recording already watched (the player's resume point), or nil when nothing useful is remembered.
+    static func resumeFraction(position: Double, duration: Double?) -> Double? {
+        guard let duration, duration > 0, position > 10, position < duration - 30 else { return nil }
+        return min(1, position / duration)
     }
 
     /// A device-local position within 30 s of the end counts as watched
-    /// (the same margin `HomeRows.resumeFraction` uses to stop resuming).
+    /// (the same margin `resumeFraction` uses to stop resuming).
     static func finished(position: Double, duration: Double?) -> Bool {
         guard let duration, duration > 0 else { return false }
         return position > 10 && position >= duration - 30

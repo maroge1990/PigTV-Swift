@@ -416,12 +416,13 @@ final class SportFrontTests: XCTestCase {
         XCTAssertTrue(SportRows.playsChannelNow(event, now: SportFrontText.date(Self.cricketEnd - 1000)), "until its end")
     }
 
-    // D-39: the app opens on Sport when the server has it, Sport first and TV second; Home is "TV" with the tag "home".
+    // D-39: the app opens on Sport when the server has it. #216 (D-44, Apple 102): no Home ("TV") tab: Sport · TV Guide ·
+    // Recordings · Settings, and without sport the app opens on the TV Guide.
     func testTheAppOpensOnSport() {
         XCTAssertEqual(LibraryView.openingTab(sportEnabled: true), "sport")
-        XCTAssertEqual(LibraryView.openingTab(sportEnabled: false), "home")
-        XCTAssertEqual(LibraryView.tabOrder(sportEnabled: true), ["sport", "home", "guide", "recordings", "settings"])
-        XCTAssertEqual(LibraryView.tabOrder(sportEnabled: false), ["home", "guide", "recordings", "settings"])
+        XCTAssertEqual(LibraryView.openingTab(sportEnabled: false), "guide")
+        XCTAssertEqual(LibraryView.tabOrder(sportEnabled: true), ["sport", "guide", "recordings", "settings"])
+        XCTAssertEqual(LibraryView.tabOrder(sportEnabled: false), ["guide", "recordings", "settings"])
     }
 
     func testItLoadsTheFrontRoute() async throws {

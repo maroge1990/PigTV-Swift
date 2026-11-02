@@ -97,7 +97,7 @@ struct SportEventCard: View {
             .frame(width: SportMetrics.cardWidth, alignment: .leading)
             .frame(maxHeight: .infinity, alignment: .top)
         }
-        .buttonStyle(HomeCardButtonStyle())
+        .buttonStyle(PigCardButtonStyle())
         .accessibilityLabel([event.league, event.title, replay ? "replay" : (live ? "live" : nil), timing,
                              event.best.map { "on \($0.name)" }, SportRows.moreChannels(event)]
             .compactMap { $0 }.joined(separator: ", "))
@@ -121,7 +121,7 @@ struct SportSeeAllCard: View {
             .frame(width: SportMetrics.cardWidth * 0.62)
             .frame(maxHeight: .infinity)
         }
-        .buttonStyle(HomeCardButtonStyle())
+        .buttonStyle(PigCardButtonStyle())
         .accessibilityLabel("See all sport")
         .accessibilityIdentifier("home.sport.seeAll")
     }
