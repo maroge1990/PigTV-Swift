@@ -71,5 +71,30 @@ final class GuidePagesUITests: XCTestCase {
                       "the strip did not follow focus down: \(strip(app).label) vs \(below)")
         attach(app, "Guide strip")
     }
+
+    /// 107: a long press opens PigTV's menu card beside the programme (not the system menu), RECORD first with focus on
+    /// Record this programme; Back closes it and focus is on the programme again.
+    @MainActor
+    func testLongPressOpensTheMenuCardBesideTheProgramme() throws {
+        let app = launch()
+        enterFirstRow(app)
+        XCUIRemote.shared.press(.right)
+        let programme = focusedLabel(app)
+        let cell = focused(app).frame
+        XCTAssertTrue(programme.hasPrefix("\(tile), "), "no programme focused: \(programme)")
+        XCUIRemote.shared.press(.select, forDuration: 1.5)
+        let record = app.buttons["menu.recordThis"]
+        XCTAssertTrue(record.waitForExistence(timeout: 3), "no menu card")
+        XCTAssertTrue(waitUntil { record.hasFocus }, "focus is not on Record this programme: \(focusedLabel(app))")
+        let order = ["menu.recordThis", "menu.moreOptions", "menu.details", "menu.schedule", "menu.favourite"]
+        let tops = order.map { app.buttons[$0].frame.minY }
+        XCTAssertEqual(tops, tops.sorted(), "the menu is out of order: \(order) at \(tops)")
+        XCTAssertFalse(record.frame.intersects(cell), "the card covers the programme")
+        XCTAssertTrue(app.staticTexts["RECORD"].exists)
+        attach(app, "Guide menu card")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil { !record.exists }, "Back did not close the card")
+        XCTAssertTrue(waitUntil { self.focusedLabel(app) == programme }, "focus did not return to the programme: \(focusedLabel(app))")
+    }
 }
 #endif

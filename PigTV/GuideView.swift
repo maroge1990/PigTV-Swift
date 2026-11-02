@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// D-44 (Apple 107): what the long-press menu is open on, and where (window coordinates).
+struct GuideMenuTarget {
+    let channel: GuideChannel
+    let programme: GuideProgramme?
+    let subject: ProgrammeMenuSubject
+    let anchor: CGRect
+}
+
 private struct GuideSelection: Identifiable {
     let id = UUID()
     let channel: GuideChannel
@@ -99,6 +107,10 @@ struct GuideView: View {
     // tvOS: the header's Now button, where Up from the grid's top row
     // lands (the grid hands focus over through `leaveUp`).
     @FocusState private var headerNowFocused: Bool
+    /// D-44 (Apple 107): the long-press menu card, open beside a programme.
+    @State private var menu: GuideMenuTarget?
+    /// iPad: where the strip's More button is (the card opens beside it).
+    @State private var stripMoreFrame: CGRect = .zero
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     init(app: AppModel, model: BrowseModel) {
@@ -147,14 +159,18 @@ struct GuideView: View {
                 let compact = geometry.size.width < 700
                 #endif
                 VStack(alignment: .leading, spacing: slim ? 4 : 10) {
-                    if slim {
-                        slimBar
-                    } else {
-                        header(compact: compact)
-                        // D-44 (Apple 106): the slim focus strip, then the chips and the tools, above the grid.
-                        if !compact { focusStrip.padding(.horizontal, 24) }
-                        filters(compact: compact)
+                    Group {
+                        if slim {
+                            slimBar
+                        } else {
+                            header(compact: compact)
+                            // D-44 (Apple 106): the slim focus strip, then the chips and the tools, above the grid.
+                            if !compact { focusStrip.padding(.horizontal, 24) }
+                            filters(compact: compact)
+                        }
                     }
+                    // The menu card holds focus while it is open.
+                    .disabled(menu != nil)
                     if let error = model.guideError {
                         RetryBanner(message: error) { reload() }
                     }
@@ -168,6 +184,12 @@ struct GuideView: View {
                 }
                 // No top inset under the header: it sits at the same corner on every tab (PigPageHeader).
                 .padding(.top, slim ? 4 : 0).padding(.bottom, slim ? 4 : 12)
+            }
+            .overlay {
+                if let menu {
+                    ProgrammeMenuOverlay(subject: menu.subject, anchor: menu.anchor, now: Date(),
+                                         actions: ProgrammeMenuActions { await runMenu($0, menu) }, close: closeMenu)
+                }
             }
             #if os(iOS)
             // Landscape iPhone: the grid gets the height (every control is in
@@ -270,7 +292,7 @@ struct GuideView: View {
                     schedule = nil
                 }
             }
-            .closesForOutsidePlay { selection = nil; channelDetails = nil; schedule = nil } // #179
+            .closesForOutsidePlay { selection = nil; channelDetails = nil; schedule = nil; menu = nil } // #179
         }
     }
 
@@ -295,7 +317,13 @@ struct GuideView: View {
                 description: Text(filter == "favourites" ? "Open a channel's schedule, then add it to favourites." : "Try another category or search."))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { schedule = $0 })
+            OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { schedule = $0 },
+                      menu: { channel in menuSubject(channel, OnNowRow.make(programmes: channel.programmes, now: Date()).current) },
+                      choose: { channel, item in
+                          let target = GuideMenuTarget(channel: channel, programme: OnNowRow.make(programmes: channel.programmes, now: Date()).current,
+                                                       subject: menuSubject(channel, nil), anchor: .zero)
+                          Task { _ = await runMenu(item, target) }
+                      })
         }
         #endif
     }
@@ -318,22 +346,21 @@ struct GuideView: View {
                     loadedDuration: model.guideLoadedUntil.timeIntervalSince(model.window), clock: clock,
                     scheduled: model.scheduledKeys, recording: model.recordingChannels,
                     request: gridRequest, resetToken: scrollToTop, focusRestoreToken: gridFocusRestore,
+                    menuOpen: menu != nil,
                     actions: GuideGridActions(
                         select: { channel, programme in
                             if programme.isLive(at: Date()) { play(channel) }
                             else { selection = GuideSelection(channel: channel, programme: programme) }
                         },
                         play: { play($0) },
-                        details: { selection = GuideSelection(channel: $0, programme: $1) },
-                        channelOptions: { channelDetails = asChannel($0) },
-                        schedule: { schedule = $0 },
                         focusChanged: { channel, start in
                             let value = GuideFocus(channel: channel, start: start)
                             gridFocus = value
                             lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
                         },
                         viewportChanged: { setViewport($0) },
-                        leaveUp: { headerNowFocused = true }))
+                        leaveUp: { headerNowFocused = true },
+                        menu: { openMenu($0, $1, anchor: $2) }))
                     .focused($gridHasFocus)
             }
             if model.guideBusy && model.guide.isEmpty {
@@ -384,6 +411,14 @@ struct GuideView: View {
                     selection = GuideSelection(channel: channel, programme: programme)
                 }
                 .accessibilityIdentifier("guide.strip.details")
+                #if os(iOS)
+                // D-44 (Apple 107): touch has no long press on the strip; its … opens the same menu.
+                Button { openMenu(channel, programme, anchor: stripMoreFrame) } label: {
+                    Image(systemName: "ellipsis").frame(minWidth: 28, minHeight: 28)
+                }
+                .accessibilityLabel("More for this programme")
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { stripMoreFrame = $0 }
+                #endif
             }
         }
     }
@@ -676,6 +711,78 @@ struct GuideView: View {
         if !showed { gridFocusRestore += 1 }
         claimGridFocus()
     }
+    // MARK: The long-press menu (D-44, Apple 107)
+
+    private func menuSubject(_ channel: GuideChannel, _ programme: GuideProgramme?) -> ProgrammeMenuSubject {
+        ProgrammeMenuSubject(channelName: channel.name, programme: programme,
+                             recordingStatus: programme.flatMap { model.activeSchedule(channel: channel, programme: $0)?.statusWord },
+                             rulesAvailable: model.rulesAvailable,
+                             canWatchFromStart: programme.flatMap { model.recordingInProgress(channel: channel, programme: $0) } != nil,
+                             isFavourite: model.isFavourite(asChannel(channel)))
+    }
+
+    private func openMenu(_ channel: GuideChannel, _ programme: GuideProgramme?, anchor: CGRect) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            menu = GuideMenuTarget(channel: channel, programme: programme, subject: menuSubject(channel, programme), anchor: anchor)
+        }
+    }
+
+    /// Closes the card; focus goes back to the programme it was opened on (the grid takes focus again once its cells
+    /// can: `menuOpen` false, then the restore token).
+    private func closeMenu() {
+        guard menu != nil else { return }
+        withAnimation(.easeOut(duration: 0.15)) { menu = nil }
+        if usesGridView {
+            gridFocusRestore += 1
+            #if os(tvOS)
+            gridHasFocus = true
+            #endif
+        }
+    }
+
+    /// What a menu item does on the Guide; nil when it worked (the card closes), else the error to show in the card.
+    private func runMenu(_ item: ProgrammeMenuItem, _ target: GuideMenuTarget) async -> String? {
+        let channel = target.channel
+        switch item {
+        case .recordThis:
+            guard let programme = target.programme else { return nil }
+            guard await model.schedule(channel: channel, programme: programme, before: nil, after: nil) else {
+                return model.actionError ?? "The recording could not be scheduled."
+            }
+            closeMenu()
+        case .cancelRecording:
+            closeMenu()
+            if let programme = target.programme, let schedule = model.activeSchedule(channel: channel, programme: programme) {
+                app.presenter.offerUndo("Recording of \(programme.title) cancelled") { Task { await model.cancel(schedule) } }
+            }
+        case .recordEvery:
+            guard let programme = target.programme else { return nil }
+            guard await model.addRule(RuleBody(kind: "series", match: programme.title, sourceId: channel.sourceId,
+                                               channelId: channel.rawID, channelName: channel.name, newOnly: true)) else {
+                return model.actionError ?? "The rule could not be added."
+            }
+            closeMenu()
+        case .moreOptions:
+            closeMenu()
+            if let programme = target.programme { app.presenter.present(.record(channel, programme)) }
+        case .watchFromStart:
+            closeMenu()
+            if let programme = target.programme, let recording = model.recordingInProgress(channel: channel, programme: programme) {
+                app.presenter.present(.recordingPlayer(recording))
+            }
+        case .details:
+            closeMenu()
+            if let programme = target.programme { selection = GuideSelection(channel: channel, programme: programme) }
+        case .schedule:
+            closeMenu()
+            schedule = channel
+        case .favourite(_, let isFavourite):
+            guard await model.setFavourite(asChannel(channel), !isFavourite) else { return "Favourites could not be changed." }
+            closeMenu()
+        }
+        return nil
+    }
+
     private func finishDetails() {
         if let channel = pendingSchedule {
             pendingSchedule = nil

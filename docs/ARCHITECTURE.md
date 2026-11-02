@@ -81,6 +81,18 @@ controls are not used for live play.
   then the data's categories) and the **tools** Now · Earlier · Later · Search · Jump to… at its end, where Up from the
   grid's top row lands (Now). The iPhone keeps the On now list upright and the slim bar sideways. Tests:
   `GuideChromeTests`, `GuidePagesUITests`; screenshots `GuideScreensUITests` (visual tier).
+  **One long-press menu (Apple 107, `ProgrammeMenu.swift`):** the system context menu is gone from the grid. A
+  `UILongPressGestureRecognizer` (Select held on the TV, touch and hold on the iPad; recognising it cancels the press,
+  so the cell is not also selected) reports the programme and its visible frame (`GuideGridActions.menu`); GuideView
+  draws `ProgrammeMenuOverlay`, a card beside it (`ProgrammeMenuPlacement`), the page dimmed. While it is open the
+  grid's cells refuse focus (`menuOpen`) and the chrome is disabled, so focus stays in the card; Back closes it and the
+  grid's restore token puts focus back on the programme. Items (`ProgrammeMenu.items`, pure): RECORD — Record this
+  programme (the server's own padding: the buffers are left out of the schedule), or Cancel this recording (at once,
+  with the 10 s Undo of `AppPresenter`); Record every new episode (a series rule, `newOnly`), or Record every game for
+  a Sport card's caller; More options… (today's `RecordSheet` through `AppPresenter.record`) — then Watch from start
+  (C-L, `AppPresenter.recordingPlayer`, full screen), Programme details, Channel schedule, Add/Remove favourites. The
+  caller supplies what each does (`ProgrammeMenuActions`). The iPhone's On now rows use the system context menu with a
+  preview, built from the same items; the iPad strip's … opens the card.
 
 ## Guide grid and focus model
 

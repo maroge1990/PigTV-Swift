@@ -621,7 +621,8 @@ final class BrowseModel: ObservableObject {
         } catch { return false }
     }
 
-    func schedule(channel: GuideChannel, programme: GuideProgramme, before: Int, after: Int) async -> Bool {
+    /// `before`/`after` nil: the server's own start-early and finish-late minutes (D-44's "Record this programme").
+    func schedule(channel: GuideChannel, programme: GuideProgramme, before: Int?, after: Int?) async -> Bool {
         guard !mutationBusy else { return false }
         guard programme.end > Date(), programme.end > programme.start else {
             actionError = "This programme has ended. Refresh the guide to choose another programme."

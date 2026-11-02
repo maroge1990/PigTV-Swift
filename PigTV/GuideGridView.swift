@@ -32,9 +32,6 @@ import UIKit
 struct GuideGridActions {
     var select: (GuideChannel, GuideProgramme) -> Void
     var play: (GuideChannel) -> Void
-    var details: (GuideChannel, GuideProgramme) -> Void
-    var channelOptions: (GuideChannel) -> Void
-    var schedule: (GuideChannel) -> Void
     /// Focus moved to a channel (start nil = tile, -1 = placeholder).
     var focusChanged: (_ channelID: String, _ start: Double?) -> Void
     /// The grid's (half-hour) viewport changed.
@@ -42,6 +39,9 @@ struct GuideGridActions {
     /// Up from the top row: GuideView focuses its header's Now button
     /// (otherwise the focus engine picks whatever lies above, e.g. Details).
     var leaveUp: () -> Void = {}
+    /// D-44 (Apple 107): a long press (Select held on the TV, touch and hold on the iPad) on a programme (nil: the
+    /// channel tile), with its visible frame in window coordinates: GuideView opens the menu card beside it.
+    var menu: (GuideChannel, GuideProgramme?, CGRect) -> Void = { _, _, _ in }
 }
 
 struct GuideGridView: UIViewControllerRepresentable {
@@ -64,6 +64,8 @@ struct GuideGridView: UIViewControllerRepresentable {
     /// Bumped when the player or a details cover closes: focus returns to
     /// the last focused programme or tile.
     var focusRestoreToken = 0
+    /// D-44 (Apple 107): the menu card is open: no cell takes focus, so focus stays in the card.
+    var menuOpen = false
     let actions: GuideGridActions
 
     func makeUIViewController(context: Context) -> GuideGridViewController {
@@ -89,6 +91,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     private var requestID: UUID?
     private var resetToken = Int.min
     private var restoreToken = Int.min
+    private var menuOpen = false
 
     // Navigation state.
     /// The committed (half-hour) viewport: where the grid is or is animating to.
@@ -149,6 +152,28 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         self.collectionView = collectionView
         animator.collectionView = collectionView
         animator.onFrame = { [weak self] in self?.animationFrame() }
+        // D-44 (Apple 107): the long-press menu is PigTV's card, not the system context menu: Select held on the TV,
+        // touch and hold on the iPad. Recognising it cancels the press, so the cell is not also selected.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        #if os(tvOS)
+        press.allowedPressTypes = [NSNumber(value: UIPress.PressType.select.rawValue)]
+        #endif
+        press.minimumPressDuration = 0.5
+        collectionView.addGestureRecognizer(press)
+    }
+
+    @objc private func longPressed(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began, let actions else { return }
+        #if os(tvOS)
+        guard let indexPath = focused else { return }
+        #else
+        guard let indexPath = collectionView.indexPathForItem(at: recognizer.location(in: collectionView)) else { return }
+        #endif
+        guard store.rows.indices.contains(indexPath.section),
+              let attributes = collectionView.layoutAttributesForItem(at: indexPath) else { return }
+        let visible = attributes.frame.intersection(collectionView.bounds)
+        let frame = collectionView.convert(visible.isNull ? attributes.frame : visible, to: nil)
+        actions.menu(store.rows[indexPath.section], indexPath.item == 0 ? nil : programme(indexPath), frame)
     }
 
     override func viewDidLayoutSubviews() {
@@ -252,6 +277,11 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             let row = focusIdentity.flatMap { identity in store.rows.firstIndex { $0.id == identity.channel } }
                 ?? firstVisibleRow()
             if request.focus, !touchScrolling, let row { claimFocus(target(in: row, at: anchor)) }
+        }
+        if view.menuOpen != menuOpen {
+            menuOpen = view.menuOpen
+            // Cells stop (or start again) taking focus; the card takes it meanwhile.
+            collectionView.setNeedsFocusUpdate()
         }
         if view.focusRestoreToken != restoreToken {
             let first = restoreToken == Int.min
@@ -567,6 +597,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     }
 
     func collectionView(_ collectionView: UICollectionView, canFocusItemAt indexPath: IndexPath) -> Bool {
+        if menuOpen { return false }
         if indexPath == pendingFocus { return true }
         if indexPath.item > 0, !store.isPlaceholder(indexPath) {
             // Finished programmes stay visible (dimmed) but never take focus.
@@ -695,22 +726,6 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         actions?.focusChanged(channel.id, start)
     }
     #endif
-
-    func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemsAt indexPaths: [IndexPath],
-                        point: CGPoint) -> UIContextMenuConfiguration? {
-        guard let indexPath = indexPaths.first, store.rows.indices.contains(indexPath.section), let actions else { return nil }
-        let channel = store.rows[indexPath.section]
-        let options = UIAction(title: "Channel and favourites") { _ in actions.channelOptions(channel) }
-        var items: [UIMenuElement] = []
-        if indexPath.item == 0 {
-            items = [UIAction(title: "All programmes on this channel") { _ in actions.schedule(channel) }, options]
-        } else if let programme = programme(indexPath) {
-            items = [UIAction(title: "Programme details") { _ in actions.details(channel, programme) }, options]
-        } else {
-            items = [options]
-        }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in UIMenu(children: items) }
-    }
 
     // MARK: Data source
 

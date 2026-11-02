@@ -50,6 +50,22 @@ struct PigSurfaceButtonStyle: ButtonStyle {
     }
 }
 
+/// D-44 (Apple 107): a row of the long-press menu: nothing drawn until focused (tvOS) or pressed (touch), then the shared
+/// focus look, a pink ring over a 22 % pink fill.
+struct PigMenuRowStyle: ButtonStyle {
+    @Environment(\.isFocused) private var focused
+    func makeBody(configuration: Configuration) -> some View {
+        let on = focused || configuration.isPressed
+        let shape = RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous)
+        configuration.label
+            .foregroundStyle(Color("PigText"))
+            .background(on ? Color.pigAccent.opacity(0.22) : .clear, in: shape)
+            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
+            .scaleEffect(focused ? 1.03 : 1)
+            .animation(.easeOut(duration: 0.12), value: focused)
+    }
+}
+
 // Primary action: appearance-specific label contrast, separate focus ring and existing lift.
 struct PigPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused

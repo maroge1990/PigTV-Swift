@@ -238,12 +238,15 @@ final class GuideGridNavigationUITests: XCTestCase {
         let programme = focusedLabel(app)
         XCTAssertTrue(programme.hasPrefix("\(tile), "), "no programme focused: \(programme)")
         XCUIRemote.shared.press(.select, forDuration: 1.5)
-        XCTAssertTrue(app.otherElements["Programme details"].waitForExistence(timeout: 3), "no context menu")
-        XCTAssertTrue(app.otherElements["Channel and favourites"].exists)
+        // D-44 (Apple 107): PigTV's menu card; Programme details is after the RECORD section.
+        let details = app.buttons["menu.details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 3), "no menu card")
+        XCTAssertFalse(app.otherElements["Channel and favourites"].exists, "the old system menu is back")
         attach(app, "New guide long-press menu")
-        // The menu opens on its first item, Programme details.
+        for _ in 0..<6 where !details.hasFocus { XCUIRemote.shared.press(.down) }
+        XCTAssertTrue(details.hasFocus, "could not reach Programme details: \(focusedLabel(app))")
         XCUIRemote.shared.press(.select)
-        XCTAssertTrue(waitUntil { !app.otherElements["Channel and favourites"].exists }, "the menu did not close")
+        XCTAssertTrue(waitUntil { !details.exists }, "the menu did not close")
         // The menu closes a moment before the details cover takes focus, and the cover takes focus
         // while it is still sliding in (a Menu press then is ignored): wait until it has settled on
         // its first button.

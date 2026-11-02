@@ -34,16 +34,67 @@ struct OnNowList: View {
     let clock: Date
     let play: (GuideChannel) -> Void
     let info: (GuideChannel) -> Void
+    /// D-44 (Apple 107): the long-press menu, as the system context menu with a preview (R5-Menu-iPhone).
+    var menu: (GuideChannel) -> ProgrammeMenuSubject = { ProgrammeMenuSubject(channelName: $0.name, programme: nil) }
+    var choose: (GuideChannel, ProgrammeMenuItem) -> Void = { _, _ in }
 
     var body: some View {
         List(rows) { channel in
             OnNowRowView(channel: channel, model: model, clock: clock, play: { play(channel) }, info: { info(channel) })
+                .contextMenu {
+                    let subject = menu(channel)
+                    let items = ProgrammeMenu.items(subject, now: Date())
+                    let record = items.filter(\.isRecordSection)
+                    if !record.isEmpty {
+                        Section("Record") {
+                            ForEach(record) { item in menuButton(channel, item) }
+                        }
+                    }
+                    Section {
+                        ForEach(items.filter { !$0.isRecordSection }) { item in menuButton(channel, item) }
+                    }
+                } preview: {
+                    OnNowMenuPreview(subject: menu(channel), clock: clock)
+                }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 12))
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("guide.onNow")
+    }
+
+    private func menuButton(_ channel: GuideChannel, _ item: ProgrammeMenuItem) -> some View {
+        Button { choose(channel, item) } label: {
+            Label {
+                Text(item.title)
+                if let detail = item.detail { Text(detail) }
+            } icon: { Image(systemName: item.systemImage) }
+        }
+    }
+}
+
+/// The lifted card above the iPhone's menu: when, which channel, the title and its times.
+private struct OnNowMenuPreview: View {
+    let subject: ProgrammeMenuSubject
+    let clock: Date
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(eyebrow).font(.caption.weight(.bold)).tracking(1).foregroundStyle(Color.pigAccentText)
+            Text(subject.title).font(.title3.weight(.heavy)).lineLimit(3)
+            if let programme = subject.programme {
+                Text(programme.timeRange).font(.subheadline).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
+            }
+        }
+        .padding(20)
+        .frame(width: 320, alignment: .leading)
+        .background(Color.pigSurface)
+    }
+
+    private var eyebrow: String {
+        guard let programme = subject.programme else { return subject.channelName.uppercased() }
+        let when = programme.isLive(at: clock) ? "On now" : "Starts \(Countdown.text(to: programme.start, now: clock))"
+        return "\(when) · \(subject.channelName)".uppercased()
     }
 }
 

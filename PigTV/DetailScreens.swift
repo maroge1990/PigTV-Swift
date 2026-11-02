@@ -39,21 +39,11 @@ struct ProgrammeDetails: View {
     private enum Control: Hashable { case watch, record }
     @FocusState private var focus: Control?
 
-    private var schedule: ScheduledRecording? {
-        let key = ScheduledRecording.key(channel: channel.name, start: programme.startTime)
-        return model.schedules.first { $0.isActive && $0.guideKey == key }
-    }
+    private var schedule: ScheduledRecording? { model.activeSchedule(channel: channel, programme: programme) }
 
     /// C-L: the recording this programme's schedule is making, when it can be
     /// watched from its start.
-    private var recordingInProgress: Recording? {
-        guard model.client.info?.features.recordingWatchLive == true,
-              let schedule, schedule.status == "recording" else { return nil }
-        return model.recordings.first { item in
-            item.canWatchFromStart && (schedule.recording_id.map { $0 == item.id }
-                ?? (item.channel_name == channel.name && item.title == programme.title))
-        }
-    }
+    private var recordingInProgress: Recording? { model.recordingInProgress(channel: channel, programme: programme) }
     @State private var watchingFromStart: Recording?
 
     private var recorded: Recording? {

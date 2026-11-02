@@ -225,8 +225,9 @@ nonisolated struct ScheduleBody: Encodable, Sendable {
     let description: String?
     let programStart: Double
     let programEnd: Double
-    let preBufferMin: Int
-    let postBufferMin: Int
+    /// nil: left out, so the server uses its defaults.
+    let preBufferMin: Int?
+    let postBufferMin: Int?
 }
 
 /// C-M: a recording rule ("record every game of", "record this series").
@@ -275,6 +276,8 @@ nonisolated struct RuleBody: Encodable, Sendable {
     var channelName: String? = nil
     var preBufferMin: Int? = nil
     var postBufferMin: Int? = nil
+    /// C-M `series`: skip airings the guide flags as previously shown ("Record every new episode").
+    var newOnly: Bool? = nil
 }
 
 nonisolated struct RuleEnabledBody: Encodable, Sendable { let enabled: Bool }

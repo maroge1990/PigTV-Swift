@@ -286,6 +286,14 @@ enum ContractChecks {
         let scheduleJSON = try JSONSerialization.jsonObject(with: FixtureProtocol.capturedBody) as! [String: Any]
         try expect(scheduleJSON["channelItemId"] as? String == "a+b&c", "Scheduling must preserve raw channel identity")
         try expect(scheduleJSON["programStart"] as? Int == 1000 && scheduleJSON["postBufferMin"] as? Int == 5, "Schedule timestamps and padding must use server units")
+        // D-44 (Apple 107): "Record this programme" leaves the padding out, so the server's own defaults apply.
+        let defaultPadding = try JSONSerialization.jsonObject(with: JSONEncoder().encode(ScheduleBody(sourceId: 2,
+            channelItemId: "a", channelName: "Channel", channelLogo: nil, title: "Show", description: nil, programStart: 1000,
+            programEnd: 3000, preBufferMin: nil, postBufferMin: nil))) as! [String: Any]
+        try expect(defaultPadding["preBufferMin"] == nil && defaultPadding["postBufferMin"] == nil, "Unset padding must be left out of a schedule")
+        let newEpisodes = try JSONSerialization.jsonObject(with: JSONEncoder().encode(RuleBody(kind: "series", match: "Four Corners",
+            sourceId: 1, channelId: "abc", channelName: "ABC TV", newOnly: true))) as! [String: Any]
+        try expect(newEpisodes["newOnly"] as? Bool == true, "Record every new episode must send newOnly")
         FixtureProtocol.responseStatus = 200
         FixtureProtocol.responseData = Data(#"{"success":true}"#.utf8)
         let _: ActionResult = try await fixtureAPI.request("favorites", method: "DELETE", body: FavouriteBody(sourceId: 2, itemId: "a+b&c"))

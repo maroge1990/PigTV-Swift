@@ -6,13 +6,22 @@ import Observation
 enum AppPresentation: Identifiable {
     case recording(Recording)
     case channelSchedule(GuideChannel)
+    /// D-44 (Apple 107): the long-press menu's More options… (today's RecordSheet, until the record page replaces it).
+    case record(GuideChannel, GuideProgramme)
+    /// D-44 (Apple 107): Watch from start: the recording being made, from its beginning (C-L), full screen.
+    case recordingPlayer(Recording)
 
     var id: String {
         switch self {
         case .recording(let recording): "recording:\(recording.id)"
         case .channelSchedule(let channel): "schedule:\(channel.id)"
+        case .record(let channel, let programme): "record:\(channel.id):\(programme.startTime)"
+        case .recordingPlayer(let recording): "player:\(recording.id)"
         }
     }
+
+    /// Shown full screen on every platform (a player), not as a page.
+    var isPlayer: Bool { if case .recordingPlayer = self { true } else { false } }
 }
 
 /// #49 groundwork (Apple 105): one app-level presentation layer, owned by the session root (`AppModel.presenter`).
@@ -121,7 +130,7 @@ final class AppPresenter {
 extension View {
     /// The presentation layer's host, at the tab container (LibraryView): the presenter's page as a detail cover.
     func appPresentations(_ presenter: AppPresenter, app: AppModel, browse: BrowseModel?) -> some View {
-        detailCover(item: Binding(get: { presenter.presented }, set: { presenter.hostSet($0) }),
+        detailCover(item: Binding(get: { presenter.presented.flatMap { $0.isPlayer ? nil : $0 } }, set: { presenter.hostSet($0) }),
                     onDismiss: { presenter.didDismiss() }) { item in
             if let browse {
                 switch item {
@@ -130,6 +139,23 @@ extension View {
                 case .channelSchedule(let channel):
                     ChannelScheduleView(model: browse, channel: channel, logo: browse.logo(for: channel)) {
                         presenter.dismiss { app.beginPlayback(browse.asChannel(channel)) }
+                    }
+                case .record(let channel, let programme):
+                    RecordSheet(model: browse, channel: channel, programme: programme) { _ in presenter.dismiss() }
+                case .recordingPlayer:
+                    EmptyView()
+                }
+            }
+        }
+        // The player's own layer: full screen on iOS too (a page is a sheet there). Hosted on a background so it never
+        // shares a view with the page cover.
+        .background {
+            Color.clear.fullScreenCover(item: Binding(get: { presenter.presented.flatMap { $0.isPlayer ? $0 : nil } },
+                                                      set: { presenter.hostSet($0) }),
+                                        onDismiss: { presenter.didDismiss() }) { item in
+                if let browse, case .recordingPlayer(let recording) = item {
+                    RecordingPlayerScreen(recording: recording, client: browse.client, fromStart: true) {
+                        Task { await browse.loadRecordings() }
                     }
                 }
             }
