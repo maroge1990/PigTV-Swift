@@ -367,7 +367,7 @@ struct F1PageView: View {
     private func pillView(_ pill: F1PageText.Pill) -> some View {
         switch pill {
         case .live:
-            Text("LIVE").font(F1Metrics.pill).foregroundStyle(.white)
+            Text("LIVE").font(F1Metrics.pill).foregroundStyle(Color.pigOnStatus)
                 .padding(.horizontal, 16).padding(.vertical, 8).background(Color.pigDanger, in: Capsule())
         case .next:
             Text("Next").font(F1Metrics.pill).foregroundStyle(Color.pigAccentText)

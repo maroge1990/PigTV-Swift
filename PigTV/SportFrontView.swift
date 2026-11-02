@@ -351,7 +351,7 @@ private struct SportFrontPage: View {
                 let kicker = drawn.kicker
                 Text(kicker).font(FrontMetrics.kicker).padding(.horizontal, 10).padding(.vertical, 3)
                     .background(kicker == "LIVE" ? Color.pigDanger : Color.pigAccent.opacity(0.25), in: Capsule())
-                    .foregroundStyle(kicker == "LIVE" ? Color.white : Color.pigAccentText)
+                    .foregroundStyle(kicker == "LIVE" ? Color.pigOnStatus : Color.pigAccentText)
                 Text(game.league).font(FrontMetrics.kicker).foregroundStyle(.secondary)
             }
             Text(game.title).font(FrontMetrics.heroTitle).lineLimit(2)
@@ -470,7 +470,7 @@ private struct SportFrontPage: View {
     private func pill(_ text: String, live: Bool) -> some View {
         Text(text).font(FrontMetrics.detail.weight(.heavy)).padding(.horizontal, 10).padding(.vertical, 2)
             .background(live ? Color.pigDanger : Color.pigAccent.opacity(0.2), in: Capsule())
-            .foregroundStyle(live ? Color.white : Color.pigAccentText)
+            .foregroundStyle(live ? Color.pigOnStatus : Color.pigAccentText)
     }
 
     // MARK: Rails
@@ -511,7 +511,7 @@ private struct SportFrontPage: View {
                 HStack(spacing: 10) {
                     Text(drawn.status).font(FrontMetrics.detail.weight(.heavy)).padding(.horizontal, 8).padding(.vertical, 2)
                         .background(drawn.status == "LIVE" ? Color.pigDanger : Color.pigAccent.opacity(0.2), in: Capsule())
-                        .foregroundStyle(drawn.status == "LIVE" ? Color.white : Color.pigAccentText)
+                        .foregroundStyle(drawn.status == "LIVE" ? Color.pigOnStatus : Color.pigAccentText)
                     Spacer(minLength: 6)
                     if game.followed == true {
                         Image(systemName: "star.fill").foregroundStyle(Color.pigAccentText).accessibilityLabel("Followed")
@@ -667,12 +667,12 @@ struct SportBadge: View {
                 Image(uiImage: decoded.image).resizable().scaledToFit()
                     .frame(width: size, height: size)
             } else if let disc {
-                Text(disc.text).font(.system(size: size * 0.34, weight: .heavy)).foregroundStyle(.white)
+                Text(disc.text).font(.system(size: size * 0.34, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
                     .minimumScaleFactor(0.6)
                     .frame(width: size, height: size)
                     .background(Color(teamHex: disc.color) ?? .gray, in: Circle())
             } else {
-                Text(SportFrontText.monogram(name)).font(.system(size: size * 0.38, weight: .heavy)).foregroundStyle(.white)
+                Text(SportFrontText.monogram(name)).font(.system(size: size * 0.38, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
                     .minimumScaleFactor(0.6)
                     .frame(width: size, height: size)
                     .background(Color(teamHex: SportFrontText.leagueColor(league)) ?? .gray, in: Circle())

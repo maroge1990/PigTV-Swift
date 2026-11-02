@@ -690,17 +690,17 @@ private struct CategoryContentFade: ViewModifier {
                 if width > 0 {
                     let edge = min(0.5, 36 / width)
                     LinearGradient(stops: [
-                        .init(color: leading ? .clear : .black, location: 0),
-                        .init(color: .black, location: edge),
-                        .init(color: .black, location: 1 - edge),
-                        .init(color: trailing ? .clear : .black, location: 1)
+                        .init(color: leading ? .clear : Color.pigMediaCanvas, location: 0),
+                        .init(color: Color.pigMediaCanvas, location: edge),
+                        .init(color: Color.pigMediaCanvas, location: 1 - edge),
+                        .init(color: trailing ? .clear : Color.pigMediaCanvas, location: 1)
                     ], startPoint: .leading, endPoint: .trailing)
                     .frame(width: width)
                     // The focus ring extends 4 pt outside the chip. Fade only
                     // horizontally; keep its top/bottom inside the mask.
                     .padding(.vertical, -6)
                     .offset(x: -origin)
-                } else { Color.black.padding(.vertical, -6) }
+                } else { Color.pigMediaCanvas.padding(.vertical, -6) }
             }
     }
 }

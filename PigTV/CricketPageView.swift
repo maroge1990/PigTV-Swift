@@ -347,7 +347,7 @@ struct CricketPageView: View {
         let live = lead.status == .live
         return Text(text).font(CricketMetrics.kicker).tracking(1)
             .padding(.horizontal, 14).padding(.vertical, 5)
-            .foregroundStyle(live ? Color.white : lead.status == .done ? Color.secondary : Color.pigAccentText)
+            .foregroundStyle(live ? Color.pigOnStatus : lead.status == .done ? Color.secondary : Color.pigAccentText)
             .background {
                 if live { Capsule().fill(Color.pigDanger) }
                 else if lead.status == .done { Capsule().fill(Color.pigRaised) }
@@ -407,9 +407,9 @@ struct CricketPageView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Day \(day.number)").font(CricketMetrics.dayLabel)
                             Text(CricketPageText.daySub(day, lead: lead, now: now)).font(CricketMetrics.daySub)
-                                .foregroundStyle(day.state == .live ? Color.white : Color.secondary).lineLimit(1)
+                                .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color.secondary).lineLimit(1)
                         }
-                        .foregroundStyle(day.state == .live ? Color.white : Color("PigText"))
+                        .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color("PigText"))
                         .padding(.horizontal, 18).padding(.vertical, 10)
                         .frame(minWidth: CricketMetrics.dayWidth, alignment: .leading)
                         .background { dayBackground(day.state) }
@@ -523,7 +523,7 @@ struct CricketPageView: View {
                     if match.current {
                         Text(text).font(CricketMetrics.otherDetail.weight(.heavy))
                             .padding(.horizontal, 12).padding(.vertical, 4)
-                            .foregroundStyle(lead?.status == .live ? Color.white : Color.pigAccentText)
+                            .foregroundStyle(lead?.status == .live ? Color.pigOnStatus : Color.pigAccentText)
                             .background {
                                 if lead?.status == .live { Capsule().fill(Color.pigDanger) }
                                 else { Capsule().strokeBorder(Color.pigAccentText, lineWidth: 2) }

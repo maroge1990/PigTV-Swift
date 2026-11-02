@@ -21,6 +21,10 @@ nonisolated enum PigRadius {
 }
 
 extension Color {
+    /// White labels on a status fill (LIVE on `pigDanger`) or a team-colour disc (#190, Apple 104). The kit names no
+    /// on-danger role; its white is `media.text` (light `onAccent`), so this is that asset under the name the views mean.
+    static let pigOnStatus = Color.pigMediaText
+
     /// A colour taken from content (a channel logo's tint). Artwork keeps its own colours (kit §4); this is the one
     /// place such a colour is built, so every other colour in the views is a role.
     nonisolated init(artworkRGB rgb: [Double]) {

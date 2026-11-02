@@ -29,6 +29,19 @@ final class BrandRulesTests: XCTestCase {
         "PigTVApp.swift": "build 99 (D-43 sport pages) is under Codex review",
     ]
 
+    /// Files allowed a literal black or white, each with its reason. The player files keep theirs until the player's own
+    /// brand pass (out of the shell batch, #190); the fixtures draw synthetic logos and debug-only screens.
+    private static let blackWhiteAllowlist: [String: String] = [
+        "CustomPlayer.swift": "player file: out of the shell batch's scope", "PlayerControls.swift": "player file",
+        "PlayerExtras.swift": "player file", "PlayerShared.swift": "player file", "RecordingPlayer.swift": "player file",
+        "RecordingTouchChrome.swift": "player file", "RecordingPlayback.swift": "player file", "PlaybackModel.swift": "player file",
+        "GuideFixtures.swift": "synthetic test logos (DEBUG fixtures)", "PigTVApp.swift": "DEBUG fixture screens",
+    ]
+
+    /// Tab roots: each draws the page canvas and its corner bloom (`pigPageBackdrop`, PigPageBackground).
+    private static let tabRootFiles = ["SportFrontView.swift", "SportsDashboardView.swift", "SportView.swift", "GuideView.swift",
+                                       "RecordingsView.swift", "LibraryView.swift"]
+
     /// The views drawn over video: §7 applies (protected dark surfaces, black panels from 82 %).
     private static let playerFiles: Set<String> = [
         "CustomPlayer.swift", "PlayerControls.swift", "PlayerExtras.swift", "PlayerShared.swift",
@@ -66,6 +79,27 @@ final class BrandRulesTests: XCTestCase {
                "system red/yellow (use pigDanger/pigWarning, or pigMediaAccent for live on video)")
         report(lines.filter { Self.greyAllowlist[$0.file] == nil && matches(#"\bColor\(white:"#, $0.text) },
                "Color(white:) grey (use a Pig colour role)")
+    }
+
+    // §4 (#190, Apple 104): black and white are roles too: `pigMediaCanvas`/`pigMediaText`/`pigMediaPanel` around video,
+    // `pigOnAccent` on the accent, `pigOnStatus` on a status fill or team disc. Before 104 the sport pages' LIVE pills, the
+    // badges, the player host and the guide's strip mask used `Color.white`/`Color.black`.
+    func testNoLiteralBlackOrWhite() throws {
+        let lines = try sourceLines().filter { $0.file != Self.rolesFile && Self.blackWhiteAllowlist[$0.file] == nil }
+        report(lines.filter {
+            matches(#"\b(Color|UIColor)\.(black|white)\b"#, $0.text) || matches(#"[(:?,]\s*\.(black|white)\b"#, $0.text)
+        }, "a literal black or white (use a Pig colour role)")
+        for name in Self.blackWhiteAllowlist.keys {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: Self.sources.appendingPathComponent(name).path), "\(name) is allowlisted but gone")
+        }
+    }
+
+    // §5 (brand 1.6): every tab page sits on the canvas with the corner bloom.
+    func testEveryTabRootDrawsThePageCanvas() throws {
+        for name in Self.tabRootFiles {
+            let text = try String(contentsOf: Self.sources.appendingPathComponent(name), encoding: .utf8)
+            XCTAssertTrue(text.contains(".pigPageBackdrop()"), "\(name) draws no page canvas")
+        }
     }
 
     // §7: over video, black panels and shades start at 82 %. Shadows are not panels. A line marked `brand: scrim` is a

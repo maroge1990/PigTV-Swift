@@ -324,7 +324,7 @@ struct PlayerHost: View {
     @ObservedObject var app: AppModel
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.pigMediaCanvas.ignoresSafeArea()
             if let playback = app.playback {
                 PlayerScreen(playback: playback, app: app).id(playback.id)
             }
@@ -357,7 +357,7 @@ struct PlayerScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.pigMediaCanvas.ignoresSafeArea()
             if playback.stopping {
                 // Teardown clears ready before the server releases the stream.
                 // Keep the exit background instead of returning to tuning.
@@ -368,7 +368,7 @@ struct PlayerScreen: View {
                     Text(message).multilineTextAlignment(.center)
                     Button("Keep watching there") { dismiss() }.pigPrimaryButton().playerStateFocus($stateFocus)
                     Button("Stop the other stream and watch here", role: .destructive) { playback.confirmViewerStop() }
-                }.padding(48).foregroundStyle(.white)
+                }.padding(48).foregroundStyle(Color.pigMediaText)
             } else if let conflict = playback.recordingConflict {
                 VStack(spacing: 24) {
                     Text("A recording is in progress").font(.title2.bold())
@@ -376,7 +376,7 @@ struct PlayerScreen: View {
                     Text("Watching live TV will stop the recording. What has already been recorded will be kept.")
                     Button("Keep recording") { dismiss() }.pigPrimaryButton().playerStateFocus($stateFocus)
                     Button("Stop recording and watch", role: .destructive) { playback.confirmRecordingStop() }
-                }.padding(48).foregroundStyle(.white)
+                }.padding(48).foregroundStyle(Color.pigMediaText)
             } else if let error = playback.error {
                 VStack(spacing: 24) {
                     Text("Unable to play \(playback.channel.name)").font(.title2)
@@ -387,7 +387,7 @@ struct PlayerScreen: View {
                     } else {
                         Button("Back to channels") { dismiss() }.playerStateFocus($stateFocus)
                     }
-                }.padding(48).foregroundStyle(.white)
+                }.padding(48).foregroundStyle(Color.pigMediaText)
             } else if playback.reconnecting {
                 // Build 29: the tuning card on iOS too.
                 VStack(spacing: 24) {
@@ -414,7 +414,7 @@ struct PlayerScreen: View {
                     // player stays underneath so it loads; the card owns the remote (Cancel, Menu).
                     if !playback.hasPlayed {
                         ZStack {
-                            Color.black.ignoresSafeArea()
+                            Color.pigMediaCanvas.ignoresSafeArea()
                             VStack(spacing: 24) {
                                 TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
                                 Button("Cancel") { dismiss() }.playerStateFocus($stateFocus)
@@ -464,7 +464,7 @@ struct PlayerScreen: View {
         .overlay(alignment: .top) {
             if let warning = playback.coordinationWarning {
                 Text(warning).font(.caption).padding()
-                    .background(.black.opacity(0.8)).foregroundStyle(.white)
+                    .background(Color.pigMediaPanel).foregroundStyle(Color.pigMediaText)
             }
         }
         #if os(iOS)

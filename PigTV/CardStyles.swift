@@ -39,7 +39,7 @@ struct CardBadge: View {
         .font(Self.font)
         .padding(.horizontal, 12).padding(.vertical, 5)
         .background(colour, in: Capsule())
-        .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.white)
+        .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.pigOnStatus)
     }
 }
 

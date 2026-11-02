@@ -467,7 +467,10 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
   the Reduce Transparency fallback), `PigMediaCanvas`/`PigMediaText`; shadows use `PigShadow` (the kit's glass shadow colours). These and
   the shared radii (`PigRadius`, `PigBrandRoles.swift`: TV compact 10 / card 18 / hero 32, touch 10 / 16 / 22, nested 6) are app-owned;
   the one content colour (a logo's tint) is `Color(artworkRGB:)`. Figures use `.fontDesign(.rounded).monospacedDigit()` (§5).
-  `BrandRulesTests` scans `PigTV/` for literals and checks the lockup assets.
+  Since Apple 104 black and white are roles too: labels on a status fill (LIVE on `pigDanger`) or a team disc are `pigOnStatus` (the
+  kit has no on-danger role; it is `PigMediaText`), on the accent `pigOnAccent`; the player host uses the media roles (player files
+  keep their literals until their own pass). `BrandRulesTests` scans `PigTV/` for literals (black/white too, outside the player
+  files and fixtures), checks every tab root draws the page canvas and corner bloom, and checks the lockup assets.
 
 ## Implementation map
 

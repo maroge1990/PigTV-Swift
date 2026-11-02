@@ -237,7 +237,7 @@ struct StatusBadge: View {
         .font(DetailType.eyebrow)
         .padding(.horizontal, 14).padding(.vertical, 6)
         .background(colour, in: Capsule())
-        .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.white)
+        .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.pigOnStatus)
     }
 }
 

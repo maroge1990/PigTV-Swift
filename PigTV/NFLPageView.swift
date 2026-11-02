@@ -244,7 +244,7 @@ struct NFLPageView: View {
                 HStack(spacing: 10) {
                     if game.status == .live {
                         Text("LIVE").font(NFLMetrics.detail.weight(.heavy)).padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(Color.pigDanger, in: Capsule()).foregroundStyle(.white)
+                            .background(Color.pigDanger, in: Capsule()).foregroundStyle(Color.pigOnStatus)
                     }
                     Text(NFLPageText.status(game, spoilerFree: spoilerFree)).font(NFLMetrics.detail).monospacedDigit()
                     Spacer(minLength: 6)
