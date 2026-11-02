@@ -36,7 +36,8 @@ struct OnNowList: View {
     let info: (GuideChannel) -> Void
     /// D-44 (Apple 107): the long-press menu, as the system context menu with a preview (R5-Menu-iPhone).
     var menu: (GuideChannel) -> ProgrammeMenuSubject = { ProgrammeMenuSubject(channelName: $0.name, programme: nil) }
-    var choose: (GuideChannel, ProgrammeMenuItem) -> Void = { _, _ in }
+    /// The programme is the one the menu showed (Codex, batch 4 medium): never recomputed when an item is chosen.
+    var choose: (GuideChannel, GuideProgramme?, ProgrammeMenuItem) -> Void = { _, _, _ in }
 
     var body: some View {
         List(rows) { channel in
@@ -47,11 +48,11 @@ struct OnNowList: View {
                     let record = items.filter(\.isRecordSection)
                     if !record.isEmpty {
                         Section("Record") {
-                            ForEach(record) { item in menuButton(channel, item) }
+                            ForEach(record) { item in menuButton(channel, subject.programme, item) }
                         }
                     }
                     Section {
-                        ForEach(items.filter { !$0.isRecordSection }) { item in menuButton(channel, item) }
+                        ForEach(items.filter { !$0.isRecordSection }) { item in menuButton(channel, subject.programme, item) }
                     }
                 } preview: {
                     OnNowMenuPreview(subject: menu(channel), clock: clock)
@@ -64,8 +65,13 @@ struct OnNowList: View {
         .accessibilityIdentifier("guide.onNow")
     }
 
-    private func menuButton(_ channel: GuideChannel, _ item: ProgrammeMenuItem) -> some View {
-        Button { choose(channel, item) } label: {
+    /// A chosen item acts on the programme its menu was built with.
+    func select(_ channel: GuideChannel, _ programme: GuideProgramme?, _ item: ProgrammeMenuItem) {
+        choose(channel, programme, item)
+    }
+
+    private func menuButton(_ channel: GuideChannel, _ programme: GuideProgramme?, _ item: ProgrammeMenuItem) -> some View {
+        Button { select(channel, programme, item) } label: {
             Label {
                 Text(item.title)
                 if let detail = item.detail { Text(detail) }

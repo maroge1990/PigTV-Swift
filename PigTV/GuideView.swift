@@ -288,9 +288,9 @@ struct GuideView: View {
         } else {
             OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { openChannel($0) },
                       menu: { channel in menuSubject(channel, OnNowRow.make(programmes: channel.programmes, now: Date()).current) },
-                      choose: { channel, item in
-                          let target = GuideMenuTarget(channel: channel, programme: OnNowRow.make(programmes: channel.programmes, now: Date()).current,
-                                                       subject: menuSubject(channel, nil), anchor: .zero)
+                      choose: { channel, programme, item in
+                          let target = GuideMenuTarget(channel: channel, programme: programme,
+                                                       subject: menuSubject(channel, programme), anchor: .zero)
                           Task { _ = await runMenu(item, target) }
                       })
         }
