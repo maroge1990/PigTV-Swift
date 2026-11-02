@@ -8,8 +8,7 @@ struct GuideMenuTarget {
     let anchor: CGRect
 }
 
-private struct GuideSelection: Identifiable {
-    let id = UUID()
+private struct GuideSelection {
     let channel: GuideChannel
     let programme: GuideProgramme
 }
@@ -75,7 +74,8 @@ struct GuideView: View {
     /// Show guide was chosen (its own `goTo` already claims grid focus).
     @State private var jumped = false
     @State private var jumpDate = Date()
-    @State private var selection: GuideSelection?
+    /// D-44 (#49, Apple 108): the pages pushed on the Guide's NavigationStack (programme details, …).
+    @State private var path: [GuideRoute] = []
     @State private var channelDetails: Channel?
     @State private var schedule: GuideChannel?
     @State private var pendingWatch: Channel?
@@ -148,7 +148,7 @@ struct GuideView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             GeometryReader { geometry in
                 #if os(tvOS)
                 // Never compact on the TV. The reader's first pass has zero
@@ -211,7 +211,7 @@ struct GuideView: View {
                 }
             }
             .detailCover(isPresented: $searching, onDismiss: {
-                if let pending = pendingSelection { pendingSelection = nil; selection = pending }
+                if let pending = pendingSelection { pendingSelection = nil; open(pending.channel, pending.programme) }
                 else if usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }) { searchSheet }
             // A full-screen cover on tvOS: a tvOS sheet is a narrow card and
@@ -268,15 +268,7 @@ struct GuideView: View {
             .onChange(of: app.playback == nil) { _, closed in
                 if closed, usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }
-            .fullScreenCover(item: $selection, onDismiss: finishDetails) { item in
-                ProgrammeDetails(model: model, channel: item.channel, programme: item.programme, watch: {
-                    pendingWatch = asChannel(item.channel)
-                    selection = nil
-                }, openSchedule: {
-                    pendingSchedule = item.channel
-                    selection = nil
-                })
-            }
+            .navigationDestination(for: GuideRoute.self) { route in destination(route) }
             .fullScreenCover(item: $channelDetails, onDismiss: finishDetails) { channel in
                 ChannelDetails(channel: channel, browse: model, watch: {
                     pendingWatch = channel
@@ -287,12 +279,12 @@ struct GuideView: View {
                 } })
             }
             .fullScreenCover(item: $schedule, onDismiss: finishDetails) { channel in
-                ChannelScheduleView(model: model, channel: channel, logo: model.logo(for: channel)) {
+                ChannelScheduleView(model: model, presenter: app.presenter, channel: channel, logo: model.logo(for: channel)) {
                     pendingWatch = asChannel(channel)
                     schedule = nil
                 }
             }
-            .closesForOutsidePlay { selection = nil; channelDetails = nil; schedule = nil; menu = nil } // #179
+            .closesForOutsidePlay { path = []; channelDetails = nil; schedule = nil; menu = nil } // #179
         }
     }
 
@@ -350,7 +342,7 @@ struct GuideView: View {
                     actions: GuideGridActions(
                         select: { channel, programme in
                             if programme.isLive(at: Date()) { play(channel) }
-                            else { selection = GuideSelection(channel: channel, programme: programme) }
+                            else { open(channel, programme) }
                         },
                         play: { play($0) },
                         focusChanged: { channel, start in
@@ -407,9 +399,7 @@ struct GuideView: View {
                 .accessibilityIdentifier("guide.strip.hint")
             #endif
             if let programme = focusedProgramme, let channel = focusedChannel {
-                Button("Details", systemImage: "info.circle") {
-                    selection = GuideSelection(channel: channel, programme: programme)
-                }
+                Button("Details", systemImage: "info.circle") { open(channel, programme) }
                 .accessibilityIdentifier("guide.strip.details")
                 #if os(iOS)
                 // D-44 (Apple 107): touch has no long press on the strip; its … opens the same menu.
@@ -711,6 +701,42 @@ struct GuideView: View {
         if !showed { gridFocusRestore += 1 }
         claimGridFocus()
     }
+    // MARK: Pages (D-44, #49)
+
+    /// Pushes a programme's page.
+    private func open(_ channel: GuideChannel, _ programme: GuideProgramme) {
+        path.append(.programme(channel: channel.id, start: programme.startTime))
+    }
+
+    /// A page's Watch: back to the grid, then the player (it closes onto the grid).
+    private func watchFromPage(_ channel: GuideChannel) {
+        path = []
+        play(channel)
+    }
+
+    @ViewBuilder
+    private func destination(_ route: GuideRoute) -> some View {
+        switch route {
+        case .programme(let id, let start):
+            if let channel = model.guideChannel(id: id), let programme = channel.programmes.first(where: { $0.startTime == start }) {
+                ProgrammeDetails(model: model, presenter: app.presenter, channel: channel, programme: programme,
+                                 watch: { watchFromPage(channel) }, openSchedule: { schedule = channel },
+                                 openProgramme: { open(channel, $0) }, pushedFrom: "TV Guide")
+            } else {
+                missingPage
+            }
+        case .channel, .search:
+            missingPage
+        }
+    }
+
+    /// A route whose channel or programme has left the loaded guide (a refresh moved on past it).
+    private var missingPage: some View {
+        DetailPage(pushedFrom: "TV Guide") {
+            Text("This is no longer in the guide.").font(DetailType.meta).foregroundStyle(Color.pigSecondary)
+        }
+    }
+
     // MARK: The long-press menu (D-44, Apple 107)
 
     private func menuSubject(_ channel: GuideChannel, _ programme: GuideProgramme?) -> ProgrammeMenuSubject {
@@ -772,7 +798,7 @@ struct GuideView: View {
             }
         case .details:
             closeMenu()
-            if let programme = target.programme { selection = GuideSelection(channel: channel, programme: programme) }
+            if let programme = target.programme { open(channel, programme) }
         case .schedule:
             closeMenu()
             schedule = channel

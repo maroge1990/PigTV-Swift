@@ -40,6 +40,8 @@ enum DetailMetrics {
     static let readingWidth: CGFloat = 1100
     static let heroPadding: CGFloat = 52
     static let logo = CGSize(width: 208, height: 117)
+    static let smallLogo = CGSize(width: 104, height: 58)
+    static let timeColumn: CGFloat = 170
     static let spacing: CGFloat = 30
     static let radius = PigRadius.hero
     #else
@@ -47,6 +49,8 @@ enum DetailMetrics {
     static let readingWidth: CGFloat = 680
     static let heroPadding: CGFloat = 20
     static let logo = CGSize(width: 112, height: 63)
+    static let smallLogo = CGSize(width: 72, height: 40)
+    static let timeColumn: CGFloat = 84
     static let spacing: CGFloat = 20
     static let radius = PigRadius.hero
     #endif
@@ -56,13 +60,40 @@ enum DetailMetrics {
 /// content at a comfortable width. iOS gets a Done button (tvOS uses Menu).
 struct DetailPage<Content: View>: View {
     var title: String? = nil
+    /// D-44 (#49): pushed on a tab's NavigationStack (Back pops; the system back button on iOS, a "‹ TV Guide"
+    /// caption on the TV) instead of presented over it.
+    var pushedFrom: String? = nil
     @ViewBuilder var content: Content
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        if let pushedFrom {
+            scroll(back: pushedFrom)
+                .background(PigPageBackground())
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+        } else {
+            NavigationStack {
+                scroll(back: nil)
+                    .background(PigPageBackground())
+                    #if os(iOS)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                    #endif
+            }
+            .presentationBackground { PigPageBackground() }
+        }
+    }
+
+    private func scroll(back: String?) -> some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
+                    #if os(tvOS)
+                    if let back {
+                        Label(back, systemImage: "chevron.left").font(DetailType.rowDetail.weight(.semibold))
+                            .foregroundStyle(Color.pigSecondary).accessibilityHidden(true)
+                    }
+                    #endif
                     if let title {
                         HStack(spacing: 14) {
                             PigBrandMark(width: 58, height: 48)
@@ -81,16 +112,37 @@ struct DetailPage<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollClipDisabled()
-            .background(PigPageBackground())
             #if os(tvOS)
             // Covers and sheets do not always inherit the app's default.
             .buttonStyle(TVActionStyle())
             #endif
-            #if os(iOS)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            #endif
+    }
+}
+
+/// D-44 (Apple 108): a page's hero card (R5-Programme-*, R5-Channel-*): the surface at the hero radius, no wash.
+struct PigHeroCard<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) { content }
+            .padding(DetailMetrics.heroPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+    }
+}
+
+/// A recording state as a word in its colour: "Recording scheduled" with the red dot over a 14 % red fill.
+struct StatusPill: View {
+    let text: String
+    var colour: Color = .pigDanger
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(colour).frame(width: 11, height: 11).accessibilityHidden(true)
+            Text(text)
         }
-        .presentationBackground { PigPageBackground() }
+        .font(DetailType.eyebrow)
+        .foregroundStyle(colour)
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(colour.opacity(0.14), in: Capsule())
     }
 }
 

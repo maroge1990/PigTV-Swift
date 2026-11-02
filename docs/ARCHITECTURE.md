@@ -93,6 +93,16 @@ controls are not used for live play.
   (C-L, `AppPresenter.recordingPlayer`, full screen), Programme details, Channel schedule, Add/Remove favourites. The
   caller supplies what each does (`ProgrammeMenuActions`). The iPhone's On now rows use the system context menu with a
   preview, built from the same items; the iPad strip's … opens the card.
+  **Pages, not covers (#49, Apple 108–110, `GuidePages.swift`):** GuideView's `NavigationStack(path:)` pushes
+  `GuideRoute`s (stable ids: the channel's id and the programme's start, resolved against the loaded guide when drawn;
+  a route that has left the guide says so). Back pops, and the UIKit grid keeps its focus underneath, so nothing has to
+  claim it back. **Programme details** (`ProgrammeDetails`, `pushedFrom:` on `DetailPage`, R5-Programme-*): a hero card
+  (`PigHeroCard`: logo, channel · number, the recording state as a word in its colour (`StatusPill`), ON NOW / STARTS
+  IN / the day, the title, date · times · length, progress while on, the description), then the actions that apply —
+  Watch live (the rose primary while on), Watch from start, Record (the primary otherwise; RecordSheet through
+  `AppPresenter`) or Cancel recording (at once, with Undo), Record series, Channel schedule, the favourite — and "Also
+  on <channel> tonight" (`AlsoOn`: the next four that evening, until 6 am), each opening its own page. A page's Watch
+  pops to the grid, then plays.
 
 ## Guide grid and focus model
 

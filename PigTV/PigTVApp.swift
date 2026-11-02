@@ -345,6 +345,8 @@ private struct DesignTestScreen: View {
         #endif
         .tint(Color("AccentColor"))
         .preferredColorScheme(fixtureScheme)
+        // The app's presentation layer, as LibraryView hosts it (Record opens through it).
+        .appPresentations(app.presenter, app: app, browse: app.browse)
         .task {
             app.injectHomeFixture()
             app.serverText = "http://pigtv.local:3000"
@@ -362,11 +364,13 @@ private struct DesignTestScreen: View {
         let later = GuideFixtures.scheduledProgramme(in: browse.guide)
         switch screen {
         case "programme", "record":
-            ProgrammeDetails(model: browse, channel: channel, programme: live, watch: {}, openSchedule: {})
+            ProgrammeDetails(model: browse, presenter: app.presenter, channel: channel, programme: live, watch: {}, openSchedule: {},
+                             openProgramme: { _ in })
         case "programme-later":
-            ProgrammeDetails(model: browse, channel: later.channel, programme: later.programme, watch: {}, openSchedule: {})
+            ProgrammeDetails(model: browse, presenter: app.presenter, channel: later.channel, programme: later.programme, watch: {},
+                             openSchedule: {}, openProgramme: { _ in })
         case "schedule":
-            ChannelScheduleView(model: browse, channel: channel, logo: browse.logo(for: channel), watch: {})
+            ChannelScheduleView(model: browse, presenter: app.presenter, channel: channel, logo: browse.logo(for: channel), watch: {})
         case "channel":
             ChannelDetails(channel: browse.asChannel(channel), browse: browse, watch: {}, openSchedule: {})
         case "recordings":

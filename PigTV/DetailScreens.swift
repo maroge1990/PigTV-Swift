@@ -14,26 +14,35 @@ struct ProgrammeDetails: View {
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
     @ObservedObject private var artwork: ArtworkStore
+    @ObservedObject private var library: LibraryStore
+    /// The app's presentation layer: Record (today's RecordSheet), Watch from start, Undo (#49).
+    let presenter: AppPresenter
     let channel: GuideChannel
     let programme: GuideProgramme
     let watch: () -> Void
-    /// Opens the channel's schedule (the caller closes this page first);
-    /// nil hides the button (e.g. when already inside the schedule).
+    /// Opens the channel's page; nil hides the button (e.g. when already on it).
     var openSchedule: (() -> Void)? = nil
+    /// "Also on <channel> tonight": opens another programme's page; nil hides the list.
+    var openProgramme: ((GuideProgramme) -> Void)? = nil
+    /// D-44 (#49): pushed on the TV Guide's NavigationStack (the tab it came from); nil when presented.
+    var pushedFrom: String? = nil
 
-    init(model: BrowseModel, channel: GuideChannel, programme: GuideProgramme, watch: @escaping () -> Void,
-         openSchedule: (() -> Void)? = nil) {
+    init(model: BrowseModel, presenter: AppPresenter, channel: GuideChannel, programme: GuideProgramme,
+         watch: @escaping () -> Void, openSchedule: (() -> Void)? = nil,
+         openProgramme: ((GuideProgramme) -> Void)? = nil, pushedFrom: String? = nil) {
         self.model = model
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
         _artwork = ObservedObject(wrappedValue: model.artwork)
+        _library = ObservedObject(wrappedValue: model.library)
+        self.presenter = presenter
         self.channel = channel
         self.programme = programme
         self.watch = watch
         self.openSchedule = openSchedule
+        self.openProgramme = openProgramme
+        self.pushedFrom = pushedFrom
     }
-    @State private var recordSheet = false
-    @State private var scheduledHere = false
     /// C-M: a series rule was added from this page (its message is shown).
     @State private var ruleAdded = false
     private enum Control: Hashable { case watch, record }
@@ -44,7 +53,6 @@ struct ProgrammeDetails: View {
     /// C-L: the recording this programme's schedule is making, when it can be
     /// watched from its start.
     private var recordingInProgress: Recording? { model.recordingInProgress(channel: channel, programme: programme) }
-    @State private var watchingFromStart: Recording?
 
     private var recorded: Recording? {
         model.recordings.first { item in
@@ -54,19 +62,14 @@ struct ProgrammeDetails: View {
     }
 
     var body: some View {
-        DetailPage {
+        DetailPage(pushedFrom: pushedFrom) {
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 let now = context.date
                 let live = programme.isLive(at: now)
                 VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
                     hero(now: now, live: live)
-                    if let description = programme.description, !description.isEmpty {
-                        Text(description)
-                            .font(DetailType.body).lineSpacing(6)
-                            .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                     DetailActions {
+                        // One rose primary: Watch while it is on, else Record.
                         if live {
                             Button("Watch live", systemImage: "play.fill", action: watch)
                                 .pigPrimaryButton()
@@ -74,14 +77,21 @@ struct ProgrammeDetails: View {
                         }
                         if let recordingInProgress {
                             // C-L: missed the start? It is being recorded: play it from there.
-                            Button("Watch from start", systemImage: "backward.end.fill") { watchingFromStart = recordingInProgress }
-                                .accessibilityIdentifier("details.watchFromStart")
+                            Button("Watch from start", systemImage: "backward.end.fill") {
+                                presenter.present(.recordingPlayer(recordingInProgress))
+                            }
+                            .accessibilityIdentifier("details.watchFromStart")
                         }
-                        if programme.end > now && schedule == nil && !scheduledHere {
-                            Button("Record", systemImage: "record.circle") { recordSheet = true }
-                                .disabled(model.mutationBusy)
-                                .focused($focus, equals: .record)
-                                .accessibilityIdentifier("details.record")
+                        if let schedule {
+                            Button("Cancel recording", systemImage: "xmark.circle") {
+                                presenter.offerUndo("Recording of \(programme.title) cancelled") {
+                                    Task { await model.cancel(schedule) }
+                                }
+                            }
+                            .disabled(model.mutationBusy)
+                            .accessibilityIdentifier("details.cancelRecording")
+                        } else if programme.end > now {
+                            recordButton(primary: !live)
                         }
                         if programme.end > now && model.rulesAvailable && !ruleAdded {
                             // C-M: every airing of this title on this channel.
@@ -104,70 +114,113 @@ struct ProgrammeDetails: View {
                         Text("This programme has ended. Catch-up playback is not available.")
                             .font(DetailType.meta).foregroundStyle(.secondary)
                     }
-                    if let message = model.actionMessage, scheduledHere || ruleAdded {
+                    if let message = model.actionMessage, ruleAdded {
                         Text(message).font(DetailType.meta).foregroundStyle(.secondary)
                     }
                     if let error = model.actionError {
                         Text(error).font(DetailType.meta).foregroundStyle(.secondary)
                     }
+                    alsoOn(now: now)
                 }
             }
         }
         .interactiveDismissDisabled(model.mutationBusy)
         .onAppear { model.actionError = nil; model.actionMessage = nil }
-        .fullScreenCover(item: $watchingFromStart) { recording in
-            RecordingPlayerScreen(recording: recording, client: model.client, fromStart: true) { Task { await model.loadRecordings() } }
-        }
-        .closesForOutsidePlay { watchingFromStart = nil } // #179
-        .detailCover(isPresented: $recordSheet) {
-            RecordSheet(model: model, channel: channel, programme: programme) { scheduled in
-                if scheduled { scheduledHere = true }
-                recordSheet = false
-            }
-        }
         #if DEBUG
         .task {
-            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "record" { recordSheet = true }
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "record" { presenter.present(.record(channel, programme)) }
         }
         #endif
     }
 
+    @ViewBuilder
+    private func recordButton(primary: Bool) -> some View {
+        let button = Button("Record", systemImage: "record.circle") { presenter.present(.record(channel, programme)) }
+            .disabled(model.mutationBusy)
+            .focused($focus, equals: .record)
+            .accessibilityIdentifier("details.record")
+        if primary { button.pigPrimaryButton() } else { button }
+    }
+
+    /// R5-Programme-*: the channel, the recording state as a word, when, the title, the date and times, the description.
     private func hero(now: Date, live: Bool) -> some View {
-        DetailHero(logo: model.logo(for: channel), client: model.client) {
-            HStack(alignment: .top) {
-                ChannelLine(logo: model.logo(for: channel), client: model.client, name: channel.name,
-                            number: model.number(for: channel))
+        PigHeroCard {
+            HStack(alignment: .top, spacing: 20) {
+                HStack(spacing: 16) {
+                    ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
+                                    size: DetailMetrics.smallLogo)
+                    Text([channel.name, model.number(for: channel).map { String($0) }].compactMap { $0 }.joined(separator: " · "))
+                        .font(DetailType.channel).foregroundStyle(Color.pigSecondary).lineLimit(1)
+                }
                 Spacer(minLength: 20)
-                statusBadge(now: now)
+                statusPill
             }
-            .padding(.bottom, 12)
-            Eyebrow(text: eyebrow(now: now, live: live), colour: programme.end <= now ? .secondary : .pigAccent)
+            Eyebrow(text: eyebrow(now: now, live: live), colour: programme.end <= now ? .pigSecondary : .pigAccentText)
+                .padding(.top, 10)
             Text(programme.title).font(DetailType.title).lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(meta(now: now, live: live)).font(DetailType.meta).foregroundStyle(.secondary)
+            Text(meta(now: now)).font(DetailType.meta).foregroundStyle(Color.pigSecondary).monospacedDigit()
             if live {
                 HStack(spacing: 18) {
                     PigProgressBar(fraction: now.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start), height: 6)
                         .frame(maxWidth: 640)
                     Text("\(DetailText.duration(programme.end.timeIntervalSince(now).rounded(.up))) left")
-                        .font(DetailType.meta).foregroundStyle(.secondary).monospacedDigit().fontDesign(.rounded)
+                        .font(DetailType.meta).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
                 }
+            }
+            if let description = programme.description, !description.isEmpty {
+                Text(description)
+                    .font(DetailType.body).foregroundStyle(Color.pigSecondary).lineSpacing(6)
+                    .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
             }
         }
     }
 
     @ViewBuilder
-    private func statusBadge(now: Date) -> some View {
+    private var statusPill: some View {
         if let schedule {
-            switch schedule.status {
-            case "recording": StatusBadge(text: "Recording now", systemImage: "record.circle.fill", colour: .pigDanger)
-            case "waiting": StatusBadge(text: "Waiting to record", systemImage: "hourglass", colour: .pigWarning)
-            default: StatusBadge(text: "Recording scheduled", systemImage: "record.circle", colour: .pigDanger)
-            }
-        } else if scheduledHere {
-            StatusBadge(text: "Recording scheduled", systemImage: "record.circle", colour: .pigDanger)
+            StatusPill(text: schedule.statusWord, colour: schedule.status == "waiting" ? .pigWarning : .pigDanger)
         } else if recorded != nil {
-            StatusBadge(text: "Recorded", systemImage: "checkmark.circle.fill")
+            StatusPill(text: "Recorded", colour: .pigSuccess)
+        }
+    }
+
+    /// "Also on ABC TV tonight": the next programmes on the channel that evening, each opening its own page.
+    @ViewBuilder
+    private func alsoOn(now: Date) -> some View {
+        let next = AlsoOn.programmes(after: programme, in: model.guideChannel(id: channel.id)?.programmes ?? channel.programmes)
+        if let openProgramme, !next.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(AlsoOn.heading(channel: channel.name, programme: programme, now: now))
+                    .font(DetailType.section.weight(.heavy)).padding(.top, 8)
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(next, id: \.startTime) { other in
+                    Button { openProgramme(other) } label: {
+                        HStack(spacing: 18) {
+                            Text(other.start.formatted(date: .omitted, time: .shortened))
+                                .font(DetailType.rowTitle).fontDesign(.rounded).monospacedDigit()
+                                .lineLimit(1).fixedSize()
+                                .frame(minWidth: DetailMetrics.timeColumn, alignment: .leading)
+                            Text(other.title).font(DetailType.rowTitle).lineLimit(1).layoutPriority(1)
+                            if let description = other.description, !description.isEmpty {
+                                Text(description).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").foregroundStyle(Color.pigSecondary).accessibilityHidden(true)
+                        }
+                        .padding(.horizontal, 20).padding(.vertical, 14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
+                    .accessibilityLabel("\(other.start.formatted(date: .omitted, time: .shortened)), \(other.title)")
+                }
+            }
+            #if os(tvOS)
+            .focusSection()
+            #endif
         }
     }
 
@@ -178,12 +231,10 @@ struct ProgrammeDetails: View {
         return DetailText.day(programme.start, now: now)
     }
 
-    private func meta(now: Date, live: Bool) -> String {
-        var parts = [programme.timeRange, programme.durationText]
-        if !live, programme.end > now, programme.start.timeIntervalSince(now) <= 3600 {
-            parts.insert(DetailText.day(programme.start, now: now), at: 0)
-        }
-        return parts.joined(separator: " · ")
+    /// "Mon 3 Nov · 10:20 pm – 11:20 pm · 1 h".
+    private func meta(now: Date) -> String {
+        [programme.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)), programme.timeRange,
+         programme.durationText].joined(separator: " · ")
     }
 }
 
@@ -303,12 +354,14 @@ struct ChannelScheduleView: View {
     /// Not observed (audit R05): the page marks scheduled programmes.
     let model: BrowseModel
     @ObservedObject private var marks: ScheduleMarks
+    let presenter: AppPresenter
     let channel: GuideChannel
     let logo: String?
     let watch: () -> Void
 
-    init(model: BrowseModel, channel: GuideChannel, logo: String?, watch: @escaping () -> Void) {
+    init(model: BrowseModel, presenter: AppPresenter, channel: GuideChannel, logo: String?, watch: @escaping () -> Void) {
         self.model = model
+        self.presenter = presenter
         _marks = ObservedObject(wrappedValue: model.marks)
         self.channel = channel
         self.logo = logo
@@ -371,7 +424,7 @@ struct ChannelScheduleView: View {
             }
         }
         .detailCover(item: $selection) { item in
-            ProgrammeDetails(model: model, channel: channel, programme: item.programme) {
+            ProgrammeDetails(model: model, presenter: presenter, channel: channel, programme: item.programme) {
                 selection = nil
                 watch()
             }

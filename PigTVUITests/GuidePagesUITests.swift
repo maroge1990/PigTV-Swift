@@ -96,5 +96,26 @@ final class GuidePagesUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !record.exists }, "Back did not close the card")
         XCTAssertTrue(waitUntil { self.focusedLabel(app) == programme }, "focus did not return to the programme: \(focusedLabel(app))")
     }
+
+    /// 108 (#49): Select on a later programme pushes its page (hero, Record as the primary, Also on <channel>); Back
+    /// pops it and focus is on the programme again, with no timed retries.
+    @MainActor
+    func testProgrammeDetailsIsAPageAndBackReturnsFocusToTheProgramme() throws {
+        let app = launch()
+        enterFirstRow(app)
+        XCUIRemote.shared.press(.right)
+        let programme = focusedLabel(app)
+        XCTAssertTrue(programme.hasPrefix("\(tile), "), "no programme focused: \(programme)")
+        XCUIRemote.shared.press(.select)
+        let record = app.buttons["details.record"]
+        XCTAssertTrue(record.waitForExistence(timeout: 5), "no programme page")
+        XCTAssertTrue(waitUntil { record.hasFocus }, "Record is not focused: \(focusedLabel(app))")
+        let alsoOn = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Also on \(tile)")).firstMatch
+        XCTAssertTrue(alsoOn.exists, "no Also on \(tile) list")
+        attach(app, "Programme page")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil { !record.exists }, "Back did not leave the page")
+        XCTAssertTrue(waitUntil { self.focusedLabel(app) == programme }, "focus did not return to the programme: \(focusedLabel(app))")
+    }
 }
 #endif
