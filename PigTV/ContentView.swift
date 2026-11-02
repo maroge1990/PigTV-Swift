@@ -21,6 +21,8 @@ struct ContentView: View {
             .overlay(alignment: .top) {
                 ProviderReminderBanner(reminders: model.providerReminders)
             }
+            // #49 groundwork: the Undo toast (AppPresenter), over whatever shows.
+            .overlay(alignment: .bottom) { UndoToast(presenter: model.presenter) }
             // C-K: launch (once signed in), foreground, and after playback.
             .task(id: model.loggedIn) { await model.checkProviderReminders() }
             .onChange(of: scenePhase) { _, phase in
@@ -72,7 +74,10 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             model.warmer.setActive(phase == .active) // R11: any other phase cancels warming
-            if phase == .background { Task { await model.background() } }
+            if phase == .background {
+                model.presenter.commitPendingUndo() // #49: an action waiting on its Undo is done before the app is suspended
+                Task { await model.background() }
+            }
         }
         // #46, #216: while active and signed in, the guide is kept current and the Top Shelf exported, now and every
         // minute, whichever tab shows (returning to the foreground restarts it, so a stale guide is fixed at once).

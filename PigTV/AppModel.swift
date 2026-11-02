@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
     @Published var playerPresented = false
     /// C-K: the licence reminder banner (shown by ContentView).
     let providerReminders = ProviderReminderModel()
+    /// #49 groundwork (Apple 105): the app-level presentation layer and its Undo toast (hosted by LibraryView and ContentView).
+    let presenter = AppPresenter()
     /// Build 31: a tab LibraryView should switch to ("guide" from the iOS
     /// player's TV Guide button, "sport" from a pigtv://home link);
     /// LibraryView applies it and clears it.

@@ -76,6 +76,8 @@ struct LibraryView: View {
                 .onAppear { PigTVSignpost.tabContentAppeared("settings") }
         }
         .tint(Color("AccentColor"))
+        // #49 groundwork: the app-level presentation layer's page, above every tab.
+        .appPresentations(model.presenter, app: model, browse: model.browse)
         #if DEBUG
         .overlay(alignment: .bottomTrailing) {
             if TabSwitchProbe.enabled { TabSwitchProbeLabel() }
