@@ -7,7 +7,8 @@ import SwiftUI
 enum GuideRoute: Hashable {
     case programme(channel: String, start: Double)
     case channel(String)
-    case search
+    /// Search and Jump to (one page); `jump`: opened from Jump to…, so focus starts on the day.
+    case search(jump: Bool)
 }
 
 /// "Also on ABC TV tonight" on a programme's page: the programmes after it on its channel that evening. Pure; tested.

@@ -109,6 +109,16 @@ controls are not used for live play.
   with UP NEXT beside it (below it on iOS), then the days (`ScheduleDays.upcoming`: everything after the programme on
   now), each row opening its programme's page. The menu's Channel schedule, a programme page's and the iPhone row's ⓘ
   push it.
+  **Search and Jump to** (`GuideSearchPage`, Apple 110, #57's Apple half, R5-Search-*) are one pushed page, side by side
+  (stacked on the iPhone, which has no Jump to upright): Search looks through the loaded guide (`GuideSearch`, pure:
+  channels by name, each listing once; programmes not ended that start in the next 24 hours, soonest first; two letters
+  at least), debounced 300 ms and run off the main actor, results keyed by the channel's id and the programme's start;
+  a channel opens its page, a programme its page. Jump to: seven day chips and 24 hour chips (`GuideJump`), then Show
+  guide pops to the grid and moves it there. The rows are no longer filtered by channel name, and the server's search is
+  not used. With every Guide page pushed, GuideView has no covers, and `claimGridFocus` moves SwiftUI focus into the
+  grid once, with no timed retries; after Show guide that happens when the pop has put focus back on the tool that opened
+  the page (claimed earlier, the pop's own focus restoration wins). Tests: `GuidePagesTests`, `GuidePagesUITests`,
+  `GuideGridNavigationUITests.testJumpToOpensFullyAndReturnsFocusToTheGrid`.
 
 ## Guide grid and focus model
 

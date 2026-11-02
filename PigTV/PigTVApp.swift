@@ -332,9 +332,6 @@ private struct DesignTestScreen: View {
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
-    @State private var search = "sky"
-    @State private var programmeSearch = "live"
-    @State private var jumpDate = Date()
 
     var body: some View {
         Group {
@@ -379,11 +376,9 @@ private struct DesignTestScreen: View {
             RecordingPlayerScreen(recording: browse.recordings[1], client: browse.client)
         case "recording":
             RecordingDetails(model: browse, original: browse.recordings[1])
-        case "search":
-            GuideSearchSheet(model: browse, search: $search, programmeSearch: $programmeSearch,
-                             done: {}, choose: { _, _ in }, refresh: {})
-        case "jump":
-            GuideJumpSheet(date: $jumpDate, show: { _ in }, cancel: {})
+        case "search", "jump":
+            GuideSearchPage(model: browse, date: Date(), canJump: true, startWithJump: screen == "jump",
+                            openChannel: { _ in }, openProgramme: { _, _ in }, showGuide: { _ in })
         case "sport-event":
             if let event = browse.sport.soon.first {
                 SportEventDetails(event: event, app: app, browse: browse, play: { _ in })

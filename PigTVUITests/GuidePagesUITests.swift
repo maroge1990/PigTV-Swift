@@ -24,9 +24,10 @@ final class GuidePagesUITests: XCTestCase {
         add(shot)
     }
 
-    private func launch(_ screen: String = "guide") -> XCUIApplication {
+    private func launch(_ screen: String = "guide", search: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = screen
+        if let search { app.launchEnvironment["PIGTV_UI_TEST_SEARCH"] = search }
         app.launch()
         XCTAssertTrue(app.collectionViews["guide.grid"].waitForExistence(timeout: 10), "guide grid not shown")
         return app
@@ -141,6 +142,36 @@ final class GuidePagesUITests: XCTestCase {
         XCUIRemote.shared.press(.menu)
         XCTAssertTrue(waitUntil { !watch.exists }, "Back did not leave the page")
         XCTAssertTrue(waitUntil { self.focusedLabel(app) == programme }, "focus did not return to the programme: \(focusedLabel(app))")
+    }
+
+    /// 110 (#57's Apple half): Search and Jump to are one page, side by side; a search finds programmes in the loaded
+    /// guide, and a result opens that programme's page (Back returns to the search).
+    @MainActor
+    func testSearchAndJumpToShareOnePageAndAResultOpensItsProgramme() throws {
+        let app = launch(search: "Highlights")
+        enterFirstRow(app)
+        XCUIRemote.shared.press(.up)
+        XCTAssertTrue(waitUntil { self.focusedLabel(app) == "Now" }, "Up did not reach Now: \(focusedLabel(app))")
+        for _ in 0..<6 where focusedLabel(app) != "Search" { XCUIRemote.shared.press(.right) }
+        XCUIRemote.shared.press(.select)
+        let field = app.descendants(matching: .any)["search.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "no search page")
+        let show = app.buttons["Show guide"]
+        XCTAssertTrue(show.exists, "Jump to is not on the search page")
+        XCTAssertLessThan(field.frame.maxX, show.frame.minX, "Search and Jump to are not side by side")
+        let heading = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Programmes · next 24 hours · ")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 5), "no programme results")
+        XCTAssertNotEqual(heading.label, "Programmes · next 24 hours · 0")
+        attach(app, "Search page")
+        var path: [String] = []
+        for _ in 0..<6 where !focusedLabel(app).hasPrefix("Highlights") { XCUIRemote.shared.press(.down); path.append(focusedLabel(app)) }
+        let result = focusedLabel(app)
+        XCTAssertTrue(result.hasPrefix("Highlights"), "could not reach a result: \(path)")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(waitUntil { app.buttons["details.record"].exists || app.buttons["Watch live"].exists }, "the result did not open its page")
+        XCTAssertTrue(app.staticTexts[String(result.prefix { $0 != "," })].exists, "the page is not the result's programme")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil { field.exists && self.focusedLabel(app) == result }, "Back did not return to the result: \(focusedLabel(app))")
     }
 }
 #endif

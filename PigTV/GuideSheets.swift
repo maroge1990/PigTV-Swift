@@ -1,70 +1,175 @@
 import SwiftUI
 
-// The guide's Search and Jump to… sheets (build 28 consistency pass): the
-// app's page, section headings, surface rows and selection chips instead of
-// stock Form rows on tvOS.
+// D-44 (Apple 110, #57's Apple half, R5-Search-*): Search and Jump to on one page, side by side, pushed on the TV
+// Guide's NavigationStack. Search looks through the loaded guide (channels by name, programmes in the next 24 hours by
+// title), debounced and off the main actor, with results keyed by stable ids; a channel opens its page, a programme its
+// page. Jump to: a day, an hour, then Show guide moves the grid there. The server's full-text search is not used.
 
-struct GuideSearchSheet: View {
-    /// Not observed (audit R05): the sheet searches the guide store.
+/// One programme found: keyed by the channel's id and the programme's start (stable across refreshes).
+nonisolated struct GuideSearchHit: Identifiable, Equatable, Sendable {
+    let channel: GuideChannel
+    let programme: GuideProgramme
+    var id: String { "\(channel.id)|\(programme.startTime)" }
+    static func == (a: GuideSearchHit, b: GuideSearchHit) -> Bool { a.id == b.id && a.programme == b.programme }
+}
+
+/// The search over the loaded guide. Pure; tested (GuidePagesTests).
+nonisolated enum GuideSearch {
+    struct Results: Equatable, Sendable {
+        var channels: [GuideChannel] = []
+        var programmes: [GuideSearchHit] = []
+        static func == (a: Results, b: Results) -> Bool {
+            a.channels.map(\.id) == b.channels.map(\.id) && a.programmes == b.programmes
+        }
+    }
+
+    /// The window programmes are searched in.
+    static let horizon: TimeInterval = 24 * 3600
+
+    /// Channels whose name contains `query` (each listing once, by its stable identity), and programmes whose title
+    /// contains it that have not ended and start within the next 24 hours, soonest first. Two letters at least.
+    static func run(_ query: String, in guide: [GuideChannel], now: Date, channelLimit: Int = 12,
+                    programmeLimit: Int = 60) -> Results {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= 2 else { return Results() }
+        var seen = Set<String>()
+        let channels = guide.filter { $0.name.localizedStandardContains(text) && seen.insert($0.identityKey).inserted }
+        let until = now.addingTimeInterval(horizon)
+        var hits: [GuideSearchHit] = []
+        for channel in guide {
+            for programme in GuideNavigation.ordered(channel.programmes)
+            where programme.end > now && programme.start < until && programme.title.localizedStandardContains(text) {
+                hits.append(GuideSearchHit(channel: channel, programme: programme))
+            }
+        }
+        hits.sort { ($0.programme.startTime, $0.channel.name) < ($1.programme.startTime, $1.channel.name) }
+        return Results(channels: Array(channels.prefix(channelLimit)), programmes: Array(hits.prefix(programmeLimit)))
+    }
+}
+
+/// Jump to's days and hours. Pure; tested.
+nonisolated enum GuideJump {
+    /// "Today", "Tomorrow", then "Wed 5"…, seven days from today.
+    static func days(now: Date, calendar: Calendar = .current) -> [(date: Date, title: String)] {
+        let today = calendar.startOfDay(for: now)
+        return (0..<7).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: today) else { return nil }
+            let title = offset == 0 ? "Today" : offset == 1 ? "Tomorrow" : day.formatted(.dateTime.weekday(.abbreviated).day())
+            return (day, title)
+        }
+    }
+
+    /// `date` on `day`, keeping its hour (on the hour).
+    static func moving(_ date: Date, toDay day: Date, calendar: Calendar = .current) -> Date {
+        calendar.date(bySettingHour: calendar.component(.hour, from: date), minute: 0, second: 0, of: day) ?? day
+    }
+
+    /// `date` at `hour`:00, keeping its day.
+    static func moving(_ date: Date, toHour hour: Int, calendar: Calendar = .current) -> Date {
+        calendar.date(bySettingHour: hour, minute: 0, second: 0, of: date) ?? date
+    }
+}
+
+struct GuideSearchPage: View {
+    /// Not observed (audit R05): the page reads the guide once per search and the logos.
     let model: BrowseModel
-    @ObservedObject private var guideStore: GuideStore
-    @Binding var search: String
-    @Binding var programmeSearch: String
-    /// Closes the sheet (the channel filter applies as typed).
-    let done: () -> Void
-    /// A programme result was chosen: its details open once the sheet closes.
-    let choose: (GuideChannel, GuideProgramme) -> Void
-    let refresh: () -> Void
+    @ObservedObject private var artwork: ArtworkStore
+    /// The grid can be moved (not the iPhone's upright On now list).
+    let canJump: Bool
+    /// Jump to… opened the page: focus starts on the selected day, not the search field.
+    let startWithJump: Bool
+    let openChannel: (GuideChannel) -> Void
+    let openProgramme: (GuideChannel, GuideProgramme) -> Void
+    let showGuide: (Date) -> Void
+    var pushedFrom: String? = nil
 
-    init(model: BrowseModel, search: Binding<String>, programmeSearch: Binding<String>, done: @escaping () -> Void,
-         choose: @escaping (GuideChannel, GuideProgramme) -> Void, refresh: @escaping () -> Void) {
+    @State private var query = ""
+    @State private var results = GuideSearch.Results()
+    @State private var searchTask: Task<Void, Never>?
+    @State private var date: Date
+    private enum Focus: Hashable { case field, day(Int) }
+    @FocusState private var focus: Focus?
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    init(model: BrowseModel, date: Date, canJump: Bool, startWithJump: Bool,
+         openChannel: @escaping (GuideChannel) -> Void, openProgramme: @escaping (GuideChannel, GuideProgramme) -> Void,
+         showGuide: @escaping (Date) -> Void, pushedFrom: String? = nil) {
         self.model = model
-        _guideStore = ObservedObject(wrappedValue: model.guideStore)
-        _search = search
-        _programmeSearch = programmeSearch
-        self.done = done
-        self.choose = choose
-        self.refresh = refresh
+        _artwork = ObservedObject(wrappedValue: model.artwork)
+        _date = State(initialValue: date)
+        self.canJump = canJump
+        self.startWithJump = startWithJump
+        self.openChannel = openChannel
+        self.openProgramme = openProgramme
+        self.showGuide = showGuide
+        self.pushedFrom = pushedFrom
     }
 
     var body: some View {
-        DetailPage(title: "Search") {
-            VStack(alignment: .leading, spacing: 14) {
-                PigSectionHeader(title: "Channels")
-                HStack(spacing: 20) {
-                    TextField("Channel name", text: $search)
-                        .autocorrectionDisabled()
-                        .pigField()
-                        .frame(maxWidth: 720)
-                    Button("Show channels", systemImage: "line.3.horizontal.decrease", action: done)
-                    if !search.isEmpty {
-                        Button("Clear", systemImage: "xmark") { search = ""; done() }
-                    }
-                }
-                #if os(tvOS)
-                .font(DetailType.button)
-                .focusSection()
-                #endif
-                Text(search.isEmpty ? "Filters the guide's rows by channel name." : "The guide shows channels matching “\(search)”.")
-                    .font(DetailType.rowDetail).foregroundStyle(.secondary)
+        DetailPage(pushedFrom: pushedFrom) {
+            #if os(tvOS)
+            HStack(alignment: .top, spacing: 48) {
+                searchColumn.frame(maxWidth: .infinity, alignment: .leading)
+                if canJump { jumpPanel.frame(width: 640) }
             }
-            VStack(alignment: .leading, spacing: 14) {
-                PigSectionHeader(title: "Programmes")
-                TextField("Programme title", text: $programmeSearch)
-                    .autocorrectionDisabled()
-                    .pigField()
-                    .frame(maxWidth: 720)
-                let results = model.searchProgrammes(programmeSearch)
-                if programmeSearch.count >= 2 && results.isEmpty {
-                    Text("No upcoming programmes match.").font(DetailType.meta).foregroundStyle(.secondary)
-                } else if programmeSearch.count < 2 {
-                    Text("Type at least two letters to search the next 24 hours.")
-                        .font(DetailType.rowDetail).foregroundStyle(.secondary)
+            #else
+            if sizeClass == .regular {
+                HStack(alignment: .top, spacing: 32) {
+                    searchColumn.frame(maxWidth: .infinity, alignment: .leading)
+                    if canJump { jumpPanel.frame(width: 340) }
+                }
+            } else {
+                searchColumn
+                if canJump { jumpPanel }
+            }
+            #endif
+        }
+        .defaultFocus($focus, startWithJump && canJump ? .day(selectedDay) : .field)
+        .onChange(of: query) { scheduleSearch() }
+        .onDisappear { searchTask?.cancel() }
+        #if DEBUG
+        .task {
+            if let prefill = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SEARCH"], query.isEmpty { query = prefill }
+        }
+        #endif
+    }
+
+    // MARK: Search
+
+    private var searchColumn: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Search").font(DetailType.pageTitle).accessibilityAddTraits(.isHeader)
+            TextField("Channel or programme", text: $query)
+                .autocorrectionDisabled()
+                .pigField()
+                .focused($focus, equals: .field)
+                .accessibilityIdentifier("search.field")
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 {
+                Text("Type two letters or more: channels by name, and programmes in the next 24 hours.")
+                    .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
+            } else {
+                if !results.channels.isEmpty {
+                    sectionTitle("Channels · \(results.channels.count)")
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 12) {
+                            ForEach(results.channels) { channel in channelButton(channel) }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                    .scrollClipDisabled()
+                    .scrollIndicators(.hidden)
+                    #if os(tvOS)
+                    .focusSection()
+                    #endif
+                }
+                sectionTitle("Programmes · next 24 hours · \(results.programmes.count)")
+                if results.programmes.isEmpty {
+                    Text("No programmes in the next 24 hours match.").font(DetailType.meta).foregroundStyle(Color.pigSecondary)
                 }
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(results.enumerated()), id: \.offset) { _, hit in
+                    ForEach(results.programmes) { hit in
                         SearchResultRow(model: model, channel: hit.channel, programme: hit.programme) {
-                            choose(hit.channel, hit.programme)
+                            openProgramme(hit.channel, hit.programme)
                         }
                     }
                 }
@@ -72,10 +177,120 @@ struct GuideSearchSheet: View {
                 .focusSection()
                 #endif
             }
-            Button("Refresh guide", systemImage: "arrow.clockwise", action: refresh)
-                #if os(tvOS)
-                .font(DetailType.button)
-                #endif
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text).font(DetailType.rowDetail.weight(.bold)).foregroundStyle(Color.pigSecondary).monospacedDigit()
+            .padding(.top, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func channelButton(_ channel: GuideChannel) -> some View {
+        let now = OnNowRow.make(programmes: channel.programmes, now: Date()).current
+        return Button { openChannel(channel) } label: {
+            HStack(spacing: 14) {
+                ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
+                                size: DetailMetrics.smallLogo)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(channel.name).font(DetailType.rowTitle).lineLimit(1)
+                    if let now { Text(now.title).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).lineLimit(1) }
+                }
+            }
+            .padding(.vertical, 12).padding(.leading, 12).padding(.trailing, 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
+        .accessibilityLabel([channel.name, now.map { "on now: \($0.title)" }].compactMap { $0 }.joined(separator: ", "))
+    }
+
+    /// Debounced, and computed off the main actor: a real guide holds thousands of channels.
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        let text = query
+        let guide = model.guide
+        searchTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            let found = await Task.detached(priority: .userInitiated) { GuideSearch.run(text, in: guide, now: Date()) }.value
+            guard !Task.isCancelled else { return }
+            results = found
+        }
+    }
+
+    // MARK: Jump to
+
+    private var selectedDay: Int {
+        GuideJump.days(now: Date()).firstIndex { Calendar.current.isDate($0.date, inSameDayAs: date) } ?? 0
+    }
+
+    private var jumpPanel: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Jump to").font(DetailType.pageTitle).accessibilityAddTraits(.isHeader)
+            sectionTitle("Day")
+            FlowChips(spacing: 10) {
+                ForEach(Array(GuideJump.days(now: Date()).enumerated()), id: \.offset) { index, day in
+                    Button(day.title) { date = GuideJump.moving(date, toDay: day.date) }
+                        .buttonStyle(GuideFilterStyle(selected: Calendar.current.isDate(day.date, inSameDayAs: date)))
+                        .focused($focus, equals: .day(index))
+                }
+            }
+            #if os(tvOS)
+            .focusSection()
+            #endif
+            sectionTitle("Time")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: hourColumns), spacing: 8) {
+                ForEach(0..<24, id: \.self) { hour in
+                    Button { date = GuideJump.moving(date, toHour: hour) } label: {
+                        Text(GuideJump.moving(Date(), toHour: hour).formatted(.dateTime.hour()))
+                            .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(GuideFilterStyle(selected: Calendar.current.component(.hour, from: date) == hour))
+                }
+            }
+            #if os(tvOS)
+            .focusSection()
+            #endif
+            Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))
+                .font(DetailType.meta).foregroundStyle(Color.pigSecondary)
+            Button("Show guide", systemImage: "calendar") { showGuide(date) }
+                .pigPrimaryButton()
+        }
+        .padding(DetailMetrics.heroPadding / 1.6)
+        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+    }
+
+    private var hourColumns: Int {
+        #if os(tvOS)
+        6
+        #else
+        4
+        #endif
+    }
+}
+
+/// Chips that wrap onto more lines when the row is full.
+private struct FlowChips: Layout {
+    var spacing: CGFloat = 10
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0, widest: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > width { y += line + spacing; x = 0; line = 0 }
+            x += size.width + spacing
+            line = max(line, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: min(widest, width), height: y + line)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, line: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX { y += line + spacing; x = bounds.minX; line = 0 }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            line = max(line, size.height)
         }
     }
 }
@@ -99,7 +314,7 @@ private struct SearchResultRow: View {
         let now = Date()
         let live = programme.isLive(at: now)
         Button(action: action) {
-            HStack(spacing: 24) {
+            HStack(spacing: 20) {
                 #if os(tvOS)
                 ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
                                 size: CGSize(width: 136, height: 76))
@@ -107,20 +322,20 @@ private struct SearchResultRow: View {
                 ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
                                 size: CGSize(width: 72, height: 40))
                 #endif
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 10) {
                         Text(programme.title).font(DetailType.rowTitle).lineLimit(1)
-                        if live { StatusBadge(text: "On now") }
+                        if live { StatusPill(text: "On now", colour: .pigAccent) }
                     }
-                    Text("\(channel.name) · \(live ? programme.timeRange : "\(DetailText.day(programme.start, now: now)) · \(programme.timeRange)")")
-                        .font(DetailType.rowDetail).foregroundStyle(.secondary).lineLimit(1)
+                    Text("\(channel.name) · \(DetailText.day(programme.start, now: now)) · \(programme.timeRange)")
+                        .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).monospacedDigit().lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(DetailType.rowDetail).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
                     .accessibilityHidden(true)
             }
             #if os(tvOS)
-            .padding(.horizontal, 22).padding(.vertical, 16)
+            .padding(.horizontal, 22).padding(.vertical, 10)
             #else
             .padding(10)
             #endif
@@ -128,90 +343,6 @@ private struct SearchResultRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-        .accessibilityLabel("\(programme.title), \(channel.name), \(DetailText.day(programme.start, now: now)) \(programme.timeRange)")
-    }
-}
-
-/// Jump to a day and hour of the guide. tvOS: day and hour chips; iOS: a
-/// date picker.
-struct GuideJumpSheet: View {
-    @Binding var date: Date
-    let show: (Date) -> Void
-    let cancel: () -> Void
-    @FocusState private var showFocused: Bool
-    #if os(tvOS)
-    /// The selected day's chip: the cover opens with focus there, so the
-    /// first press moves the selection rather than Back being needed.
-    @FocusState private var focusedDay: Int?
-    private var selectedOffset: Int {
-        let start = Calendar.current.startOfDay(for: Date())
-        let days = Calendar.current.dateComponents([.day], from: start, to: Calendar.current.startOfDay(for: date)).day ?? 0
-        return min(max(days, 0), 6)
-    }
-    #endif
-
-    var body: some View {
-        DetailPage(title: "Jump to…") {
-            #if os(tvOS)
-            VStack(alignment: .leading, spacing: 14) {
-                PigSectionHeader(title: "Day")
-                HStack(spacing: 14) {
-                    ForEach(0..<7, id: \.self) { offset in
-                        let day = Calendar.current.date(byAdding: .day, value: offset, to: Calendar.current.startOfDay(for: Date()))!
-                        Button(dayTitle(day, offset: offset)) { setDay(day) }
-                            .buttonStyle(GuideFilterStyle(selected: Calendar.current.isDate(day, inSameDayAs: date)))
-                            .focused($focusedDay, equals: offset)
-                    }
-                }
-                .focusSection()
-            }
-            VStack(alignment: .leading, spacing: 14) {
-                PigSectionHeader(title: "Time")
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(160), spacing: 14), count: 8), alignment: .leading, spacing: 14) {
-                    ForEach(0..<24, id: \.self) { hour in
-                        Button(hourTitle(hour)) { setHour(hour) }
-                            .buttonStyle(GuideFilterStyle(selected: Calendar.current.component(.hour, from: date) == hour))
-                    }
-                }
-                .focusSection()
-            }
-            #else
-            DatePicker("Date and time", selection: $date)
-                .datePickerStyle(.graphical)
-            #endif
-            Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))
-                .font(DetailType.meta).foregroundStyle(.secondary)
-            DetailActions {
-                Button("Show guide", systemImage: "calendar") { show(date) }
-                    .pigPrimaryButton()
-                    .focused($showFocused)
-                Button("Cancel", action: cancel)
-            }
-        }
-        #if os(tvOS)
-        .defaultFocus($focusedDay, selectedOffset)
-        #endif
-    }
-
-    private func dayTitle(_ day: Date, offset: Int) -> String {
-        switch offset {
-        case 0: return "Today"
-        case 1: return "Tomorrow"
-        default: return day.formatted(.dateTime.weekday(.abbreviated).day())
-        }
-    }
-
-    private func hourTitle(_ hour: Int) -> String {
-        let at = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
-        return at.formatted(date: .omitted, time: .shortened)
-    }
-
-    private func setDay(_ day: Date) {
-        let hour = Calendar.current.component(.hour, from: date)
-        date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
-    }
-
-    private func setHour(_ hour: Int) {
-        date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: date) ?? date
+        .accessibilityLabel("\(programme.title), \(channel.name), \(DetailText.day(programme.start, now: now)) \(programme.timeRange)\(live ? ", on now" : "")")
     }
 }

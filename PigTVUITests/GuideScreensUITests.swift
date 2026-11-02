@@ -29,8 +29,9 @@ final class GuideScreensUITests: XCTestCase {
         }
     }
 
-    private func launch(_ screen: String) -> XCUIApplication {
+    private func launch(_ screen: String, search: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
+        if let search { app.launchEnvironment["PIGTV_UI_TEST_SEARCH"] = search }
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = screen
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         app.launch()
@@ -82,7 +83,7 @@ final class GuideScreensUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         #endif
         for screen in ["programme", "programme-later", "channel", "search"] {
-            let app = launch(screen)
+            let app = launch(screen, search: screen == "search" ? "news" : nil)
             Thread.sleep(forTimeInterval: 2)
             shoot(app, screen)
             app.terminate()

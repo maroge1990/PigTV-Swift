@@ -8,10 +8,6 @@ struct GuideMenuTarget {
     let anchor: CGRect
 }
 
-private struct GuideSelection {
-    let channel: GuideChannel
-    let programme: GuideProgramme
-}
 
 // Focus identity for every focusable element on the guide screen. Grid cells
 // use the channel identity plus a programme start; -1 marks the placeholder
@@ -64,16 +60,13 @@ struct GuideView: View {
     @AppStorage("pigtv.guide.filter") private var filter = "all"
     @AppStorage("pigtv.guide.channel") private var lastChannel = ""
     @State private var viewport = GuideNavigation.rounded(Date())
-    @State private var programmeSearch = ""
-    @State private var pendingSelection: GuideSelection?
     @State private var clock = Date()
     @State private var lastPeriodicRefresh = Date()
-    @State private var search = ""
-    @State private var searching = false
-    @State private var choosingDate = false
-    /// Show guide was chosen (its own `goTo` already claims grid focus).
-    @State private var jumped = false
-    @State private var jumpDate = Date()
+    /// Jump to's Show guide: the time to show once the Guide is back on screen (the page has popped).
+    @State private var pendingJump: Date?
+    /// The tool that opened the Search page, where a pop puts focus back (Show guide then moves the grid).
+    private enum PageTool: Hashable { case search, jump }
+    @FocusState private var pageToolFocus: PageTool?
     /// D-44 (#49, Apple 108): the pages pushed on the Guide's NavigationStack (programme details, …).
     @State private var path: [GuideRoute] = []
     @State private var filterStripMetrics = FilterStripMetrics()
@@ -205,13 +198,6 @@ struct GuideView: View {
                     clock = Date()
                 }
             }
-            .detailCover(isPresented: $searching, onDismiss: {
-                if let pending = pendingSelection { pendingSelection = nil; open(pending.channel, pending.programme) }
-                else if usesGridView { gridFocusRestore += 1; claimGridFocus() }
-            }) { searchSheet }
-            // A full-screen cover on tvOS: a tvOS sheet is a narrow card and
-            // clipped the day and time chips (R6.14).
-            .detailCover(isPresented: $choosingDate, onDismiss: finishJump) { datePicker }
             .task {
                 // The guide always opens at the current half-hour; restoring a
                 // later browsing position stranded the grid hours ahead.
@@ -248,7 +234,6 @@ struct GuideView: View {
                 else if rowsRefresh == nil { scheduleRowsRefresh(after: .milliseconds(400)) }
             }
             .onChange(of: favouriteKeys) { refreshRows() }
-            .onChange(of: search) { refreshRows() }
             // Every layout (16 Oct): this was on the iPad/tvOS grid only, so the
             // iPhone's On now list ignored a category change until the Guide
             // reappeared. Coalesced (R18); the grid returns to the top row and
@@ -263,6 +248,18 @@ struct GuideView: View {
             .onChange(of: app.playback == nil) { _, closed in
                 if closed, usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }
+            // Jump to's Show guide: once the page has popped, the grid moves there and takes focus. On the TV that is when
+            // the pop has put focus back on the tool that opened the page (taking it before then loses it to that
+            // restoration); touch has no focus, so there it is when the Guide is back on screen.
+            #if os(tvOS)
+            .onChange(of: pageToolFocus) { _, tool in
+                if tool != nil, let date = pendingJump { pendingJump = nil; goTo(date) }
+            }
+            #else
+            .onAppear {
+                if let date = pendingJump { pendingJump = nil; goTo(date) }
+            }
+            #endif
             .navigationDestination(for: GuideRoute.self) { route in destination(route) }
             .closesForOutsidePlay { path = []; menu = nil } // #179
         }
@@ -428,8 +425,10 @@ struct GuideView: View {
             .focused($headerNowFocused)
         Button { shift(-GuideNavigation.step) } label: { GuideToolLabel(title: "Earlier", systemImage: "chevron.left") }
         Button { shift(GuideNavigation.step) } label: { GuideToolLabel(title: "Later", systemImage: "chevron.right", trailingIcon: true) }
-        Button { searching = true } label: { GuideToolLabel(title: "Search", systemImage: "magnifyingglass") }
-        Button { jumpDate = viewport; choosingDate = true } label: { GuideToolLabel(title: "Jump to…", systemImage: "calendar") }
+        Button { path.append(.search(jump: false)) } label: { GuideToolLabel(title: "Search", systemImage: "magnifyingglass") }
+            .focused($pageToolFocus, equals: .search)
+        Button { path.append(.search(jump: true)) } label: { GuideToolLabel(title: "Jump to…", systemImage: "calendar") }
+            .focused($pageToolFocus, equals: .jump)
     }
 
     /// Landscape phone: title, date, the category menu and icon-only controls
@@ -449,9 +448,9 @@ struct GuideView: View {
                     Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
                     Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
                 }
-                Button("Search", systemImage: "magnifyingglass") { searching = true }
+                Button("Search", systemImage: "magnifyingglass") { path.append(.search(jump: false)) }
                 if !usesOnNowList {
-                    Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
+                    Button("Jump to…", systemImage: "calendar") { path.append(.search(jump: true)) }
                 }
             }
             .labelStyle(.iconOnly)
@@ -474,9 +473,9 @@ struct GuideView: View {
                     Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
                     Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
                 }
-                Button("Search", systemImage: "magnifyingglass") { searching = true }
+                Button("Search", systemImage: "magnifyingglass") { path.append(.search(jump: false)) }
                 if !usesOnNowList {
-                    Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
+                    Button("Jump to…", systemImage: "calendar") { path.append(.search(jump: true)) }
                 }
             }
             .labelStyle(.iconOnly)
@@ -558,19 +557,6 @@ struct GuideView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private var searchSheet: some View {
-        GuideSearchSheet(model: model, search: $search, programmeSearch: $programmeSearch,
-                         done: { searching = false },
-                         choose: { channel, programme in
-                             pendingSelection = GuideSelection(channel: channel, programme: programme)
-                             searching = false
-                         },
-                         refresh: { searching = false; reload() })
-    }
-    private var datePicker: some View {
-        GuideJumpSheet(date: $jumpDate, show: { date in jumped = true; choosingDate = false; goTo(date) },
-                       cancel: { choosingDate = false })
-    }
     // Start a channel and hand the player the current row order for channel up/down.
     private func play(_ channel: GuideChannel) {
         app.zapList = rows.map(model.asChannel)
@@ -592,7 +578,7 @@ struct GuideView: View {
     /// inputs does not refilter (it used to on every tab switch).
     private var rowsInput: GuideRowsInput {
         GuideRowsInput(count: model.guide.count, first: model.guide.first?.id, last: model.guide.last?.id,
-                       loadedAt: model.guideLoadedAt, fromCache: model.fromCache, filter: filter, search: search,
+                       loadedAt: model.guideLoadedAt, fromCache: model.fromCache, filter: filter, search: "",
                        favourites: model.favourites.map { "\($0.identityKey)|\($0.id)" }, categories: app.categories.count,
                        programmesVersion: model.guideProgrammesVersion)
     }
@@ -612,7 +598,8 @@ struct GuideView: View {
         // is shown once in the Favourites filter (server 0097 semantics).
         let guide = model.guide
         let categories = filterCategories
-        let search = search
+        // D-44 (Apple 110): Search is its own page now; the rows are no longer filtered by channel name.
+        let search = ""
         let onlyFavourites = filter == "favourites"
         let keys = Set(model.favourites.map(\.identityKey) + model.favourites.map(\.id))
         // Small guides (and the very first rows) are filtered at once; a large
@@ -664,22 +651,14 @@ struct GuideView: View {
     private func reload() { Task { await model.retryGuide() } }
     /// Moves SwiftUI focus into the UIKit grid; the grid then focuses the
     /// cell it chose (its pending focus). UIKit's own focus requests are
-    /// refused while a SwiftUI control holds focus.
-    /// Retried briefly: a cover may still be dismissing.
+    /// refused while a SwiftUI control holds focus. #49 (Apple 110): once,
+    /// with no timed retries: the Guide's pages are pushed, not covers, so
+    /// nothing is still dismissing when this runs.
     private func claimGridFocus() {
         // Touch (iPad) has no focus to move.
         #if os(tvOS)
-        for delay in [0.0, 0.4, 0.8] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { if !gridHasFocus { gridHasFocus = true } }
-        }
+        gridHasFocus = true
         #endif
-    }
-    private func finishJump() {
-        let showed = jumped
-        jumped = false
-        guard usesGridView else { return }
-        if !showed { gridFocusRestore += 1 }
-        claimGridFocus()
     }
     // MARK: Pages (D-44, #49)
 
@@ -717,8 +696,10 @@ struct GuideView: View {
             } else {
                 missingPage
             }
-        case .search:
-            missingPage
+        case .search(let jump):
+            GuideSearchPage(model: model, date: viewport, canJump: usesGridView, startWithJump: jump,
+                            openChannel: { openChannel($0) }, openProgramme: { open($0, $1) },
+                            showGuide: { date in pendingJump = date; path = [] }, pushedFrom: "TV Guide")
         }
     }
 

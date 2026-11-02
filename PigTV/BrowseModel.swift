@@ -372,20 +372,6 @@ final class BrowseModel: ObservableObject {
         await loadGuide(reset: true, keepVisible: true)
     }
 
-    // Programme-title search across every loaded channel, upcoming only.
-    func searchProgrammes(_ text: String, limit: Int = 200) -> [(channel: GuideChannel, programme: GuideProgramme)] {
-        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.count >= 2 else { return [] }
-        let now = Date()
-        var results: [(channel: GuideChannel, programme: GuideProgramme)] = []
-        for channel in guide {
-            for programme in channel.programmes where programme.end > now && programme.title.localizedStandardContains(query) {
-                results.append((channel, programme))
-            }
-        }
-        return Array(results.sorted { $0.programme.start < $1.programme.start }.prefix(limit))
-    }
-
     func loadArtworkIndex() async {
         guard client.info?.features.epgLogoFallback != true, !artworkBusy, !artworkLoaded else { return }
         // Build 31: after a failure, try again at most every 10 minutes
