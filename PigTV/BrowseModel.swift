@@ -656,6 +656,15 @@ final class BrowseModel: ObservableObject {
         } catch { actionError = UserMessage.text(for: error) }
     }
 
+    /// An Undo whose time ran out (Codex, batch 4 high): `cancel` returns at once while another change is in flight,
+    /// so the committed cancel waits for that change to finish instead of being dropped.
+    func cancelCommitted(_ item: ScheduledRecording) async {
+        while mutationBusy {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        await cancel(item)
+    }
+
     /// Server 0410 (#12, D-42): "Record this one instead": the schedule wins its clashes from then on, and the ones
     /// it beat wait. 404 when it has already started or is gone. The schedules are reloaded either way.
     func choose(_ item: ScheduledRecording) async {

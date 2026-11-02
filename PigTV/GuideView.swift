@@ -752,7 +752,7 @@ struct GuideView: View {
         case .cancelRecording:
             closeMenu()
             if let programme = target.programme, let schedule = model.activeSchedule(channel: channel, programme: programme) {
-                app.presenter.offerUndo("Recording of \(programme.title) cancelled") { Task { await model.cancel(schedule) } }
+                app.presenter.offerUndo("Recording of \(programme.title) cancelled") { Task { await model.cancelCommitted(schedule) } }
             }
         case .recordEvery:
             guard let programme = target.programme else { return nil }

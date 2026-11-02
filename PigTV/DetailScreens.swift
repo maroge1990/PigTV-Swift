@@ -85,7 +85,7 @@ struct ProgrammeDetails: View {
                         if let schedule {
                             Button("Cancel recording", systemImage: "xmark.circle") {
                                 presenter.offerUndo("Recording of \(programme.title) cancelled") {
-                                    Task { await model.cancel(schedule) }
+                                    Task { await model.cancelCommitted(schedule) }
                                 }
                             }
                             .disabled(model.mutationBusy)
