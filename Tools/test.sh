@@ -16,7 +16,7 @@ DEST="${PIGTV_TEST_DESTINATION:-platform=tvOS Simulator,name=Apple TV 4K (3rd ge
 
 # Screenshot/appearance suites. Every other UI suite is a regression test and runs before a push, so a new suite
 # is in the push tier unless it is added here.
-VISUAL="BrandDepthUITests TabFlashUITests BrandSplashUITests TopShelfCardsUITests PigTVUITests PigTVUITestsLaunchTests"
+VISUAL="GuideScreensUITests BrandDepthUITests TabFlashUITests BrandSplashUITests TopShelfCardsUITests PigTVUITests PigTVUITestsLaunchTests"
 
 xc() { xcodebuild -quiet -project PigTV.xcodeproj -scheme PigTV -destination "$DEST" "$@"; }
 trap 'xcrun simctl shutdown all >/dev/null 2>&1 || true' EXIT
