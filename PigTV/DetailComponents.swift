@@ -388,11 +388,11 @@ extension View {
 
 extension GuideProgramme {
     /// "8:30 – 10:00 pm".
-    var timeRange: String {
+    nonisolated var timeRange: String {
         "\(start.formatted(date: .omitted, time: .shortened)) – \(end.formatted(date: .omitted, time: .shortened))"
     }
     /// "1 h 30 min", "45 min".
-    var durationText: String { DetailText.duration(end.timeIntervalSince(start)) }
+    nonisolated var durationText: String { DetailText.duration(end.timeIntervalSince(start)) }
 }
 
 nonisolated enum DetailText {

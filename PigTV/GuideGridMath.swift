@@ -270,9 +270,17 @@ nonisolated enum GuideGridMath {
 nonisolated enum GuideRowFilter {
     static func rows(from guide: [GuideChannel], category: Category?, search: String,
                      onlyFavourites: Bool, favouriteKeys: Set<String>) -> [GuideChannel] {
+        rows(from: guide, categories: category.map { [$0] }, search: search, onlyFavourites: onlyFavourites,
+             favouriteKeys: favouriteKeys)
+    }
+
+    /// D-44 (Apple 106): `categories` nil shows every channel; else a channel in any of them (the Sport chip is every
+    /// sport category).
+    static func rows(from guide: [GuideChannel], categories: [Category]?, search: String,
+                     onlyFavourites: Bool, favouriteKeys: Set<String>) -> [GuideChannel] {
         var shownFavourites = Set<String>()
         return guide.filter { channel in
-            (category.map { channel.matches($0) } ?? true) &&
+            (categories.map { list in list.contains { channel.matches($0) } } ?? true) &&
             (search.isEmpty || channel.name.localizedStandardContains(search)) &&
             // Last, so a listing is only counted as shown once it passes.
             (!onlyFavourites || ((favouriteKeys.contains(channel.identityKey) || favouriteKeys.contains(channel.id))

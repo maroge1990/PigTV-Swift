@@ -119,7 +119,8 @@ struct GuideView: View {
         #endif
     }
 
-    private var category: Category? { app.categories.first { $0.id == filter } }
+    /// D-44 (Apple 106): the categories the chosen chip shows (nil: All or Favourites).
+    private var filterCategories: [Category]? { GuideChips.categories(for: filter, in: app.categories) }
     /// Favourite membership by identity (review F5): a list with the same
     /// count but different channels must still refresh the rows.
     private var favouriteKeys: [String] { model.favourites.map(\.identityKey) }
@@ -150,29 +151,9 @@ struct GuideView: View {
                         slimBar
                     } else {
                         header(compact: compact)
+                        // D-44 (Apple 106): the slim focus strip, then the chips and the tools, above the grid.
+                        if !compact { focusStrip.padding(.horizontal, 24) }
                         filters(compact: compact)
-                    }
-                    if !compact && !slim {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(focusedProgramme?.title ?? focusedChannel?.name ?? "Choose a programme to watch")
-                                .font(GuideTypography.body.weight(.semibold)).lineLimit(1, reservesSpace: true)
-                            Text(focusedDetail)
-                                .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
-                        }
-                        .frame(height: 78, alignment: .top)
-                        Spacer()
-                        if model.guideHasMore && model.guideError == nil {
-                            ProgressView()
-                            Text("\(model.guide.count) of \(model.guideTotal) channels")
-                                .font(GuideTypography.small).foregroundStyle(.secondary)
-                        }
-                        if let programme = focusedProgramme, let channel = focusedChannel {
-                            Button("Details", systemImage: "info.circle") {
-                                selection = GuideSelection(channel: channel, programme: programme)
-                            }
-                        }
-                    }.frame(height: 78, alignment: .top).padding(.horizontal, 24)
                     }
                     if let error = model.guideError {
                         RetryBanner(message: error) { reload() }
@@ -367,17 +348,44 @@ struct GuideView: View {
         .padding(.horizontal, 24)
     }
 
-    private var focusedDetail: String {
-        if let programme = focusedProgramme {
-            let times = "\(programme.start.formatted(date: .omitted, time: .shortened)) – \(programme.end.formatted(date: .omitted, time: .shortened))"
-            if let description = programme.description, !description.isEmpty { return "\(times) • \(description)" }
-            return times
-        }
+    private var stripHint: String {
         #if os(tvOS)
-        return "Select to watch • Options for programme details and favourites"
+        "Select a programme on now to watch, a later one for details"
         #else
-        return "Tap a programme on now to watch, a later one for details • Touch and hold for options"
+        "Tap a programme on now to watch, a later one for details · Touch and hold for options"
         #endif
+    }
+
+    /// What the strip says: the focused programme (or tile) from the loaded guide and the schedule marks.
+    private var stripText: GuideStripText {
+        let channel = focusedChannel
+        let programme = focusedProgramme
+        let scheduled = channel.flatMap { c in programme.map { marks.scheduledKeys.contains(ScheduledRecording.key(channel: c.name, start: $0.startTime)) } } ?? false
+        return GuideStripText.make(channel: channel?.name, number: channel.flatMap { model.number(for: $0) },
+                                   programme: programme,
+                                   current: programme == nil ? channel.flatMap { OnNowRow.make(programmes: $0.programmes, now: clock).current } : nil,
+                                   scheduled: scheduled, recordingNow: channel.map { marks.recordingChannels.contains($0.name) } ?? false,
+                                   now: clock, hint: stripHint)
+    }
+
+    private var focusStrip: some View {
+        GuideFocusStrip(text: stripText) {
+            if model.guideHasMore && model.guideError == nil {
+                ProgressView()
+                Text("\(model.guide.count) of \(model.guideTotal) channels")
+                    .font(GuideTypography.small).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
+            }
+            #if os(tvOS)
+            Text("Long press for options").font(.system(size: 18)).foregroundStyle(Color.pigSecondary).fixedSize()
+                .accessibilityIdentifier("guide.strip.hint")
+            #endif
+            if let programme = focusedProgramme, let channel = focusedChannel {
+                Button("Details", systemImage: "info.circle") {
+                    selection = GuideSelection(channel: channel, programme: programme)
+                }
+                .accessibilityIdentifier("guide.strip.details")
+            }
+        }
     }
 
     private func header(compact: Bool) -> some View {
@@ -402,21 +410,21 @@ struct GuideView: View {
     }
 
     private var regularHeader: some View {
+        // D-44 (Apple 106): the tools moved beside the chips (`tools`).
         PigPageHeader(title: "TV Guide",
-                      subtitle: Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))) {
-            if usesGridView {
-                Button("Now", systemImage: "location.fill") { goTo(Date()) }
-                    .focused($headerNowFocused)
-            }
-            if !usesOnNowList {
-                Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
-                Button("Later", systemImage: "chevron.right") { shift(GuideNavigation.step) }
-            }
-            Button("Search", systemImage: "magnifyingglass") { searching = true }
-            if !usesOnNowList {
-                Button("Jump to…", systemImage: "calendar") { jumpDate = viewport; choosingDate = true }
-            }
-        }
+                      subtitle: Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated)))
+    }
+
+    /// Now, Earlier, Later, Search and Jump to… at the end of the chip row (R5-Guide-TV). Up from the grid's top row
+    /// lands on Now (`leaveUp`).
+    @ViewBuilder
+    private var tools: some View {
+        Button { goTo(Date()) } label: { GuideToolLabel(title: "Now", systemImage: "location.fill") }
+            .focused($headerNowFocused)
+        Button { shift(-GuideNavigation.step) } label: { GuideToolLabel(title: "Earlier", systemImage: "chevron.left") }
+        Button { shift(GuideNavigation.step) } label: { GuideToolLabel(title: "Later", systemImage: "chevron.right", trailingIcon: true) }
+        Button { searching = true } label: { GuideToolLabel(title: "Search", systemImage: "magnifyingglass") }
+        Button { jumpDate = viewport; choosingDate = true } label: { GuideToolLabel(title: "Jump to…", systemImage: "calendar") }
     }
 
     /// Landscape phone: title, date, the category menu and icon-only controls
@@ -480,12 +488,11 @@ struct GuideView: View {
         if compact {
             filterMenu.padding(.horizontal, 24)
         } else {
+            HStack(spacing: 12) {
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
-                    filterButton("All", id: "all")
-                    filterButton("Favourites", id: "favourites")
-                    ForEach(app.categories) { category in
-                        filterButton(category.name, id: category.id)
+                    ForEach(GuideChips.make(categories: app.categories)) { chip in
+                        filterButton(chip)
                     }
                 }.padding(.horizontal, 12).padding(.vertical, 10)
             }
@@ -499,16 +506,23 @@ struct GuideView: View {
             }) { _, metrics in
                 filterStripMetrics = metrics
             }
+            if usesGridView {
+                HStack(spacing: 10) { tools }
+                    .buttonStyle(GuideFilterStyle())
+                    #if os(tvOS)
+                    .focusSection()
+                    #endif
+            }
+            }
             .padding(.horizontal, 12)
+            .padding(.trailing, 12)
         }
     }
 
     private var filterMenu: some View {
         Menu {
             Picker("Category", selection: $filter) {
-                Text("All").tag("all")
-                Text("Favourites").tag("favourites")
-                ForEach(app.categories) { category in Text(category.name).tag(category.id) }
+                ForEach(GuideChips.make(categories: app.categories)) { chip in Text(chip.title).tag(chip.id) }
             }
         } label: {
             Label(filterTitle, systemImage: "line.3.horizontal.decrease.circle")
@@ -520,21 +534,23 @@ struct GuideView: View {
         switch filter {
         case "all": return "All channels"
         case "favourites": return "Favourites"
-        default: return category?.name ?? "All channels"
+        default: return GuideChips.make(categories: app.categories).first { GuideChips.isSelected($0, filter: filter, in: app.categories) }?.title ?? "All channels"
         }
     }
 
-    private func filterButton(_ title: String, id: String) -> some View {
-        Button { filter = id } label: {
+    private func filterButton(_ chip: GuideChip) -> some View {
+        let selected = GuideChips.isSelected(chip, filter: filter, in: app.categories)
+        let title = chip.title
+        return Button { filter = chip.id } label: {
             // No selection checkmark: the pink tint already marks the current
             // category, and a chip that changed width on every tap relaid the
             // whole strip (and its edge fades) under rapid switching (R18).
             Text(title).font(GuideTypography.body).fixedSize(horizontal: true, vertical: false)
         }
-        .buttonStyle(GuideFilterStyle(selected: filter == id))
+        .buttonStyle(GuideFilterStyle(selected: selected))
         .modifier(CategoryContentFade(width: filterStripMetrics.viewportWidth,
             leading: filterStripMetrics.fadesLeading, trailing: filterStripMetrics.fadesTrailing))
-        .accessibilityAddTraits(filter == id ? .isSelected : [])
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var searchSheet: some View {
@@ -590,7 +606,7 @@ struct GuideView: View {
         // Favourites match on the stable identity, and a cross-listed channel
         // is shown once in the Favourites filter (server 0097 semantics).
         let guide = model.guide
-        let category = category
+        let categories = filterCategories
         let search = search
         let onlyFavourites = filter == "favourites"
         let keys = Set(model.favourites.map(\.identityKey) + model.favourites.map(\.id))
@@ -598,14 +614,14 @@ struct GuideView: View {
         // guide is filtered off the main actor and published when done, unless
         // newer inputs arrived meanwhile.
         if rows.isEmpty || guide.count < GuideRowsInput.offMainThreshold {
-            rows = GuideRowFilter.rows(from: guide, category: category, search: search,
+            rows = GuideRowFilter.rows(from: guide, categories: categories, search: search,
                                        onlyFavourites: onlyFavourites, favouriteKeys: keys)
             rowsVersion += 1
             return
         }
         rowsRefresh = Task { @MainActor in
             let filtered = await Task.detached(priority: .userInitiated) {
-                GuideRowFilter.rows(from: guide, category: category, search: search,
+                GuideRowFilter.rows(from: guide, categories: categories, search: search,
                                     onlyFavourites: onlyFavourites, favouriteKeys: keys)
             }.value
             guard !Task.isCancelled, lastRowsInput == input else { return }

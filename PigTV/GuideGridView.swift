@@ -685,6 +685,17 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         if let programme = programme(indexPath) { actions.select(channel, programme) } else { actions.play(channel) }
     }
 
+    #if os(iOS)
+    /// D-44 (Apple 106): touch has no focus, so the strip above the grid reads the programme last touched.
+    func collectionView(_ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath) {
+        guard store.rows.indices.contains(indexPath.section) else { return }
+        let channel = store.rows[indexPath.section]
+        let start: Double? = indexPath.item == 0 ? nil : (programme(indexPath)?.startTime ?? -1)
+        focusIdentity = (channel.id, start)
+        actions?.focusChanged(channel.id, start)
+    }
+    #endif
+
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemsAt indexPaths: [IndexPath],
                         point: CGPoint) -> UIContextMenuConfiguration? {
         guard let indexPath = indexPaths.first, store.rows.indices.contains(indexPath.section), let actions else { return nil }
