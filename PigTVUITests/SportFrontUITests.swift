@@ -71,8 +71,9 @@ final class SportFrontUITests: XCTestCase {
         attach(app, "sport-front-flipped")
     }
 
-    /// #204 (maroge1990/PigTV#204): Record in the hero offers every channel carrying the game, best first, each with its
-    /// own times; choosing the second opens the record sheet on that channel. The Packers game gets two channels whose
+    /// #204 (maroge1990/PigTV#204), Apple 114: Record in the hero opens the record page, whose Record on lists every
+    /// channel carrying the game, best first, each with its own times; choosing the second selects it (no channel
+    /// dialog). The game's card id goes with it, so When it stops is the game's end (ESPN). The Packers game gets two channels whose
     /// airings are placed around the real clock (the fixture's own times are in the past by the time this runs).
     @MainActor
     func testRecordOffersEveryChannelBestFirst() throws {
@@ -97,20 +98,23 @@ final class SportFrontUITests: XCTestCase {
         for _ in 0..<3 where focused(app).identifier != "sport.banner.hero.record" { XCUIRemote.shared.press(.right) }
         XCTAssertEqual(focused(app).identifier, "sport.banner.hero.record")
         XCUIRemote.shared.press(.select)
-        let best = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'ESPN HD · '")).firstMatch
-        let other = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Fox Footy · '")).firstMatch
-        XCTAssertTrue(best.waitForExistence(timeout: 5), "the best channel is offered")
-        XCTAssertTrue(other.exists, "so is the other channel carrying the game")
+        XCTAssertTrue(app.descendants(matching: .any)["record.page"].waitForExistence(timeout: 5), "the record page")
+        XCTAssertFalse(app.staticTexts["Record on which channel?"].exists, "no channel dialog")
+        let best = app.buttons["record.on.0"], other = app.buttons["record.on.1"]
+        XCTAssertTrue(best.waitForExistence(timeout: 5), "Record on lists the best channel")
+        XCTAssertTrue(best.label.hasPrefix("ESPN HD, Best channel"), best.label)
+        XCTAssertTrue(other.label.hasPrefix("Fox Footy, "), other.label)
         XCTAssertLessThan(best.frame.minY, other.frame.minY, "best first")
-        XCTAssertNotEqual(best.label.split(separator: "·").last, other.label.split(separator: "·").last, "each with its own times")
-        attach(app, "sport-front-record-choice")
-        for _ in 0..<3 where !other.hasFocus { XCUIRemote.shared.press(.down) }
-        XCTAssertTrue(other.hasFocus, "Fox Footy")
+        XCTAssertTrue(best.isSelected, "the best channel is chosen to start with")
+        XCTAssertTrue(app.descendants(matching: .any)["record.stop"].label.hasPrefix("When the game ends (ESPN)"),
+                      "the card's game: it stops when the game ends")
+        XCTAssertTrue(waitUntil { self.focused(app).identifier == "record.schedule" }, "focus on Record game: \(focused(app).identifier)")
+        attach(app, "sport-front-record-page")
+        for _ in 0..<12 where !other.hasFocus { XCUIRemote.shared.press(.up) }
+        XCTAssertTrue(other.hasFocus, "Fox Footy: \(focused(app).identifier)")
         XCUIRemote.shared.press(.select)
-        XCTAssertTrue(app.buttons["record.schedule"].waitForExistence(timeout: 5), "the record sheet")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Fox Footy · '")).firstMatch.exists,
-                      "on the chosen channel")
-        attach(app, "sport-front-record-sheet-second-channel")
+        XCTAssertTrue(waitUntil { other.isSelected && !best.isSelected }, "Fox Footy is chosen")
+        attach(app, "sport-front-record-page-second-channel")
     }
 
     /// C-R since 0415 (#198; maroge1990/PigTV#200): a card with a recording that loses its clash shows "Set to record"

@@ -749,11 +749,10 @@ struct GuideView: View {
                 return model.actionError ?? "The recording could not be scheduled."
             }
             closeMenu()
-        case .cancelRecording:
+        case .changeRecording:
+            // Apple 114: the record page as Change recording (its padding; Cancel recording there, with Undo).
             closeMenu()
-            if let programme = target.programme, let schedule = model.activeSchedule(channel: channel, programme: programme) {
-                app.presenter.offerUndo("Recording of \(programme.title) cancelled") { Task { await model.cancelCommitted(schedule) } }
-            }
+            if let programme = target.programme { app.presenter.present(.record(model.recordRequest(channel: channel, programme: programme))) }
         case .recordEvery:
             guard let programme = target.programme else { return nil }
             guard await model.addRule(RuleBody(kind: "series", match: programme.title, sourceId: channel.sourceId,
@@ -763,7 +762,7 @@ struct GuideView: View {
             closeMenu()
         case .moreOptions:
             closeMenu()
-            if let programme = target.programme { app.presenter.present(.record(channel, programme)) }
+            if let programme = target.programme { app.presenter.present(.record(model.recordRequest(channel: channel, programme: programme))) }
         case .watchFromStart:
             closeMenu()
             if let programme = target.programme, let recording = model.recordingInProgress(channel: channel, programme: programme) {

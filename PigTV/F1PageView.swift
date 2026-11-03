@@ -80,7 +80,6 @@ struct F1PageView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
-    @State private var recording: SportEvent?
     @State private var choosingDriver = false
     /// The page's width: an iPad in portrait gets the single column (the approved iPad mock-up's note).
     @State private var width: CGFloat = 0
@@ -114,13 +113,6 @@ struct F1PageView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .whileVisible { await model.keepFresh() }
-        .detailCover(item: $recording) { event in
-            if let best = event.best {
-                RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme(on: best)) { _ in
-                    recording = nil
-                }
-            }
-        }
         .confirmationDialog("Follow a driver", isPresented: $choosingDriver, titleVisibility: .visible) {
             ForEach(model.page.map(F1PageText.drivers) ?? [], id: \.self) { driver in
                 Button(driver) { Task { await model.setFollowing(driver) } }
@@ -270,7 +262,7 @@ struct F1PageView: View {
                         .accessibilityIdentifier("f1.watchWhenStarts")
                 }
                 if !scheduled && event.end(on: best) > now {
-                    Button("Record", systemImage: "record.circle") { recording = event }
+                    Button("Record", systemImage: "record.circle") { app.record(event) }
                         .disabled(browse.mutationBusy)
                         .accessibilityIdentifier("f1.record")
                 } else if scheduled {

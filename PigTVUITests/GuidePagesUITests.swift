@@ -98,6 +98,28 @@ final class GuidePagesUITests: XCTestCase {
         XCTAssertTrue(waitUntil { self.focusedLabel(app) == programme }, "focus did not return to the programme: \(focusedLabel(app))")
     }
 
+    /// 114: the menu's More options… opens the record page (not the old Record sheet): What, When it stops, focus on
+    /// Record programme; Back closes it.
+    @MainActor
+    func testMoreOptionsOpensTheRecordPage() throws {
+        let app = launch()
+        enterFirstRow(app)
+        XCUIRemote.shared.press(.right)
+        XCUIRemote.shared.press(.select, forDuration: 1.5)
+        let more = app.buttons["menu.moreOptions"]
+        XCTAssertTrue(more.waitForExistence(timeout: 3), "no menu card")
+        for _ in 0..<4 where !more.hasFocus { XCUIRemote.shared.press(.down) }
+        XCTAssertTrue(more.hasFocus, "focus: \(focusedLabel(app))")
+        XCUIRemote.shared.press(.select)
+        let page = app.descendants(matching: .any)["record.page"]
+        XCTAssertTrue(page.waitForExistence(timeout: 5), "no record page")
+        XCTAssertTrue(app.buttons["record.what.this"].exists && app.descendants(matching: .any)["record.stop"].exists)
+        XCTAssertTrue(waitUntil { app.buttons["record.schedule"].hasFocus }, "focus: \(focusedLabel(app))")
+        attach(app, "Guide record page")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil { !page.exists }, "Back did not close the page")
+    }
+
     /// 108 (#49): Select on a later programme pushes its page (hero, Record as the primary, Also on <channel>); Back
     /// pops it and focus is on the programme again, with no timed retries.
     @MainActor

@@ -9,8 +9,9 @@ import SwiftUI
 /// One menu item.
 nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     case recordThis(times: String)
-    /// Already scheduled or recording: cancel it (at once, with Undo).
-    case cancelRecording(status: String)
+    /// D-44 batch 5 (Apple 114): already scheduled or recording: the record page as "Change recording" (its times, and
+    /// Cancel recording with Undo). Replaces batch 4's "Cancel this recording".
+    case changeRecording(status: String)
     /// "Record every new episode" (a series rule) or, for sport, "Record every game".
     case recordEvery(title: String, detail: String)
     case moreOptions
@@ -22,7 +23,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     var id: String {
         switch self {
         case .recordThis: "recordThis"
-        case .cancelRecording: "cancelRecording"
+        case .changeRecording: "changeRecording"
         case .recordEvery: "recordEvery"
         case .moreOptions: "moreOptions"
         case .watchFromStart: "watchFromStart"
@@ -35,7 +36,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .recordThis: "Record this programme"
-        case .cancelRecording: "Cancel this recording"
+        case .changeRecording: "Change recording"
         case .recordEvery(let title, _): title
         case .moreOptions: "More options…"
         case .watchFromStart: "Watch from start"
@@ -49,7 +50,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     var detail: String? {
         switch self {
         case .recordThis(let times): "\(times), with the usual padding"
-        case .cancelRecording(let status): status
+        case .changeRecording(let status): status
         case .recordEvery(_, let detail): detail
         case .moreOptions: "Start early, finish late"
         default: nil
@@ -58,7 +59,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
 
     var isRecordSection: Bool {
         switch self {
-        case .recordThis, .cancelRecording, .recordEvery, .moreOptions: true
+        case .recordThis, .changeRecording, .recordEvery, .moreOptions: true
         default: false
         }
     }
@@ -66,7 +67,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .recordThis: "record.circle"
-        case .cancelRecording: "xmark.circle"
+        case .changeRecording: "record.circle.fill"
         case .recordEvery: "repeat.circle"
         case .moreOptions: "slider.horizontal.3"
         case .watchFromStart: "backward.end.fill"
@@ -100,7 +101,7 @@ nonisolated enum ProgrammeMenu {
         var items: [ProgrammeMenuItem] = []
         if let programme = subject.programme, programme.end > now {
             if let status = subject.recordingStatus {
-                items.append(.cancelRecording(status: status))
+                items.append(.changeRecording(status: status))
             } else {
                 items.append(.recordThis(times: programme.timeRange))
             }

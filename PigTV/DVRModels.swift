@@ -133,6 +133,17 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     func chooseMessage(in all: [ScheduledRecording]) -> String {
         "\(winnerTitles(in: all).joined(separator: ", ")) will wait instead. A recording already running is never stopped."
     }
+    /// The schedule's padding in minutes (the server's row; the record page's Change recording starts from them).
+    var pre_buffer_min: Lenient<Double>? = nil
+    var post_buffer_min: Lenient<Double>? = nil
+    /// C-M since 0440 (#217): "event" (stops when its game ends, by the score feed) or "guide"; when it stops (ms, as it
+    /// stands now); recording past the guide end because the game is still on.
+    var endsWith: Lenient<String>? = nil
+    var stopsAt: Lenient<Double>? = nil
+    var overrun: Lenient<Bool>? = nil
+    var startEarly: Int? { pre_buffer_min?.value.flatMap { $0.isFinite && $0 >= 0 ? Int($0.rounded()) : nil } }
+    var finishLate: Int? { post_buffer_min?.value.flatMap { $0.isFinite && $0 >= 0 ? Int($0.rounded()) : nil } }
+    var stopsWithEvent: Bool { endsWith?.value == "event" }
     // Existing schedule response identity; optional for old servers. Dashboard badges never guess by name.
     var source_id: Int? = nil
     var channel_item_id: String? = nil
@@ -228,6 +239,22 @@ nonisolated struct ScheduleBody: Encodable, Sendable {
     /// nil: left out, so the server uses its defaults.
     let preBufferMin: Int?
     let postBufferMin: Int?
+    /// C-M since 0440 (#217): the Sport card's game (its `id`), so the recording stops when the game ends. nil: left out.
+    var gameId: String? = nil
+}
+
+/// C-M since 0444: `PUT recordings/scheduled/:id`, changing an existing schedule's padding. A field left out (nil) is
+/// unchanged; Start early cannot change once it records (409).
+nonisolated struct ScheduleChangeBody: Encodable, Equatable, Sendable {
+    var preBufferMin: Int? = nil
+    var postBufferMin: Int? = nil
+}
+
+/// A field decoded leniently: a value of another type is nil, never a failed list.
+nonisolated struct Lenient<Value: Decodable & Sendable & Equatable>: Decodable, Sendable, Equatable {
+    let value: Value?
+    init(_ value: Value?) { self.value = value }
+    init(from decoder: Decoder) throws { value = try? decoder.singleValueContainer().decode(Value.self) }
 }
 
 /// C-M: a recording rule ("record every game of", "record this series").
@@ -278,6 +305,8 @@ nonisolated struct RuleBody: Encodable, Sendable {
     var postBufferMin: Int? = nil
     /// C-M `series`: skip airings the guide flags as previously shown ("Record every new episode").
     var newOnly: Bool? = nil
+    /// C-M `team` (0414): the team's catalogue sport (required for that kind).
+    var sport: String? = nil
 }
 
 nonisolated struct RuleEnabledBody: Encodable, Sendable { let enabled: Bool }

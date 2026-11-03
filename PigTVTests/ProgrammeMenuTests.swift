@@ -22,14 +22,16 @@ final class ProgrammeMenuTests: XCTestCase {
         XCTAssertEqual(items[1].detail, "Four Corners on ABC TV")
     }
 
-    func testSportRecordsEveryGameAndAScheduledProgrammeOffersCancel() {
+    /// Apple 114: a scheduled programme offers Change recording (the record page), not batch 4's Cancel this recording.
+    func testAScheduledProgrammeOffersChangeRecording() {
         let live = programme(-600, 3000)
         let items = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Fox Footy", programme: live,
                                                              recordingStatus: "Recording now", rulesAvailable: true,
-                                                             everyGame: "Every Collingwood game", isFavourite: true), now: now)
-        XCTAssertEqual(items.map(\.title), ["Cancel this recording", "Record every game", "More options…",
+                                                             isFavourite: true), now: now)
+        XCTAssertEqual(items.map(\.title), ["Change recording", "Record every new episode", "More options…",
                                             "Programme details", "Channel schedule", "Remove Fox Footy from favourites"])
         XCTAssertEqual(items[0].detail, "Recording now", "the state is said in words")
+        XCTAssertEqual(items[0].id, "changeRecording")
     }
 
     func testEndedProgrammesAndTilesHaveNoRecordSection() {

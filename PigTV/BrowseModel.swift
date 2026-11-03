@@ -608,7 +608,9 @@ final class BrowseModel: ObservableObject {
     }
 
     /// `before`/`after` nil: the server's own start-early and finish-late minutes (D-44's "Record this programme").
-    func schedule(channel: GuideChannel, programme: GuideProgramme, before: Int?, after: Int?) async -> Bool {
+    /// `gameId` (C-M since 0440): a Sport card's game, so the recording stops when the game ends.
+    func schedule(channel: GuideChannel, programme: GuideProgramme, before: Int?, after: Int?,
+                  gameId: String? = nil) async -> Bool {
         guard !mutationBusy else { return false }
         guard programme.end > Date(), programme.end > programme.start else {
             actionError = "This programme has ended. Refresh the guide to choose another programme."
@@ -624,7 +626,7 @@ final class BrowseModel: ObservableObject {
                 body: ScheduleBody(sourceId: channel.sourceId, channelItemId: channel.rawID,
                     channelName: channel.name, channelLogo: channel.logo, title: programme.title,
                     description: programme.description, programStart: programme.startTime,
-                    programEnd: programme.endTime, preBufferMin: before, postBufferMin: after))
+                    programEnd: programme.endTime, preBufferMin: before, postBufferMin: after, gameId: gameId))
             await loadRecordings()
             // #12 (D-28): a clash is said when scheduling, never found later as a wait or a miss.
             if let clash = made.clashText(in: schedules) {
@@ -654,6 +656,37 @@ final class BrowseModel: ObservableObject {
             actionMessage = "Schedule cancelled or recording stopped."
             await loadRecordings()
         } catch { actionError = UserMessage.text(for: error) }
+    }
+
+    static let cannotChangeText = "This server can't change recordings yet."
+
+    /// C-M since 0444 (Apple 114, the record page's Change recording): a schedule's padding. Only the fields given are
+    /// sent (Start early not once it records: 409). An older server has no such route (404/405): it says so rather than
+    /// failing quietly; a 404 for a schedule that has finished or gone says that. The server's own words for a value it
+    /// refuses (400, 409) are shown. True when it changed.
+    func changeSchedule(_ item: ScheduledRecording, _ change: ScheduleChangeBody) async -> Bool {
+        guard !mutationBusy else { return false }
+        mutationBusy = true
+        actionError = nil
+        actionMessage = nil
+        defer { mutationBusy = false }
+        do {
+            let _: ScheduledRecording = try await client.request("recordings/scheduled/\(item.id)", method: "PUT", body: change)
+            actionMessage = "Recording changed."
+            await loadRecordings()
+            return true
+        } catch PigTVError.http(405) {
+            actionError = Self.cannotChangeText
+        } catch PigTVError.http(404) {
+            await loadRecordings()
+            actionError = schedules.contains(where: { $0.id == item.id && $0.isActive })
+                ? Self.cannotChangeText : "This recording has finished or no longer exists."
+        } catch PigTVError.serverMessage(let text, _) {
+            actionError = text
+        } catch {
+            actionError = "Could not change the recording. \(UserMessage.text(for: error) ?? "")"
+        }
+        return false
     }
 
     /// An Undo whose time ran out (Codex, batch 4 high): `cancel` returns at once while another change is in flight,

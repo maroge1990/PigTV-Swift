@@ -43,7 +43,7 @@ struct SportFrontTVPage: View {
             guard model.heroGame?.league == "F1", browse.sportPagesEnabled, f1.page == nil else { return }
             await f1.load()
         }
-        .sportRecordFlow(flow, browse: browse)
+        .sportRecordFlow(flow, app: app)
     }
 
     @ViewBuilder

@@ -89,10 +89,9 @@ struct SportsDashboardView: View {
           if SportsPresentationPolicy.canRender(
             storedRevision: selection.revision, current: model.dashboard?.preferences)
           {
-            RecordSheet(
-              model: browse, channel: browse.recordingRow(selection.event, on: selection.channel),
-              programme: selection.event.programme(on: selection.channel)
-            ) { _ in recording = nil }
+            if let request = browse.recordRequest(event: selection.event, on: selection.channel) {
+              RecordPage(model: browse, presenter: app.presenter, request: request) { recording = nil }
+            }
           } else {
             Text("Event details hidden until your account settings are refreshed.")
           }

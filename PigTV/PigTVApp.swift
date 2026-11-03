@@ -327,7 +327,7 @@ private struct PlayerTestScreen: View {
 // onboarding | sport-event (an upcoming event's page) | sport-channels (the
 // channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
-    static let screens: Set<String> = ["programme", "programme-later", "record", "schedule", "channel", "recording",
+    static let screens: Set<String> = ["programme", "programme-later", "record", "record-change", "record-sport", "schedule", "channel", "recording",
                                        "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume"]
     let screen: String
     @StateObject private var app = AppModel()
@@ -342,10 +342,13 @@ private struct DesignTestScreen: View {
         #endif
         .tint(Color("AccentColor"))
         .preferredColorScheme(fixtureScheme)
-        // The app's presentation layer, as LibraryView hosts it (Record opens through it).
+        // The app's presentation layer, as LibraryView hosts it (Record opens through it), and the Undo toast as
+        // ContentView shows it.
         .appPresentations(app.presenter, app: app, browse: app.browse)
+        .overlay(alignment: .bottom) { UndoToast(presenter: app.presenter) }
         .task {
-            app.injectHomeFixture()
+            // The record pages with the server's recording rules (C-M), so What offers them.
+            app.injectHomeFixture(sportFollows: ["record", "record-change", "record-sport"].contains(screen))
             app.serverText = "http://pigtv.local:3000"
             if screen == "pairing" { app.injectPairingReview() }
             if let browse = app.browse { GuideFixtures.addSchedules(to: browse) }
@@ -363,7 +366,7 @@ private struct DesignTestScreen: View {
         case "programme", "record":
             ProgrammeDetails(model: browse, presenter: app.presenter, channel: channel, programme: live, watch: {}, openSchedule: {},
                              openProgramme: { _ in })
-        case "programme-later":
+        case "programme-later", "record-change":
             ProgrammeDetails(model: browse, presenter: app.presenter, channel: later.channel, programme: later.programme, watch: {},
                              openSchedule: {}, openProgramme: { _ in })
         case "schedule":
@@ -379,6 +382,14 @@ private struct DesignTestScreen: View {
         case "search", "jump":
             GuideSearchPage(model: browse, date: Date(), canJump: true, startWithJump: screen == "jump",
                             openChannel: { _ in }, openProgramme: { _, _ in }, showGuide: { _ in })
+        case "record-sport":
+            // Apple 114: the record page for a game on three channels, with the game's id (it stops when the game ends).
+            Color.clear.task {
+                guard let event = browse.sport.soon.first(where: { $0.channels.count > 2 }),
+                      var request = browse.recordRequest(event: event) else { return }
+                request.gameId = "fixture:\(event.id)"
+                app.presenter.present(.record(request))
+            }
         case "sport-event":
             if let event = browse.sport.soon.first {
                 SportEventDetails(event: event, app: app, browse: browse, play: { _ in })

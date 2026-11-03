@@ -6,8 +6,8 @@ import Observation
 enum AppPresentation: Identifiable {
     case recording(Recording)
     case channelSchedule(GuideChannel)
-    /// D-44 (Apple 107): the long-press menu's More options… (today's RecordSheet, until the record page replaces it).
-    case record(GuideChannel, GuideProgramme)
+    /// D-44 (Apple 114): the record page (More options…, every Record button, Change recording), the Guide's and Sport's.
+    case record(RecordRequest)
     /// D-44 (Apple 107): Watch from start: the recording being made, from its beginning (C-L), full screen.
     case recordingPlayer(Recording)
 
@@ -15,7 +15,7 @@ enum AppPresentation: Identifiable {
         switch self {
         case .recording(let recording): "recording:\(recording.id)"
         case .channelSchedule(let channel): "schedule:\(channel.id)"
-        case .record(let channel, let programme): "record:\(channel.id):\(programme.startTime)"
+        case .record(let request): "record:\(request.id)"
         case .recordingPlayer(let recording): "player:\(recording.id)"
         }
     }
@@ -140,8 +140,8 @@ extension View {
                     ChannelPageView(model: browse, presenter: presenter, channel: channel) {
                         presenter.dismiss { app.beginPlayback(browse.asChannel(channel)) }
                     }
-                case .record(let channel, let programme):
-                    RecordSheet(model: browse, channel: channel, programme: programme) { _ in presenter.dismiss() }
+                case .record(let request):
+                    RecordPage(model: browse, presenter: presenter, request: request) { presenter.dismiss() }
                 case .recordingPlayer:
                     EmptyView()
                 }

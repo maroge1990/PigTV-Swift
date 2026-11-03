@@ -74,7 +74,6 @@ struct CricketPageView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
-    @State private var recording: SportEvent?
     private enum Control: Hashable { case primary }
     @FocusState private var focus: Control?
     /// D-43: under a sport page's banner: no header, no scroll view of its own.
@@ -113,13 +112,6 @@ struct CricketPageView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .whileVisible { await model.keepFresh(preferences: preferences) }
-        .detailCover(item: $recording) { event in
-            if let best = event.best {
-                RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme(on: best)) { _ in
-                    recording = nil
-                }
-            }
-        }
         .accessibilityIdentifier("cricket.page")
     }
 
@@ -464,7 +456,7 @@ struct CricketPageView: View {
             case .otherChannels: presenter?.open(event, .channels)
             case .remind: app.watchWhenStarts(event, now: Date())
             case .cancelRemind: app.cancelPendingWatch()
-            case .record: recording = event
+            case .record: app.record(event)
             }
         }
         .accessibilityIdentifier("cricket.action.\(identifier(action))")

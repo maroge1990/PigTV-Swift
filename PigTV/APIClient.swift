@@ -227,6 +227,11 @@ final class APIClient {
                 }
                 if let recording = conflict.recording { throw PigTVError.recordingConflict(recording) }
             }
+            // C-M since 0444: a padding change the server refuses (400 a bad value, 409 not now) says why, in its words.
+            if method == "PUT", path.hasPrefix("recordings/scheduled/"), [400, 409].contains(response.statusCode),
+               let text = serverError?.error?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                throw PigTVError.serverMessage(String(text.prefix(300)), status: response.statusCode)
+            }
             if response.statusCode == 429 {
                 let seconds = serverError?.retryAfterSec ?? response.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init) ?? 60
                 throw PigTVError.rateLimited(retryAfterSec: max(1, seconds))

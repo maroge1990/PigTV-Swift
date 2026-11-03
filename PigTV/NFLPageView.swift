@@ -66,7 +66,6 @@ struct NFLPageView: View {
     @State private var week: Int?
     @State private var view: NFLPageText.StandingsView = .division
     @State private var chosen: NFLGame?
-    @State private var recording: SportEvent?
     @State private var choosingTeam = false
     /// D-43: under a sport page's banner, which holds the hero: no header, no scroll view of its own.
     let embedded: Bool
@@ -98,13 +97,6 @@ struct NFLPageView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .whileVisible { await model.keepFresh(preferences: preferences) }
-        .detailCover(item: $recording) { event in
-            if let best = event.best {
-                RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme(on: best)) { _ in
-                    recording = nil
-                }
-            }
-        }
         .confirmationDialog(chosen.map { title($0) } ?? "", isPresented: Binding(get: { chosen != nil }, set: { if !$0 { chosen = nil } }),
                             titleVisibility: .visible, presenting: chosen) { game in
             gameActions(game)
@@ -300,7 +292,7 @@ struct NFLPageView: View {
                     Button(NFLPageText.label(action)) { app.watchWhenStarts(event, now: Date()) }
                 case .cancelKickOff, .cancelWatchAt:
                     Button(NFLPageText.label(action)) { app.cancelPendingWatch() }
-                case .record: Button(NFLPageText.label(action)) { recording = event }
+                case .record: Button(NFLPageText.label(action)) { app.record(event) }
                 }
             }
         }

@@ -211,7 +211,6 @@ struct SportChannelList: View {
     /// Closes the covering page, then runs the action (playback or a wait).
     let play: (@escaping () -> Void) -> Void
     @State private var choosing: SportEventChannel?
-    @State private var recording: SportEventChannel?
 
     init(event: SportEvent, app: AppModel, browse: BrowseModel, clock: Date, play: @escaping (@escaping () -> Void) -> Void) {
         self.event = event
@@ -247,7 +246,8 @@ struct SportChannelList: View {
             if !browse.isScheduled(event, on: channel) {
                 Button("Record on \(channel.name)", systemImage: "record.circle") {
                     choosing = nil
-                    recording = channel
+                    // Apple 114: the record page, on this channel (it lists the others too); this page closes first.
+                    play { app.record(event, onChannel: channel.id) }
                 }
             }
             Button("Watch \(channel.name) when it starts", systemImage: "alarm") {
@@ -257,11 +257,6 @@ struct SportChannelList: View {
             Button("Cancel", role: .cancel) { choosing = nil }
         } message: { _ in
             Text(SportRows.timing(event, now: clock))
-        }
-        .detailCover(item: $recording) { channel in
-            RecordSheet(model: browse, channel: browse.recordingRow(event, on: channel), programme: event.programme(on: channel)) { _ in
-                recording = nil
-            }
         }
     }
 }
@@ -279,10 +274,6 @@ struct SportEventDetails: View {
     @ObservedObject private var artwork: ArtworkStore
     /// Closes the page, then runs the action (playback).
     let play: (@escaping () -> Void) -> Void
-    @State private var recordSheet = false
-    /// C-M: choosing what "Record every game" follows.
-    @State private var ruleChoices = false
-    @State private var ruleAdded = false
 
     init(event: SportEvent, app: AppModel, browse: BrowseModel, play: @escaping (@escaping () -> Void) -> Void) {
         self.event = event
@@ -304,23 +295,6 @@ struct SportEventDetails: View {
             }
         }
         .onAppear { browse.actionError = nil; browse.actionMessage = nil }
-        .confirmationDialog("Record every game of", isPresented: $ruleChoices, titleVisibility: .visible) {
-            ForEach(RuleChoices.sport(title: event.title, league: event.league), id: \.self) { choice in
-                Button(choice) {
-                    Task { ruleAdded = await browse.addRule(RuleBody(kind: "sport", match: choice)) }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Live games only, never replays, on the best channel showing them.")
-        }
-        .detailCover(isPresented: $recordSheet) {
-            if let best = event.best {
-                RecordSheet(model: browse, channel: browse.recordingRow(event, on: best), programme: event.programme(on: best)) { _ in
-                    recordSheet = false
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -383,21 +357,17 @@ struct SportEventDetails: View {
                         .focused($focus, equals: .watch)
                         .accessibilityIdentifier("sport.watch")
                     }
-                    if event.end(on: best) > now && !browse.isScheduled(event, on: best) {
-                        Button("Record", systemImage: "record.circle") { recordSheet = true }
-                            .disabled(browse.mutationBusy)
-                            .accessibilityIdentifier("sport.record")
-                    }
-                    if browse.rulesAvailable && !ruleAdded && !RuleChoices.sport(title: event.title, league: event.league).isEmpty {
-                        Button("Record every game", systemImage: "repeat.circle") { ruleChoices = true }
-                            .disabled(browse.mutationBusy)
-                            .accessibilityIdentifier("sport.recordEvery")
+                    if event.end(on: best) > now {
+                        // Apple 114: one Record (the record page: this game, every game of a side or the league, the
+                        // channel); Change recording when it is scheduled. This page closes first (one page at a time).
+                        Button(browse.isScheduled(event, on: best) ? "Change recording" : "Record", systemImage: "record.circle") {
+                            play { app.record(event) }
+                        }
+                        .disabled(browse.mutationBusy)
+                        .accessibilityIdentifier("sport.record")
                     }
                 }
                 .defaultFocus($focus, .watch)
-                if ruleAdded, let message = browse.actionMessage {
-                    Text(message).font(DetailType.meta).foregroundStyle(.secondary)
-                }
                 if let error = browse.actionError {
                     Text(error).font(DetailType.meta).foregroundStyle(.secondary)
                 }

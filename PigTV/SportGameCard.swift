@@ -48,51 +48,22 @@ enum SportSectionMetrics {
     #endif
 }
 
-/// Record on one of a game's channels (#204): one channel opens the record sheet; more ask which first.
+/// D-44 batch 5 (Apple 114): a Sport screen's recording. Record opens the record page (every channel carrying the game,
+/// best first, each on its own airing: #204, C-I #20) through the app's presentation layer.
 @MainActor
 final class SportRecordFlow: ObservableObject {
-    @Published var recording: SportRecordTarget?
-    @Published var choosing: SportEvent?
+    private weak var app: AppModel?
 
-    func record(_ event: SportEvent) {
-        let choices = SportFrontText.recordChoices(event, now: Date())
-        if choices.count > 1 { choosing = event }
-        else if let channel = choices.first ?? event.best { recording = SportRecordTarget(event: event, channel: channel) }
-    }
+    func attach(_ app: AppModel) { self.app = app }
+
+    /// The record page (Change recording when one of its channels has it scheduled).
+    func record(_ event: SportEvent, game: SportsGame? = nil) { app?.record(event, game: game) }
 }
 
 extension View {
-    /// The channel choice and the record sheet for `flow`.
-    func sportRecordFlow(_ flow: SportRecordFlow, browse: BrowseModel) -> some View {
-        modifier(SportRecordFlowModifier(flow: flow, browse: browse))
-    }
-}
-
-private struct SportRecordFlowModifier: ViewModifier {
-    @ObservedObject var flow: SportRecordFlow
-    let browse: BrowseModel
-
-    func body(content: Content) -> some View {
-        content
-            .confirmationDialog("Record on which channel?", isPresented: Binding(
-                get: { flow.choosing != nil }, set: { if !$0 { flow.choosing = nil } }
-            ), titleVisibility: .visible, presenting: flow.choosing) { event in
-                ForEach(SportFrontText.recordChoices(event, now: Date()), id: \.id) { channel in
-                    Button(SportFrontText.recordChoiceLabel(event, on: channel, now: Date()), systemImage: "record.circle") {
-                        flow.choosing = nil
-                        flow.recording = SportRecordTarget(event: event, channel: channel)
-                    }
-                }
-                Button("Cancel", role: .cancel) { flow.choosing = nil }
-            } message: { _ in
-                Text("Each channel shows it at its own times.")
-            }
-            .detailCover(item: $flow.recording) { target in
-                RecordSheet(model: browse, channel: browse.recordingRow(target.event, on: target.channel),
-                            programme: target.event.programme(on: target.channel)) { _ in
-                    flow.recording = nil
-                }
-            }
+    /// Attaches the screen's record flow to the app (its presentation layer and models).
+    func sportRecordFlow(_ flow: SportRecordFlow, app: AppModel) -> some View {
+        onAppear { flow.attach(app) }
     }
 }
 
@@ -149,7 +120,7 @@ struct SportHeroButtons: View {
             case .details, .none:
                 EmptyView()
             }
-            Button("Record", systemImage: "record.circle") { flow.record(event) }
+            Button("Record", systemImage: "record.circle") { flow.record(event, game: game) }
                 .modifier(HeroFocus(focus: primary ? nil : focus))
                 .accessibilityIdentifier("sport.banner.hero.record")
         }

@@ -15,7 +15,7 @@ struct ProgrammeDetails: View {
     @ObservedObject private var actions: ActionState
     @ObservedObject private var artwork: ArtworkStore
     @ObservedObject private var library: LibraryStore
-    /// The app's presentation layer: Record (today's RecordSheet), Watch from start, Undo (#49).
+    /// The app's presentation layer: the record page, Watch from start, Undo (#49).
     let presenter: AppPresenter
     let channel: GuideChannel
     let programme: GuideProgramme
@@ -82,14 +82,16 @@ struct ProgrammeDetails: View {
                             }
                             .accessibilityIdentifier("details.watchFromStart")
                         }
-                        if let schedule {
-                            Button("Cancel recording", systemImage: "xmark.circle") {
-                                presenter.offerUndo("Recording of \(programme.title) cancelled") {
-                                    Task { await model.cancelCommitted(schedule) }
-                                }
+                        if schedule != nil {
+                            // Apple 114 (R5-Programme-*): Change recording opens the record page on this schedule; Cancel
+                            // recording (with Undo) is there.
+                            let button = Button("Change recording", systemImage: "record.circle.fill") {
+                                presenter.present(.record(model.recordRequest(channel: channel, programme: programme)))
                             }
                             .disabled(model.mutationBusy)
-                            .accessibilityIdentifier("details.cancelRecording")
+                            .focused($focus, equals: .record)
+                            .accessibilityIdentifier("details.changeRecording")
+                            if live { button } else { button.pigPrimaryButton() }
                         } else if programme.end > now {
                             recordButton(primary: !live)
                         }
@@ -128,14 +130,18 @@ struct ProgrammeDetails: View {
         .onAppear { model.actionError = nil; model.actionMessage = nil }
         #if DEBUG
         .task {
-            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "record" { presenter.present(.record(channel, programme)) }
+            if ["record", "record-change"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+                presenter.present(.record(model.recordRequest(channel: channel, programme: programme)))
+            }
         }
         #endif
     }
 
     @ViewBuilder
     private func recordButton(primary: Bool) -> some View {
-        let button = Button("Record", systemImage: "record.circle") { presenter.present(.record(channel, programme)) }
+        let button = Button("Record", systemImage: "record.circle") {
+            presenter.present(.record(model.recordRequest(channel: channel, programme: programme)))
+        }
             .disabled(model.mutationBusy)
             .focused($focus, equals: .record)
             .accessibilityIdentifier("details.record")
@@ -235,91 +241,6 @@ struct ProgrammeDetails: View {
     private func meta(now: Date) -> String {
         [programme.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)), programme.timeRange,
          programme.durationText].joined(separator: " · ")
-    }
-}
-
-/// Recording options: how early to start and how late to finish, then
-/// Schedule. The sheet itself is the confirmation (it carries the one-stream
-/// note the old dialog showed).
-/// Record a programme: start early / finish late, then schedule. Also used
-/// by the Sport tab (C-I) to record an event on its best channel.
-struct RecordSheet: View {
-    /// Not observed (audit R05): the sheet draws the action state and the
-    /// EPG logo fallback.
-    let model: BrowseModel
-    @ObservedObject private var actions: ActionState
-    @ObservedObject private var artwork: ArtworkStore
-    let channel: GuideChannel
-    let programme: GuideProgramme
-    let done: (Bool) -> Void
-
-    init(model: BrowseModel, channel: GuideChannel, programme: GuideProgramme, done: @escaping (Bool) -> Void) {
-        self.model = model
-        _actions = ObservedObject(wrappedValue: model.actions)
-        _artwork = ObservedObject(wrappedValue: model.artwork)
-        self.channel = channel
-        self.programme = programme
-        self.done = done
-    }
-    @State private var before = 0
-    @State private var after = 0
-    @FocusState private var scheduleFocused: Bool
-
-    var body: some View {
-        DetailPage {
-            DetailHero(logo: model.logo(for: channel), client: model.client) {
-                Eyebrow(text: "Record")
-                Text(programme.title).font(DetailType.title).lineLimit(2)
-                Text("\(channel.name) · \(programme.isLive(at: Date()) ? "On now" : DetailText.day(programme.start, now: Date())) · \(programme.timeRange)")
-                    .font(DetailType.meta).foregroundStyle(.secondary)
-            }
-            choice("Start early", options: [0, 1, 2, 5, 10], selection: $before)
-            choice("Finish late", options: [0, 2, 5, 10, 15, 30], selection: $after)
-            Text("PigTV has one provider stream, so recording may need live playback to stop. If the programme has already started, only the rest of it is recorded.")
-                .font(DetailType.meta).foregroundStyle(.secondary)
-                .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
-            if model.mutationBusy { ProgressView("Scheduling…") }
-            if let error = model.actionError {
-                Text(error).font(DetailType.meta).foregroundStyle(.secondary)
-                    .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
-            }
-            DetailActions {
-                Button("Schedule recording", systemImage: "record.circle") {
-                    Task {
-                        let scheduled = await model.schedule(channel: channel, programme: programme, before: before, after: after)
-                        if scheduled { done(true) }
-                    }
-                }
-                .pigPrimaryButton()
-                .disabled(model.mutationBusy)
-                .focused($scheduleFocused)
-                .accessibilityIdentifier("record.schedule")
-                Button("Cancel") { done(false) }
-            }
-        }
-        .interactiveDismissDisabled(model.mutationBusy)
-        .defaultFocus($scheduleFocused, true)
-    }
-
-    private func choice(_ title: String, options: [Int], selection: Binding<Int>) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            PigSectionHeader(title: title)
-            #if os(tvOS)
-            HStack(spacing: 14) { chips(options, selection) }.focusSection()
-            #else
-            ScrollView(.horizontal) { HStack(spacing: 10) { chips(options, selection) } }.scrollIndicators(.hidden)
-            #endif
-        }
-    }
-
-    private func chips(_ options: [Int], _ selection: Binding<Int>) -> some View {
-        ForEach(options, id: \.self) { minutes in
-            Button { selection.wrappedValue = minutes } label: {
-                Text(minutes == 0 ? "On time" : "\(minutes) min").lineLimit(1).fixedSize()
-            }
-                .buttonStyle(GuideFilterStyle(selected: selection.wrappedValue == minutes))
-                .accessibilityAddTraits(selection.wrappedValue == minutes ? .isSelected : [])
-        }
     }
 }
 

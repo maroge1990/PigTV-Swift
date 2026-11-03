@@ -126,9 +126,9 @@ private struct SportFrontPage: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
-    /// #204: the channel Record was asked on, and the game whose channels Record offers (more than one).
-    @State private var recording: SportRecordTarget?
-    @State private var choosingRecord: SportEvent?
+    /// Apple 114–115: Record and the cards' long-press RECORD section open the record page (every channel carrying the
+    /// game is on it: #204).
+    @StateObject private var flow = SportRecordFlow()
     @State private var followHelp = false
     @State private var allFollows = false
 
@@ -160,27 +160,7 @@ private struct SportFrontPage: View {
             guard model.heroGame?.league == "F1", browse.sportPagesEnabled, f1.page == nil else { return }
             await f1.load()
         }
-        // #204: Record offers every channel carrying the game, best first, each on its own airing (C-I #20), as a
-        // dialog like the sport pages' channel list; with one channel the sheet opens at once.
-        .confirmationDialog("Record on which channel?", isPresented: Binding(
-            get: { choosingRecord != nil }, set: { if !$0 { choosingRecord = nil } }
-        ), titleVisibility: .visible, presenting: choosingRecord) { event in
-            ForEach(SportFrontText.recordChoices(event, now: Date()), id: \.id) { channel in
-                Button(SportFrontText.recordChoiceLabel(event, on: channel, now: Date()), systemImage: "record.circle") {
-                    choosingRecord = nil
-                    recording = SportRecordTarget(event: event, channel: channel)
-                }
-            }
-            Button("Cancel", role: .cancel) { choosingRecord = nil }
-        } message: { _ in
-            Text("Each channel shows it at its own times.")
-        }
-        .detailCover(item: $recording) { target in
-            RecordSheet(model: browse, channel: browse.recordingRow(target.event, on: target.channel),
-                        programme: target.event.programme(on: target.channel)) { _ in
-                recording = nil
-            }
-        }
+        .sportRecordFlow(flow, app: app)
         .alert("Follow a sport", isPresented: $followHelp) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -396,7 +376,7 @@ private struct SportFrontPage: View {
                 case .details, .none:
                     EmptyView()
                 }
-                Button("Record", systemImage: "record.circle") { record(event) }
+                Button("Record", systemImage: "record.circle") { flow.record(event, game: game) }
                     .accessibilityIdentifier("sport.front.hero.record")
             }
             .tvFocusSection()
@@ -579,13 +559,6 @@ private struct SportFrontPage: View {
 
     // MARK: Actions
 
-    /// #204: one channel opens the record sheet on it; more offer the choice.
-    private func record(_ event: SportEvent) {
-        let choices = SportFrontText.recordChoices(event, now: Date())
-        if choices.count > 1 { choosingRecord = event }
-        else if let channel = choices.first ?? event.best { recording = SportRecordTarget(event: event, channel: channel) }
-    }
-
     private func select(_ game: SportsGame, now: Date) {
         guard let event = SportFrontText.event(game) else { return }
         switch SportFrontText.action(game, now: now) {
@@ -640,13 +613,6 @@ private struct SportFrontPage: View {
         }
         .padding(.vertical, 70).frame(maxWidth: .infinity)
     }
-}
-
-/// #204: Record on one of a game's channels.
-struct SportRecordTarget: Identifiable {
-    let event: SportEvent
-    let channel: SportEventChannel
-    var id: String { "\(event.id)|\(channel.id)" }
 }
 
 /// A team's badge: its logo (a logo-cache path, as channel logos, through the same cache) or a monogram disc in the
