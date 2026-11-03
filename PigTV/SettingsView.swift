@@ -353,6 +353,8 @@ nonisolated enum SettingsMetrics {
     static let barWidth: CGFloat = 4
     static let pageWidth: CGFloat = 1100
     static let pagePadding: CGFloat = 8
+    static let confirmSpacing: CGFloat = 18
+    static let confirmPadding = EdgeInsets(top: 26, leading: 28, bottom: 26, trailing: 28)
     #else
     static let menuWidth: CGFloat = 280
     static let menuSpacing: CGFloat = 8
@@ -362,6 +364,8 @@ nonisolated enum SettingsMetrics {
     static let barWidth: CGFloat = 3
     static let pageWidth: CGFloat = 680
     static let pagePadding: CGFloat = 20
+    static let confirmSpacing: CGFloat = 12
+    static let confirmPadding = EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0)
     #endif
 }
 
@@ -424,10 +428,16 @@ nonisolated enum SettingsType {
     static let menuTitle: Font = .system(size: 23, weight: .bold)
     static let menuSummary: Font = .system(size: 17).monospacedDigit()
     static let pageTitle: Font = .system(size: 40, weight: .heavy)
+    static let confirmTitle: Font = .system(size: 26, weight: .bold)
+    static let confirmBody: Font = .system(size: 21)
+    static let footnote: Font = .system(size: 18)
     #else
     static let menuTitle: Font = .headline
     static let menuSummary: Font = .footnote
     static let pageTitle: Font = .title2.bold()
+    static let confirmTitle: Font = .headline
+    static let confirmBody: Font = .subheadline
+    static let footnote: Font = .footnote
     #endif
 }
 
@@ -466,46 +476,149 @@ struct SettingsPageBody<Content: View>: View {
     }
 }
 
-/// Settings › Account: who is signed in, to which server, and Sign out.
+/// Settings › Account: who is signed in, to which server, and Sign out. D-44: Sign out is the one action that confirms,
+/// and it confirms inside its own row (never a dialog): the row becomes "Sign out of PigTV?" with Stay signed in (the
+/// rose primary, focused) and Sign out. "Use a different server" needs the same sign-out, so it opens the same row.
 struct SettingsAccountPage: View {
     @ObservedObject var model: AppModel
     var showsTitle = true
     /// Called once signing out has begun (a Settings sheet closes itself).
     var signedOut: () -> Void = {}
-    @State private var confirmSignOut = false
+    /// The row's confirmation, and why it was opened.
+    @State private var confirm: SignOutReason?
+    #if os(tvOS)
+    @FocusState private var focus: AccountFocus?
+    private enum AccountFocus: Hashable { case signOut, stay }
+    #endif
+
+    enum SignOutReason { case signOut, changeServer }
 
     var body: some View {
         SettingsPageBody(title: "Account", showsTitle: showsTitle) {
             Section {
                 SettingsRow("Signed in as", value: model.user?.username ?? "")
                 SettingsRow("Server", value: model.serverText, monospaced: true)
-                Button(role: .destructive) { confirmSignOut = true } label: {
-                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
-                        #if os(tvOS)
-                        .font(.system(size: 24))
-                        .foregroundStyle(Color.pigDanger)
-                        .padding(.horizontal, 24).padding(.vertical, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        #endif
+                Button { open(.changeServer) } label: {
+                    HStack {
+                        Text("Use a different server")
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary).accessibilityHidden(true)
+                    }
+                    #if os(tvOS)
+                    .font(.system(size: 24))
+                    .padding(.horizontal, 28).padding(.vertical, 22)
+                    #endif
+                    .contentShape(Rectangle())
                 }
                 #if os(tvOS)
-                .buttonStyle(PigSurfaceButtonStyle())
+                .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
                 #else
+                .foregroundStyle(Color("PigText"))
                 .listRowBackground(Color.pigRaised)
                 #endif
+                .disabled(model.playbackBusy || confirm != nil)
+                .accessibilityIdentifier("settings.account.changeServer")
+            }
+            Section {
+                if let confirm { confirmation(confirm) } else { signOutRow }
+            }
+            Section {
+                Text("App \(LibrarySettings.appVersion) (\(LibrarySettings.appBuild))"
+                     + (model.serverInfo.map { " · Server \($0.build ?? $0.version)" } ?? ""))
+                    .font(SettingsType.footnote).fontDesign(.rounded).monospacedDigit()
+                    .foregroundStyle(Color("PigSecondary"))
+                    #if os(iOS)
+                    .listRowBackground(Color.clear)
+                    #endif
+            }
+        }
+        #if os(tvOS)
+        .onChange(of: confirm != nil) { _, open in focus = open ? .stay : .signOut }
+        #endif
+        #if DEBUG
+        // The evidence screenshots: PIGTV_UI_TEST_SIGNOUT_CONFIRM=1 opens on the row's confirmation.
+        .onAppear { if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SIGNOUT_CONFIRM"] == "1" { confirm = .signOut } }
+        #endif
+    }
+
+    private func open(_ reason: SignOutReason) {
+        withAnimation(.easeOut(duration: 0.15)) { confirm = reason }
+    }
+
+    private func close() {
+        withAnimation(.easeOut(duration: 0.15)) { confirm = nil }
+    }
+
+    private var signOutRow: some View {
+        Button(role: .destructive) { open(.signOut) } label: {
+            Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                .foregroundStyle(Color.pigDanger)
+                #if os(tvOS)
+                .font(.system(size: 24))
+                .padding(.horizontal, 28).padding(.vertical, 22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                #endif
+        }
+        #if os(tvOS)
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
+        .focused($focus, equals: .signOut)
+        #else
+        .listRowBackground(Color.pigRaised)
+        #endif
+        .disabled(model.playbackBusy)
+        .accessibilityIdentifier("settings.account.signOut")
+    }
+
+    /// The row asking: Stay signed in first (the safe choice takes the focus), then Sign out.
+    private func confirmation(_ reason: SignOutReason) -> some View {
+        VStack(alignment: .leading, spacing: SettingsMetrics.confirmSpacing) {
+            Text("Sign out of PigTV?").font(SettingsType.confirmTitle).foregroundStyle(Color.pigDanger)
+                .accessibilityAddTraits(.isHeader)
+            Text(reason == .changeServer
+                 ? "To use a different server, sign out first. You will need to pair or sign in again on this device."
+                 : "You will need to pair or sign in again on this device.")
+                .font(SettingsType.confirmBody).foregroundStyle(Color("PigSecondary"))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button("Stay signed in") { close() }
+                    .pigPrimaryButton()
+                    #if os(tvOS)
+                    .focused($focus, equals: .stay)
+                    #else
+                    .buttonStyle(.borderless)
+                    #endif
+                    .accessibilityIdentifier("settings.account.stay")
+                Button("Sign out", role: .destructive) {
+                    let changeServer = reason == .changeServer
+                    confirm = nil
+                    signedOut()
+                    Task { await model.logout(chooseServer: changeServer) }
+                }
+                #if os(tvOS)
+                .foregroundStyle(Color.pigDanger)
+                #else
+                .buttonStyle(.bordered).tint(Color.pigDanger)
+                #endif
                 .disabled(model.playbackBusy)
-                .accessibilityIdentifier("settings.account.signOut")
+                .accessibilityIdentifier("settings.account.confirmSignOut")
             }
+            #if os(tvOS)
+            .focusSection()
+            #endif
         }
-        .confirmationDialog("Sign out of PigTV?", isPresented: $confirmSignOut, titleVisibility: .visible) {
-            Button("Sign out", role: .destructive) {
-                signedOut()
-                Task { await model.logout() }
-            }
-            Button("Stay signed in", role: .cancel) {}
-        } message: {
-            Text("You will need to pair or sign in again on this device.")
-        }
+        .padding(SettingsMetrics.confirmPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        #if os(tvOS)
+        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigDanger.opacity(0.45), lineWidth: 2) }
+        // Menu answers "Stay signed in".
+        .onExitCommand { close() }
+        #else
+        .listRowBackground(RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).fill(Color.pigRaised)
+            .overlay { RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigDanger, lineWidth: 2) })
+        #endif
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.account.confirm")
     }
 }
 

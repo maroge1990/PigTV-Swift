@@ -219,12 +219,17 @@ final class AppModel: ObservableObject {
         authBusy = false
     }
 
-    func logout() async {
+    /// D-44 batch 6: Sign in starts at its server step (not the two tiles) after "Use a different server".
+    @Published var signInAtServer = false
+
+    /// `chooseServer`: signed out from "Use a different server", so Sign in asks for the server first.
+    func logout(chooseServer: Bool = false) async {
         if let currentPlayback { await endPlayback(currentPlayback) }
         guard !playbackBusy else { return }
         do {
             if let client { try keychain.remove(for: client.address) }
             clearSession()
+            if chooseServer { signInAtServer = true }
         } catch { self.error = UserMessage.text(for: error) }
     }
 

@@ -53,8 +53,52 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(signOut.waitForExistence(timeout: 5), "Account's page did not open")
         XCTAssertFalse(football.exists)
         // Right moves into the page.
-        XCTAssertTrue(reach(signOut, in: app, from: .right), "focus never moved into the page: \(focused(app).identifier)")
-        XCTAssertGreaterThan(signOut.frame.minX, items[1].frame.maxX)
+        XCUIRemote.shared.press(.right)
+        XCTAssertTrue(waitUntil(3) { focused(app).identifier.hasPrefix("settings.account.") },
+                      "focus never moved into the page: \(focused(app).identifier)")
+        XCTAssertGreaterThan(focused(app).frame.minX, items[1].frame.maxX)
+    }
+
+    /// D-44: Sign out is the one action that confirms, and it confirms inside its own row, never in a dialog.
+    @MainActor
+    func testSignOutConfirmsInsideItsRow() throws {
+        continueAfterFailure = false
+        let app = launch(page: "account")
+        let signOut = app.buttons["settings.account.signOut"]
+        XCTAssertTrue(signOut.waitForExistence(timeout: 10), app.debugDescription)
+        for _ in 0..<10 where !signOut.hasFocus {
+            let at = focused(app).frame
+            XCUIRemote.shared.press(at.midY < signOut.frame.minY ? .down : at.midX < signOut.frame.minX ? .right : .up)
+            _ = waitUntil(1) { signOut.hasFocus }
+        }
+        XCTAssertTrue(signOut.hasFocus, "Sign out never took the focus: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        let confirm = app.descendants(matching: .any)["settings.account.confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no confirmation in the row: \(app.debugDescription)")
+        XCTAssertEqual(app.alerts.count, 0, "a dialog asked instead")
+        XCTAssertEqual(app.sheets.count, 0, "a dialog asked instead")
+        let stay = app.buttons["settings.account.stay"]
+        XCTAssertTrue(waitUntil(3) { stay.hasFocus }, "Stay signed in should take the focus: \(focused(app).identifier)")
+        XCTAssertTrue(app.buttons["settings.account.confirmSignOut"].exists)
+        // Stay signed in puts the row back.
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(waitUntil(3) { !confirm.exists }, "Stay signed in left the confirmation open")
+        XCTAssertTrue(waitUntil(3) { signOut.hasFocus }, "focus should return to Sign out: \(focused(app).identifier)")
+        // Menu answers Stay signed in too.
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil(3) { !confirm.exists }, "Menu left the confirmation open")
+        XCTAssertTrue(app.tabBars.buttons["Sport"].exists, "still signed in")
+        // Sign out, confirmed in the row, signs out.
+        XCTAssertTrue(waitUntil(3) { signOut.hasFocus } || { XCUIRemote.shared.press(.down); return waitUntil(2) { signOut.hasFocus } }())
+        XCUIRemote.shared.press(.select)
+        let yes = app.buttons["settings.account.confirmSignOut"]
+        XCTAssertTrue(yes.waitForExistence(timeout: 5))
+        XCUIRemote.shared.press(.right)
+        XCTAssertTrue(waitUntil(3) { yes.hasFocus }, "Sign out sits beside Stay signed in: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(waitUntil(5) { !app.tabBars.buttons["Sport"].exists }, "signing out left the session's tabs")
     }
 
     @MainActor
