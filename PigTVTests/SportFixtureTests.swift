@@ -93,3 +93,43 @@ final class SportFixtureTests: XCTestCase {
         XCTAssertEqual(FixtureText.event(live, league: "AFL").channels.first?.name, "Fox Footy HD")
     }
 }
+
+extension SportFixtureTests {
+    /// #211 (rig T3, 2 Nov): the AFL's percentage is drawn to one decimal ("137.200" wrapped as "137." / "200").
+    func testTheAFLPercentageHasOneDecimal() throws {
+        XCTAssertEqual(FixtureText.standingValue("137.200", key: "percentage"), "137.2")
+        XCTAssertEqual(FixtureText.standingValue("95", key: "percentage"), "95.0")
+        XCTAssertEqual(FixtureText.standingValue("-", key: "percentage"), "-", "not a number: ESPN's text")
+        XCTAssertEqual(FixtureText.standingValue("137.200", key: "points"), "137.200", "only the percentage")
+        var page = try afl()
+        page.standings[0].rows[0].values["percentage"] = "137.200"
+        let league = FixtureText.league(page, league: "AFL", following: [], spoilerFree: false)
+        XCTAssertEqual(league.views[0].tables[0].rows[0].values.last, "137.2")
+    }
+}
+
+extension SportFrontLayoutTests {
+    /// #211: a live card's clock is short ("OT1 10:00", "Q4 0:17"); the down and distance stay in the banner. Before
+    /// Apple 138 the card drew "Overtime 1 · 10:00 · Down 1 · 10 yards · Yard line 65" and cut it.
+    func testALiveCardsClockIsShort() throws {
+        func game(_ league: String, period: Int, clock: String) throws -> SportFront {
+            try Self.front { json in
+                var games = json["games"] as? [[String: Any]] ?? []
+                games[0]["league"] = league
+                games[0]["progress"] = ["period": period, "clock": clock] as [String: Any]
+                games[0]["situation"] = ["down": 1, "distance": 10, "yardLine": 65]
+                json["games"] = games
+            }
+        }
+        let nfl = try game("NFL", period: 5, clock: "10:00")
+        let card = try XCTUnwrap(nfl.game("espn:soccer/eng.1:1"))
+        XCTAssertEqual(SportFrontText.cardClock(card, in: nfl, hidden: false), "OT1 10:00")
+        XCTAssertNotNil(SportFrontText.drawn(card, in: nfl, hidden: false).situation?.range(of: "Down 1"), "the banner keeps it")
+        let q4 = try game("NFL", period: 4, clock: "0:17")
+        XCTAssertEqual(SportFrontText.cardClock(try XCTUnwrap(q4.game("espn:soccer/eng.1:1")), in: q4, hidden: true), "Q4 0:17")
+        let afl = try game("AFL", period: 3, clock: "12:01")
+        XCTAssertEqual(SportFrontText.cardClock(try XCTUnwrap(afl.game("espn:soccer/eng.1:1")), in: afl, hidden: false), "Q3 12:01")
+        let epl = try Self.front()
+        XCTAssertEqual(SportFrontText.cardClock(try XCTUnwrap(epl.game("espn:soccer/eng.1:1")), in: epl, hidden: false), "67'")
+    }
+}

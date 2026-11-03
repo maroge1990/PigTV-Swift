@@ -154,11 +154,17 @@ nonisolated enum FixtureText {
                 let team = row.id.flatMap { page.teams[$0] }
                 return FixtureLeague.Row(id: row.id ?? row.abbr, rank: row.rank, abbr: row.abbr,
                                          name: team?.name ?? team?.full ?? row.abbr, logo: cached(team?.logo),
-                                         values: group.columns.map { row.values[$0.key] ?? nil },
+                                         values: group.columns.map { standingValue(row.values[$0.key] ?? nil, key: $0.key) },
                                          followed: isFollowed(row.id, abbr: row.abbr))
             })
         }
         return FixtureLeague(league: league, rounds: rounds, views: tables.isEmpty ? [] : [FixtureLeague.View(name: "", tables: tables)])
+    }
+
+    /// A standings value as drawn: ESPN's text, except a percentage, to one decimal ("137.200" → "137.2", #211).
+    static func standingValue(_ value: String?, key: String) -> String? {
+        guard key == "percentage", let value, let number = Double(value.trimmingCharacters(in: .whitespaces)) else { return value }
+        return String(format: "%.1f", number)
     }
 
     /// The detail as it may be drawn: before the start none; with spoilers hidden only neutral words ("Live", "Played").

@@ -270,8 +270,9 @@ struct SportFixtureContent: View {
                     Text(row.name).font(SportPageMetrics.rowName).lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)
                     Spacer(minLength: 4)
                     ForEach(Array(row.values.enumerated()), id: \.offset) { _, value in
-                        Text(value ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit()
-                            .frame(width: SportFixtureMetrics.valueWidth, alignment: .trailing)
+                        // #211: a value is drawn whole ("4-2-1", "137.2"); the team's name gives way.
+                        Text(value ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit().lineLimit(1).fixedSize()
+                            .frame(minWidth: SportFixtureMetrics.valueWidth, alignment: .trailing)
                     }
                 }
                 .frame(minHeight: SportPageMetrics.row - 4)

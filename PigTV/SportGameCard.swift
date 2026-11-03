@@ -296,9 +296,10 @@ struct SportGameCard: View {
     private func bottom(_ drawn: SportFrontText.Drawn, live: Bool) -> some View {
         HStack(spacing: 8) {
             if live {
+                // #211: the card's clock is short ("Q4 0:17", "OT1 10:00"); the situation is the banner's.
                 Circle().fill(Color.pigDanger).frame(width: 10, height: 10).accessibilityHidden(true)
-                Text(drawn.situation ?? drawn.status).font(SportCardMetrics.detail.weight(.bold))
-                    .foregroundStyle(Color.pigDanger).lineLimit(1).layoutPriority(1)
+                Text(SportFrontText.cardClock(game, in: front, hidden: hidden)).font(SportCardMetrics.detail.weight(.bold))
+                    .foregroundStyle(Color.pigDanger).lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
             } else if game.terminal {
                 Text(drawn.status).font(SportCardMetrics.detail.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
             } else if game.competitors.count == 2 {
@@ -311,7 +312,7 @@ struct SportGameCard: View {
                     .font(SportCardMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
             } else {
                 Text(SportFrontText.actionLabel(game, now: now)).font(SportCardMetrics.small.weight(.bold))
-                    .foregroundStyle(Color.pigAccentText).lineLimit(1)
+                    .foregroundStyle(Color.pigAccentText).lineLimit(1).fixedSize().layoutPriority(2)
             }
         }
     }

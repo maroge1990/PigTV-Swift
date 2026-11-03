@@ -177,12 +177,13 @@ struct CricketPageView: View {
         if let lead = page.lead {
             HStack(alignment: .top, spacing: CricketMetrics.columnGap) {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 16) {
+                    // #211: the whole line (it wraps to a second line rather than cutting the series words).
+                    HStack(alignment: .firstTextBaseline, spacing: 16) {
                         Text([lead.label ?? lead.competition ?? label, lead.venue, spoilerFree ? nil : lead.seriesLine]
                             .compactMap { $0 }.joined(separator: " · "))
-                            .font(CricketMetrics.cardTitle).lineLimit(1)
+                            .font(CricketMetrics.cardTitle).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("cricket.lead.title")
-                        pill(lead, now: now)
+                        pill(lead, now: now).fixedSize()
                     }
                     scoreboard(lead, spoilerFree: spoilerFree)
                     days(lead, now: now)

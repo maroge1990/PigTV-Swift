@@ -299,6 +299,25 @@ nonisolated enum SportFrontText {
                      kicker: kicker(game), status: game.statusLabel)
     }
 
+    /// #211: a live card's short clock: "Q4 0:17", "OT1 10:00", "2nd half 67'", "Top 5"; never the situation (the
+    /// banner's line has it). The status ("LIVE", "HT") without the scores feed or a fresh clock.
+    static func cardClock(_ game: SportsGame, in front: SportFront, hidden: Bool) -> String {
+        guard !front.scoresUnavailable, game.freshness == "fresh", game.family != .motorsport else { return game.statusLabel }
+        var parts: [String] = []
+        if let period = game.progress.period, period > 0 {
+            switch game.family {
+            case .americanFootball, .basketball: parts.append(period <= 4 ? "Q\(period)" : "OT\(period - 4)")
+            case .australianFootball: parts.append(period <= 4 ? "Q\(period)" : "ET\(period - 4)")
+            case .football: parts.append([1: "1st half", 2: "2nd half", 3: "ET 1st", 4: "ET 2nd", 5: "Pens"][period] ?? "P\(period)")
+            case .baseball: parts.append("\(game.progress.half?.capitalized ?? "Inn") \(period)")
+            default: break
+            }
+        }
+        if game.family == .cricket { return situation(game, spoilerFree: hidden) ?? game.statusLabel }
+        if let clock = game.progress.clock { parts.append(clock) }
+        return parts.isEmpty ? game.statusLabel : parts.joined(separator: " ")
+    }
+
     /// Scores to draw, one per competitor, or nil (spoiler-free, stale or not a two-sided game).
     static func scores(_ game: SportsGame, spoilerFree: Bool) -> [String]? { game.visibleScores(hidden: spoilerFree) }
 
