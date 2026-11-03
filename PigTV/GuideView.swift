@@ -97,6 +97,8 @@ struct GuideView: View {
     @FocusState private var headerNowFocused: Bool
     /// D-44 (Apple 107): the long-press menu card, open beside a programme.
     @State private var menu: GuideMenuTarget?
+    /// #219: what failed in the iPhone's On now menu (the system menu has closed, so it cannot show it).
+    @State private var onNowError: String?
     /// iPad: where the strip's More button is (the card opens beside it).
     @State private var stripMoreFrame: CGRect = .zero
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -291,8 +293,18 @@ struct GuideView: View {
                       choose: { channel, programme, item in
                           let target = GuideMenuTarget(channel: channel, programme: programme,
                                                        subject: menuSubject(channel, programme), anchor: .zero)
-                          Task { _ = await runMenu(item, target) }
+                          // #219 (Apple 123): the system menu has closed by now, so a failure is said in an alert.
+                          Task {
+                              guard let error = await runMenu(item, target) else { return }
+                              try? await Task.sleep(for: .milliseconds(350)) // the menu's closing animation
+                              onNowError = error
+                          }
                       })
+            .alert("That didn\u{2019}t work", isPresented: Binding(get: { onNowError != nil }, set: { if !$0 { onNowError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(onNowError ?? "")
+            }
         }
         #endif
     }
