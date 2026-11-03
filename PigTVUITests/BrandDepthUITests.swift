@@ -182,10 +182,11 @@ final class BrandDepthUITests: XCTestCase {
             // Apple 122: the schedule goes at once, with the 10 s Undo; Undo brings it back.
             XCTAssertTrue(app.buttons["undo.toast.undo"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.buttons["scheduled.cancel.90"].exists)
-            shot(app, "schedule-cancel-undo-\(mode)")
+            // Focus first, then the screenshot: on CI's runner the screenshot can take a large part of the 10 s.
             let undo = app.buttons["undo.toast.undo"]
             for _ in 0..<50 where !undo.hasFocus { Thread.sleep(forTimeInterval: 0.1) }
             XCTAssertTrue(undo.hasFocus, "the toast's Undo has focus")
+            shot(app, "schedule-cancel-undo-\(mode)")
             XCUIRemote.shared.press(.select)
             XCTAssertTrue(app.buttons["scheduled.cancel.90"].waitForExistence(timeout: 3))
             app.terminate()

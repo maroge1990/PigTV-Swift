@@ -217,8 +217,14 @@ struct UndoToast: View {
             .accessibilityIdentifier("undo.toast")
             #if os(tvOS)
             .focusSection()
-            .onAppear { focused = true }
-            .onChange(of: pending.id) { focused = true }
+            // Apple 128: a claim made while the toast slides in, with the focus engine still leaving the row that
+            // went, can be dropped on a slow device (CI's runner). Claim until it takes, for at most a second.
+            .task(id: pending.id) {
+                for _ in 0..<10 where !focused {
+                    focused = true
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
             #endif
         }
     }
