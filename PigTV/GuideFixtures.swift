@@ -190,6 +190,16 @@ enum GuideFixtures {
         return (channel, later.first ?? channel.programmes[0])
     }
 
+    /// The fields the record-change fixture's row carries, to remake it with another status (PIGTV_UI_TEST_RECORD_FLIP).
+    struct ScheduleRow: Encodable {
+        let id: Int, title: String, channel_name: String?, program_start: Double, program_end: Double, status: String
+        let pre_buffer_min: Int?, post_buffer_min: Int?
+        init(_ row: ScheduledRecording, status: String) {
+            id = row.id; title = row.title; channel_name = row.channel_name; program_start = row.program_start
+            program_end = row.program_end; self.status = status; pre_buffer_min = row.startEarly; post_buffer_min = row.finishLate
+        }
+    }
+
     @MainActor static func addSchedules(to model: BrowseModel) {
         let target = scheduledProgramme(in: model.guide)
         let json = #"[{"id":90,"title":"\#(target.programme.title)","channel_name":"\#(target.channel.name)","program_start":\#(Int64(target.programme.startTime)),"program_end":\#(Int64(target.programme.endTime)),"status":"scheduled","pre_buffer_min":2,"post_buffer_min":15},{"id":91,"title":"Evening Match","channel_name":"Fox Footy 504","program_start":\#(Int64(target.programme.startTime) - 86_400_000),"program_end":\#(Int64(target.programme.endTime) - 86_400_000),"status":"failed","error":"No signal from the provider."}]"#

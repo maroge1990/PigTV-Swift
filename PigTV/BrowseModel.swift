@@ -682,6 +682,8 @@ final class BrowseModel: ObservableObject {
             actionError = schedules.contains(where: { $0.id == item.id && $0.isActive })
                 ? Self.cannotChangeText : "This recording has finished or no longer exists."
         } catch PigTVError.serverMessage(let text, _) {
+            // A 409 usually means it changed meanwhile (it started recording): the list says how it is now.
+            await loadRecordings()
             actionError = text
         } catch {
             actionError = "Could not change the recording. \(UserMessage.text(for: error) ?? "")"

@@ -164,6 +164,14 @@ nonisolated enum RecordPlan {
         return (nil, nil)
     }
 
+    /// Codex 5a round 1 (medium): the schedule as the refreshed list has it now, while the page is open; nil once it has
+    /// finished, been cancelled or gone (the page then changes nothing).
+    static func live(_ opened: ScheduledRecording, in schedules: [ScheduledRecording]) -> ScheduledRecording? {
+        schedules.first { $0.id == opened.id && $0.isActive }
+    }
+
+    static let goneText = "This recording has finished or no longer exists, so it cannot be changed."
+
     /// It stops when the game ends: a Sport card's game (its id is sent), or a schedule the server links to one.
     static func stopsWithGame(_ request: RecordRequest) -> Bool {
         if let schedule = request.schedule { return schedule.stopsWithEvent }
@@ -278,6 +286,8 @@ struct RecordPage: View {
     let model: BrowseModel
     @ObservedObject private var actions: ActionState
     @ObservedObject private var artwork: ArtworkStore
+    /// The schedules, so Change recording follows its schedule while open (it starts recording, or ends).
+    @ObservedObject private var store: RecordingsStore
     let presenter: AppPresenter
     let request: RecordRequest
     let close: () -> Void
@@ -296,6 +306,7 @@ struct RecordPage: View {
         self.model = model
         _actions = ObservedObject(wrappedValue: model.actions)
         _artwork = ObservedObject(wrappedValue: model.artwork)
+        _store = ObservedObject(wrappedValue: model.recordingStore)
         self.presenter = presenter
         self.request = request
         self.close = close
@@ -311,9 +322,12 @@ struct RecordPage: View {
         request.airings.indices.contains(airingIndex) ? request.airings[airingIndex] : request.airings.first
     }
     private var changing: Bool { request.schedule != nil }
+    /// Change recording's schedule as it is now (nil: gone, or not Change recording).
+    private var live: ScheduledRecording? { request.schedule.flatMap { RecordPlan.live($0, in: model.schedules) } }
+    private var gone: Bool { changing && live == nil }
     /// Busy, or Change recording with nothing changed.
     private var saveOff: Bool {
-        busy || (changing && request.schedule.flatMap { RecordPlan.change($0, before: before, after: after) } == nil)
+        busy || (changing && live.flatMap { RecordPlan.change($0, before: before, after: after) } == nil)
     }
     private var leagueLabel: String? { request.league.flatMap { model.sportFront.labels[$0] } }
 
@@ -336,6 +350,18 @@ struct RecordPage: View {
         .interactiveDismissDisabled(busy)
         .defaultFocus($focus, changing ? .cancel : .primary)
         .accessibilityIdentifier("record.page")
+        // Codex 5a round 1: once it records, Start early shows (and keeps) the schedule's own value, never an edit that
+        // the server would refuse; the list is refreshed while Change recording is open.
+        .onChange(of: live?.status) { _, status in
+            if status == "recording" { before = live?.startEarly }
+        }
+        .task(id: changing) {
+            guard changing, !model.isFixture else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(20)) } catch { return }
+                await model.loadRecordings(quietly: true)
+            }
+        }
     }
 
     private func card(now: Date) -> some View {
@@ -363,10 +389,11 @@ struct RecordPage: View {
     }
 
     private var changeNote: String {
-        guard let schedule = request.schedule else { return "" }
+        guard changing else { return "" }
+        guard let schedule = live else { return RecordPlan.goneText }
         return RecordPlan.canChangeStartEarly(schedule)
             ? "Changes apply to this recording only."
-            : "It is recording: only Finish late can change. Stopping it is Cancel recording."
+            : "It is recording: only Finish late can change."
     }
 
     // MARK: Header
@@ -401,7 +428,7 @@ struct RecordPage: View {
 
     private var kicker: String {
         var parts = [changing ? "CHANGE RECORDING" : "RECORD"]
-        if let schedule = request.schedule { parts.append(schedule.statusWord.uppercased()) }
+        if let schedule = live ?? request.schedule { parts.append(gone ? "ENDED" : schedule.statusWord.uppercased()) }
         if let league = leagueLabel ?? request.league { parts.append(league.uppercased()) }
         return parts.joined(separator: " · ")
     }
@@ -478,11 +505,11 @@ struct RecordPage: View {
             .overlay { RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigAccent, lineWidth: 2) }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("record.stop")
-            let startLocked = request.schedule.map { !RecordPlan.canChangeStartEarly($0) } ?? false
+            let startLocked = changing && (live.map { !RecordPlan.canChangeStartEarly($0) } ?? true)
             chipRow("Start early", RecordPlan.chips(RecordPlan.startEarly, current: request.schedule?.startEarly, changing: changing),
                     selection: $before, id: "before", locked: startLocked)
             chipRow("Finish late", RecordPlan.chips(RecordPlan.finishLate, current: request.schedule?.finishLate, changing: changing),
-                    selection: $after, id: "after", locked: false)
+                    selection: $after, id: "after", locked: gone)
         }
     }
 
@@ -574,12 +601,13 @@ struct RecordPage: View {
             .opacity(saveOff ? 0.45 : 1)
             .focused($focus, equals: .primary)
             .accessibilityIdentifier("record.schedule")
-            if let schedule = request.schedule {
-                Button(schedule.status == "recording" ? "Stop recording" : "Cancel recording", systemImage: "xmark.circle") {
-                    cancel(schedule)
+            if changing {
+                Button(live?.status == "recording" ? "Stop recording" : "Cancel recording", systemImage: "xmark.circle") {
+                    if let live { cancel(live) }
                 }
                 .foregroundStyle(Color.pigDanger)
-                .disabled(busy)
+                .disabled(busy || gone)
+                .opacity(gone ? 0.45 : 1)
                 .focused($focus, equals: .cancel)
                 .accessibilityIdentifier("record.cancelRecording")
             }
@@ -597,7 +625,8 @@ struct RecordPage: View {
         busy = true
         error = nil
         defer { busy = false }
-        if let schedule = request.schedule {
+        if changing {
+            guard let schedule = live else { error = RecordPlan.goneText; return }
             guard let change = RecordPlan.change(schedule, before: before, after: after) else { return }
             if await model.changeSchedule(schedule, change) { close() } else { error = model.actionError ?? "The recording could not be changed." }
             return

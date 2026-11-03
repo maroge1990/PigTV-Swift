@@ -18,9 +18,10 @@ final class RecordPageUITests: XCTestCase {
         add(shot)
     }
 
-    private func launch(_ screen: String) -> XCUIApplication {
+    private func launch(_ screen: String, flip: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = screen
+        if let flip { app.launchEnvironment["PIGTV_UI_TEST_RECORD_FLIP"] = flip }
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["record.page"].waitForExistence(timeout: 15), "no record page")
@@ -80,6 +81,32 @@ final class RecordPageUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !any["record.page"].exists }, "the page did not close")
         XCTAssertTrue(any["undo.toast"].waitForExistence(timeout: 5), "no Undo")
         attach(app, "record-change-cancelled-undo")
+    }
+
+    /// Codex 5a round 1 (medium): the schedule starts recording while Change recording is open. Start early locks (its
+    /// edit would be refused), Finish late can still change, and Cancel becomes Stop recording.
+    @MainActor
+    func testChangeRecordingFollowsItsScheduleWhenItStartsRecording() throws {
+        let app = launch("record-change", flip: "recording")
+        XCTAssertTrue(app.buttons["record.before.10"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["record.before.10"].isEnabled, "Start early can change before it records")
+        XCTAssertTrue(waitUntil(10) { !app.buttons["record.before.10"].isEnabled }, "Start early did not lock once it recorded")
+        XCTAssertTrue(app.buttons["record.after.30"].isEnabled, "Finish late can still change")
+        XCTAssertTrue(app.buttons["record.cancelRecording"].label.hasPrefix("Stop recording"), app.buttons["record.cancelRecording"].label)
+        XCTAssertTrue(app.staticTexts["It is recording: only Finish late can change."].exists)
+        attach(app, "record-change-now-recording")
+    }
+
+    /// The schedule ends while the page is open: Save changes and Cancel recording are off, and the page says why.
+    @MainActor
+    func testChangeRecordingSaysSoWhenItsScheduleIsGone() throws {
+        let app = launch("record-change", flip: "gone")
+        let cancel = app.buttons["record.cancelRecording"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(10) { !cancel.isEnabled }, "Cancel recording stayed on for a schedule that is gone")
+        XCTAssertFalse(app.buttons["record.schedule"].isEnabled)
+        XCTAssertFalse(app.buttons["record.after.30"].isEnabled, "no change to a schedule that is gone")
+        XCTAssertTrue(app.staticTexts["This recording has finished or no longer exists, so it cannot be changed."].exists)
     }
 }
 #endif

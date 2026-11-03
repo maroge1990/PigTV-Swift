@@ -353,6 +353,18 @@ private struct DesignTestScreen: View {
             if screen == "pairing" { app.injectPairingReview() }
             if let browse = app.browse { GuideFixtures.addSchedules(to: browse) }
             ready = true
+            // Codex 5a round 1: PIGTV_UI_TEST_RECORD_FLIP=recording | gone changes the scheduled programme's row 4 s after
+            // the page opens (it starts recording, or it is gone), as a refreshed list would.
+            if let flip = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_RECORD_FLIP"], let browse = app.browse {
+                try? await Task.sleep(for: .seconds(4))
+                if flip == "gone" {
+                    browse.schedules.removeAll { $0.id == 90 }
+                } else if let index = browse.schedules.firstIndex(where: { $0.id == 90 }),
+                          let data = try? JSONEncoder().encode(GuideFixtures.ScheduleRow(browse.schedules[index], status: flip)),
+                          let row = try? JSONDecoder().decode(ScheduledRecording.self, from: data) {
+                    browse.schedules[index] = row
+                }
+            }
         }
     }
 

@@ -112,6 +112,19 @@ final class RecordPageTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(browse.recordRequest(event: event, now: now, preferredChannel: other.id)).schedule?.id, 7)
     }
 
+    /// Codex 5a round 1 (medium): the open page diffs against the schedule as the list has it now. Once it records, an
+    /// edited Start early is left out and Finish late still goes; once it is gone there is nothing to change.
+    func testTheOpenPageFollowsItsScheduleWhenItStartsRecordingOrEnds() throws {
+        let opened = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"scheduled","pre_buffer_min":3,"post_buffer_min":5}"#)
+        XCTAssertEqual(RecordPlan.change(opened, before: 10, after: 30), ScheduleChangeBody(preBufferMin: 10, postBufferMin: 30))
+        let started = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"recording","pre_buffer_min":3,"post_buffer_min":5}"#)
+        let live = try XCTUnwrap(RecordPlan.live(opened, in: [started]))
+        XCTAssertEqual(RecordPlan.change(live, before: 10, after: 30), ScheduleChangeBody(postBufferMin: 30))
+        XCTAssertNil(RecordPlan.live(opened, in: []), "gone")
+        let ended = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"completed"}"#)
+        XCTAssertNil(RecordPlan.live(opened, in: [ended]), "finished")
+    }
+
     // MARK: What the model sends
 
     @MainActor
