@@ -262,8 +262,14 @@ extension BrowseModel {
                 ? SportFrontLayout.followedSides(game, names: front?.follows.map(\.name) ?? []).map { game.competitors[$0].name }
                 : []
         } ?? []
-        let named = team.flatMap { team in
-            game.flatMap { game in SportFrontLayout.followedSide(game, names: [team]).map { game.competitors[$0].name } } ?? team
+        // A named team counts only when it is a side of this game (Codex 7a round 2): a driver or player follow on a
+        // session card (F1, no competitors) names nobody a team rule could ever match, so no "every <name>" rule.
+        let named = team.flatMap { team -> String? in
+            if let game {
+                guard game.competitors.count == 2 else { return nil }
+                return SportFrontLayout.followedSide(game, names: [team]).map { game.competitors[$0].name }
+            }
+            return teams.first { $0.name.caseInsensitiveCompare(team) == .orderedSame }?.name
         }
         let followed = named ?? (followedTeams.count == 1 ? followedTeams[0] : nil)
         let bound = RecordPlan.bind(schedules: airings.map { activeSchedule(channel: $0.channel, programme: $0.programme) },

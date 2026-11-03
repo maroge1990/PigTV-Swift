@@ -247,3 +247,28 @@ extension RecordPageTests {
         XCTAssertEqual(rows[0].sides.map(\.followed), [true, true], "both sides starred")
     }
 }
+
+extension RecordPageTests {
+    /// Codex batch 7a round 2 (high): a driver follow's carousel card and hero (Oscar Piastri on an F1 session, a game with
+    /// no competitors) offer no "Record every Oscar Piastri game" and send no team rule: the server matches team rules
+    /// only against a game's competitors, so it would record nothing. Before Apple 141 the named follow was kept as is.
+    @MainActor
+    func testADriverFollowOffersNoTeamRule() throws {
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:9"), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        let front = try SportFrontLayoutTests.front()
+        browse.sportFront.setFixture(front)
+        let game = try XCTUnwrap(front.game("espn:racing/f1:1"))
+        let event = try XCTUnwrap(SportFrontText.event(game))
+        let at = Date(timeIntervalSince1970: front.now / 1000)
+        let card = try XCTUnwrap(SportPhoneLayout.cards(front, hidden: false, now: at).first { $0.gameId == game.id })
+        XCTAssertEqual(card.team, "Oscar Piastri")
+        let request = try XCTUnwrap(browse.recordRequest(event: event, game: game, team: card.team, now: at))
+        XCTAssertNil(request.followedTeam)
+        XCTAssertNil(request.everyGameTeam)
+        XCTAssertFalse(SportRecordFlow.menuItems(request, rulesAvailable: true, now: at).contains { $0.id == "recordEvery" })
+        XCTAssertFalse(RecordPlan.whats(request, rulesAvailable: true).contains {
+            if case .everyTeam = $0 { return true } else { return false }
+        })
+    }
+}
