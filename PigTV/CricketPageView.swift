@@ -72,6 +72,7 @@ struct CricketPageView: View {
     @ObservedObject private var appState: AppModel
     @Environment(\.sportPresenter) private var presenter
     @Environment(\.sportNarrow) private var narrow
+    @Environment(\.sportHidesSpoilers) private var pageHidesSpoilers
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -139,7 +140,7 @@ struct CricketPageView: View {
 
     @ViewBuilder
     private func stack(now: Date) -> some View {
-        let spoilerFree = preferences.hidesSpoilers
+        let spoilerFree = preferences.hidesSpoilers || pageHidesSpoilers
         VStack(alignment: .leading, spacing: CricketMetrics.spacing) {
             if !embedded { header }
             if let scope, let raw = model.page, raw.available {

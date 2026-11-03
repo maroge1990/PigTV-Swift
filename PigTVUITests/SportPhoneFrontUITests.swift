@@ -20,12 +20,16 @@ final class SportPhoneFrontUITests: XCTestCase {
     }
 
     private func launch(spoilers: Bool = false, idiom: UIUserInterfaceIdiom = .phone,
-                        environment: [String: String] = [:]) throws -> XCUIApplication {
+                        environment: [String: String] = [:], frontSpoilerFree: Bool = false) throws -> XCUIApplication {
         guard UIDevice.current.userInterfaceIdiom == idiom else { throw XCTSkip("\(idiom == .pad ? "iPad" : "iPhone") layout only") }
         XCUIDevice.shared.orientation = .portrait
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("PigTVTests/Fixtures/sport-pages-d43.json")
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+        if frontSpoilerFree, var front = json["front"] as? [String: Any] {
+            front["spoilerFree"] = true
+            json["front"] = front
+        }
         let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "front"
@@ -100,6 +104,35 @@ final class SportPhoneFrontUITests: XCTestCase {
         XCTAssertLessThanOrEqual(table.frame.maxX, window.maxX + 1, "the table ends inside the page: \(table.frame) in \(window)")
         let grid = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'sport.fixture.grid.'")).firstMatch
         XCTAssertGreaterThan(table.frame.minY, grid.frame.maxY - 1, "under the round's games, not beside them")
+    }
+
+    /// #192 (Codex batch 7b, high, Apple 143): the answer says spoiler-free while the account's preference is confirmed
+    /// off. Each league's own page (the AFL's rounds and standings, the cricket scoreboard, golf's leaderboard, the UFC
+    /// card) shows no score, result or standing, on screen or to VoiceOver. Before Apple 143 those panels read only the
+    /// preference and drew Geelong's 101, the % column, 294/5, -23 and R3 2:11 under a "Scores hidden" header.
+    @MainActor
+    func testLeaguePagesHideScoresWhenTheAnswerIsSpoilerFree() throws {
+        // `shown`: words that stay visible once the page has its data.
+        let pages: [(sport: String, league: String, shown: String, hidden: [String])] = [
+            ("Australian football", "AFL", "Geelong Cats", ["101", "137.0"]),
+            ("Cricket", "Cricket", "Australia in South Africa", ["294/5", "329"]),
+            ("Golf", "PGA Tour", "Leaderboard", ["-23", "−23"]),
+            ("Combat", "UFC", "Main card", ["R3 2:11"]),
+        ]
+        for page in pages {
+            let app = try launch(environment: ["PIGTV_UI_TEST_OPEN_SPORT": page.sport, "PIGTV_UI_TEST_OPEN_LEAGUE": page.league],
+                                 frontSpoilerFree: true)
+            let any = app.descendants(matching: .any)
+            XCTAssertTrue(any["sport.page.more.\(page.league)"].waitForExistence(timeout: 15), "\(page.league)'s own page")
+            let content = any.matching(NSPredicate(format: "label CONTAINS %@", page.shown)).firstMatch
+            XCTAssertTrue(content.waitForExistence(timeout: 10), "\(page.league)'s content")
+            XCTAssertEqual(any["sport.page.scores"].firstMatch.label, "Scores hidden")
+            for token in page.hidden {
+                let shown = any.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", token, token))
+                XCTAssertEqual(shown.count, 0, "\(page.league) shows \(token): \(shown.allElementsBoundByIndex.map(\.label))")
+            }
+            app.terminate()
+        }
     }
 }
 #endif

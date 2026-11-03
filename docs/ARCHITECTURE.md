@@ -368,6 +368,9 @@ controls are not used for live play.
   standings under the round, F1's lists one under another and its session tiles scrolling sideways, golf's side column
   and the UFC card under each other, the cricket tour under its scoreboard. On the iPhone the cricket columns and actions
   are compact and golf's leaderboard drops the rounds (R5-Golf-iPhone). The Apple TV is unchanged.
+- **One spoiler decision per sport page (#192, Apple 143)**: the page's (the preference, unknown counting as on, OR the
+  answer's `spoilerFree`) goes to every league panel as `sportHidesSpoilers`, and each panel ORs it with its own
+  preference, on the Apple TV, iPad and iPhone alike (`testLeaguePagesHideScoresWhenTheAnswerIsSpoilerFree`).
 - **Shared words (Apple 137–138)**: a next-round card (C-R `nextRound`, #218) reads "Next round · Sat 15 Nov" with no
   channel, Watch or Remind me (`SportFrontText.isNextRound`/`startLine`/`channelLine`); a live card's clock is short
   (`cardClock`: "Q4 0:17", "OT1 10:00", #211), the down and distance stay in the banner; C-T's `%` is one decimal

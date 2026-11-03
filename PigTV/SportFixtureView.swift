@@ -34,6 +34,8 @@ struct SportFixtureContent: View {
     @ObservedObject private var preferences: F1PageModel
     @Environment(\.sportPresenter) private var presenter
     @Environment(\.sportNarrow) private var narrow
+    @Environment(\.sportHidesSpoilers) private var pageHidesSpoilers
+    private var hidesSpoilers: Bool { preferences.hidesSpoilers || pageHidesSpoilers }
     @State private var round: String?
     @State private var view: String?
     @State private var tableGroup: String?
@@ -65,7 +67,7 @@ struct SportFixtureContent: View {
     }
 
     private var fixture: FixtureLeague? {
-        let hidden = preferences.hidesSpoilers
+        let hidden = hidesSpoilers
         switch source {
         case .nfl:
             guard let page = nfl.page, page.available else { return nil }
@@ -110,7 +112,7 @@ struct SportFixtureContent: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                if !fixture.views.isEmpty || preferences.hidesSpoilers {
+                if !fixture.views.isEmpty || hidesSpoilers {
                     standings(fixture).sportSideWidth(SportFixtureMetrics.standingsWidth, narrow: narrow)
                 }
             }
@@ -235,7 +237,7 @@ struct SportFixtureContent: View {
                     }
                 }
             }
-            if preferences.hidesSpoilers {
+            if hidesSpoilers {
                 SportListCard(title: "Standings hidden", identifier: "sport.fixture.standings.hidden") {
                     SportHiddenNote(title: "", text: "Records, positions and points reveal results while spoiler-free is on.", minHeight: 160)
                 }

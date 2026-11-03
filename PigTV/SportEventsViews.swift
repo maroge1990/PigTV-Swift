@@ -33,6 +33,7 @@ struct SportEventsContent: View {
     @ObservedObject private var preferences: F1PageModel
     @Environment(\.sportPresenter) private var presenter
     @Environment(\.sportNarrow) private var narrow
+    @Environment(\.sportHidesSpoilers) private var pageHidesSpoilers
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// The iPhone (R5-Golf-iPhone): the leaderboard's position, player and to par, without the rounds.
@@ -74,7 +75,7 @@ struct SportEventsContent: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let hidden = preferences.hidesSpoilers
+        let hidden = preferences.hidesSpoilers || pageHidesSpoilers
         if let page = model.pages[league], page.available {
             VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
                 switch page.kind {

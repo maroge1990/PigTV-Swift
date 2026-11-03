@@ -170,3 +170,17 @@ extension View {
         frame(width: narrow ? nil : width).frame(maxWidth: narrow ? .infinity : nil, alignment: .topLeading)
     }
 }
+
+// #192 (Codex batch 7b, high, Apple 143): the sport page's own spoiler decision (the account's preference, unknown
+// counting as on, OR the C-R answer's `spoilerFree`). Every league panel ORs it with its own preference, so a page whose
+// header reads "Scores hidden" never shows a score, result or standing below it, nor reads one out.
+private struct SportHidesSpoilersKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var sportHidesSpoilers: Bool {
+        get { self[SportHidesSpoilersKey.self] }
+        set { self[SportHidesSpoilersKey.self] = newValue }
+    }
+}

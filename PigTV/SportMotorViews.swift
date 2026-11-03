@@ -27,6 +27,7 @@ struct SportF1Content: View {
     @Environment(\.sportPresenter) private var presenter
     @Environment(\.colorScheme) private var scheme
     @Environment(\.sportNarrow) private var narrow
+    @Environment(\.sportHidesSpoilers) private var pageHidesSpoilers
 
     init(app: AppModel, browse: BrowseModel) {
         self.app = app
@@ -46,7 +47,7 @@ struct SportF1Content: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let spoilerFree = model.hidesSpoilers
+        let spoilerFree = model.hidesSpoilers || pageHidesSpoilers
         if let page = model.page, page.available, let weekend = page.weekend {
             VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
                 let tiles = HStack(alignment: .top, spacing: 14) {

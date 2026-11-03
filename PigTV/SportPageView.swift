@@ -177,6 +177,9 @@ struct SportPageView: View {
         .accessibilityIdentifier("sport.page.\(sport)")
     }
 
+    /// #192: the account's preference (unknown counts as on) or the answer's own spoiler-free (Apple 143).
+    private var hidesSpoilers: Bool { f1.hidesSpoilers || model.front?.spoilerFree == true }
+
     private var heroGame: SportsGame? {
         guard let front = model.front else { return nil }
         return front.game(SportPageRules.hero(sport, in: front).gameId)
@@ -211,7 +214,7 @@ struct SportPageView: View {
     private func banner(_ front: SportFront, hero: SportPageRules.Hero, leagues: [SportFront.Sport], shown: String?,
                         now: Date) -> some View {
         let game = front.game(hero.gameId)
-        let words = game.map { SportFrontLayout.hero($0, in: front, hidden: f1.hidesSpoilers, now: now, labels: model.labels) }
+        let words = game.map { SportFrontLayout.hero($0, in: front, hidden: hidesSpoilers, now: now, labels: model.labels) }
             ?? SportPageRules.quietHero(sport)
         let items = SportPageRules.leagueItems(sport, in: front, now: now, labels: model.labels)
         return SportBanner(hero: words, items: items, listTitle: "\(sport.uppercased()) · YOUR LEAGUES",
@@ -235,7 +238,7 @@ struct SportPageView: View {
 
     private func leagueContent(_ league: String, front: SportFront, now: Date) -> some View {
         SportLeagueContent(app: app, browse: browse, sport: sport, league: league, front: front, labels: model.labels,
-                           hidden: f1.hidesSpoilers, now: now, flow: flow)
+                           hidden: hidesSpoilers, now: now, flow: flow)
     }
 }
 
@@ -278,6 +281,7 @@ struct SportLeagueContent: View {
             }
         }
         .id(league)
+        .environment(\.sportHidesSpoilers, hidden)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("sport.page.league.\(league)")
     }
