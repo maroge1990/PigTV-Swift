@@ -12,6 +12,8 @@ final class RecordingUndoTests: XCTestCase {
             switch (request.method, request.path) {
             case ("DELETE", "/api/recordings/30"):
                 return .json(#"{"success":true}"#)
+            case ("DELETE", "/api/recordings/31"):
+                return .json(#"{"error":"Recording not found"}"#, status: 500)
             case ("DELETE", "/api/recordings/scheduled/9"):
                 return .json(#"{"id":9,"title":"News","program_start":1,"program_end":2,"status":"cancelled"}"#)
             case ("DELETE", "/api/recordings/rules/7"):
@@ -24,9 +26,16 @@ final class RecordingUndoTests: XCTestCase {
         }
     }
 
+    /// One test's UserDefaults: a "process" is a model with a new log on the same defaults.
+    private lazy var defaults = UserDefaults(suiteName: "pigtv.undo.\(UUID().uuidString)")!
+
     private func model(_ http: LocalHTTPServer) throws -> BrowseModel {
-        BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1), accountID: 1)
+        let model = BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1), accountID: 1)
+        model.removalLog = PendingRemovalLog(defaults: defaults)
+        return model
     }
+
+    private func deletes(_ log: Locked<[String]>, _ path: String) -> Int { log.value.filter { $0 == "DELETE \(path)" }.count }
 
     /// A presenter whose 10 s never run out by themselves (the test commits or undoes).
     private func presenter() -> AppPresenter {
@@ -96,5 +105,51 @@ final class RecordingUndoTests: XCTestCase {
         XCTAssertEqual(ScheduledRows.rules(model.recordingStore.rules, hidden: model.recordingStore.pendingRemovals).map(\.id), [7],
                        "a removal the server refused shows the rule again")
         XCTAssertNotNil(model.actionError, "and says why")
+        XCTAssertEqual(model.removalLog.all().map(\.id), [7], "and stays in the log, to be sent again")
+    }
+
+    /// Codex 5b round 1 (high): a removal committed as the app went to the background was only an in-memory task; a
+    /// process killed before it ran lost it. It is in the log before anything is sent, and the next process sends it
+    /// once; the first process, if it was not killed after all, finds it done and sends nothing.
+    func testACommittedRemovalSurvivesAKilledProcessAndIsSentOnce() async throws {
+        let log = Locked<[String]>([])
+        let http = try server(log)
+        defer { http.stop() }
+        let first = try model(http)
+        let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":30,"title":"The Headlines","status":"completed"}"#.utf8))
+        first.recordings = [recording]
+        let presenter = presenter()
+        first.deleteWithUndo(recording, presenter: presenter)
+        first.mutationBusy = true // the send is held, as when the system suspends the app
+        presenter.commitPendingUndo()
+        XCTAssertEqual(first.removalLog.all().map(\.id), [30], "written before the toast went")
+        // The process is killed; the next launch has a new model and log on the same defaults.
+        let second = try model(http)
+        second.replayPendingRemovals()
+        await waitUntil { second.removalLog.all().isEmpty && !second.mutationBusy }
+        XCTAssertEqual(deletes(log, "/api/recordings/30"), 1, "the next process sends it")
+        XCTAssertTrue(second.removalLog.all().isEmpty, "confirmed, so it leaves the log")
+        second.replayPendingRemovals()
+        first.mutationBusy = false
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(deletes(log, "/api/recordings/30"), 1, "never sent twice: \(log.value)")
+    }
+
+    /// The item already gone (the server's "Recording not found", a 404 to the client) counts as done.
+    func testAReplayedRemovalOfSomethingAlreadyGoneClearsIt() async throws {
+        let log = Locked<[String]>([])
+        let http = try server(log)
+        defer { http.stop() }
+        let model = try model(http)
+        let scope = CacheScope(address: model.client.address, accountID: 1).digest
+        model.removalLog.add(PendingRemoval(kind: .recording, id: 31, scope: scope))
+        model.removalLog.add(PendingRemoval(kind: .recording, id: 99, scope: "another account"))
+        model.replayPendingRemovals()
+        await waitUntil { model.removalLog.pending(scope: scope).isEmpty }
+        XCTAssertEqual(deletes(log, "/api/recordings/31"), 1)
+        XCTAssertTrue(model.removalLog.pending(scope: scope).isEmpty, "gone counts as done")
+        XCTAssertNil(model.actionError)
+        XCTAssertEqual(model.removalLog.all().map(\.id), [99], "another account's removal waits for that account")
+        XCTAssertEqual(deletes(log, "/api/recordings/99"), 0)
     }
 }

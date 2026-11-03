@@ -705,50 +705,123 @@ final class BrowseModel: ObservableObject {
         }
     }
 
-    // MARK: Undo (Apple 122, D-44 point 9)
+    // MARK: Undo (Apple 122, D-44 point 9; persisted since 124)
+
+    /// The removals this process has committed and not yet seen confirmed (shared by every session; tests use their own).
+    var removalLog = PendingRemovalLog.shared
+
+    /// This server and account, for the removal log (nil without an account: then nothing is persisted).
+    private var removalScope: String? {
+        client.accountID.map { CacheScope(address: client.address, accountID: $0).digest }
+    }
 
     /// Delete a recording, cancel a schedule, remove a rule or delete a failed item: it goes from every list at once and
-    /// the toast offers Undo for 10 s. The server call is held until then (or until the app goes to the background,
-    /// `AppPresenter.commitPendingUndo`), waits for any change still in flight (never dropped, Codex batch 4), and runs as
-    /// background work so a suspension does not cut it off. Undo puts the item back; a failed call puts it back and says
-    /// why (`actionError`). The server stops a recording that is still being made before deleting it (C-M).
-    private func removeWithUndo(_ key: String, message: String, presenter: AppPresenter,
-                                commit: @escaping @MainActor (BrowseModel) async -> Void) {
+    /// the toast offers Undo for 10 s. When the Undo commits (its 10 s end, or the app goes to the background,
+    /// `AppPresenter.commitPendingUndo`) the operation is first written to the removal log, then sent: after any change
+    /// still in flight (never dropped, Codex batch 4), as background work. It leaves the log only once the server
+    /// confirms it, or says the item is already gone; a process killed before that replays it at the next launch or
+    /// return to the foreground (`replayPendingRemovals`, Codex 5b round 1, high). Undo puts the item back with no
+    /// call; a refused call puts it back, says why and stays in the log. The server stops a recording still being made
+    /// before deleting it (C-M).
+    private func removeWithUndo(_ kind: PendingRemoval.Kind, id: Int, message: String, presenter: AppPresenter) {
+        let key = PendingRemoval.key(kind, id)
         recordingStore.pendingRemovals.insert(key)
         presenter.offerUndo(message, undone: { [weak self] in
             self?.recordingStore.pendingRemovals.remove(key)
         }) { [weak self] in
             guard let self else { return }
-            BackgroundWork.run("PigTV: \(key)") {
-                await self.waitForMutation()
-                await commit(self)
+            let op = self.removalScope.map { PendingRemoval(kind: kind, id: id, scope: $0) }
+            if let op, !self.isFixture { self.removalLog.add(op) }
+            self.sendRemoval(kind, id: id, logged: self.isFixture ? nil : op)
+        }
+    }
+
+    /// Sends one removal (a committed Undo, or one replayed from the log) and settles the log and the lists.
+    private func sendRemoval(_ kind: PendingRemoval.Kind, id: Int, logged op: PendingRemoval?) {
+        let key = PendingRemoval.key(kind, id)
+        if let op { removalLog.inFlight.insert(op.flightKey) }
+        BackgroundWork.run("PigTV: \(key)") {
+            defer { if let op { self.removalLog.inFlight.remove(op.flightKey) } }
+            await self.waitForMutation()
+            // Done meanwhile by another send of the same operation: nothing to do.
+            if let op, !self.removalLog.contains(op) { return }
+            switch await self.performRemoval(kind, id: id) {
+            case .done:
+                if let op { self.removalLog.remove(op) }
+                await self.loadRecordings()
+                if kind == .rule { await self.reloadRules() }
+                self.recordingStore.pendingRemovals.remove(key)
+            case .failed(let message):
+                self.actionError = message
                 self.recordingStore.pendingRemovals.remove(key)
             }
         }
     }
 
-    func deleteWithUndo(_ item: Recording, presenter: AppPresenter) {
-        removeWithUndo(RecordingsHome.key(item), message: "\(item.title) deleted with its file", presenter: presenter) {
-            await $0.delete(item)
+    /// The removals committed but never confirmed, for this server and account (a process killed in the background
+    /// before they were sent): each is hidden and sent once, through the same path. At launch and on every return to
+    /// the foreground while signed in (ContentView).
+    func replayPendingRemovals() {
+        guard !isFixture, let scope = removalScope else { return }
+        for op in removalLog.pending(scope: scope) where !removalLog.inFlight.contains(op.flightKey) {
+            recordingStore.pendingRemovals.insert(op.key)
+            sendRemoval(op.kind, id: op.id, logged: op)
         }
+    }
+
+    enum RemovalOutcome: Equatable { case done, failed(String) }
+
+    /// One removal's call. The item already gone (404, or the server's "not found") counts as done.
+    private func performRemoval(_ kind: PendingRemoval.Kind, id: Int) async -> RemovalOutcome {
+        struct Deleted: Decodable { let cancelled: Int? }
+        mutationBusy = true
+        actionError = nil
+        actionMessage = nil
+        defer { mutationBusy = false }
+        do {
+            switch kind {
+            case .recording:
+                let result: ActionResult = try await client.request("recordings/\(id)", method: "DELETE")
+                guard result.success else { throw PigTVError.message("The server did not confirm the change.") }
+                actionMessage = "Recording deleted."
+            case .cancelSchedule:
+                let updated: ScheduledRecording = try await client.request("recordings/scheduled/\(id)", method: "DELETE")
+                guard !updated.canCancel else {
+                    throw PigTVError.message("The server still reports this schedule as active. Refresh before retrying.")
+                }
+                actionMessage = "Schedule cancelled or recording stopped."
+            case .deleteSchedule:
+                _ = try await client.response("recordings/scheduled/\(id)", method: "DELETE")
+                actionMessage = "Schedule deleted."
+            case .rule:
+                let result: Deleted = try await client.request("recordings/rules/\(id)", method: "DELETE")
+                let n = result.cancelled ?? 0
+                actionMessage = n == 0 ? "Rule deleted." : "Rule deleted; \(n) upcoming recording\(n == 1 ? "" : "s") cancelled."
+            }
+            return .done
+        } catch PigTVError.http(404) {
+            return .done
+        } catch {
+            return .failed(UserMessage.text(for: error) ?? "The change could not be made.")
+        }
+    }
+
+    func deleteWithUndo(_ item: Recording, presenter: AppPresenter) {
+        removeWithUndo(.recording, id: item.id, message: "\(item.title) deleted with its file", presenter: presenter)
     }
 
     func cancelWithUndo(_ item: ScheduledRecording, presenter: AppPresenter) {
         let message = item.status == "recording" ? "Recording of \(item.title) stopped" : "Recording of \(item.title) cancelled"
-        removeWithUndo(RecordingsHome.key(item), message: message, presenter: presenter) { await $0.cancel(item) }
+        removeWithUndo(.cancelSchedule, id: item.id, message: message, presenter: presenter)
     }
 
     /// A failed or missed schedule (Needs attention), with its partial files.
     func deleteScheduleWithUndo(_ item: ScheduledRecording, presenter: AppPresenter) {
-        removeWithUndo(RecordingsHome.key(item), message: "\(item.title) deleted", presenter: presenter) {
-            await $0.deleteSchedule(item)
-        }
+        removeWithUndo(.deleteSchedule, id: item.id, message: "\(item.title) deleted", presenter: presenter)
     }
 
     func removeRuleWithUndo(_ rule: RecordingRule, presenter: AppPresenter) {
-        removeWithUndo(RecordingsHome.key(rule), message: "Rule removed: \(rule.summary)", presenter: presenter) {
-            await $0.deleteRule(rule)
-        }
+        removeWithUndo(.rule, id: rule.id, message: "Rule removed: \(rule.summary)", presenter: presenter)
     }
 
     /// Server 0410 (#12, D-42): "Record this one instead": the schedule wins its clashes from then on, and the ones

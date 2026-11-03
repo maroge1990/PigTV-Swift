@@ -146,3 +146,47 @@ nonisolated enum RecordingTeams {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).trimmingCharacters(in: .whitespaces)
     }
 }
+
+/// A removal committed after its Undo (Apple 124): what to send, for which server and account (`CacheScope.digest`).
+nonisolated struct PendingRemoval: Codable, Equatable, Sendable {
+    enum Kind: String, Codable, Sendable { case recording, cancelSchedule, deleteSchedule, rule }
+    let kind: Kind
+    let id: Int
+    let scope: String
+
+    /// The key the lists hide it by (`RecordingsHome.key`).
+    var key: String { Self.key(kind, id) }
+    var flightKey: String { "\(scope)|\(kind.rawValue)|\(id)" }
+
+    static func key(_ kind: Kind, _ id: Int) -> String {
+        switch kind {
+        case .recording: "recording:\(id)"
+        case .cancelSchedule, .deleteSchedule: "schedule:\(id)"
+        case .rule: "rule:\(id)"
+        }
+    }
+}
+
+/// The removals committed and not yet confirmed by the server, kept in UserDefaults so a process killed in the
+/// background replays them (Codex 5b round 1, high). `inFlight` is this process's sends, so a replay never sends one twice.
+@MainActor
+final class PendingRemovalLog {
+    static let shared = PendingRemovalLog(defaults: .standard)
+    static let storageKey = "pigtv.pendingRemovals.v1"
+    private let defaults: UserDefaults
+    var inFlight: Set<String> = []
+
+    init(defaults: UserDefaults) { self.defaults = defaults }
+
+    func all() -> [PendingRemoval] {
+        defaults.data(forKey: Self.storageKey).flatMap { try? JSONDecoder().decode([PendingRemoval].self, from: $0) } ?? []
+    }
+    func pending(scope: String) -> [PendingRemoval] { all().filter { $0.scope == scope } }
+    func contains(_ op: PendingRemoval) -> Bool { all().contains(op) }
+    func add(_ op: PendingRemoval) { var ops = all(); if !ops.contains(op) { ops.append(op) }; save(ops) }
+    func remove(_ op: PendingRemoval) { save(all().filter { $0 != op }) }
+    private func save(_ ops: [PendingRemoval]) {
+        if ops.isEmpty { defaults.removeObject(forKey: Self.storageKey) }
+        else if let data = try? JSONEncoder().encode(ops) { defaults.set(data, forKey: Self.storageKey) }
+    }
+}

@@ -83,6 +83,8 @@ struct ContentView: View {
         // minute, whichever tab shows (returning to the foreground restarts it, so a stale guide is fixed at once).
         .task(id: scenePhase == .active ? model.browse.map(ObjectIdentifier.init) : nil) {
             guard scenePhase == .active, let browse = model.browse else { return }
+            // Apple 124: removals committed but never confirmed (the app was stopped in the background) are sent now.
+            browse.replayPendingRemovals()
             await AppFreshness.run { await AppFreshness.refresh(browse) }
         }
         .environment(\.channelWarmer, model.warmer)

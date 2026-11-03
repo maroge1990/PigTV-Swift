@@ -245,6 +245,12 @@ final class APIClient {
             if path == "playback/resolve", let shown = Self.displayableResolveError(serverError?.error) {
                 throw PigTVError.serverMessage(shown, status: response.statusCode)
             }
+            // C-M (Apple 124): deleting a recording or cancelling a schedule that is already gone answers 500 with the
+            // server's "… not found": that is a 404 to the client (the removal is done).
+            if method == "DELETE", path.hasPrefix("recordings/"),
+               ["Recording not found", "Scheduled recording not found", "Rule not found"].contains(serverError?.error ?? "") {
+                throw PigTVError.http(404)
+            }
             if serverError?.error == "Transcode failed to produce a playlist in time" {
                 throw PigTVError.serverMessage("The server could not prepare the stream before its startup deadline. No video was received. Try again after checking the server's playback log.", status: response.statusCode)
             }
