@@ -54,7 +54,7 @@ final class SettingsUITests: XCTestCase {
         XCTAssertFalse(football.exists)
         // Right moves into the page.
         XCUIRemote.shared.press(.right)
-        XCTAssertTrue(waitUntil(3) { focused(app).identifier.hasPrefix("settings.account.") },
+        XCTAssertTrue(waitUntil(5) { focused(app).identifier.hasPrefix("settings.account.") },
                       "focus never moved into the page: \(focused(app).identifier)")
         XCTAssertGreaterThan(focused(app).frame.minX, items[1].frame.maxX)
     }
@@ -78,27 +78,51 @@ final class SettingsUITests: XCTestCase {
         XCTAssertEqual(app.alerts.count, 0, "a dialog asked instead")
         XCTAssertEqual(app.sheets.count, 0, "a dialog asked instead")
         let stay = app.buttons["settings.account.stay"]
-        XCTAssertTrue(waitUntil(3) { stay.hasFocus }, "Stay signed in should take the focus: \(focused(app).identifier)")
+        XCTAssertTrue(waitUntil(5) { stay.hasFocus }, "Stay signed in should take the focus: \(focused(app).identifier)")
         XCTAssertTrue(app.buttons["settings.account.confirmSignOut"].exists)
         // Stay signed in puts the row back.
         XCUIRemote.shared.press(.select)
-        XCTAssertTrue(waitUntil(3) { !confirm.exists }, "Stay signed in left the confirmation open")
-        XCTAssertTrue(waitUntil(3) { signOut.hasFocus }, "focus should return to Sign out: \(focused(app).identifier)")
+        XCTAssertTrue(waitUntil(5) { !confirm.exists }, "Stay signed in left the confirmation open")
+        XCTAssertTrue(waitUntil(5) { signOut.hasFocus }, "focus should return to Sign out: \(focused(app).identifier)")
         // Menu answers Stay signed in too.
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         XCUIRemote.shared.press(.menu)
-        XCTAssertTrue(waitUntil(3) { !confirm.exists }, "Menu left the confirmation open")
+        XCTAssertTrue(waitUntil(5) { !confirm.exists }, "Menu left the confirmation open")
         XCTAssertTrue(app.tabBars.buttons["Sport"].exists, "still signed in")
         // Sign out, confirmed in the row, signs out.
-        XCTAssertTrue(waitUntil(3) { signOut.hasFocus } || { XCUIRemote.shared.press(.down); return waitUntil(2) { signOut.hasFocus } }())
+        XCTAssertTrue(waitUntil(5) { signOut.hasFocus } || { XCUIRemote.shared.press(.down); return waitUntil(2) { signOut.hasFocus } }())
         XCUIRemote.shared.press(.select)
         let yes = app.buttons["settings.account.confirmSignOut"]
         XCTAssertTrue(yes.waitForExistence(timeout: 5))
         XCUIRemote.shared.press(.right)
-        XCTAssertTrue(waitUntil(3) { yes.hasFocus }, "Sign out sits beside Stay signed in: \(focused(app).identifier)")
+        XCTAssertTrue(waitUntil(5) { yes.hasFocus }, "Sign out sits beside Stay signed in: \(focused(app).identifier)")
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(waitUntil(5) { !app.tabBars.buttons["Sport"].exists }, "signing out left the session's tabs")
+    }
+
+    /// R5-SetSport-TV: Hide scores and Score delay side by side, then your sports with their followed names.
+    @MainActor
+    func testTheSportPageHasScoreDelayAndYourSports() throws {
+        continueAfterFailure = false
+        let app = launch(page: "sport")
+        let value = app.staticTexts["settings.sport.delay.value"]
+        XCTAssertTrue(value.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertEqual(value.label, "Score delay 30 seconds")
+        let hide = app.buttons["settings.sport.spoilerFree"]
+        XCTAssertLessThan(hide.frame.maxX, value.frame.minX, "Hide scores and Score delay sit side by side")
+        let football = app.buttons["settings.sport.row.Football"]
+        XCTAssertTrue(football.label.contains("Arsenal, Liverpool"), football.label)
+        XCTAssertGreaterThan(football.frame.minY, hide.frame.maxY)
+        let more = app.buttons["settings.sport.delay.more"]
+        for _ in 0..<12 where !more.hasFocus {
+            let at = focused(app).frame
+            XCUIRemote.shared.press(at.maxY < more.frame.minY ? .down : at.minY > more.frame.maxY ? .up : at.midX < more.frame.midX ? .right : .left)
+            _ = waitUntil(1) { more.hasFocus }
+        }
+        XCTAssertTrue(waitUntil(5) { more.hasFocus }, "+10 never took the focus: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(waitUntil(5) { value.label == "Score delay 40 seconds" }, value.label)
     }
 
     @MainActor

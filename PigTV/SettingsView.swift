@@ -271,7 +271,8 @@ struct LibrarySettings: View {
         case .sport:
             if let browse = model.browse {
                 SettingsPageBody(title: item.title, showsTitle: !compact) {
-                    SportSettingsSection(model: browse.sportFollows, me: model.user?.username)
+                    SportSettingsSection(model: browse.sportFollows, me: model.user?.username,
+                                         frontFollows: browse.sportFrontEnabled ? browse.sportFront.front?.follows ?? [] : [])
                 }
             }
         case .account:
