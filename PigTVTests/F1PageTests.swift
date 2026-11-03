@@ -386,3 +386,21 @@ final class F1PreferenceOrderTests: XCTestCase {
     }
 }
 
+
+extension F1PageTextTests {
+    /// #202: Follow a driver lists the whole grid (C-P `drivers`, server 0422), not only the top ten of the standings
+    /// and results; an older server without it keeps the standings and results.
+    func testFollowADriverListsTheWholeGrid() throws {
+        let grid = (1...22).map { #"{"name":"Driver \#($0) Grid\#(String(format: "%02d", $0))","team":"Team \#($0 % 11)","teamColor":null}"# }
+        let standings = (1...10).map { #"{"pos":\#($0),"name":"Driver \#($0) Grid\#(String(format: "%02d", $0))","team":null,"teamColor":null,"points":\#(100 - $0)}"# }
+        let json = #"{"available":true,"weekend":null,"results":null,"standings":{"afterRound":20,"drivers":[\#(standings.joined(separator: ","))],"constructors":[]},"drivers":[\#(grid.joined(separator: ",")),{"team":"no name"}]}"#
+        let page = try JSONDecoder().decode(F1Page.self, from: Data(json.utf8))
+        let names = F1PageText.drivers(page)
+        XCTAssertEqual(names.count, 22, "every car on the grid, a broken entry dropped")
+        XCTAssertTrue(names.contains("Driver 22 Grid22"))
+        XCTAssertEqual(names.first, "Driver 1 Grid01", "still alphabetical by surname, not the standings")
+        var older = page
+        older.drivers = nil
+        XCTAssertEqual(F1PageText.drivers(older).count, 10, "an older server: the standings stand in")
+    }
+}

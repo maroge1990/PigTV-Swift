@@ -13,11 +13,16 @@ nonisolated struct F1Page: Decodable, Equatable, Sendable {
     var weekend: F1Weekend?
     var results: F1Results?
     var standings: F1Standings?
+    /// C-P since 0422 (#202, additive): the whole current grid, `[{ name, team, teamColor }]`; nil from an older server
+    /// (the standings and results stand in, top ten only).
+    var drivers: [F1GridDriver]?
 
-    enum CodingKeys: String, CodingKey { case available, weekend, results, standings }
+    enum CodingKeys: String, CodingKey { case available, weekend, results, standings, drivers }
 
-    init(available: Bool, weekend: F1Weekend? = nil, results: F1Results? = nil, standings: F1Standings? = nil) {
+    init(available: Bool, weekend: F1Weekend? = nil, results: F1Results? = nil, standings: F1Standings? = nil,
+         drivers: [F1GridDriver]? = nil) {
         self.available = available; self.weekend = weekend; self.results = results; self.standings = standings
+        self.drivers = drivers
     }
 
     init(from decoder: Decoder) throws {
@@ -26,7 +31,15 @@ nonisolated struct F1Page: Decodable, Equatable, Sendable {
         weekend = (try? c.decodeIfPresent(F1Weekend.self, forKey: .weekend)) ?? nil
         results = (try? c.decodeIfPresent(F1Results.self, forKey: .results)) ?? nil
         standings = (try? c.decodeIfPresent(F1Standings.self, forKey: .standings)) ?? nil
+        drivers = ((try? c.decodeIfPresent(LossyList<F1GridDriver>.self, forKey: .drivers)) ?? nil)?.items
     }
+}
+
+/// One car on the current grid (C-P `drivers[]`, #202).
+nonisolated struct F1GridDriver: Decodable, Equatable, Sendable {
+    var name: String
+    var team: String? = nil
+    var teamColor: String? = nil
 }
 
 nonisolated struct F1Weekend: Decodable, Equatable, Sendable {
@@ -363,10 +376,14 @@ nonisolated enum F1PageText {
         return value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
     }
 
-    /// Everyone the page can offer to follow (the standings and the results), unique and alphabetical by surname:
-    /// never in the standings' order, which would give them away with spoiler-free on (#164).
+    /// Everyone the page can offer to follow: the whole grid (#202, C-P `drivers`), else (an older server) the standings
+    /// and the results; unique and alphabetical by surname: never in the standings' order, which would give them away
+    /// with spoiler-free on (#164).
     static func drivers(_ page: F1Page) -> [String] {
-        let names = Set((page.standings?.drivers.map(\.name) ?? []) + (page.results?.rows.map(\.driver) ?? []))
+        let grid = page.drivers?.map(\.name) ?? []
+        let names = Set(grid.isEmpty
+                        ? (page.standings?.drivers.map(\.name) ?? []) + (page.results?.rows.map(\.driver) ?? [])
+                        : grid)
         return names.sorted { (surname($0), $0) < (surname($1), $1) }
     }
 
