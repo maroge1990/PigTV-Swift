@@ -5,8 +5,8 @@ import SwiftUI
 // long press on a card makes it the hero) and the follows on the right, in the order sent; selecting a follow flips the
 // hero, and the hero offers its sport's page. Then a rail per sport (its header "Football ›" opens the sport page; its
 // leagues' rails beneath). Sports with nothing in the next 72 hours sit as small buttons on the last line, "Also in your
-// sports". Spoiler-free hides scores, situations and results; without the scores feed the page says so once. iPad and
-// iPhone keep the earlier layout (`SportFrontPage`) until their D-43 mock-ups.
+// sports". Spoiler-free hides scores, situations and results; without the scores feed the page says so once. The iPad
+// draws this page too (D-44); the iPhone has its own (`SportFrontPhonePage`).
 
 struct SportFrontTVPage: View {
     let app: AppModel
@@ -71,6 +71,9 @@ struct SportFrontTVPage: View {
                 }
             }
             .padding(.bottom, 60)
+            #if os(iOS)
+            .padding(.horizontal, 24)
+            #endif
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
