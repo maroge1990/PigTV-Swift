@@ -163,57 +163,152 @@ private struct LaunchLoadingView: View {
     var body: some View { BrandSplashView() }
 }
 
+/// The next automatic retry of the Offline screen (pure, `OfflineRetryTests`): every 20 seconds from the last attempt.
+nonisolated enum RetryCountdown {
+    static let period: TimeInterval = 20
+
+    /// Whole seconds until the next attempt (20 … 0).
+    static func remaining(from start: Date, now: Date) -> Int {
+        let left = period - now.timeIntervalSince(start)
+        return max(0, Int(left.rounded(.up)))
+    }
+
+    /// How much of the ring is still drawn: 1 at the attempt, 0 when the next one is due.
+    static func fraction(from start: Date, now: Date) -> Double {
+        min(1, max(0, (period - now.timeIntervalSince(start)) / period))
+    }
+
+    static func text(_ seconds: Int) -> String { "Trying again in \(seconds) second\(seconds == 1 ? "" : "s")" }
+}
+
+/// Offline (D-44 batch 6, R5-Offline-*): the pig inside a ring that empties over the 20 seconds to the next automatic
+/// retry, the server's address, Try now (the rose primary) and Use a different server.
 struct UnreachableView: View {
     @ObservedObject var model: AppModel
     let message: String
     @State private var showSignIn = false
-    @Environment(\.colorScheme) private var scheme
+    /// When the countdown to the next attempt began (the last attempt, or this screen opening).
+    @State private var started = Date()
+
     var body: some View {
         if showSignIn {
             OnboardingView(model: model)
         } else {
             ZStack {
                 PigPageBackground()
-                VStack(spacing: 26) {
-                    PigBrandMark(width: 150, height: 120)
-                        .accessibilityHidden(true)
-                    Eyebrow(text: "Offline")
-                    Text("Can't reach PigTV").font(DetailType.title)
-                    Text(message).font(DetailType.meta).multilineTextAlignment(.center).foregroundStyle(.secondary)
-                        .frame(maxWidth: 820)
-                    Text(model.serverText).font(DetailType.rowDetail.monospaced())
-                        .padding(.horizontal, 20).padding(.vertical, 8)
-                        .background(Color.guideCell(scheme), in: Capsule())
-                    if model.authBusy {
-                        ProgressView("Trying again…").padding(.top, 10)
-                    } else {
-                        DetailActions {
-                            Button("Try again", systemImage: "arrow.clockwise") { Task { await model.restore() } }
-                                .pigPrimaryButton()
-                            Button("Use a different server", systemImage: "server.rack") { showSignIn = true }
+                VStack(spacing: OfflineMetrics.spacing) {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        VStack(spacing: OfflineMetrics.spacing) {
+                            RetryRing(fraction: model.authBusy ? 1 : RetryCountdown.fraction(from: started, now: context.date))
+                            Text("Can’t reach PigTV").font(OfflineType.title).multilineTextAlignment(.center)
+                                .accessibilityAddTraits(.isHeader)
+                            Text(model.authBusy ? "Trying again…" : RetryCountdown.text(RetryCountdown.remaining(from: started, now: context.date)))
+                                .font(OfflineType.countdown).monospacedDigit().fontDesign(.rounded)
+                                .foregroundStyle(Color("PigSecondary"))
+                                .accessibilityIdentifier("offline.countdown")
                         }
-                        .padding(.top, 10)
                     }
-                    Text("PigTV keeps trying every 20 seconds while this screen is open.")
-                        .font(DetailType.rowDetail).foregroundStyle(.secondary)
+                    Text(message).font(OfflineType.message).multilineTextAlignment(.center).foregroundStyle(Color("PigSecondary"))
+                        .frame(maxWidth: OfflineMetrics.messageWidth)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(model.serverText).font(OfflineType.address).fontDesign(.monospaced).foregroundStyle(Color("PigSecondary"))
+                        .lineLimit(1)
+                        .padding(.horizontal, 18).padding(.vertical, 8)
+                        .background(Color.pigRaised, in: Capsule())
+                    actions.padding(.top, OfflineMetrics.actionsGap)
                 }
-                .padding(60)
-                .frame(maxWidth: 1100)
-                .background {
-                    LogoWash(logo: nil, client: nil)
-                        .clipShape(RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous))
-                }
-                .padding(40)
+                .padding(OfflineMetrics.padding)
             }
-            .task {
-                // Keep retrying quietly while this screen is showing.
-                while !Task.isCancelled {
-                    do { try await Task.sleep(for: .seconds(20)) } catch { return }
-                    if !model.authBusy { await model.restore() }
-                }
+            .task(id: started) {
+                // The automatic retry, 20 s after the last attempt; each attempt starts the ring again.
+                do { try await Task.sleep(for: .seconds(RetryCountdown.period)) } catch { return }
+                await attempt()
             }
         }
     }
+
+    @ViewBuilder
+    private var actions: some View {
+        let tryNow = Button("Try now", systemImage: "arrow.clockwise") { Task { await attempt() } }
+            .pigPrimaryButton()
+            .disabled(model.authBusy)
+            .accessibilityIdentifier("offline.tryNow")
+        let other = Button("Use a different server", systemImage: "server.rack") {
+            model.signInAtServer = true
+            showSignIn = true
+        }
+        .accessibilityIdentifier("offline.otherServer")
+        #if os(iOS)
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            VStack(spacing: 10) {
+                tryNow.frame(maxWidth: .infinity)
+                other.buttonStyle(.bordered).tint(Color("PigText")).frame(maxWidth: .infinity)
+            }
+        } else {
+            HStack(spacing: 12) { tryNow; other.buttonStyle(.bordered).tint(Color("PigText")) }
+        }
+        #else
+        DetailActions { tryNow; other }
+        #endif
+    }
+
+    private func attempt() async {
+        if !model.authBusy { await model.restore() }
+        started = Date()
+    }
+}
+
+/// The pig mark inside the retry ring: the pink arc is the time left before the next attempt.
+private struct RetryRing: View {
+    let fraction: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.pigBorder, lineWidth: OfflineMetrics.ringWidth)
+            Circle().trim(from: 0, to: fraction)
+                .stroke(Color.pigAccent, style: StrokeStyle(lineWidth: OfflineMetrics.ringWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(reduceMotion ? nil : .linear(duration: 1), value: fraction)
+            PigBrandMark(width: OfflineMetrics.mark, height: OfflineMetrics.mark * 797 / 1000)
+        }
+        .frame(width: OfflineMetrics.ring, height: OfflineMetrics.ring)
+        .accessibilityHidden(true)
+    }
+}
+
+nonisolated enum OfflineMetrics {
+    #if os(tvOS)
+    static let ring: CGFloat = 300
+    static let ringWidth: CGFloat = 10
+    static let mark: CGFloat = 180
+    static let spacing: CGFloat = 26
+    static let messageWidth: CGFloat = 1100
+    static let actionsGap: CGFloat = 16
+    static let padding: CGFloat = 96
+    #else
+    static var ring: CGFloat { UIDevice.current.userInterfaceIdiom == .phone ? 180 : 220 }
+    static var ringWidth: CGFloat { UIDevice.current.userInterfaceIdiom == .phone ? 7 : 8 }
+    static var mark: CGFloat { UIDevice.current.userInterfaceIdiom == .phone ? 96 : 120 }
+    static let spacing: CGFloat = 16
+    static let messageWidth: CGFloat = 560
+    static let actionsGap: CGFloat = 8
+    static let padding: CGFloat = 24
+    #endif
+}
+
+nonisolated enum OfflineType {
+    #if os(tvOS)
+    static let title: Font = .system(size: 52, weight: .heavy)
+    static let countdown: Font = .system(size: 26, weight: .semibold)
+    static let message: Font = .system(size: 22)
+    static let address: Font = .system(size: 20)
+    #else
+    static let title: Font = .title.weight(.heavy)
+    static let countdown: Font = .headline
+    static let message: Font = .subheadline
+    static let address: Font = .footnote
+    #endif
 }
 
 extension View {
