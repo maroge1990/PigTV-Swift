@@ -87,20 +87,42 @@ controls are not used for live play.
   draws `ProgrammeMenuOverlay`, a card beside it (`ProgrammeMenuPlacement`), the page dimmed. While it is open the
   grid's cells refuse focus (`menuOpen`) and the chrome is disabled, so focus stays in the card; Back closes it and the
   grid's restore token puts focus back on the programme. Items (`ProgrammeMenu.items`, pure): RECORD — Record this
-  programme (the server's own padding: the buffers are left out of the schedule), or Cancel this recording (at once,
-  with the 10 s Undo of `AppPresenter`); Record every new episode (a series rule, `newOnly`), or Record every game for
-  a Sport card's caller; More options… (today's `RecordSheet` through `AppPresenter.record`) — then Watch from start
+  programme (the server's own padding: the buffers are left out of the schedule), or Change recording (Apple 114: the
+  record page on its schedule); Record every new episode (a series rule, `newOnly`), or for a Sport card (`isGame`,
+  Apple 115) Record this game / Record every <team> game; More options… (the record page through
+  `AppPresenter.record`) — then Watch from start
   (C-L, `AppPresenter.recordingPlayer`, full screen), Programme details, Channel schedule, Add/Remove favourites. The
   caller supplies what each does (`ProgrammeMenuActions`). The iPhone's On now rows use the system context menu with a
   preview, built from the same items; the iPad strip's … opens the card.
+  **The record page (Apple 114, `RecordPage.swift`, R5-Record-*)** replaces `RecordSheet` and every Sport recording
+  dialog ("Record on which channel?", "Record every game of"): one centred card on the page canvas, presented through
+  `AppPresenter.record(RecordRequest)` (the Sports dashboard's own cover hosts it inside that cover). A `RecordRequest`
+  is a guide programme on its channel (`BrowseModel.recordRequest(channel:programme:)`) or a Sport event with its card
+  (`recordRequest(event:game:)`: every channel not yet ended, best first, each on its own airing; the card's `id` as
+  `gameId`, its two teams and cached logos, the followed side, the league's sport). What, When it stops and Record on
+  are pure (`RecordPlan`, `RecordPageTests`): What is this one, then the rules (every new episode / every episode; every
+  <team> game as a `team` rule, else a keyword rule; every <league> game); padding chips start on "Usual" (left out, so
+  the server's defaults apply); When it stops reads "When the game ends (ESPN)" when a `gameId` is sent (or the schedule
+  says `endsWith: "event"`), else the guide end; Record on is drawn only for Sport with several channels. A scheduled
+  programme opens it as **Change recording**: its own padding (`pre_buffer_min`/`post_buffer_min`, decoded leniently
+  with `endsWith`/`stopsAt`/`overrun`), Save changes sends only what changed (`PUT recordings/scheduled/:id`, C-M since
+  0444; Start early not once it records), the server's words for a refused value are shown (APIClient passes the 400
+  and 409 `error` of that route), an older server's 404/405 reads "This server can't change recordings yet"; Cancel
+  recording closes the page and offers the 10 s Undo (`cancelCommitted`). Sport screens reach it through
+  `SportRecordFlow` (attached to the app); a Sport game card's long press (Apple 115, `SportRecordMenu`) puts the menu's
+  RECORD items first in its system context menu (the TV Guide's card overlay needs the grid's focus restore, which the
+  sport rails do not have). The event page's and its channel rows' Record close that page first, then open the record
+  page. Fixtures `record`, `record-sport`, `record-change` (`DesignTestScreen`, with the Undo toast); tests
+  `RecordPageUITests`, `GuidePagesUITests`, `SportFrontUITests`.
   **Pages, not covers (#49, Apple 108–110, `GuidePages.swift`):** GuideView's `NavigationStack(path:)` pushes
   `GuideRoute`s (stable ids: the channel's id and the programme's start, resolved against the loaded guide when drawn;
   a route that has left the guide says so). Back pops, and the UIKit grid keeps its focus underneath, so nothing has to
   claim it back. **Programme details** (`ProgrammeDetails`, `pushedFrom:` on `DetailPage`, R5-Programme-*): a hero card
   (`PigHeroCard`: logo, channel · number, the recording state as a word in its colour (`StatusPill`), ON NOW / STARTS
   IN / the day, the title, date · times · length, progress while on, the description), then the actions that apply —
-  Watch live (the rose primary while on), Watch from start, Record (the primary otherwise; RecordSheet through
-  `AppPresenter`) or Cancel recording (at once, with Undo), Record series, Channel schedule, the favourite — and "Also
+  Watch live (the rose primary while on), Watch from start, Record (the primary otherwise; the record page through
+  `AppPresenter`) or Change recording (the record page on its schedule), Record series, Channel schedule, the
+  favourite — and "Also
   on <channel> tonight" (`AlsoOn`: the next four that evening, until 6 am), each opening its own page. A page's Watch
   pops to the grid, then plays.
   **The channel page** (`ChannelPageView`, Apple 109, R5-Channel-*) replaces Channel schedule and "Channel and favourites"

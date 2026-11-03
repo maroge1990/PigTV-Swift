@@ -46,6 +46,10 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
 - `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details;
   build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h
   of offline fixture data, no server needed).
+- `RecordPageUITests` (Apple 114, push tier): the record page on the `record`, `record-sport` and `record-change`
+  fixtures (What, When it stops, Record on best first, Change recording's Save changes and Cancel recording with Undo).
+  `RecordPageTests` (unit) covers its choices and the requests it sends on a `LocalHTTPServer` (`gameId`; the
+  `PUT recordings/scheduled/:id` and its 404/405/409 answers).
 - `GuideFastScrollUITests` (build 46): on 300 channels, holding Down then Up leaves focus on a row on screen, not pulled
   back to the starting row (the fast swipe's landing scroll was clamped to a stale planned row).
 - `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all four tabs.
