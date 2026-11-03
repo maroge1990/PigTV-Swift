@@ -183,6 +183,9 @@ final class BrandDepthUITests: XCTestCase {
             XCTAssertTrue(app.buttons["undo.toast.undo"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.buttons["scheduled.cancel.90"].exists)
             shot(app, "schedule-cancel-undo-\(mode)")
+            let undo = app.buttons["undo.toast.undo"]
+            for _ in 0..<50 where !undo.hasFocus { Thread.sleep(forTimeInterval: 0.1) }
+            XCTAssertTrue(undo.hasFocus, "the toast's Undo has focus")
             XCUIRemote.shared.press(.select)
             XCTAssertTrue(app.buttons["scheduled.cancel.90"].waitForExistence(timeout: 3))
             app.terminate()

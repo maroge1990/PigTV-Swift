@@ -145,7 +145,8 @@ final class RecordingsUITests: XCTestCase {
         XCTAssertFalse(app.alerts.firstMatch.exists, "it asked first")
         XCTAssertFalse(app.buttons["rules.remove.9"].exists, "the rule did not go at once")
         attach(app, "scheduled-undo")
-        for _ in 0..<10 where !app.buttons["undo.toast.undo"].hasFocus { Thread.sleep(forTimeInterval: 0.1) }
+        // CI's runner is slow: the focus engine first leaves the removed button, then the toast claims focus.
+        for _ in 0..<50 where !app.buttons["undo.toast.undo"].hasFocus { Thread.sleep(forTimeInterval: 0.1) }
         XCTAssertTrue(app.buttons["undo.toast.undo"].hasFocus, "the toast's Undo has focus")
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(app.buttons["rules.remove.9"].waitForExistence(timeout: 3), "Undo did not bring the rule back")
