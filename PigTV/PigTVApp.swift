@@ -274,9 +274,17 @@ private struct HomeTestScreen: View {
             #if os(tvOS)
             .buttonStyle(TVActionStyle())
             #endif
+            // The Undo toast, as ContentView shows it over the tabs (Apple 122).
+            .overlay(alignment: .bottom) { UndoToast(presenter: model.presenter) }
             .task {
                 model.injectHomeFixture(firstRun: firstRun)
                 if initialTab == "recordings", let browse = model.browse { GuideFixtures.addSchedules(to: browse) }
+                // Apple 122: PIGTV_UI_TEST_UNDO=1 opens on a recording just deleted, its Undo toast held on screen.
+                if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_UNDO"] == "1", let browse = model.browse,
+                   let film = browse.recordings.first(where: { $0.id == 29 }) {
+                    model.presenter.sleep = { _ in try await Task.sleep(for: .seconds(600)) }
+                    browse.deleteWithUndo(film, presenter: model.presenter)
+                }
                 if noSport { model.browse?.sport.setFixture([]) }
                 // PIGTV_UI_TEST_DASHBOARD_PLAY=1: a dashboard Watch reaches the real player, whose resolve goes to a
                 // non-routable TEST-NET address, so it stays on the tuning card (as player-tuning does).
@@ -386,14 +394,14 @@ private struct DesignTestScreen: View {
         case "channel":
             ChannelPageView(model: browse, presenter: app.presenter, channel: channel, watch: {}, openProgramme: { _ in })
         case "recordings":
-            RecordingsView(model: browse)
+            RecordingsView(model: browse, presenter: app.presenter)
         case "recording-player", "recording-loading", "recording-preparing", "recording-error", "recording-resume":
             RecordingPlayerScreen(recording: browse.recordings[1], client: browse.client)
         case "recording":
-            RecordingView(model: browse, original: browse.recordings[1])
+            RecordingView(model: browse, presenter: app.presenter, original: browse.recordings[1])
         case "recording-game":
             // Apple 121: a game recording, drawn with its two teams.
-            if let game = browse.recordings.first(where: { $0.id == 24 }) { RecordingView(model: browse, original: game) }
+            if let game = browse.recordings.first(where: { $0.id == 24 }) { RecordingView(model: browse, presenter: app.presenter, original: game) }
         case "search", "jump":
             GuideSearchPage(model: browse, date: Date(), canJump: true, startWithJump: screen == "jump",
                             openChannel: { _ in }, openProgramme: { _, _ in }, showGuide: { _ in })

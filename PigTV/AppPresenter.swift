@@ -86,7 +86,11 @@ final class AppPresenter {
     struct PendingUndo: Identifiable {
         let id = UUID()
         let message: String
+        /// The toast's second line (D-44 R5-Undo: "Undo for 10 seconds" when nil).
+        var detail: String? = nil
         fileprivate let commit: () -> Void
+        /// Apple 122: puts back what the action hid at once (Undo).
+        fileprivate var undone: (() -> Void)? = nil
     }
 
     static let undoWindow: Duration = .seconds(10)
@@ -98,9 +102,10 @@ final class AppPresenter {
 
     /// Shows the toast; `commit` runs when the 10 s end or the app goes to the background, never after Undo. A new
     /// offer commits the one before it first.
-    func offerUndo(_ message: String, commit: @escaping () -> Void) {
+    /// `undone` runs on Undo instead (Apple 122: it shows again what the action hid at once).
+    func offerUndo(_ message: String, detail: String? = nil, undone: (() -> Void)? = nil, commit: @escaping () -> Void) {
         commitPendingUndo()
-        let pending = PendingUndo(message: message, commit: commit)
+        let pending = PendingUndo(message: message, detail: detail, commit: commit, undone: undone)
         pendingUndo = pending
         let sleep = self.sleep
         undoTimer = Task { [weak self] in
@@ -114,7 +119,9 @@ final class AppPresenter {
     func undoPending() {
         undoTimer?.cancel()
         undoTimer = nil
+        let undone = pendingUndo?.undone
         pendingUndo = nil
+        undone?()
     }
 
     /// Runs the pending action now (its time is up, or the app is going to the background).
@@ -135,7 +142,7 @@ extension View {
             if let browse {
                 switch item {
                 case .recording(let recording):
-                    RecordingView(model: browse, original: recording)
+                    RecordingView(model: browse, presenter: presenter, original: recording)
                 case .channelSchedule(let channel):
                     ChannelPageView(model: browse, presenter: presenter, channel: channel) {
                         presenter.dismiss { app.beginPlayback(browse.asChannel(channel)) }
@@ -163,22 +170,80 @@ extension View {
     }
 }
 
-/// The Undo toast: the message, an Undo button, gone after 10 s (AppPresenter). An overlay, never a cover.
+/// The Undo toast (D-44 R5-Undo): what was done, "Undo for 10 seconds", and the Undo button, gone after 10 s
+/// (AppPresenter). An overlay, never a cover. On the TV it takes focus when it appears, so Select undoes at once.
 struct UndoToast: View {
     let presenter: AppPresenter
+    @FocusState private var focused: Bool
+    #if os(iOS)
+    /// The iPhone's tab bar is at the bottom: the toast sits above it.
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var bottom: CGFloat { sizeClass == .compact ? 96 : Self.bottom }
+    #else
+    private var bottom: CGFloat { Self.bottom }
+    #endif
+
+    #if os(tvOS)
+    private static let title: Font = .system(size: 23, weight: .bold)
+    private static let detail: Font = .system(size: 17)
+    private static let bottom: CGFloat = 64
+    #else
+    private static let title: Font = .subheadline.weight(.bold)
+    private static let detail: Font = .caption
+    private static let bottom: CGFloat = 24
+    #endif
+
     var body: some View {
         if let pending = presenter.pendingUndo {
-            HStack(spacing: 20) {
-                Text(pending.message).foregroundStyle(Color("PigText"))
+            HStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(pending.message).font(Self.title).foregroundStyle(Color("PigText")).lineLimit(2)
+                    Text(pending.detail ?? "Undo for 10 seconds").font(Self.detail).foregroundStyle(Color.pigSecondary)
+                }
+                .accessibilityElement(children: .combine)
                 Button("Undo") { presenter.undoPending() }
+                    .pigPrimaryButton()
+                    .focused($focused)
+                    .accessibilityLabel("Undo: \(pending.message)")
                     .accessibilityIdentifier("undo.toast.undo")
             }
-            .padding(.horizontal, 24).padding(.vertical, 14)
-            .background(Color.pigRaised, in: Capsule())
-            .shadow(color: Color.pigShadow.opacity(0.3), radius: 16, y: 8)
-            .padding(.bottom, 40)
+            .padding(.leading, 26).padding(.trailing, 14).padding(.vertical, 14)
+            .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+            .shadow(color: Color.pigShadow.opacity(0.5), radius: 30, y: 14)
+            .padding(.horizontal, 12)
+            .padding(.bottom, bottom)
             .transition(.move(edge: .bottom).combined(with: .opacity))
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("undo.toast")
+            #if os(tvOS)
+            .focusSection()
+            .onAppear { focused = true }
+            .onChange(of: pending.id) { focused = true }
+            #endif
         }
+    }
+}
+
+/// Work that must finish once started, even if the app goes to the background meanwhile (an Undo's committed call):
+/// it runs as a background task, ended when the work is done or the system's time runs out.
+@MainActor
+enum BackgroundWork {
+    @MainActor private final class Token { var id = UIBackgroundTaskIdentifier.invalid }
+
+    static func run(_ name: String, _ work: @escaping @MainActor () async -> Void) {
+        let token = Token()
+        token.id = UIApplication.shared.beginBackgroundTask(withName: name) {
+            MainActor.assumeIsolated { end(token) }
+        }
+        Task { @MainActor in
+            await work()
+            end(token)
+        }
+    }
+
+    private static func end(_ token: Token) {
+        guard token.id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(token.id)
+        token.id = .invalid
     }
 }

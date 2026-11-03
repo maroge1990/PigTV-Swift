@@ -68,6 +68,8 @@ final class RecordingsStore: ObservableObject {
     /// C-M (Apple 120): the recording rules Scheduled lists, and why they could not be loaded.
     @Published var rules: [RecordingRule] = []
     @Published var rulesError: String?
+    /// Apple 122 (D-44 point 9): what a destructive action hid at once while its Undo runs (`RecordingsHome.key`).
+    @Published var pendingRemovals: Set<String> = []
 }
 
 /// Favourites and Home's history. Nothing draws the load's busy or error
@@ -107,7 +109,9 @@ final class ScheduleMarks: ObservableObject {
 
     init(following store: RecordingsStore) {
         // `$schedules` hands over the new value before it is stored.
-        cancellable = store.$schedules.sink { [weak self] schedules in
+        // Apple 122: a schedule cancelled with Undo leaves the guide's marks at once.
+        cancellable = store.$schedules.combineLatest(store.$pendingRemovals).sink { [weak self] all, hidden in
+            let schedules = all.filter { !hidden.contains(RecordingsHome.key($0)) }
             self?.change(\.scheduledKeys, to: Set(schedules.filter(\.isActive).map(\.guideKey)))
             self?.change(\.recordingChannels, to: Set(schedules.filter { $0.status == "recording" }.compactMap(\.channel_name)))
             self?.change(\.recordingChannelKeys, to: Set(schedules.filter { $0.status == "recording" }.compactMap(\.channelIdentityKey)))

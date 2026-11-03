@@ -65,7 +65,7 @@ struct LibraryView: View {
                     .tabItem { Label("TV Guide", systemImage: "calendar") }
                     .tag("guide")
                 .onAppear { PigTVSignpost.tabContentAppeared("guide") }
-                RecordingsView(model: browse)
+                RecordingsView(model: browse, presenter: model.presenter)
                     .tabItem { Label("Recordings", systemImage: "record.circle") }
                     .tag("recordings")
                 .onAppear { PigTVSignpost.tabContentAppeared("recordings") }

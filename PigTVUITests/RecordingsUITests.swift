@@ -119,6 +119,39 @@ final class RecordingsUITests: XCTestCase {
         XCTAssertTrue(any["recordings.featured"].waitForExistence(timeout: 5), "Menu did not go back to the tab")
     }
 
+    /// D-44 point 9 (Apple 122): Remove acts at once: the rule goes, the Undo toast takes focus on the TV, and Select
+    /// (Undo) brings the rule back. Nothing asks first.
+    @MainActor
+    func testRemovingARuleActsAtOnceAndUndoBringsItBack() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-recordings"
+        app.launchEnvironment["PIGTV_UI_TEST_RECORDINGS_SECTION"] = "scheduled"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        let remove = app.buttons["rules.remove.9"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 10), "no Remove on the rule")
+        // Focus starts in the tab bar: down into Coming up, then right into the rules column.
+        for _ in 0..<3 where !focused(app).identifier.hasPrefix("scheduled.") { XCUIRemote.shared.press(.down) }
+        XCUIRemote.shared.press(.right)
+        for _ in 0..<14 where !remove.hasFocus {
+            let at = focused(app).frame, to = remove.frame
+            XCUIRemote.shared.press(abs(at.midY - to.midY) > 30 ? (at.midY < to.midY ? .down : .up) : (at.midX < to.midX ? .right : .left))
+            for _ in 0..<10 where !remove.hasFocus { Thread.sleep(forTimeInterval: 0.1) }
+        }
+        XCTAssertTrue(remove.hasFocus, "focus never reached Remove: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["undo.toast"].waitForExistence(timeout: 3), "no Undo toast")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "it asked first")
+        XCTAssertFalse(app.buttons["rules.remove.9"].exists, "the rule did not go at once")
+        attach(app, "scheduled-undo")
+        for _ in 0..<10 where !app.buttons["undo.toast.undo"].hasFocus { Thread.sleep(forTimeInterval: 0.1) }
+        XCTAssertTrue(app.buttons["undo.toast.undo"].hasFocus, "the toast's Undo has focus")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["rules.remove.9"].waitForExistence(timeout: 3), "Undo did not bring the rule back")
+        XCTAssertFalse(any["undo.toast"].exists)
+    }
+
     /// #12 (D-42, server 0410; maroge1990/PigTV#200): a schedule that loses its clash says why it waits and offers
     /// "Record this one instead", which asks first (PIGTV_UI_TEST_CLASH=1: 92 wins, 93 loses).
     @MainActor

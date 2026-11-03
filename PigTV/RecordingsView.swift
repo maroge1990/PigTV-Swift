@@ -63,6 +63,8 @@ struct RecordingPlay: Identifiable {
 struct RecordingsView: View {
     /// Not observed (audit R05): it draws the recordings store and the action state, and nothing else BrowseModel holds.
     let model: BrowseModel
+    /// The app's presentation layer: its Undo toast (Apple 122).
+    let presenter: AppPresenter
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
     @State private var path: [RecordingsRoute] = RecordingsView.initialPath
@@ -73,8 +75,9 @@ struct RecordingsView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
-    init(model: BrowseModel) {
+    init(model: BrowseModel, presenter: AppPresenter) {
         self.model = model
+        self.presenter = presenter
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
     }
@@ -87,10 +90,10 @@ struct RecordingsView: View {
         return []
     }
 
-    private var shelf: [Recording] { RecordingsHome.shelf(model.recordings) }
+    private var shelf: [Recording] { RecordingsHome.shelf(model.recordings, hidden: store.pendingRemovals) }
     private var featured: Recording? { RecordingsHome.featured(shelf) { model.progress(for: $0) } }
     private var cards: [Recording] { RecordingsHome.cards(shelf, featured: featured) }
-    private var comingUp: [ScheduledRecording] { RecordingsHome.comingUp(model.schedules) }
+    private var comingUp: [ScheduledRecording] { RecordingsHome.comingUp(model.schedules, hidden: store.pendingRemovals) }
     /// The game recordings' teams come from the Sport data already loaded (C-R cards).
     private var games: [SportsGame] { model.sportFront.front?.games ?? [] }
 
@@ -113,10 +116,10 @@ struct RecordingsView: View {
             .pigPageBackdrop()
             .navigationDestination(for: RecordingsRoute.self) { route in
                 switch route {
-                case .scheduled: ScheduledPage(model: model)
-                case .rules, .attention: ScheduledSubpage(model: model, route: route)
+                case .scheduled: ScheduledPage(model: model, presenter: presenter)
+                case .rules, .attention: ScheduledSubpage(model: model, presenter: presenter, route: route)
                 case .recording(let id):
-                    if let item = model.recordings.first(where: { $0.id == id }) { RecordingView(model: model, original: item) }
+                    if let item = model.recordings.first(where: { $0.id == id }) { RecordingView(model: model, presenter: presenter, original: item) }
                 }
             }
             // Build 31: only when older than a minute. The tvOS remote has no pull-to-refresh, so there it reloads on
@@ -172,7 +175,8 @@ struct RecordingsView: View {
                                           teams: RecordingTeams.match(title: featured.title, games: games),
                                           client: model.client, canWatchFromStart: canWatchFromStart(featured),
                                           play: { playing = RecordingPlay(recording: featured, fromStart: $0) },
-                                          details: { open(featured) })
+                                          details: { open(featured) },
+                                          delete: { model.deleteWithUndo(featured, presenter: presenter) })
                             .tvFocusSection()
                     } else if !model.recordingsBusy {
                         RecordingsEmpty()
@@ -357,6 +361,8 @@ private struct FeaturedRecording: View {
     let canWatchFromStart: Bool
     let play: (_ fromStart: Bool) -> Void
     let details: () -> Void
+    /// Apple 122: at once, with Undo.
+    let delete: () -> Void
     @FocusState private var primaryFocused: Bool
 
     var body: some View {
@@ -395,6 +401,9 @@ private struct FeaturedRecording: View {
                     Button("Details") { details() }
                         .accessibilityLabel("Details of \(item.title)")
                         .accessibilityIdentifier("recordings.featured.details")
+                    Button { delete() } label: { Text("Delete").foregroundStyle(Color.pigDanger) }
+                        .accessibilityLabel("Delete \(item.title)")
+                        .accessibilityIdentifier("recordings.featured.delete")
                 }
                 .padding(.top, 14)
                 .defaultFocus($primaryFocused, true)

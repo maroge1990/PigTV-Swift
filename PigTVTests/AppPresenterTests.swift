@@ -102,4 +102,15 @@ final class AppPresenterTests: XCTestCase {
         await settle()
         XCTAssertEqual(committed, ["A", "B"], "the timer never commits a second time")
     }
+
+    /// Apple 122: Undo runs the action's `undone` (it shows again what the action hid); a commit never does.
+    func testUndoRunsUndoneAndACommitDoesNot() async {
+        let (presenter, _) = presenterWithClock()
+        var log: [String] = []
+        presenter.offerUndo("A", undone: { log.append("undone A") }) { log.append("commit A") }
+        presenter.undoPending()
+        presenter.offerUndo("B", undone: { log.append("undone B") }) { log.append("commit B") }
+        presenter.commitPendingUndo()
+        XCTAssertEqual(log, ["undone A", "commit B"])
+    }
 }

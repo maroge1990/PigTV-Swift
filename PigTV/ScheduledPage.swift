@@ -98,26 +98,29 @@ nonisolated enum ScheduledRows {
 
 struct ScheduledPage: View {
     let model: BrowseModel
+    /// The app's presentation layer: its Undo toast (Apple 122).
+    let presenter: AppPresenter
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
-    @State private var cancellation: ScheduledRecording?
     /// #12 (D-42): the losing schedule whose "Record this one instead" is being confirmed.
     @State private var choosing: ScheduledRecording?
-    @State private var deleting: AttentionItem?
-    @State private var removing: RecordingRule?
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
-    init(model: BrowseModel) {
+    init(model: BrowseModel, presenter: AppPresenter) {
         self.model = model
+        self.presenter = presenter
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
     }
 
-    private var upcoming: [ScheduledRecording] { ScheduledRows.upcoming(model.schedules) }
-    private var attention: [AttentionItem] { ScheduledRows.attention(recordings: model.recordings, schedules: model.schedules) }
-    private var rules: [RecordingRule] { store.rules }
+    private var hidden: Set<String> { store.pendingRemovals }
+    private var upcoming: [ScheduledRecording] { ScheduledRows.upcoming(model.schedules, hidden: hidden) }
+    private var attention: [AttentionItem] {
+        ScheduledRows.attention(recordings: model.recordings, schedules: model.schedules, hidden: hidden)
+    }
+    private var rules: [RecordingRule] { ScheduledRows.rules(store.rules, hidden: hidden) }
     private var showsRules: Bool { model.rulesAvailable || !rules.isEmpty }
 
     private var compact: Bool {
@@ -170,8 +173,7 @@ struct ScheduledPage: View {
         .pigPageBackdrop()
         .accessibilityIdentifier("scheduled.page")
         .task { await model.reloadRules() }
-        .modifier(ScheduledDialogs(model: model, cancellation: $cancellation, choosing: $choosing, deleting: $deleting,
-                                   removing: $removing))
+        .modifier(ScheduledChoice(model: model, choosing: $choosing))
     }
 
     @ViewBuilder
@@ -199,7 +201,7 @@ struct ScheduledPage: View {
             ForEach(upcoming) { item in
                 ScheduleRow(item: item, all: model.schedules, rule: ScheduledRows.ruleChip(item, rules: rules),
                             compact: compact, busy: actions.mutationBusy,
-                            cancel: { cancellation = item }, choose: { choosing = item })
+                            cancel: { model.cancelWithUndo(item, presenter: presenter) }, choose: { choosing = item })
             }
         }
     }
@@ -207,35 +209,25 @@ struct ScheduledPage: View {
     // MARK: Rules
 
     private var rulesSection: some View {
-        ScheduledRulesList(model: model, rules: rules, remove: { removing = $0 })
+        ScheduledRulesList(model: model, rules: rules, remove: { model.removeRuleWithUndo($0, presenter: presenter) })
     }
 
     // MARK: Needs attention
 
     private var attentionSection: some View {
-        ScheduledAttentionList(items: attention, busy: actions.mutationBusy, delete: { deleting = $0 })
+        ScheduledAttentionList(items: attention, busy: actions.mutationBusy,
+                               delete: { ScheduledRows.delete($0, model: model, presenter: presenter) })
     }
 }
 
-/// The page's confirmations (Apple 120); Cancel, Delete and Remove move to the Undo toast next.
-private struct ScheduledDialogs: ViewModifier {
+/// "Record this one instead" (#12) still asks first: it makes another recording wait. Every other action on the page acts
+/// at once with the 10 s Undo (Apple 122).
+private struct ScheduledChoice: ViewModifier {
     let model: BrowseModel
-    @Binding var cancellation: ScheduledRecording?
     @Binding var choosing: ScheduledRecording?
-    @Binding var deleting: AttentionItem?
-    @Binding var removing: RecordingRule?
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog("Cancel this recording?", isPresented: Binding(
-                get: { cancellation != nil }, set: { if !$0 { cancellation = nil } }
-            ), presenting: cancellation) { item in
-                Button(item.status == "recording" ? "Stop recording" : "Cancel schedule", role: .destructive) {
-                    Task { await model.cancel(item) }
-                }
-            } message: { item in
-                Text("\(item.title). If it is already recording, it will stop. The recorded portion will be kept.")
-            }
             .confirmationDialog(Text(choosing.map { "Record \($0.title) instead?" } ?? ""), isPresented: Binding(
                 get: { choosing != nil }, set: { if !$0 { choosing = nil } }
             ), titleVisibility: .visible, presenting: choosing) { item in
@@ -244,29 +236,21 @@ private struct ScheduledDialogs: ViewModifier {
             } message: { item in
                 Text(item.chooseMessage(in: model.schedules))
             }
-            .confirmationDialog("Delete this item?", isPresented: Binding(
-                get: { deleting != nil }, set: { if !$0 { deleting = nil } }
-            ), titleVisibility: .visible, presenting: deleting) { item in
-                Button("Delete", role: .destructive) {
-                    Task {
-                        switch item {
-                        case .schedule(let value): await model.deleteSchedule(value)
-                        case .recording(let value): await model.delete(value)
-                        }
-                    }
-                }
-                Button("Keep it", role: .cancel) {}
-            } message: { _ in
-                Text("This removes it and any partial file from the server.")
-            }
-            .confirmationDialog("Remove this rule?", isPresented: Binding(
-                get: { removing != nil }, set: { if !$0 { removing = nil } }
-            ), titleVisibility: .visible, presenting: removing) { rule in
-                Button("Remove rule", role: .destructive) { Task { await model.deleteRule(rule) } }
-                Button("Keep it", role: .cancel) {}
-            } message: { _ in
-                Text("Its recordings that have not started are cancelled. Anything recorded is kept.")
-            }
+    }
+}
+
+extension ScheduledRows {
+    /// The rules without the ones waiting on their Undo.
+    nonisolated static func rules(_ rules: [RecordingRule], hidden: Set<String>) -> [RecordingRule] {
+        rules.filter { !hidden.contains(RecordingsHome.key($0)) }
+    }
+
+    /// Needs attention's Delete: at once, with Undo (a failed or missed schedule, or a failed recording).
+    @MainActor static func delete(_ item: AttentionItem, model: BrowseModel, presenter: AppPresenter) {
+        switch item {
+        case .schedule(let value): model.deleteScheduleWithUndo(value, presenter: presenter)
+        case .recording(let value): model.deleteWithUndo(value, presenter: presenter)
+        }
     }
 }
 
@@ -519,16 +503,14 @@ private struct ScheduledTile: View {
 /// The iPhone's rules page and Needs attention page (Scheduled's tiles).
 struct ScheduledSubpage: View {
     let model: BrowseModel
+    let presenter: AppPresenter
     let route: RecordingsRoute
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
-    @State private var deleting: AttentionItem?
-    @State private var removing: RecordingRule?
-    @State private var cancellation: ScheduledRecording?
-    @State private var choosing: ScheduledRecording?
 
-    init(model: BrowseModel, route: RecordingsRoute) {
+    init(model: BrowseModel, presenter: AppPresenter, route: RecordingsRoute) {
         self.model = model
+        self.presenter = presenter
         self.route = route
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
@@ -541,10 +523,13 @@ struct ScheduledSubpage: View {
                     Text(error).font(ScheduledMetrics.detail).foregroundStyle(Color.pigDanger)
                 }
                 if route == .rules {
-                    ScheduledRulesList(model: model, rules: store.rules, remove: { removing = $0 })
+                    ScheduledRulesList(model: model, rules: ScheduledRows.rules(store.rules, hidden: store.pendingRemovals),
+                                       remove: { model.removeRuleWithUndo($0, presenter: presenter) })
                 } else {
-                    ScheduledAttentionList(items: ScheduledRows.attention(recordings: model.recordings, schedules: model.schedules),
-                                           busy: actions.mutationBusy, delete: { deleting = $0 })
+                    ScheduledAttentionList(items: ScheduledRows.attention(recordings: model.recordings, schedules: model.schedules,
+                                                                          hidden: store.pendingRemovals),
+                                           busy: actions.mutationBusy,
+                                           delete: { ScheduledRows.delete($0, model: model, presenter: presenter) })
                 }
             }
             .padding(.horizontal, ScheduledMetrics.pagePadding).padding(.bottom, 24)
@@ -554,7 +539,5 @@ struct ScheduledSubpage: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .pigPageBackdrop()
-        .modifier(ScheduledDialogs(model: model, cancellation: $cancellation, choosing: $choosing, deleting: $deleting,
-                                   removing: $removing))
     }
 }

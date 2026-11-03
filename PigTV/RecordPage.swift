@@ -673,14 +673,13 @@ struct RecordPage: View {
         }
     }
 
-    /// At once, with Undo (D-44 point 9): the page closes and the cancel is sent when the Undo runs out, waiting for any
-    /// change still in flight (`cancelCommitted`).
+    /// At once, with Undo (D-44 point 9): the page closes, the schedule leaves the lists and the guide at once, and the
+    /// cancel is sent when the Undo runs out, waiting for any change still in flight (`BrowseModel.cancelWithUndo`).
     private func cancel(_ schedule: ScheduledRecording) {
-        let message = schedule.status == "recording" ? "Recording of \(request.title) stopped" : "Recording of \(request.title) cancelled"
         let model = self.model
         let presenter = self.presenter
         close()
-        presenter.offerUndo(message) { Task { await model.cancelCommitted(schedule) } }
+        model.cancelWithUndo(schedule, presenter: presenter)
     }
 
     private func sectionTitle(_ text: String) -> some View {

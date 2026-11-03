@@ -694,10 +694,61 @@ final class BrowseModel: ObservableObject {
     /// An Undo whose time ran out (Codex, batch 4 high): `cancel` returns at once while another change is in flight,
     /// so the committed cancel waits for that change to finish instead of being dropped.
     func cancelCommitted(_ item: ScheduledRecording) async {
+        await waitForMutation()
+        await cancel(item)
+    }
+
+    /// Until no other change is in flight (each mutation returns at once while one is).
+    func waitForMutation() async {
         while mutationBusy {
             try? await Task.sleep(for: .milliseconds(100))
         }
-        await cancel(item)
+    }
+
+    // MARK: Undo (Apple 122, D-44 point 9)
+
+    /// Delete a recording, cancel a schedule, remove a rule or delete a failed item: it goes from every list at once and
+    /// the toast offers Undo for 10 s. The server call is held until then (or until the app goes to the background,
+    /// `AppPresenter.commitPendingUndo`), waits for any change still in flight (never dropped, Codex batch 4), and runs as
+    /// background work so a suspension does not cut it off. Undo puts the item back; a failed call puts it back and says
+    /// why (`actionError`). The server stops a recording that is still being made before deleting it (C-M).
+    private func removeWithUndo(_ key: String, message: String, presenter: AppPresenter,
+                                commit: @escaping @MainActor (BrowseModel) async -> Void) {
+        recordingStore.pendingRemovals.insert(key)
+        presenter.offerUndo(message, undone: { [weak self] in
+            self?.recordingStore.pendingRemovals.remove(key)
+        }) { [weak self] in
+            guard let self else { return }
+            BackgroundWork.run("PigTV: \(key)") {
+                await self.waitForMutation()
+                await commit(self)
+                self.recordingStore.pendingRemovals.remove(key)
+            }
+        }
+    }
+
+    func deleteWithUndo(_ item: Recording, presenter: AppPresenter) {
+        removeWithUndo(RecordingsHome.key(item), message: "\(item.title) deleted with its file", presenter: presenter) {
+            await $0.delete(item)
+        }
+    }
+
+    func cancelWithUndo(_ item: ScheduledRecording, presenter: AppPresenter) {
+        let message = item.status == "recording" ? "Recording of \(item.title) stopped" : "Recording of \(item.title) cancelled"
+        removeWithUndo(RecordingsHome.key(item), message: message, presenter: presenter) { await $0.cancel(item) }
+    }
+
+    /// A failed or missed schedule (Needs attention), with its partial files.
+    func deleteScheduleWithUndo(_ item: ScheduledRecording, presenter: AppPresenter) {
+        removeWithUndo(RecordingsHome.key(item), message: "\(item.title) deleted", presenter: presenter) {
+            await $0.deleteSchedule(item)
+        }
+    }
+
+    func removeRuleWithUndo(_ rule: RecordingRule, presenter: AppPresenter) {
+        removeWithUndo(RecordingsHome.key(rule), message: "Rule removed: \(rule.summary)", presenter: presenter) {
+            await $0.deleteRule(rule)
+        }
     }
 
     /// Server 0410 (#12, D-42): "Record this one instead": the schedule wins its clashes from then on, and the ones

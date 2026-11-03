@@ -83,10 +83,11 @@ nonisolated enum RecordingFacts {
 struct RecordingView: View {
     /// Not observed (audit R05): the stores this page draws from are below.
     let model: BrowseModel
+    /// The app's presentation layer: its Undo toast (Apple 122).
+    let presenter: AppPresenter
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
     let original: Recording
-    @State private var deleting = false
     @State private var playing: RecordingPlay?
     @Environment(\.dismiss) private var dismiss
     @FocusState private var playFocused: Bool
@@ -94,8 +95,9 @@ struct RecordingView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
-    init(model: BrowseModel, original: Recording) {
+    init(model: BrowseModel, presenter: AppPresenter, original: Recording) {
         self.model = model
+        self.presenter = presenter
         self.original = original
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
@@ -135,17 +137,6 @@ struct RecordingView: View {
             }
         }
         .closesForOutsidePlay { playing = nil } // #179
-        .confirmationDialog("Delete this recording?", isPresented: $deleting, titleVisibility: .visible) {
-            Button("Delete recording and file", role: .destructive) {
-                Task {
-                    await model.delete(item)
-                    if !model.recordings.contains(where: { $0.id == original.id }) { dismiss() }
-                }
-            }
-            Button("Keep it", role: .cancel) {}
-        } message: {
-            Text("This removes \(item.title) and its file from the server. If it is still recording, recording stops first.")
-        }
     }
 
     // MARK: Layouts
@@ -282,7 +273,12 @@ struct RecordingView: View {
             .disabled(model.mutationBusy || item.ad_detect_status == "running" || item.ad_detect_status == "pending")
             .accessibilityIdentifier("recording.findBreaks")
         }
-        Button(role: .destructive) { deleting = true } label: {
+        // Apple 122 (D-44 point 9): at once, with the 10 s Undo; the page closes. The server stops a recording still
+        // being made before deleting it.
+        Button(role: .destructive) {
+            model.deleteWithUndo(item, presenter: presenter)
+            dismiss()
+        } label: {
             Text("Delete").foregroundStyle(Color.pigDanger).frame(maxWidth: compact ? .infinity : nil)
         }
         .disabled(model.mutationBusy)
