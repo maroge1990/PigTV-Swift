@@ -255,4 +255,46 @@ final class RecordingUndoTests: XCTestCase {
         presenter.undoPending()
         XCTAssertTrue(model.removalLog.all().isEmpty, "Undo clears the item's logged operation")
     }
+
+    /// Codex 5b round 2 (medium): rule loads overlap, and each read the tombstones before its request; an answer from
+    /// before the removal, arriving after the refresh that settled it, brought the rule back. An older answer than the
+    /// last published is now dropped.
+    func testAStaleRulesAnswerArrivingAfterTheRemovalIsSettledDoesNotBringTheRuleBack() async throws {
+        let log = Locked<[String]>([])
+        let deleted = Locked(false)
+        let ruleLoads = Locked(0)
+        let rule = #"[{"id":7,"kind":"series","match":"Gruen","enabled":true}]"#
+        let http = try LocalHTTPServer { request in
+            log.value.append("\(request.method) \(request.path)")
+            switch (request.method, request.path) {
+            case ("DELETE", "/api/recordings/rules/7"):
+                deleted.value = true
+                return .json(#"{"success":true,"cancelled":0}"#)
+            case ("GET", "/api/recordings/rules"):
+                ruleLoads.value += 1
+                if ruleLoads.value == 1 { var stale = LocalHTTPServer.Response.json(rule); stale.delay = 1.0; return stale }
+                return .json(deleted.value ? "[]" : rule)
+            case ("GET", "/api/recordings"), ("GET", "/api/recordings/scheduled"):
+                return .json("[]")
+            default:
+                return .notFound
+            }
+        }
+        defer { http.stop() }
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0446","apiVersion":1,"features":{"recordingRules":true}}"#.utf8))
+        let model = BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: info, accountID: 1), accountID: 1)
+        model.removalLog = PendingRemovalLog(defaults: defaults)
+        let removed = try JSONDecoder().decode([RecordingRule].self, from: Data(rule.utf8))[0]
+        model.recordingStore.rules = [removed]
+        func shown() -> Bool { !ScheduledRows.rules(model.recordingStore.rules, hidden: model.recordingStore.pendingRemovals).isEmpty }
+        let stale = Task { await model.reloadRules() }
+        await waitUntil { ruleLoads.value == 1 }
+        let presenter = presenter()
+        model.removeRuleWithUndo(removed, presenter: presenter)
+        presenter.commitPendingUndo()
+        await waitUntil { deleted.value && ruleLoads.value >= 2 && model.recordingStore.pendingRemovals.isEmpty }
+        XCTAssertFalse(shown(), "gone once the removal is settled")
+        await stale.value
+        XCTAssertFalse(shown(), "the answer from before the removal brought the rule back")
+    }
 }

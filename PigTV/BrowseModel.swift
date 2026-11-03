@@ -911,19 +911,30 @@ final class BrowseModel: ObservableObject {
     }
 
     /// Apple 120: Scheduled's rules, kept in the recordings store (the fixture keeps its own).
+    /// Apple 127 (Codex 5b round 2, medium): rule loads may overlap. Each takes a generation; an answer older than the
+    /// last one published is dropped (it could hold a rule removed since), and the tombstones are read when an answer
+    /// is accepted, not when its request went.
     func reloadRules() async {
         guard rulesAvailable, !isFixture else { return }
+        rulesGeneration += 1
+        let generation = rulesGeneration
+        let began = Date()
         do {
-            let began = Date()
+            let fetched = try await loadRules()
+            guard generation > rulesPublished else { return }
+            rulesPublished = generation
             let stones = recordingStore.tombstones
-            let loaded = try await loadRules().filter { stones[RecordingsHome.key($0)] == nil }
+            let loaded = fetched.filter { stones[RecordingsHome.key($0)] == nil }
             if loaded != recordingStore.rules { recordingStore.rules = loaded }
             settleTombstones(loadedSince: began) { $0.hasPrefix("rule:") }
             recordingStore.change(\.rulesError, to: nil)
         } catch {
+            guard generation > rulesPublished else { return }
             recordingStore.change(\.rulesError, to: "Could not load the rules. \(UserMessage.text(for: error) ?? "")")
         }
     }
+    private var rulesGeneration = 0
+    private var rulesPublished = 0
 
     /// Adds a rule; the message says how many it scheduled. False on failure.
     @discardableResult
