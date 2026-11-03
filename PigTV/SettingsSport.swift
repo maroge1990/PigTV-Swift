@@ -17,7 +17,8 @@ nonisolated enum ScoreDelay {
 }
 
 /// The account's score delay, read from and saved to C-O's `sports/preferences` (`{avoidSpoilers, scoreDelaySeconds,
-/// revision}`), which exists only with the server's `sportsDashboard` flag; without it Settings draws no Score delay.
+/// revision}`), which exists with the server's `sportFront` flag (since 0446; on by default, as the front page applies the
+/// delay) or its `sportsDashboard` flag; without either Settings draws no Score delay.
 /// A save sends the revision it read; a refused one (409: changed on another device, or any failure) reads the value
 /// again and says so.
 @MainActor
@@ -41,7 +42,15 @@ final class ScoreDelaySetting: ObservableObject {
     }
 
     /// Whether the server keeps a score delay at all.
-    var available: Bool { fixture || client.info?.features.sportsDashboard == true }
+    var available: Bool {
+        fixture || Self.isAvailable(sportFront: client.info?.features.sportFront, sportsDashboard: client.info?.features.sportsDashboard)
+    }
+
+    /// Apple 134 (Codex batch 6, medium): the front page applies the delay and is on by default, so Score delay shows
+    /// with it, not only with the legacy dashboard flag.
+    nonisolated static func isAvailable(sportFront: Bool?, sportsDashboard: Bool?) -> Bool {
+        sportFront == true || sportsDashboard == true
+    }
 
     private struct Change: Encodable {
         let revision: Int

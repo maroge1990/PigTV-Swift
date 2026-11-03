@@ -106,4 +106,13 @@ final class SettingsSportTests: XCTestCase {
         XCTAssertEqual(SettingsSportLogos.names(cricket, follows: follows), [.init(name: "Australia", logo: nil)],
                        "an older server's follow matches by league; only same-server cached logos are drawn")
     }
+
+    /// Apple 134 (Codex batch 6, medium): a default server has the front page (sportFront) and not the legacy dashboard
+    /// flag; it applies the score delay, so Settings › Sport must offer it.
+    func testScoreDelayShowsWithTheFrontPageAlone() {
+        XCTAssertTrue(ScoreDelaySetting.isAvailable(sportFront: true, sportsDashboard: nil), "a default server")
+        XCTAssertTrue(ScoreDelaySetting.isAvailable(sportFront: nil, sportsDashboard: true))
+        XCTAssertFalse(ScoreDelaySetting.isAvailable(sportFront: false, sportsDashboard: false))
+        XCTAssertFalse(ScoreDelaySetting.isAvailable(sportFront: nil, sportsDashboard: nil), "an older server")
+    }
 }
