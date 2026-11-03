@@ -732,15 +732,25 @@ final class BrowseModel: ObservableObject {
     private func removeWithUndo(_ kind: PendingRemoval.Kind, id: Int, message: String, presenter: AppPresenter) {
         let key = PendingRemoval.key(kind, id)
         recordingStore.pendingRemovals.insert(key)
+        // Apple 126 (Codex 5b round 2, high): while its Undo is open, a logged removal of this item is never replayed.
+        openUndoKeys.insert(key)
         presenter.offerUndo(message, undone: { [weak self] in
-            self?.recordingStore.pendingRemovals.remove(key)
+            guard let self else { return }
+            self.openUndoKeys.remove(key)
+            self.recordingStore.pendingRemovals.remove(key)
+            // Undo is a decision: nothing of this item runs later, whatever an earlier attempt left logged.
+            if let scope = self.removalScope { self.removalLog.remove(scope: scope, key: key) }
         }) { [weak self] in
             guard let self else { return }
+            self.openUndoKeys.remove(key)
             let op = self.removalScope.map { PendingRemoval(kind: kind, id: id, scope: $0) }
             if let op, !self.isFixture { self.removalLog.add(op) }
             self.sendRemoval(kind, id: id, logged: self.isFixture ? nil : op)
         }
     }
+
+    /// The items whose Undo is on screen now (never replayed meanwhile).
+    private var openUndoKeys: Set<String> = []
 
     /// Sends one removal (a committed Undo, or one replayed from the log) and settles the log and the lists.
     private func sendRemoval(_ kind: PendingRemoval.Kind, id: Int, logged op: PendingRemoval?) {
@@ -760,6 +770,8 @@ final class BrowseModel: ObservableObject {
                 await self.loadRecordings()
                 if kind == .rule { await self.reloadRules() }
             case .failed(let message):
+                // Apple 126: the item is back with the reason; nothing of it runs later without a new decision.
+                if let op { self.removalLog.remove(op) }
                 self.actionError = message
                 self.recordingStore.pendingRemovals.remove(key)
             }
@@ -779,7 +791,8 @@ final class BrowseModel: ObservableObject {
     /// the foreground while signed in (ContentView).
     func replayPendingRemovals() {
         guard !isFixture, let scope = removalScope else { return }
-        for op in removalLog.pending(scope: scope) where !removalLog.inFlight.contains(op.flightKey) {
+        for op in removalLog.pending(scope: scope)
+        where !removalLog.inFlight.contains(op.flightKey) && !openUndoKeys.contains(op.key) {
             recordingStore.pendingRemovals.insert(op.key)
             sendRemoval(op.kind, id: op.id, logged: op)
         }

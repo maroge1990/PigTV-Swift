@@ -183,8 +183,11 @@ final class PendingRemovalLog {
     }
     func pending(scope: String) -> [PendingRemoval] { all().filter { $0.scope == scope } }
     func contains(_ op: PendingRemoval) -> Bool { all().contains(op) }
-    func add(_ op: PendingRemoval) { var ops = all(); if !ops.contains(op) { ops.append(op) }; save(ops) }
+    /// At most one operation per server, account and item (Apple 126): a new one replaces any other for that key.
+    func add(_ op: PendingRemoval) { save(all().filter { !($0.scope == op.scope && $0.key == op.key) } + [op]) }
     func remove(_ op: PendingRemoval) { save(all().filter { $0 != op }) }
+    /// Every operation for an item (Undo).
+    func remove(scope: String, key: String) { save(all().filter { !($0.scope == scope && $0.key == key) }) }
     private func save(_ ops: [PendingRemoval]) {
         if ops.isEmpty { defaults.removeObject(forKey: Self.storageKey) }
         else if let data = try? JSONEncoder().encode(ops) { defaults.set(data, forKey: Self.storageKey) }

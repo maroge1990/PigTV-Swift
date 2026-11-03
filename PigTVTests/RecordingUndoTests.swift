@@ -105,7 +105,7 @@ final class RecordingUndoTests: XCTestCase {
         XCTAssertEqual(ScheduledRows.rules(model.recordingStore.rules, hidden: model.recordingStore.pendingRemovals).map(\.id), [7],
                        "a removal the server refused shows the rule again")
         XCTAssertNotNil(model.actionError, "and says why")
-        XCTAssertEqual(model.removalLog.all().map(\.id), [7], "and stays in the log, to be sent again")
+        XCTAssertTrue(model.removalLog.all().isEmpty, "and leaves the log: nothing runs later without a new decision (126)")
     }
 
     /// Codex 5b round 1 (high): a removal committed as the app went to the background was only an in-memory task; a
@@ -207,5 +207,52 @@ final class RecordingUndoTests: XCTestCase {
         await model.loadRecordings()
         XCTAssertTrue(model.recordingStore.pendingRemovals.isEmpty)
         XCTAssertFalse(shown())
+    }
+
+    /// Codex 5b round 2 (high): a removal that failed stayed logged; deleting the item again and pressing Undo only
+    /// lifted the mask, so the next launch replayed the old operation and deleted it despite Undo. A failure now leaves
+    /// the log, Undo clears any operation of its item, and replay skips an item whose Undo is open.
+    func testUndoAfterAFailedRemovalLeavesNothingToReplay() async throws {
+        let log = Locked<[String]>([])
+        let refuse = Locked(true)
+        let http = try LocalHTTPServer { request in
+            log.value.append("\(request.method) \(request.path)")
+            switch (request.method, request.path) {
+            case ("DELETE", "/api/recordings/30"):
+                return refuse.value ? .json(#"{"error":"Share offline"}"#, status: 500) : .json(#"{"success":true}"#)
+            case ("GET", "/api/recordings"), ("GET", "/api/recordings/scheduled"):
+                return .json("[]")
+            default:
+                return .notFound
+            }
+        }
+        defer { http.stop() }
+        let model = try model(http)
+        let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":30,"title":"The Headlines","status":"completed"}"#.utf8))
+        model.recordings = [recording]
+        let presenter = presenter()
+        model.deleteWithUndo(recording, presenter: presenter)
+        presenter.commitPendingUndo()
+        await waitUntil { model.actionError != nil }
+        XCTAssertEqual(deletes(log, "/api/recordings/30"), 1)
+        XCTAssertTrue(model.recordingStore.pendingRemovals.isEmpty, "back, with its error")
+        // The viewer deletes it again, and changes their mind.
+        refuse.value = false
+        model.deleteWithUndo(recording, presenter: presenter)
+        presenter.undoPending()
+        model.replayPendingRemovals() // back to the foreground, or the next launch
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(deletes(log, "/api/recordings/30"), 1, "deleted despite Undo: \(log.value)")
+        XCTAssertTrue(model.removalLog.all().isEmpty)
+
+        // An operation logged by an earlier process is not replayed while this item's Undo is open, and Undo clears it.
+        let scope = CacheScope(address: model.client.address, accountID: 1).digest
+        model.removalLog.add(PendingRemoval(kind: .recording, id: 30, scope: scope))
+        model.deleteWithUndo(recording, presenter: presenter)
+        model.replayPendingRemovals()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(deletes(log, "/api/recordings/30"), 1, "replayed while its Undo was open")
+        presenter.undoPending()
+        XCTAssertTrue(model.removalLog.all().isEmpty, "Undo clears the item's logged operation")
     }
 }
