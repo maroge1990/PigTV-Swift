@@ -284,8 +284,8 @@ struct SportGameCard: View {
                 }
                 Text(game.title).font(SportCardMetrics.title).lineLimit(1)
             }
-            Text([game.status == "scheduled" ? SportFrontText.when(SportFrontText.date(game.start), now: now) : nil,
-                  game.channels.first?.name].compactMap { $0 }.joined(separator: " · "))
+            Text([game.status == "scheduled" ? SportFrontText.startLine(game, now: now) : nil,
+                  SportFrontText.isNextRound(game) ? nil : game.channels.first?.name].compactMap { $0 }.joined(separator: " · "))
                 .font(SportCardMetrics.small).foregroundStyle(.secondary).lineLimit(1)
         }
     }
@@ -302,12 +302,12 @@ struct SportGameCard: View {
             } else if game.terminal {
                 Text(drawn.status).font(SportCardMetrics.detail.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
             } else if game.competitors.count == 2 {
-                Text(SportFrontText.when(SportFrontText.date(game.start), now: now)).font(SportCardMetrics.detail.weight(.bold))
+                Text(SportFrontText.startLine(game, now: now)).font(SportCardMetrics.detail.weight(.bold))
                     .lineLimit(1)
             }
             Spacer(minLength: 6)
             if game.competitors.count == 2 {
-                Text(game.channels.first?.name ?? (game.terminal ? "" : "No TV listing found"))
+                Text(SportFrontText.channelLine(game))
                     .font(SportCardMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
             } else {
                 Text(SportFrontText.actionLabel(game, now: now)).font(SportCardMetrics.small.weight(.bold))

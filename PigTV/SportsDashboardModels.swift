@@ -43,6 +43,8 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   /// C-R (server 0415, #198): an upcoming recording on one of the card's channels during its airing. Decoded
   /// tolerantly: a malformed one is dropped (`recordingMark` is nil), never the card.
   var recording: RecordingMark? = nil
+  /// C-R since 0437 (#218, additive): a weekly league's next round past the 72 hours (normally no channels yet).
+  var nextRound: Bool? = nil
 
   /// The card's recording, when the server gave a usable one.
   var recordingMark: RecordingMark? { recording?.isValid == true ? recording : nil }

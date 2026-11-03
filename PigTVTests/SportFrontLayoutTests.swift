@@ -121,3 +121,45 @@ final class SportFrontLayoutTests: XCTestCase {
         XCTAssertTrue(SportFrontText.followHelp(settings: false).contains("web app"))
     }
 }
+
+extension SportFrontLayoutTests {
+    /// #218 (C-R since 0437): a weekly league's next round, past the 72 hours and without a channel, reads "Next round ·
+    /// <date>": no channel words ("No TV listing found"), no Watch, Remind me or "Not on your channels". Before Apple 137
+    /// it read as any channel-less game to come.
+    func testANextRoundGameReadsNextRoundWithNoChannelOrWatch() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Australia/Melbourne")!
+        let id = "espn:soccer/uefa.champions:2"
+        let f = try Self.front { json in
+            let now = json["now"] as? Double ?? 0
+            var games = json["games"] as? [[String: Any]] ?? []
+            for i in games.indices where games[i]["id"] as? String == id {
+                games[i]["nextRound"] = true
+                games[i]["start"] = now + 8 * 86_400_000
+                games[i]["end"] = now + 8 * 86_400_000 + 7_200_000
+            }
+            json["games"] = games
+            var follows = json["follows"] as? [[String: Any]] ?? []
+            follows[3]["gameId"] = id
+            follows[3]["start"] = now + 8 * 86_400_000
+            json["follows"] = follows
+        }
+        let now = Date(timeIntervalSince1970: f.now / 1000)
+        let game = try XCTUnwrap(f.game(id))
+        XCTAssertTrue(SportFrontText.isNextRound(game))
+        let date = SportFrontText.date(game.start)
+            .formatted(Date.FormatStyle(timeZone: calendar.timeZone).weekday(.abbreviated).day().month(.abbreviated))
+        XCTAssertEqual(SportFrontText.startLine(game, now: now, calendar: calendar), "Next round · \(date)")
+        XCTAssertEqual(SportFrontText.channelLine(game), "")
+        XCTAssertEqual(SportFrontText.action(game, now: now), .none)
+        XCTAssertEqual(SportFrontText.actionLabel(game, now: now), "")
+        let hero = SportFrontLayout.hero(game, in: f, hidden: false, now: now, calendar: calendar)
+        XCTAssertFalse(hero.line.contains("No TV listing found"), hero.line)
+        XCTAssertTrue(hero.line.hasSuffix("Next round · \(date)"), hero.line)
+        XCTAssertEqual(SportFrontLayout.followTrailing(f.follows[3], in: f, now: now, calendar: calendar), "Next round · \(date)")
+        // An ordinary channel-less game to come keeps its words.
+        let nbl = try XCTUnwrap(f.game("espn:basketball/nbl:1"))
+        XCTAssertEqual(SportFrontText.channelLine(nbl), "No TV listing found")
+        XCTAssertEqual(SportFrontText.actionLabel(nbl, now: now), "Not on your channels")
+    }
+}

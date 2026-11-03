@@ -250,6 +250,23 @@ nonisolated enum SportFrontText {
         return "\(formatter.string(from: date)) \(time)"
     }
 
+    /// #218: a game of a weekly league's next round (C-R `nextRound`, past the 72 hours).
+    static func isNextRound(_ game: SportsGame) -> Bool { game.nextRound == true && game.status == "scheduled" }
+
+    /// When a game starts: "5:30 pm", "Sat 5:30 pm", or for a next-round game "Next round · Sat 15 Nov" (#218).
+    static func startLine(_ game: SportsGame, now: Date, calendar: Calendar = .current) -> String {
+        let date = date(game.start)
+        guard isNextRound(game) else { return when(date, now: now, calendar: calendar) }
+        return "Next round · \(date.formatted(Date.FormatStyle(timeZone: calendar.timeZone).weekday(.abbreviated).day().month(.abbreviated)))"
+    }
+
+    /// The channel words beside a game: its best channel, "No TV listing found" for a game to come without one, nothing
+    /// for a result or a next-round game (#218: the guide does not reach that far; no channel is drawn).
+    static func channelLine(_ game: SportsGame) -> String {
+        if isNextRound(game) { return "" }
+        return game.channels.first?.name ?? (game.terminal ? "" : "No TV listing found")
+    }
+
     /// The hero's kicker word.
     static func kicker(_ game: SportsGame) -> String {
         switch game.status {
@@ -321,7 +338,8 @@ nonisolated enum SportFrontText {
     /// cached `canWatch` never outlasts them, as an answer may be minutes old or kept after a failed refresh), Remind me
     /// before, the details (Record, the channels) otherwise. Called again at the moment of the press (`playable`).
     static func action(_ game: SportsGame, now: Date) -> Action {
-        guard !game.terminal, let event = event(game), let best = event.best else { return .none }
+        // #218: a next round is days away and drawn without a channel: nothing to watch or be reminded of yet.
+        guard !game.terminal, !isNextRound(game), let event = event(game), let best = event.best else { return .none }
         if event.isLive(on: best, at: now) { return .watch }
         return event.start(on: best) > now ? .remind : .details
     }
@@ -337,7 +355,7 @@ nonisolated enum SportFrontText {
         case .watch: return "Watch"
         case .remind: return "Remind me"
         case .details: return "Details"
-        case .none: return game.terminal ? "" : "Not on your channels"
+        case .none: return game.terminal || isNextRound(game) ? "" : "Not on your channels"
         }
     }
 
@@ -448,6 +466,7 @@ nonisolated enum SportFrontLayout {
             return "LIVE · v \(other)"
         case "next":
             guard let start = follow.start ?? game?.start else { return "Next" }
+            if let game, SportFrontText.isNextRound(game) { return SportFrontText.startLine(game, now: now, calendar: calendar) }
             let when = SportFrontText.when(SportFrontText.date(start), now: now, calendar: calendar)
             return game?.session.map { "\($0) · \(when)" } ?? when
         default:
@@ -489,10 +508,12 @@ nonisolated enum SportFrontLayout {
         if let scores = drawn.scores, scores.count == 2 { line.append(scores.joined(separator: "–")) }
         if let situation = drawn.situation { line.append(situation) }
         if game.status == "scheduled" {
-            let when = SportFrontText.when(SportFrontText.date(game.start), now: now, calendar: calendar)
+            let when = SportFrontText.startLine(game, now: now, calendar: calendar)
             line.append(game.session.map { "\($0) · \(when)" } ?? when)
         }
-        line.append(game.channels.first?.name ?? (game.terminal ? game.availabilityLabel : "No TV listing found"))
+        if !SportFrontText.isNextRound(game) {
+            line.append(game.channels.first?.name ?? (game.terminal ? game.availabilityLabel : "No TV listing found"))
+        }
         return SportBannerHero(kicker: kicker.joined(separator: " · "), live: drawn.kicker == "LIVE",
                                title: game.title, line: line.joined(separator: " · "))
     }
