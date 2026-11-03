@@ -109,7 +109,10 @@ final class BrandDepthUITests: XCTestCase {
         }
     }
     private func focus(_ app: XCUIApplication, label: String) {
-        let target = app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
+        focus(app, app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch, label)
+    }
+    private func focus(_ app: XCUIApplication, id: String) { focus(app, app.buttons[id], id) }
+    private func focus(_ app: XCUIApplication, _ target: XCUIElement, _ label: String) {
         XCTAssertTrue(target.waitForExistence(timeout: 5), app.debugDescription)
         for _ in 0..<16 {
             if target.hasFocus { return }
@@ -171,11 +174,12 @@ final class BrandDepthUITests: XCTestCase {
             focus(app, label: "All scheduled recordings")
             XCUIRemote.shared.press(.select)
             shot(app, "recordings-scheduled-\(mode)")
-            focus(app, label: "Cancel schedule")
+            // Apple 120: each schedule's Cancel is on its row on Scheduled.
+            focus(app, id: "scheduled.cancel.90")
             XCUIRemote.shared.press(.select)
             shot(app, "schedule-cancel-confirmation-\(mode)")
             XCUIRemote.shared.press(.menu)
-            XCTAssertTrue(app.buttons["Cancel schedule"].exists)
+            XCTAssertTrue(app.buttons["scheduled.cancel.90"].exists)
             app.terminate()
             let settings = launch("settings", mode)
             focus(settings, label: "Sign out")

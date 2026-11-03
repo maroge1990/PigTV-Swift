@@ -757,6 +757,18 @@ final class BrowseModel: ObservableObject {
         try await client.request("recordings/rules")
     }
 
+    /// Apple 120: Scheduled's rules, kept in the recordings store (the fixture keeps its own).
+    func reloadRules() async {
+        guard rulesAvailable, !isFixture else { return }
+        do {
+            let loaded = try await loadRules()
+            if loaded != recordingStore.rules { recordingStore.rules = loaded }
+            recordingStore.change(\.rulesError, to: nil)
+        } catch {
+            recordingStore.change(\.rulesError, to: "Could not load the rules. \(UserMessage.text(for: error) ?? "")")
+        }
+    }
+
     /// Adds a rule; the message says how many it scheduled. False on failure.
     @discardableResult
     func addRule(_ body: RuleBody) async -> Bool {
@@ -790,6 +802,7 @@ final class BrowseModel: ObservableObject {
             let _: RecordingRule = try await client.request("recordings/rules/\(rule.id)", method: "PUT", body: RuleEnabledBody(enabled: enabled))
             actionMessage = enabled ? "Rule turned on." : "Rule turned off."
             await loadRecordings()
+            await reloadRules()
             return true
         } catch {
             actionError = "Could not change the rule. \(UserMessage.text(for: error))"
@@ -810,6 +823,7 @@ final class BrowseModel: ObservableObject {
             let n = result.cancelled ?? 0
             actionMessage = n == 0 ? "Rule deleted." : "Rule deleted; \(n) upcoming recording\(n == 1 ? "" : "s") cancelled."
             await loadRecordings()
+            await reloadRules()
             return true
         } catch {
             actionError = "Could not delete the rule. \(UserMessage.text(for: error))"

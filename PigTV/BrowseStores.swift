@@ -65,6 +65,9 @@ final class RecordingsStore: ObservableObject {
     @Published var schedules: [ScheduledRecording] = []
     @Published var recordingsBusy = false
     @Published var recordingsError: String?
+    /// C-M (Apple 120): the recording rules Scheduled lists, and why they could not be loaded.
+    @Published var rules: [RecordingRule] = []
+    @Published var rulesError: String?
 }
 
 /// Favourites and Home's history. Nothing draws the load's busy or error

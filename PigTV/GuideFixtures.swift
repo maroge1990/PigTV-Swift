@@ -202,8 +202,11 @@ enum GuideFixtures {
 
     @MainActor static func addSchedules(to model: BrowseModel) {
         let target = scheduledProgramme(in: model.guide)
-        let json = #"[{"id":90,"title":"\#(target.programme.title)","channel_name":"\#(target.channel.name)","program_start":\#(Int64(target.programme.startTime)),"program_end":\#(Int64(target.programme.endTime)),"status":"scheduled","pre_buffer_min":2,"post_buffer_min":15},{"id":91,"title":"Evening Match","channel_name":"Fox Footy 504","program_start":\#(Int64(target.programme.startTime) - 86_400_000),"program_end":\#(Int64(target.programme.endTime) - 86_400_000),"status":"failed","error":"No signal from the provider."}]"#
+        let json = #"[{"id":90,"title":"\#(target.programme.title)","channel_name":"\#(target.channel.name)","program_start":\#(Int64(target.programme.startTime)),"program_end":\#(Int64(target.programme.endTime)),"status":"scheduled","pre_buffer_min":2,"post_buffer_min":15,"rule_id":7},{"id":91,"title":"Evening Match","channel_name":"Fox Footy 504","program_start":\#(Int64(target.programme.startTime) - 86_400_000),"program_end":\#(Int64(target.programme.endTime) - 86_400_000),"status":"failed","error":"No signal from the provider."}]"#
         model.schedules = (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
+        // Apple 120: Scheduled's recording rules (C-M); 90 is the series rule's.
+        let rules = #"[{"id":7,"kind":"series","match":"\#(target.programme.title)","channelName":"\#(target.channel.name)","newOnly":true,"enabled":true,"upcoming":1},{"id":8,"kind":"team","match":"Collingwood","sport":"Australian Football","enabled":true,"upcoming":2,"createdByName":"Mark"},{"id":9,"kind":"series","match":"Gruen","channelName":"ABC TV","enabled":false,"upcoming":0}]"#
+        model.recordingStore.rules = (try? JSONDecoder().decode([RecordingRule].self, from: Data(rules.utf8))) ?? []
         if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_CLASH"] == "1" { addClash(to: model, at: target.programme.startTime) }
     }
 

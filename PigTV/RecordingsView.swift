@@ -47,6 +47,9 @@ enum RecordingsMetrics {
 /// Where the Recordings tab's stack goes: Scheduled, or a recording (by id, so a refreshed list keeps the page).
 enum RecordingsRoute: Hashable {
     case scheduled
+    /// The iPhone's pages under Scheduled's tiles.
+    case rules
+    case attention
     case recording(Int)
 }
 
@@ -112,6 +115,7 @@ struct RecordingsView: View {
             .navigationDestination(for: RecordingsRoute.self) { route in
                 switch route {
                 case .scheduled: ScheduledPage(model: model)
+                case .rules, .attention: ScheduledSubpage(model: model, route: route)
                 case .recording(let id):
                     if let item = model.recordings.first(where: { $0.id == id }) { RecordingDetails(model: model, original: item) }
                 }

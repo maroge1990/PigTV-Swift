@@ -64,26 +64,32 @@ final class RecordingsUITests: XCTestCase {
         attach(app, "recordings-scheduled")
     }
 
+    /// D-44 (Apple 120, R5-Scheduled): Scheduled lists the rules (on/off and Remove) and what needs attention (each with
+    /// Delete) beside Coming up, where a schedule names the rule that made it.
     @MainActor
-    func testReviewSheetIsFocusableAndOffersDelete() throws {
+    func testScheduledListsRulesAndNeedsAttentionBesideComingUp() throws {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-recordings"
         app.launchEnvironment["PIGTV_UI_TEST_RECORDINGS_SECTION"] = "scheduled"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         app.launch()
-        let banner = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Review'")).firstMatch
-        XCTAssertTrue(banner.waitForExistence(timeout: 10), "no needs-attention banner")
+        let any = app.descendants(matching: .any)
+        let cancel = app.buttons["scheduled.cancel.90"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "Coming up has the schedule with its Cancel")
+        XCTAssertTrue(any["Series"].exists, "the schedule names the rule that made it")
+        XCTAssertTrue(app.buttons["rules.remove.7"].exists, "each rule has Remove")
+        XCTAssertTrue(app.buttons["rules.remove.9"].exists)
+        XCTAssertTrue(any["rules.toggle.8"].exists, "each rule has its switch")
+        let delete = app.buttons["scheduled.delete.schedule-91"]
+        XCTAssertTrue(delete.exists, "Needs attention offers Delete on the failed schedule")
+        XCTAssertTrue(app.buttons["scheduled.delete.recording-25"].exists, "and on the failed recording")
         var reached = false
-        for _ in 0..<10 {
-            if focused(app).label.contains("Review") { reached = true; break }
-            XCUIRemote.shared.press(.down)
+        for _ in 0..<12 {
+            if focused(app).identifier.hasPrefix("scheduled.delete") { reached = true; break }
+            XCUIRemote.shared.press(focused(app).identifier.hasPrefix("scheduled.cancel") ? .right : .down)
         }
-        XCTAssertTrue(reached, "focus never reached the banner: \(focused(app).label)")
-        XCUIRemote.shared.press(.select)
-        let delete = app.buttons["Delete"].firstMatch
-        XCTAssertTrue(delete.waitForExistence(timeout: 5), "the Review list has no Delete")
-        attach(app, "recordings-review")
-        XCTAssertTrue(focused(app).label.contains("Delete") || focused(app).exists, "nothing focused in the Review list")
+        attach(app, "scheduled-page")
+        XCTAssertTrue(reached, "focus never reached a Delete in Needs attention: \(focused(app).identifier)")
     }
 
     /// #12 (D-42, server 0410; maroge1990/PigTV#200): a schedule that loses its clash says why it waits and offers
