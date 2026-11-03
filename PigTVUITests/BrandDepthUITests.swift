@@ -158,7 +158,7 @@ final class BrandDepthUITests: XCTestCase {
             shot(app, "search-keyboard-\(mode)")
             XCUIRemote.shared.press(.menu)
             shot(app, "search-keyboard-dismissed-\(mode)")
-            XCTAssertTrue(app.buttons["Show channels"].isHittable)
+            XCTAssertTrue(app.buttons["Show guide"].isHittable)
             app.terminate()
         }
     }
