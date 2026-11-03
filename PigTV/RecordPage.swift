@@ -150,6 +150,20 @@ nonisolated enum RecordPlan {
         return body == ScheduleChangeBody() ? nil : body
     }
 
+    /// Codex 5a round 1 (medium): which schedule the page is about. A channel chosen explicitly (`preferred`) is that
+    /// channel's schedule, or a new recording when it has none; otherwise the first channel that has one, and the page
+    /// shows that channel (its id is returned), so Change recording never shows one channel and changes another.
+    static func bind(schedules: [ScheduledRecording?], channels: [String], preferred: String?)
+        -> (schedule: ScheduledRecording?, channel: String?) {
+        if let preferred, let index = channels.firstIndex(of: preferred) {
+            return (schedules.indices.contains(index) ? schedules[index] : nil, preferred)
+        }
+        for (index, schedule) in schedules.enumerated() where schedule != nil && channels.indices.contains(index) {
+            return (schedule, channels[index])
+        }
+        return (nil, nil)
+    }
+
     /// It stops when the game ends: a Sport card's game (its id is sent), or a schedule the server links to one.
     static func stopsWithGame(_ request: RecordRequest) -> Bool {
         if let schedule = request.schedule { return schedule.stopsWithEvent }
@@ -205,8 +219,10 @@ extension BrowseModel {
     }
 
     /// A Sport event (with its C-O/C-R card when there is one: the game's id, its teams and their logos): every channel
-    /// carrying it that has not ended, best first; Change recording when one of them is scheduled.
-    func recordRequest(event: SportEvent, game: SportsGame? = nil, now: Date = Date()) -> RecordRequest? {
+    /// carrying it that has not ended, best first; Change recording on the channel that is scheduled (`RecordPlan.bind`),
+    /// or on `preferredChannel` when it is, else a new recording there.
+    func recordRequest(event: SportEvent, game: SportsGame? = nil, now: Date = Date(),
+                       preferredChannel: String? = nil) -> RecordRequest? {
         let channels = SportFrontText.recordChoices(event, now: now)
         let airings = (channels.isEmpty ? event.best.map { [$0] } ?? [] : channels).map { channel in
             RecordRequest.Airing(channel: recordingRow(event, on: channel), programme: event.programme(on: channel),
@@ -227,11 +243,14 @@ extension BrowseModel {
         let followed = game.flatMap { game in
             SportFrontLayout.followedSide(game, names: front?.follows.map(\.name) ?? []).map { game.competitors[$0].name }
         }
-        let schedule = airings.lazy.compactMap { self.activeSchedule(channel: $0.channel, programme: $0.programme) }.first
-        return RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id, teams: teams,
+        let bound = RecordPlan.bind(schedules: airings.map { activeSchedule(channel: $0.channel, programme: $0.programme) },
+                                    channels: airings.map(\.channel.id), preferred: preferredChannel)
+        var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id, teams: teams,
                              followedTeam: game?.followed == true ? followed : nil,
                              sport: front?.sports.first { $0.league == event.league }?.sport, isGame: true,
-                             schedule: schedule)
+                             schedule: bound.schedule)
+        request.preferredChannel = bound.channel
+        return request
     }
 }
 
@@ -246,9 +265,8 @@ extension BrowseModel {
 extension AppModel {
     /// Opens the record page for a Sport event (its card when there is one) through the app's presentation layer.
     func record(_ event: SportEvent, game: SportsGame? = nil, error: String? = nil, onChannel channel: String? = nil) {
-        guard let browse, var request = browse.recordRequest(event: event, game: game) else { return }
+        guard let browse, var request = browse.recordRequest(event: event, game: game, preferredChannel: channel) else { return }
         request.error = error
-        request.preferredChannel = channel
         presenter.present(.record(request))
     }
 }

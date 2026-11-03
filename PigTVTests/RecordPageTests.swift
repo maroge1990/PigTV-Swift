@@ -90,6 +90,28 @@ final class RecordPageTests: XCTestCase {
         XCTAssertFalse(odd.stopsWithEvent)
     }
 
+    /// Codex 5a round 1 (medium): only the second channel has it scheduled. Change recording is that channel's (the
+    /// page starts on it), and choosing the unscheduled best channel is a new recording there, never a change of the
+    /// other one.
+    @MainActor
+    func testChangeRecordingIsBoundToTheScheduledChannel() throws {
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:9"), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        let start = (now.timeIntervalSince1970 + 3600) * 1000, end = start + 7_200_000
+        let best = SportEventChannel(sourceId: 1, rawID: "espn", name: "ESPN HD", startTime: start, endTime: end)
+        let other = SportEventChannel(sourceId: 1, rawID: "fox", name: "Fox Footy", startTime: start, endTime: end)
+        let event = SportEvent(id: "e1", title: "Packers v Bears", league: "NFL", startTime: start, endTime: end,
+                               channels: [best, other])
+        browse.schedules = [try schedule(#"{"id":7,"title":"Packers v Bears","channel_name":"Fox Footy","program_start":\#(Int64(start)),"program_end":\#(Int64(end)),"status":"scheduled"}"#)]
+        let request = try XCTUnwrap(browse.recordRequest(event: event, now: now))
+        XCTAssertEqual(request.schedule?.id, 7)
+        XCTAssertEqual(request.preferredChannel, other.id, "the page shows the channel whose schedule it changes")
+        let chosen = try XCTUnwrap(browse.recordRequest(event: event, now: now, preferredChannel: best.id))
+        XCTAssertNil(chosen.schedule, "Record on the unscheduled channel is a new recording")
+        XCTAssertEqual(chosen.preferredChannel, best.id)
+        XCTAssertEqual(try XCTUnwrap(browse.recordRequest(event: event, now: now, preferredChannel: other.id)).schedule?.id, 7)
+    }
+
     // MARK: What the model sends
 
     @MainActor
