@@ -33,6 +33,7 @@ struct SportFixtureContent: View {
     @ObservedObject private var leagues: LeaguePageModel
     @ObservedObject private var preferences: F1PageModel
     @Environment(\.sportPresenter) private var presenter
+    @Environment(\.sportNarrow) private var narrow
     @State private var round: String?
     @State private var view: String?
     @State private var tableGroup: String?
@@ -99,7 +100,7 @@ struct SportFixtureContent: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         if let fixture {
-            HStack(alignment: .top, spacing: SportPageMetrics.gap + 8) {
+            SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap + 8).callAsFunction {
                 VStack(alignment: .leading, spacing: 14) {
                     roundPicker(fixture)
                     if let shown = FixtureText.round(round, in: fixture) {
@@ -110,7 +111,7 @@ struct SportFixtureContent: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 if !fixture.views.isEmpty || preferences.hidesSpoilers {
-                    standings(fixture).frame(width: SportFixtureMetrics.standingsWidth)
+                    standings(fixture).sportSideWidth(SportFixtureMetrics.standingsWidth, narrow: narrow)
                 }
             }
         } else if loading {
@@ -125,7 +126,7 @@ struct SportFixtureContent: View {
 
     private func roundPicker(_ fixture: FixtureLeague) -> some View {
         let shown = FixtureText.round(round, in: fixture)
-        return HStack(spacing: 12) {
+        return ScrollView(.horizontal) { HStack(spacing: 12) {
             ForEach(fixture.rounds) { item in
                 Button { round = item.key } label: {
                     Text(item.label).font(SportPageMetrics.rowName).lineLimit(1)
@@ -137,12 +138,15 @@ struct SportFixtureContent: View {
             if let note = shown?.note {
                 Text(note).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1).padding(.leading, 8)
             }
-        }
+        } }
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
         .tvFocusSection()
     }
 
     private func grid(_ round: FixtureLeague.Round, fixture: FixtureLeague, now: Date) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: SportFixtureMetrics.columns),
+        LazyVGrid(columns: narrow ? [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)]
+                    : Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: SportFixtureMetrics.columns),
                   alignment: .leading, spacing: 14) {
             ForEach(round.games) { game in gameCard(game, fixture: fixture, now: now) }
         }
@@ -261,10 +265,10 @@ struct SportFixtureContent: View {
     private func tableRows(_ table: FixtureLeague.Table) -> some View {
         VStack(spacing: 2) {
             ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
-                HStack(spacing: 10) {
+                HStack(spacing: narrow ? 6 : 10) {
                     Text(String(row.rank ?? index + 1)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).monospacedDigit()
-                        .frame(minWidth: 28, alignment: .trailing)
-                    SportBadge(name: row.name, logo: row.logo, league: leagueName, client: browse.client, size: 24)
+                        .frame(minWidth: narrow ? 20 : 28, alignment: .trailing)
+                    SportBadge(name: row.name, logo: row.logo, league: leagueName, client: browse.client, size: narrow ? 20 : 24)
                         .fixedSize()
                     SportFollowStar(followed: row.followed)
                     Text(row.name).font(SportPageMetrics.rowName).lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)
@@ -272,7 +276,7 @@ struct SportFixtureContent: View {
                     ForEach(Array(row.values.enumerated()), id: \.offset) { _, value in
                         // #211: a value is drawn whole ("4-2-1", "137.2"); the team's name gives way.
                         Text(value ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit().lineLimit(1).fixedSize()
-                            .frame(minWidth: SportFixtureMetrics.valueWidth, alignment: .trailing)
+                            .frame(minWidth: narrow ? 26 : SportFixtureMetrics.valueWidth, alignment: .trailing)
                     }
                 }
                 .frame(minHeight: SportPageMetrics.row - 4)

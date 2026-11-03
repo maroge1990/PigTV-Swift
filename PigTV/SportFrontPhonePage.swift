@@ -25,8 +25,6 @@ struct SportFrontPhonePage: View {
     /// The preferences every sport page shares: unknown counts as spoiler-free (#192).
     @ObservedObject private var f1: F1PageModel
     @StateObject private var flow = SportRecordFlow()
-    @Environment(\.sportPresenter) private var presenter
-    @State private var shown: String?
 
     init(app: AppModel, browse: BrowseModel, open: @escaping (String) -> Void) {
         self.app = app
@@ -107,142 +105,12 @@ struct SportFrontPhonePage: View {
         .padding(.horizontal, SportPhoneMetrics.edge)
     }
 
-    // MARK: The carousel
-
     @ViewBuilder
     private func carousel(_ front: SportFront, now: Date) -> some View {
-        let cards = SportPhoneLayout.cards(front, hidden: hidden, now: now, labels: model.labels)
-        if !cards.isEmpty {
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 12) {
-                    ForEach(cards) { card in
-                        followCard(card, front: front, now: now)
-                            .opacity(card.id == (shown ?? cards[0].id) ? 1 : 0.6)
-                    }
-                }
-                .scrollTargetLayout()
-                .padding(.horizontal, SportPhoneMetrics.edge)
-            }
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $shown)
-            .scrollIndicators(.hidden)
-            .frame(height: SportPhoneMetrics.cardHeight)
-            .accessibilityIdentifier("sport.front.carousel")
-            let index = cards.firstIndex { $0.id == shown } ?? 0
-            HStack(spacing: 6) {
-                ForEach(Array(cards.prefix(12).enumerated()), id: \.offset) { offset, _ in
-                    Capsule().fill(offset == index ? Color.pigAccent : Color.secondary.opacity(0.6))
-                        .frame(width: offset == index ? 18 : 6, height: 6)
-                }
-                Text(SportPhoneLayout.position(index, of: cards.count)).font(.caption).foregroundStyle(.secondary)
-                    .padding(.leading, 6)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(SportPhoneLayout.position(index, of: cards.count))
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    private func followCard(_ card: SportPhoneCard, front: SportFront, now: Date) -> some View {
-        let game = front.game(card.gameId)
-        let league = front.follows[card.index].league
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                if card.live { Circle().fill(Color.pigDanger).frame(width: 8, height: 8).accessibilityHidden(true) }
-                Text(card.kicker).font(.caption2.weight(.bold)).tracking(1).lineLimit(1)
-                    .foregroundStyle(card.live ? Color.pigDanger : Color.secondary)
-            }
-            Button {
-                if let game { SportGamePress.select(game, app: app, presenter: presenter) } else { open(front.follows[card.index].sportName) }
-            } label: {
-                VStack(spacing: 6) {
-                    if card.sides.count == 2 {
-                        HStack(alignment: .center) {
-                            side(card.sides[0], league: league)
-                            Text(card.score ?? "v").font(card.score == nil ? .title3.weight(.semibold) : .system(.title, design: .rounded).weight(.heavy))
-                                .monospacedDigit().foregroundStyle(card.score == nil ? Color.secondary : Color.primary)
-                            side(card.sides[1], league: league)
-                        }
-                    } else {
-                        HStack(spacing: 12) {
-                            if let badge = card.sides.first {
-                                SportBadge(name: badge.name, logo: badge.logo, league: league, client: browse.client,
-                                           size: SportPhoneMetrics.heroBadge)
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(card.title ?? "").font(.headline).lineLimit(2)
-                                if let session = card.session { Text(session).font(.subheadline).foregroundStyle(.secondary) }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                    }
-                    Text(card.line).font(.footnote).foregroundStyle(.secondary).lineLimit(1).monospacedDigit()
-                        .frame(maxWidth: .infinity)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(card.accessibilityLabel)
-            .accessibilityIdentifier("sport.front.follow.\(card.index)")
-            Spacer(minLength: 0)
-            if let game { actions(game, team: card.team, now: now) }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 14)
-        .frame(width: SportPhoneMetrics.cardWidth, height: SportPhoneMetrics.cardHeight, alignment: .topLeading)
-        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
-        .accessibilityElement(children: .contain)
-        .id(card.id)
-    }
-
-    private func side(_ side: SportFixtureRowModel.Side, league: String) -> some View {
-        VStack(spacing: 4) {
-            SportBadge(name: side.name, logo: side.logo, league: league, client: browse.client, size: SportPhoneMetrics.heroBadge)
-            HStack(spacing: 4) {
-                if side.followed { Text("★").foregroundStyle(Color.pigAccentText).accessibilityHidden(true) }
-                Text(side.name).lineLimit(1).minimumScaleFactor(0.8)
-            }
-            .font(.subheadline.weight(.bold))
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// Watch (on now) or Remind me (before), the one rose primary; Record every game when the game has a team to follow
-    /// with a rule, else Record (the record page).
-    @ViewBuilder
-    private func actions(_ game: SportsGame, team: String?, now: Date) -> some View {
-        if !game.terminal, let event = SportFrontText.event(game) {
-            HStack(spacing: 8) {
-                switch SportFrontText.action(game, now: now) {
-                case .watch:
-                    Button { SportGamePress.watch(game, event: event, app: app, presenter: presenter) } label: {
-                        Label("Watch", systemImage: "play.fill").frame(maxWidth: .infinity)
-                    }
-                    .pigPrimaryButton()
-                    .accessibilityIdentifier("sport.front.card.watch")
-                case .remind:
-                    Button { app.watchWhenStarts(event, now: Date()) } label: {
-                        Label("Remind me", systemImage: "bell").frame(maxWidth: .infinity)
-                    }
-                    .pigPrimaryButton()
-                    .accessibilityIdentifier("sport.front.card.remind")
-                case .details, .none:
-                    EmptyView()
-                }
-                // #49: the rule is the card's own follow's team, and the button names it.
-                let every = flow.menuItems(event, game: game, team: team, now: now).first { $0.id == "recordEvery" }
-                Button {
-                    if let every { flow.run(every, event: event, game: game, team: team) } else { flow.record(event, game: game, team: team) }
-                } label: {
-                    Text(every?.title ?? "Record").lineLimit(1).minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(Color("PigText"))
-                .accessibilityIdentifier("sport.front.card.record")
-            }
-            .controlSize(.large)
-            .font(.subheadline.weight(.semibold))
-        }
+        SportPhoneCarousel(app: app, browse: browse, flow: flow, front: front, now: now,
+                           cards: SportPhoneLayout.cards(front, hidden: hidden, now: now, labels: model.labels),
+                           position: SportPhoneLayout.position, identifier: "sport.front",
+                           open: { card in open(front.follows[card.index].sportName) })
     }
 
     // MARK: A sport's card
@@ -262,25 +130,7 @@ struct SportFrontPhonePage: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(group.sport), \(group.note), open its page")
             .accessibilityIdentifier("sport.rail.header.\(group.sport)")
-            VStack(spacing: 0) {
-                ForEach(Array(group.rows.enumerated()), id: \.element.id) { offset, row in
-                    if offset > 0 { Divider().overlay(Color.pigBorder) }
-                    if let game = front.game(row.id) {
-                        Button { SportGamePress.select(game, app: app, presenter: presenter) } label: {
-                            SportFixtureRow(row: row, client: browse.client)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            if !game.terminal, let event = SportFrontText.event(game) {
-                                SportRecordMenu(flow: flow, event: event, game: game)
-                            }
-                        }
-                        .accessibilityIdentifier("sport.front.game.\(game.id)")
-                    }
-                }
-            }
-            .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+            SportPhoneRowsCard(app: app, browse: browse, flow: flow, front: front, rows: group.rows, identifier: "sport.front.game")
         }
         .padding(.horizontal, SportPhoneMetrics.edge)
         .accessibilityElement(children: .contain)

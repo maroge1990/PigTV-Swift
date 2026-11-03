@@ -25,6 +25,18 @@ struct SportFrontView: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        // D-44 (Apple 142): the sport pages stack their panels on a screen narrower than `SportColumns.narrowBelow`
+        // (an iPad in portrait); the width is the tab's, never the content's.
+        GeometryReader { proxy in
+            stack.environment(\.sportNarrow, proxy.size.width < SportColumns.narrowBelow)
+        }
+        #else
+        stack
+        #endif
+    }
+
+    private var stack: some View {
         NavigationStack(path: $navigation.path) {
             Group {
                 #if os(tvOS)
@@ -43,7 +55,22 @@ struct SportFrontView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .navigationDestination(for: SportRoute.self) { route in
+                #if os(iOS)
+                // D-44: the iPhone's sport pages follow its front page (R5-*-iPhone), the extra content a page of its own.
+                if sizeClass != .regular {
+                    if let league = route.league {
+                        SportPhoneLeaguePage(app: app, browse: browse, sport: route.sport, league: league)
+                    } else {
+                        SportPhonePage(app: app, browse: browse, sport: route.sport) { league in
+                            navigation.path.append(SportRoute(sport: route.sport, league: league))
+                        }
+                    }
+                } else {
+                    SportPageView(app: app, browse: browse, sport: route.sport)
+                }
+                #else
                 SportPageView(app: app, browse: browse, sport: route.sport)
+                #endif
             }
         }
         // The event page and channel picker belong to the screen (SportPresenter), with the plays' origin.
@@ -57,6 +84,11 @@ struct SportFrontView: View {
             SportFrontView.openedTestSport = true
             try? await Task.sleep(for: .milliseconds(800))
             navigation.path.append(SportRoute(sport: sport))
+            // D-44 (Apple 142): PIGTV_UI_TEST_OPEN_LEAGUE=<league> also pushes that league's iPhone page (#177).
+            if let league = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_OPEN_LEAGUE"] {
+                try? await Task.sleep(for: .milliseconds(600))
+                navigation.path.append(SportRoute(sport: sport, league: league))
+            }
         }
         #endif
     }

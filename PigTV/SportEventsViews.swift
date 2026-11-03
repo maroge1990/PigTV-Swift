@@ -32,6 +32,14 @@ struct SportEventsContent: View {
     @ObservedObject private var model: SportEventsPageModel
     @ObservedObject private var preferences: F1PageModel
     @Environment(\.sportPresenter) private var presenter
+    @Environment(\.sportNarrow) private var narrow
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The iPhone (R5-Golf-iPhone): the leaderboard's position, player and to par, without the rounds.
+    private var compact: Bool { sizeClass == .compact }
+    #else
+    private var compact: Bool { false }
+    #endif
 
     init(app: AppModel, browse: BrowseModel, league: String, leagues: [String], front: SportFront, labels: [String: String],
          flow: SportRecordFlow) {
@@ -134,7 +142,7 @@ struct SportEventsContent: View {
         if let event = SportEventsText.focus(page.events) {
             let card = SportEventsText.card(event)
             eventHeader(event, now: now, hidden: hidden)
-            HStack(alignment: .top, spacing: SportPageMetrics.gap) {
+            SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap).callAsFunction {
                 boutList("Main card", card.main, event: event, mainEvent: card.main.last?.id, now: now, hidden: hidden)
                 boutList("Prelims", card.prelims, event: event, mainEvent: nil, now: now, hidden: hidden)
             }
@@ -337,7 +345,7 @@ struct SportEventsContent: View {
             let others = page.events.filter { $0.id != event.id } + leagues.filter { $0 != league }
                 .compactMap { model.pages[$0] }.filter { $0.kind == "golf" }.flatMap(\.events)
             eventHeader(event, now: now, hidden: hidden, detail: event.round.map { "Round \($0)" })
-            HStack(alignment: .top, spacing: SportPageMetrics.gap) {
+            SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap).callAsFunction {
                 leaderboard(layout, event: event, hidden: hidden).frame(maxWidth: .infinity)
                 VStack(alignment: .leading, spacing: SportPageMetrics.gap) {
                     if !layout.yourPlayers.isEmpty {
@@ -350,7 +358,7 @@ struct SportEventsContent: View {
                     }
                     alsoThisWeek(others, now: now, hidden: hidden)
                 }
-                .frame(width: SportEventsMetrics.golfSide)
+                .sportSideWidth(SportEventsMetrics.golfSide, narrow: narrow)
             }
             .tvFocusSection()
         } else {
@@ -370,7 +378,8 @@ struct SportEventsContent: View {
                         Text("PLAYER")
                         Spacer(minLength: 6)
                         Text("TO PAR").frame(width: 80, alignment: .trailing)
-                        ForEach(1...3, id: \.self) { Text("R\($0)").frame(width: 56, alignment: .trailing) }
+                        // The iPhone (R5-Golf-iPhone): position, player and to par; the rounds stay on wider pages.
+                        if !compact { ForEach(1...3, id: \.self) { Text("R\($0)").frame(width: 56, alignment: .trailing) } }
                     }
                     .font(SportPageMetrics.kicker).tracking(1).foregroundStyle(.secondary)
                     ForEach(Array(layout.leaderboard.enumerated()), id: \.offset) { _, row in
@@ -382,9 +391,11 @@ struct SportEventsContent: View {
                             Text(row.name).font(SportPageMetrics.rowName).lineLimit(1)
                             Spacer(minLength: 6)
                             Text(row.toPar ?? "–").font(SportPageMetrics.rowPos).monospacedDigit().frame(width: 80, alignment: .trailing)
-                            ForEach(Array(SportEventsText.firstRounds(row).enumerated()), id: \.offset) { _, strokes in
-                                Text(strokes.map(String.init) ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit()
-                                    .foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
+                            if !compact {
+                                ForEach(Array(SportEventsText.firstRounds(row).enumerated()), id: \.offset) { _, strokes in
+                                    Text(strokes.map(String.init) ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit()
+                                        .foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
+                                }
                             }
                         }
                         .frame(minHeight: SportPageMetrics.row)

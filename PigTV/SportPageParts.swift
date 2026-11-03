@@ -138,3 +138,35 @@ enum SportCardActions {
         return event
     }
 }
+
+// D-44 (Apple 142): a sport page's panels side by side where there is room (the Apple TV, an iPad in landscape), stacked
+// where there is not (an iPad in portrait, the iPhone's league page, #177), so nothing runs off the page.
+private struct SportNarrowKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// The sport page is too narrow for its panels side by side.
+    var sportNarrow: Bool {
+        get { self[SportNarrowKey.self] }
+        set { self[SportNarrowKey.self] = newValue }
+    }
+}
+
+enum SportColumns {
+    /// Below this width (pt) a sport page stacks its panels (an iPad 13" in portrait is 1032 pt).
+    static let narrowBelow: CGFloat = 1100
+
+    /// Side by side, top-aligned; stacked when narrow.
+    static func layout(narrow: Bool, spacing: CGFloat) -> AnyLayout {
+        narrow ? AnyLayout(VStackLayout(alignment: .leading, spacing: spacing))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: spacing))
+    }
+}
+
+extension View {
+    /// A side panel's fixed width beside the main one; the full width when stacked.
+    func sportSideWidth(_ width: CGFloat, narrow: Bool) -> some View {
+        frame(width: narrow ? nil : width).frame(maxWidth: narrow ? .infinity : nil, alignment: .topLeading)
+    }
+}

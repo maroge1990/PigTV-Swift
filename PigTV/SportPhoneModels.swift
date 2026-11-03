@@ -80,7 +80,16 @@ nonisolated enum SportPhoneLayout {
                                   title: follow.name, session: nil, score: nil, line: line, gameId: nil, team: follow.name,
                                   accessibilityLabel: [follow.name, league, line].joined(separator: ", "))
         }
-        let row = row(game, in: front, hidden: hidden, now: now, follows: [follow.name], calendar: calendar)
+        return card(game, in: front, hidden: hidden, now: now, index: index, id: follow.key, league: league,
+                    follow: (name: follow.name, logo: follow.cachedLogo), follows: [follow.name], calendar: calendar)
+    }
+
+    /// A game's card (also the sport page's carousel, D-44): `follow` is the follow it is for (its badge for a session,
+    /// its team for the record rule), nil for a game nobody named (then its own followed sides are starred).
+    static func card(_ game: SportsGame, in front: SportFront, hidden: Bool, now: Date, index: Int, id: String,
+                     league: String, follow: (name: String, logo: String?)?, follows: [String],
+                     calendar: Calendar = .current) -> SportPhoneCard {
+        let row = row(game, in: front, hidden: hidden, now: now, follows: follows, calendar: calendar)
         let live = row.live != nil
         let kicker: String
         if live {
@@ -102,10 +111,12 @@ nonisolated enum SportPhoneLayout {
         if !channel.isEmpty && !game.terminal { line.append(channel) }
         let text = line.joined(separator: " · ")
         let names = row.sides.isEmpty ? [game.title] + [game.session].compactMap { $0 } : row.sides.map(\.name)
-        return SportPhoneCard(index: index, id: follow.key, kicker: kicker, live: live,
-                              sides: row.sides.isEmpty ? [.init(name: follow.name, logo: follow.cachedLogo, followed: true)] : row.sides,
+        let badge = follow.map { SportFixtureRowModel.Side(name: $0.name, logo: $0.logo, followed: true) }
+            ?? SportFixtureRowModel.Side(name: game.league, logo: nil, followed: false)
+        return SportPhoneCard(index: index, id: id, kicker: kicker, live: live,
+                              sides: row.sides.isEmpty ? [badge] : row.sides,
                               title: row.sides.isEmpty ? game.title : nil, session: row.sides.isEmpty ? game.session : nil,
-                              score: row.score, line: text, gameId: game.id, team: follow.name,
+                              score: row.score, line: text, gameId: game.id, team: follow?.name ?? "",
                               accessibilityLabel: ([kicker] + names + [row.score, text].compactMap { $0 })
                                 .filter { !$0.isEmpty }.joined(separator: ", "))
     }

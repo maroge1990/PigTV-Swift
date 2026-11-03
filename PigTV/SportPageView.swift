@@ -14,6 +14,8 @@ import Combine
 /// A sport page in the front page's navigation stack.
 struct SportRoute: Hashable, Sendable {
     let sport: String
+    /// The iPhone's league page (#177): the league's own content, pushed from its sport's page.
+    var league: String? = nil
 }
 
 /// #214 (Apple 103): the Sport tab's navigation path, held by the session (`BrowseModel.sportNavigation`) rather than
@@ -142,7 +144,6 @@ struct SportPageView: View {
     @ObservedObject private var model: SportFrontModel
     @ObservedObject private var f1: F1PageModel
     @StateObject private var flow = SportRecordFlow()
-    @Environment(\.sportPresenter) private var presenter
     /// The league shown below the banner (nil: the opening league).
     @State private var league: String?
     /// The page opens with focus on the hero's first button (else the back button).
@@ -191,7 +192,9 @@ struct SportPageView: View {
                     let shown = league.flatMap { l in leagues.contains { $0.league == l } ? l : nil }
                         ?? SportPageRules.openingLeague(sport, in: front, hero: hero)
                     banner(front, hero: hero, leagues: leagues, shown: shown, now: now)
-                    if let shown { leagueContent(shown, front: front, now: now) }
+                    if let shown {
+                        leagueContent(shown, front: front, now: now)
+                    }
                 } else {
                     ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, 80)
                 }
@@ -230,10 +233,28 @@ struct SportPageView: View {
         return game.competitors.lazy.compactMap(\.cachedLogo).first.map { .badge($0) }
     }
 
-    @ViewBuilder
     private func leagueContent(_ league: String, front: SportFront, now: Date) -> some View {
+        SportLeagueContent(app: app, browse: browse, sport: sport, league: league, front: front, labels: model.labels,
+                           hidden: f1.hidesSpoilers, now: now, flow: flow)
+    }
+}
+
+/// What a league shows below the banner (`SportPageRules.content`); on the iPhone, the league's own page (#177).
+struct SportLeagueContent: View {
+    let app: AppModel
+    let browse: BrowseModel
+    let sport: String
+    let league: String
+    let front: SportFront
+    let labels: [String: String]
+    let hidden: Bool
+    let now: Date
+    let flow: SportRecordFlow
+    @Environment(\.sportPresenter) private var presenter
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            let label = SportLabels.label(league, in: model.labels)
+            let label = SportLabels.label(league, in: labels)
             let leagues = SportPageRules.leagues(sport, in: front).map(\.league)
             switch SportPageRules.content(league: league, sport: sport, f1: browse.sportPagesEnabled,
                                           nfl: browse.nflPageEnabled, cricket: browse.cricketPageEnabled,
@@ -245,15 +266,15 @@ struct SportPageView: View {
                 SportFixtureContent(app: app, browse: browse, source: .league(league), front: front, label: label, flow: flow)
             case .cricket(let selected):
                 CricketPageView(app: app, browse: browse, embedded: true,
-                                scope: CricketLeagueScope(league: selected, leagues: leagues, labels: model.labels, games: front.games),
-                                fallback: AnyView(games(selected, front: front, now: now)))
+                                scope: CricketLeagueScope(league: selected, leagues: leagues, labels: labels, games: front.games),
+                                fallback: AnyView(games(selected)))
             case .events:
                 SportEventsContent(app: app, browse: browse, league: league, leagues: leagues, front: front,
-                                   labels: model.labels, flow: flow)
+                                   labels: labels, flow: flow)
             case .motorCards:
-                SportMotorCardsContent(app: app, league: league, front: front, hidden: f1.hidesSpoilers, now: now,
+                SportMotorCardsContent(app: app, league: league, front: front, hidden: hidden, now: now,
                                        client: browse.client, label: label, flow: flow)
-            case .games: games(league, front: front, now: now)
+            case .games: games(league)
             }
         }
         .id(league)
@@ -262,10 +283,10 @@ struct SportPageView: View {
     }
 
     @ViewBuilder
-    private func games(_ league: String, front: SportFront, now: Date) -> some View {
+    private func games(_ league: String) -> some View {
         let games = SportPageRules.games(league: league, in: front)
         VStack(alignment: .leading, spacing: 12) {
-            Text(SportLabels.label(league, in: model.labels)).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
+            Text(SportLabels.label(league, in: labels)).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             if games.isEmpty {
                 Text("Nothing in the next three days").font(SportCardMetrics.detail).foregroundStyle(.secondary)
                     .padding(.vertical, 12)
@@ -274,7 +295,7 @@ struct SportPageView: View {
                                              spacing: SportCardMetrics.spacing, alignment: .topLeading)],
                           alignment: .leading, spacing: SportCardMetrics.spacing) {
                     ForEach(games) { game in
-                        SportGameCard(game: game, front: front, hidden: f1.hidesSpoilers, now: now, client: browse.client,
+                        SportGameCard(game: game, front: front, hidden: hidden, now: now, client: browse.client,
                                       onSelect: { SportGamePress.select(game, app: app, presenter: presenter) }, flow: flow)
                     }
                 }

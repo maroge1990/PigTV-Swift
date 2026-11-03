@@ -354,6 +354,20 @@ controls are not used for live play.
   page) with its first three games as `SportFixtureRow`s: logo · Team v Team · logo, the score on the right, the state
   (red while live), time and channel beneath; a session's row has its league's square badge. Words: `SportPhoneLayout`
   (pure, tests `SportPhoneLayoutTests`), spoiler-free applied (unknown counts as on, #192; nothing hidden is read out).
+- **iPhone sport pages (`SportPhonePage`, D-44, R5-*-iPhone, #177, #186, Apple 142)**: the front page's pattern. "‹ Sport",
+  the sport and the scores chip; the sport's leagues as chips (only with more than one); a 212 pt carousel of the
+  selected league's games (`SportPhoneCarousel`, shared with the front page: the league's follows in the order sent, each
+  recording its own team, #49, then its other live games; with neither, the next to start; "1 of 4 · yours, then live");
+  its games as `SportFixtureRow`s under Live, Later today, Coming up and Earlier. The league's own content (what the
+  Apple TV shows under its banner: rounds and standings, Formula 1's weekend, the cricket scoreboard and tour, a
+  leaderboard, order of play or fight card) is a page of its own behind that header (`SportRoute(sport:league:)`,
+  `SportPhoneLeaguePage` around `SportLeagueContent`, #177). Words: `SportPhonePageLayout` (pure, tests
+  `SportPhonePageTests`). A league with no server page has no such header.
+- **Narrow sport pages (Apple 142)**: below 1100 pt (an iPad in portrait; the iPhone's league page) the environment's
+  `sportNarrow` (set from the Sport tab's width, never the content's) stacks a league's panels (`SportColumns`): the
+  standings under the round, F1's lists one under another and its session tiles scrolling sideways, golf's side column
+  and the UFC card under each other, the cricket tour under its scoreboard. On the iPhone the cricket columns and actions
+  are compact and golf's leaderboard drops the rounds (R5-Golf-iPhone). The Apple TV is unchanged.
 - **Shared words (Apple 137–138)**: a next-round card (C-R `nextRound`, #218) reads "Next round · Sat 15 Nov" with no
   channel, Watch or Remind me (`SportFrontText.isNextRound`/`startLine`/`channelLine`); a live card's clock is short
   (`cardClock`: "Q4 0:17", "OT1 10:00", #211), the down and distance stay in the banner; C-T's `%` is one decimal

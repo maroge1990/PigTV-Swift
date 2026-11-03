@@ -71,6 +71,7 @@ struct CricketPageView: View {
     /// Observed for the bells (a pending "watch when it starts").
     @ObservedObject private var appState: AppModel
     @Environment(\.sportPresenter) private var presenter
+    @Environment(\.sportNarrow) private var narrow
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -96,9 +97,18 @@ struct CricketPageView: View {
 
     private var wide: Bool {
         #if os(tvOS)
-        true
+        !narrow
         #else
-        sizeClass == .regular
+        sizeClass == .regular && !narrow
+        #endif
+    }
+
+    /// The iPhone: the scoreboard's columns and the actions fit its width.
+    private var compact: Bool {
+        #if os(tvOS)
+        false
+        #else
+        sizeClass == .compact
         #endif
     }
 
@@ -175,7 +185,7 @@ struct CricketPageView: View {
     private func scoped(_ page: CricketLeagueFilter.Scoped, scope: CricketLeagueScope, now: Date, spoilerFree: Bool) -> some View {
         let label = SportLabels.label(scope.league, in: scope.labels)
         if let lead = page.lead {
-            HStack(alignment: .top, spacing: CricketMetrics.columnGap) {
+            SportColumns.layout(narrow: !wide, spacing: CricketMetrics.columnGap).callAsFunction {
                 VStack(alignment: .leading, spacing: 12) {
                     // #211: the whole line (it wraps to a second line rather than cutting the series words).
                     HStack(alignment: .firstTextBaseline, spacing: 16) {
@@ -191,7 +201,8 @@ struct CricketPageView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 if let series = page.series, !series.matches.isEmpty {
-                    seriesPanel(series, lead: lead, now: now, spoilerFree: spoilerFree).frame(width: CricketMetrics.sideWidth)
+                    seriesPanel(series, lead: lead, now: now, spoilerFree: spoilerFree)
+                        .sportSideWidth(CricketMetrics.sideWidth, narrow: !wide)
                 }
             }
             .accessibilityElement(children: .contain)
@@ -222,14 +233,15 @@ struct CricketPageView: View {
                 Spacer(minLength: 0)
                 ForEach(Array(board.headers.enumerated()), id: \.offset) { _, header in
                     Text(header).font(CricketMetrics.otherDetail.weight(.bold)).tracking(1.2).foregroundStyle(.secondary)
-                        .frame(width: 150, alignment: .trailing)
+                        .frame(width: compact ? 62 : 150, alignment: .trailing)
                 }
             }
             ForEach(Array(lead.teams.enumerated()), id: \.offset) { index, team in
                 let list = index < lead.innings.count ? lead.innings[index] : []
                 let batting = !spoilerFree && list.contains(where: \.current) && lead.status == .live
-                HStack(spacing: 16) {
-                    SportBadge(name: team.name, logo: team.logo, league: "Cricket", client: browse.client, size: CricketMetrics.badge)
+                HStack(spacing: compact ? 8 : 16) {
+                    SportBadge(name: team.name, logo: team.logo, league: "Cricket", client: browse.client,
+                               size: compact ? 28 : CricketMetrics.badge)
                     if isFollowed(team.name) {
                         Image(systemName: "star.fill").foregroundStyle(Color.pigAccentText).accessibilityLabel("Your team")
                     }
@@ -240,7 +252,7 @@ struct CricketPageView: View {
                             ForEach(Array(board.rows[index].enumerated()), id: \.offset) { column, text in
                                 Text(text ?? "").font(column == board.rows[index].count - 1 ? CricketMetrics.detail : CricketMetrics.score)
                                     .foregroundStyle(column == board.rows[index].count - 1 ? Color.secondary : Color.primary)
-                                    .monospacedDigit().lineLimit(1).frame(width: 150, alignment: .trailing)
+                                    .monospacedDigit().lineLimit(1).frame(width: compact ? 62 : 150, alignment: .trailing)
                             }
                         }
                         .accessibilityElement(children: .combine)
@@ -354,8 +366,9 @@ struct CricketPageView: View {
             ForEach(Array(lead.teams.enumerated()), id: \.offset) { index, team in
                 let list = index < lead.innings.count ? lead.innings[index] : []
                 let batting = list.contains(where: \.current)
-                HStack(spacing: 16) {
-                    SportBadge(name: team.name, logo: team.logo, league: "Cricket", client: browse.client, size: CricketMetrics.badge)
+                HStack(spacing: compact ? 8 : 16) {
+                    SportBadge(name: team.name, logo: team.logo, league: "Cricket", client: browse.client,
+                               size: compact ? 28 : CricketMetrics.badge)
                     Text(team.name).font(CricketMetrics.team.weight(batting && !spoilerFree ? .heavy : .semibold)).lineLimit(1)
                     Spacer(minLength: 8)
                     if !spoilerFree {
@@ -434,13 +447,13 @@ struct CricketPageView: View {
         let offered = CricketPageText.actions(lead, now: now, pendingEventID: appState.pendingWatch?.eventID)
             .filter { $0 != .otherChannels || presenter != nil }
         // iPhone: one under the other (the labels would not fit side by side).
-        let layout = wide ? AnyLayout(HStackLayout(spacing: 14)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+        let layout = !compact ? AnyLayout(HStackLayout(spacing: 14)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
         layout {
             ForEach(Array(offered.enumerated()), id: \.offset) { index, action in
                 actionButton(action, lead: lead, event: event, primary: index == 0)
             }
             Text(CricketPageText.channelLine(lead, now: now)).font(CricketMetrics.detail).foregroundStyle(.secondary)
-                .lineLimit(1).padding(.leading, wide ? 8 : 0)
+                .lineLimit(1).padding(.leading, compact ? 0 : 8)
         }
         .tvFocusSection()
     }

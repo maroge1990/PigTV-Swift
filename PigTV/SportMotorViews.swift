@@ -26,6 +26,7 @@ struct SportF1Content: View {
     @ObservedObject private var appState: AppModel
     @Environment(\.sportPresenter) private var presenter
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.sportNarrow) private var narrow
 
     init(app: AppModel, browse: BrowseModel) {
         self.app = app
@@ -48,14 +49,19 @@ struct SportF1Content: View {
         let spoilerFree = model.hidesSpoilers
         if let page = model.page, page.available, let weekend = page.weekend {
             VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
-                HStack(alignment: .top, spacing: 14) {
+                let tiles = HStack(alignment: .top, spacing: 14) {
                     ForEach(SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree)) { tile in
                         sessionTile(tile, weekend: weekend, now: now)
                     }
                     circuit(weekend)
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .tvFocusSection()
+                // Narrow (an iPad in portrait, the iPhone's league page): the tiles scroll sideways.
+                if narrow {
+                    ScrollView(.horizontal) { tiles }.scrollIndicators(.hidden).scrollClipDisabled()
+                } else {
+                    tiles.tvFocusSection()
+                }
                 lists(page, spoilerFree: spoilerFree)
             }
         } else if !model.loaded || model.page?.available == false {
@@ -141,7 +147,7 @@ struct SportF1Content: View {
     private func lists(_ page: F1Page, spoilerFree: Bool) -> some View {
         let lists = SportMotorText.lists(page, followed: SportMotorText.followedDrivers(model.preferences), spoilerFree: spoilerFree)
         let hiddenText = "Spoiler-free is on. Grids, finishing orders and points stay hidden until it is turned off in Settings."
-        return HStack(alignment: .top, spacing: SportPageMetrics.gap) {
+        return SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap).callAsFunction {
             SportListCard(title: lists.gridTitle ?? "Last race", identifier: "f1.results") {
                 if lists.hidden { SportHiddenNote(title: "Results hidden", text: hiddenText) }
                 else if lists.grid.isEmpty { emptyNote("No results yet.") }
@@ -233,19 +239,20 @@ struct SportRaceContent: View {
     let front: SportFront
     let hidden: Bool
     @Environment(\.sportPresenter) private var presenter
+    @Environment(\.sportNarrow) private var narrow
 
     var body: some View {
         let event = SportEventsText.focus(page.events)
         let race = SportEventsText.race(page, event: event, spoilerFree: hidden)
         let followed = Set(event?.followed ?? [])
-        HStack(alignment: .top, spacing: SportPageMetrics.gap) {
+        SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap).callAsFunction {
             SportListCard(title: "Entry list",
                           note: race.entries.isEmpty ? nil : "\(race.entries.count) drivers · alphabetical, not a running order",
                           identifier: "sport.race.entries") {
                 if race.entries.isEmpty {
                     Text("The entry list appears once the feed has it.").font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
                 } else {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .leading), count: 3),
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .leading), count: narrow ? 2 : 3),
                               alignment: .leading, spacing: 4) {
                         ForEach(race.entries, id: \.self) { name in
                             HStack(spacing: 8) {
@@ -279,7 +286,7 @@ struct SportRaceContent: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 560)
+            .sportSideWidth(560, narrow: narrow)
         }
         .fixedSize(horizontal: false, vertical: true)
         .tvFocusSection()
