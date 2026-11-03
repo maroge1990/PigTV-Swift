@@ -42,7 +42,7 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 appearance: `BrandDepthUITests`, `TabFlashUITests`, `BrandSplashUITests`, `TopShelfCardsUITests`, `PigTVUITests`,
 `PigTVUITestsLaunchTests`). `BrandDepthUITests`' two player checks need `Tools/generate-brand-review-media.sh` (ffmpeg); the
 visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI).
-- `PigTVUITests`: Settings appearance switching. `PigTVUITestsLaunchTests`: launch screenshot.
+- `PigTVUITests`: Settings › Appearance switching. `PigTVUITestsLaunchTests`: launch screenshot.
 - `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details;
   build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h
   of offline fixture data, no server needed).
@@ -70,6 +70,12 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
 - `BrandSplashUITests`: the 1.7 splash (launch pig, then the stacked lockup) draws in light and dark and stays up through a breathing half-cycle (`PIGTV_UI_TEST_SCREEN=splash`, `PIGTV_UI_TEST_APPEARANCE`). `GuideGridNavigationUITests` also covers Jump to… (opens with focus on the day, Show guide, focus back on the grid).
 - `SportSettingsUITests` (#200): Settings › Sport shows a suggestion, Hide scores and the followed sports; a sport opens its
   page (leagues, Add a league, Record every game, Follow a team…) and Menu returns.
+- `SettingsUITests`, `SignInUITests`, `OfflineUITests` (push tier; D-44 batch 6, Apple 129–133): the Settings menu beside
+  its page (the page follows the focus; Diagnostics on the TV), Sign out confirming in its row (Stay signed in focused,
+  Menu cancels, Sign out signs out), Settings › Sport's Score delay stepping; Sign in's server step and two tiles (Change,
+  Username and password, Menu back); Offline's countdown, Try now focused, and Use a different server opening Sign in at
+  the server. Unit: `SettingsMenuTests`, `SettingsSportTests` (Score delay's PUT and 409 on a `URLProtocol`, the logo
+  match), `SignInStepTests`, `OfflineRetryTests`.
 - `SportBannerUITests` (D-43, build 97; `front` on `sport-front-0427.json`, times moved to the clock): no tiles, the
   banner's list scrolls in place, a rail header opens a sport page whose banner lists its leagues and flips the content,
   Menu restores focus, a one-league sport is full width, the quiet and nothing-in-72-hours banners.
@@ -83,12 +89,13 @@ data, not the real feed.
 
 | Variable | Values |
 |---|---|
-| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `recording-game` (a game's View recording) · `recordings` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` · `sport-event` · `sport-channels` |
+| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `recording-game` (a game's View recording) · `recordings` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` (Sign in's tiles) · `signin-server` (its server step) · `pairing` · `sport-event` · `sport-channels` |
 | `PIGTV_UI_TEST_APPEARANCE` | `light` or `dark` (the tvOS simulator has no `simctl ui appearance`) |
 | `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the library and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
 | `PIGTV_UI_TEST_MEDIA` | A local movie file the `player` fixture plays |
 | `PIGTV_UI_TEST_HOME_SCROLL`, `PIGTV_UI_TEST_SPORT_SCROLL` | A shelf or section title to scroll into view (e.g. `Sport now & next`, `Replays`) |
 | `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens with Scheduled pushed |
+| `PIGTV_UI_TEST_SETTINGS_PAGE` | `sport` · `account` · `appearance` · `labs` · `diagnostics` · `about`: the Settings page shown beside the menu (with `settings` or `settings-sport`) |
 | `PIGTV_UI_TEST_UNDO` | `1` (with `tab-recordings`): a recording just deleted, its Undo toast held on screen |
 | `PIGTV_UI_TEST_CLASH` | `1`: the Recordings fixture adds two schedules that clash; one loses (`beatenBy`) and offers "Record this one instead" (#12) |
 | `PIGTV_UI_TEST_FRONT_F1` | `1` (with `front`): the Motorsport page embeds the F1 fixture's weekend |

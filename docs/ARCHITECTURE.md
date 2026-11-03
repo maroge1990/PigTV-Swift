@@ -27,7 +27,7 @@ detail, oldest feature first within each area; a later build's paragraph overrid
 | Live player | `CustomPlayerView` (no AVKit UI): info/scrub/channels/tracks overlays | `NativePlayer` (AVPlayerViewController, controls off) + PigTV's `TouchPlayerChrome` | same, bottom-sheet channel list |
 | Recording player | `RecordingPlayerView` (custom; Skip break, Auto-skip) | AVKit (`RecordingNativePlayer`) | AVKit |
 | Top Shelf | `PigTVTopShelf` extension: favourites as rendered 16:9 cards, `pigtv://play` links | — | — |
-| Settings | server, Version, appearance, **Sport** (C-U), **Labs** (Stream info overlay), **Diagnostics** (Top Shelf) | Sport as a Form section; Labs; no Diagnostics section | same |
+| Settings | a menu beside its page (D-44): Sport (C-U), Account, Appearance, Labs, **Diagnostics** (Top Shelf), About | the system split view (menu in the sidebar); no Diagnostics | the menu, each row pushing its page; versions under it |
 
 The bullets below are the durable detail, oldest feature first within each area; a later build's paragraph overrides an
 earlier one where they differ.
@@ -250,7 +250,7 @@ controls are not used for live play.
 
 ## Labs and stream info
 
-- **Labs (C-F, build 19):** Settings has a "Labs" section (`LabsToggleRow` in `LibraryView.swift`) of persistent `@AppStorage` switches, all off by default. Keys and wording live only in the `Labs` enum (`Labs.swift`): `pigtv.labs.streamInfo` (A4.2 stream info overlay) is the only one left (`pigtv.labs.newGuide` and `pigtv.labs.heaac` were removed in build 27). Later work reads `Labs.isOn(…)`; add new switches to `Labs.toggles`. **HE-AAC passthrough (C-C) left Labs in build 27:** `PlaybackCapabilities.current()` always sends `"heaac": true` (Mark accepted it); the 'fmt?' → `audioEncode` fallback is the safety net.
+- **Labs (C-F, build 19):** Settings has a "Labs" section (`LabsToggleRow` in `SettingsView.swift`) of persistent `@AppStorage` switches, all off by default. Keys and wording live only in the `Labs` enum (`Labs.swift`): `pigtv.labs.streamInfo` (A4.2 stream info overlay) is the only one left (`pigtv.labs.newGuide` and `pigtv.labs.heaac` were removed in build 27). Later work reads `Labs.isOn(…)`; add new switches to `Labs.toggles`. **HE-AAC passthrough (C-C) left Labs in build 27:** `PlaybackCapabilities.current()` always sends `"heaac": true` (Mark accepted it); the 'fmt?' → `audioEncode` fallback is the safety net.
 - **Stream info overlay (A4.2, build 22, Labs → Stream info overlay, tvOS):** with the switch on, the custom player's info overlay adds one line (`StreamInfoLine` in `CustomPlayer.swift`, refreshed every second only while the overlay is up): codec from the video track's format description (H.264/HEVC/…; Dolby Vision from a `dvh1`/`dvhe` entry or a `dvcC`/`dvvC` box, else HDR10/HLG from the transfer function), `presentationSize` @ `nominalFrameRate` (else `currentVideoFrameRate`), indicated bitrate (observed) from the access log's last event, dropped frames summed over access-log events, stalls this session, the resolve route (strategy · video copy/encode) and `ServerInfo.identity`. Gathering is `PlaybackModel.streamStats()`; naming/formatting is pure (`StreamInfo.swift`, tests `StreamInfoTests`). `play-end` events also carry `droppedFrames` and `observedBitrate` (the server's client-event route logs named fields and ignores unknown ones, checked in `routes/playback.js`).
 
 ## Top Shelf
@@ -354,6 +354,32 @@ controls are not used for live play.
   weekend hero, no scroll view of their own); any other league its C-R games as cards. Fixture: `PIGTV_UI_TEST_SCREEN=front`
   with `PigTVTests/Fixtures/sport-front-0427.json` (`PIGTV_UI_TEST_FRONT_F1=1` embeds the F1 fixture); tests
   `SportBannerTests`, `SportFrontLayoutTests`, `SportPageTests`, `SportBannerUITests`.
+
+### Settings, Sign in and Offline (D-44 batch 6, Apple 129–133, R5-Settings/SetSport/Account/SignIn/Offline)
+
+- **Settings** (`SettingsView.swift`): `SettingsMenu` (pure) lists Sport (only with `sportFollows`), Account, Appearance,
+  Labs, Diagnostics (tvOS only) and About, each with a summary ("2 sports · 3 follows", "mark · pigtv.local", "App 129 ·
+  Server 0444"). The iPad (regular width) uses `NavigationSplitView`, the menu in its sidebar and the page in a
+  `NavigationStack` beside it; the iPhone (compact) a `NavigationStack` whose list rows push the pages. On tvOS 27
+  `NavigationSplitView` inside the tab bar drew only its sidebar, full width, so the TV lays the menu (460 pt) and the
+  page side by side as two focus sections, and the page follows the focused menu item (`defaultFocus` lands on the page
+  shown). The selected item is 14 % pink with a short bar. `PIGTV_UI_TEST_SETTINGS_PAGE` opens a page in the fixtures.
+- **Account** (`SettingsAccountPage`): Signed in as, Server, Use a different server, Sign out. Sign out confirms inside its
+  own row (D-44's one confirmation, never a dialog): "Sign out of PigTV?" with Stay signed in (the rose primary, focused on
+  the TV; Menu does the same) and Sign out. Use a different server opens the same row and then Sign in at its server step
+  (`AppModel.signInAtServer`).
+- **Settings › Sport** (`SportSettingsSection`, `SettingsSport.swift`): Hide scores and Score delay side by side (a Form
+  section on iOS), then the followed sports in order (leagues, the first two followed names with the cached `/api/logo/`
+  logo the loaded C-R front page gives each, `SettingsSportLogos`, else a monogram `SportBadge`), suggestions, Add a sport.
+  Score delay (`ScoreDelaySetting`) is C-O's `sports/preferences` `scoreDelaySeconds`, drawn only with the server's
+  `sportsDashboard` flag: −10 / +10 within 0–300, sent with the revision read; a refused save reads it again and says so.
+- **Sign in** (`SignInView.swift`, `OnboardingView`): the stacked lockup, then step 1, the server's address, whose Continue
+  reaches `/api/info` (`AppModel.checkServer`), and step 2, the server as a chip (a check once reached) with Change and two
+  tiles: Pair with browser (recommended, the one rose primary, focused; left out when the server said it cannot pair) and
+  Username and password (the fields, Sign in, Back/Menu). A saved server opens on the tiles (`SignInStep.opening`).
+- **Offline** (`UnreachableView`): the pig inside a ring that empties over the 20 s to the next automatic retry
+  (`RetryCountdown`, pure; restarted after each attempt), "Trying again in N seconds", the reason, the address, Try now
+  (the rose primary) and Use a different server.
 
 ### Settings › Sport (C-U, #200)
 
@@ -547,7 +573,7 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
   right-to-left), alpha 0.16 → 0.067 at 27.9% → 0 at 62% of the diagonal (light; 0.13/0.055 dark); plain canvas with Reduce Transparency. The
   UIKit guide grid (`GuideGridViewController` view and collection view) is clear over that SwiftUI background; the UIKit containers painted by
   `PageBackdrop` stay flat canvas behind it.
-- **Onboarding/sign-in:** the stacked lockup (`PigLockup(trimmedToInk:)`, pig 150 pt). Radiance never sits behind forms: `PigIdentityBackdrop` is a
+- **Onboarding/sign-in:** the stacked lockup (`PigLockup(trimmedToInk:)`, pig 130 pt on the TV, 96 pt on iOS, centred). Radiance never sits behind forms: `PigIdentityBackdrop` is a
   static halo behind the lockup's pig only, over the page canvas.
 - **Roles, not literals (#190, kit §4–§7):** colours are catalog roles (`Color.pig*`); playback uses the kit's `media` tokens as
   `PigMediaAccent` (rose `#EF7AAE`, the live dot), `PigMediaPanel` (black 82 %, every panel over video), `PigMediaSolidPanel` (`#15111A`,
