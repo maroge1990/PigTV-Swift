@@ -414,7 +414,9 @@ struct RecordPage: View {
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text(kicker).font(Metrics.kicker).tracking(2).foregroundStyle(Color.pigSecondary).lineLimit(1)
+                // Two lines on a narrow screen rather than "CHANGE RECORDING · RECOR…".
+                Text(kicker).font(Metrics.kicker).tracking(2).foregroundStyle(Color.pigSecondary).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(request.title).font(Metrics.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 if let airing {
@@ -522,6 +524,7 @@ struct RecordPage: View {
             .disabled(locked)
             .accessibilityLabel("\(title): \(RecordPlan.chipTitle(minutes))")
             .accessibilityIdentifier("record.\(id).\(minutes.map(String.init) ?? "usual")")
+            .id(chipID(id, minutes))
         }
         return Group {
             #if os(tvOS)
@@ -533,13 +536,19 @@ struct RecordPage: View {
             #else
             VStack(alignment: .leading, spacing: 6) {
                 Text(title).font(Metrics.rowLabel).foregroundStyle(Color.pigSecondary)
-                ScrollView(.horizontal) { HStack(spacing: 8) { chips }.padding(.vertical, 4) }
-                    .scrollIndicators(.hidden).scrollClipDisabled()
+                // The chosen chip is scrolled into view on opening (Change recording's 15 min sat off screen).
+                ScrollViewReader { reader in
+                    ScrollView(.horizontal) { HStack(spacing: 8) { chips }.padding(.vertical, 4) }
+                        .scrollIndicators(.hidden).scrollClipDisabled()
+                        .onAppear { reader.scrollTo(chipID(id, selection.wrappedValue), anchor: .center) }
+                }
             }
             #endif
         }
         .opacity(locked ? 0.5 : 1)
     }
+
+    private func chipID(_ row: String, _ minutes: Int?) -> String { "\(row).\(minutes.map(String.init) ?? "usual")" }
 
     // MARK: Record on
 
@@ -591,34 +600,54 @@ struct RecordPage: View {
 
     // MARK: Buttons
 
+    /// The actions: in a row, or stacked full width on a compact width (an upright iPhone), where a row wrapped.
+    @ViewBuilder
     private var buttons: some View {
-        HStack(spacing: 16) {
-            Button(RecordPlan.primaryTitle(what, request: request), systemImage: changing ? "checkmark.circle" : "record.circle") {
-                Task { await primary() }
-            }
-            .pigPrimaryButton()
-            .disabled(saveOff)
-            .opacity(saveOff ? 0.45 : 1)
-            .focused($focus, equals: .primary)
-            .accessibilityIdentifier("record.schedule")
-            if changing {
-                Button(live?.status == "recording" ? "Stop recording" : "Cancel recording", systemImage: "xmark.circle") {
-                    if let live { cancel(live) }
-                }
-                .foregroundStyle(Color.pigDanger)
-                .disabled(busy || gone)
-                .opacity(gone ? 0.45 : 1)
-                .focused($focus, equals: .cancel)
-                .accessibilityIdentifier("record.cancelRecording")
-            }
-            Button(changing ? "Close" : "Cancel") { close() }
-                .disabled(busy)
-                .accessibilityIdentifier("record.close")
-            if busy { ProgressView() }
-        }
         #if os(tvOS)
-        .focusSection()
+        HStack(spacing: 16) { actionButtons(stacked: false) }
+            .focusSection()
+        #else
+        if sizeClass == .regular {
+            HStack(spacing: 16) { actionButtons(stacked: false) }
+        } else {
+            VStack(spacing: 10) { actionButtons(stacked: true) }
+        }
         #endif
+    }
+
+    @ViewBuilder
+    private func actionButtons(stacked: Bool) -> some View {
+        Button { Task { await primary() } } label: {
+            Label(RecordPlan.primaryTitle(what, request: request), systemImage: changing ? "checkmark.circle" : "record.circle")
+                .lineLimit(1)
+                .frame(maxWidth: stacked ? .infinity : nil)
+        }
+        .pigPrimaryButton()
+        .disabled(saveOff)
+        #if os(tvOS)
+        // The tvOS primary style draws no disabled look of its own; the iOS glass button dims itself.
+        .opacity(saveOff ? 0.45 : 1)
+        #endif
+        .focused($focus, equals: .primary)
+        .accessibilityIdentifier("record.schedule")
+        if changing {
+            Button { if let live { cancel(live) } } label: {
+                Label(live?.status == "recording" ? "Stop recording" : "Cancel recording", systemImage: "xmark.circle")
+                    .lineLimit(1)
+                    .frame(maxWidth: stacked ? .infinity : nil)
+            }
+            .foregroundStyle(Color.pigDanger)
+            .disabled(busy || gone)
+            .opacity(gone ? 0.45 : 1)
+            .focused($focus, equals: .cancel)
+            .accessibilityIdentifier("record.cancelRecording")
+        }
+        Button { close() } label: {
+            Text(changing ? "Close" : "Cancel").lineLimit(1).frame(maxWidth: stacked ? .infinity : nil)
+        }
+        .disabled(busy)
+        .accessibilityIdentifier("record.close")
+        if busy { ProgressView() }
     }
 
     private func primary() async {
