@@ -167,7 +167,8 @@ final class BrandDepthUITests: XCTestCase {
     func testScheduledRecordingCancellationAndSettingsFooter() throws {
         for mode in ["light", "dark"] {
             let app = launch("recordings", mode)
-            focus(app, label: "Scheduled")
+            // D-44 (Apple 119): Scheduled opens from Coming up's All ›.
+            focus(app, label: "All scheduled recordings")
             XCUIRemote.shared.press(.select)
             shot(app, "recordings-scheduled-\(mode)")
             focus(app, label: "Cancel schedule")

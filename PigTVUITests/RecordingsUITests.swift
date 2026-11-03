@@ -1,9 +1,8 @@
 import XCTest
 
 #if os(tvOS)
-// The Recordings poster grid on the offline fixture
-// (PIGTV_UI_TEST_SCREEN=tab-recordings): the needs-attention banner, the
-// Continue watching row and the All recordings grid are reachable with the remote.
+// The Recordings tab on the offline fixture (PIGTV_UI_TEST_SCREEN=tab-recordings): D-44 (Apple 119) the featured
+// recording, the cards and the Coming up strip are reachable with the remote, and "All ›" opens Scheduled.
 final class RecordingsUITests: XCTestCase {
     private func focused(_ app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
@@ -22,7 +21,8 @@ final class RecordingsUITests: XCTestCase {
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-recordings"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         app.launch()
-        let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'The Headlines'")).firstMatch
+        // Apple 119: The Headlines (partly watched) is the featured recording; the rest are cards.
+        let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Grand Final'")).firstMatch
         XCTAssertTrue(tile.waitForExistence(timeout: 10), "no recording tile")
         attach(app, "recordings-initial")
         var seen = Set<String>()
@@ -31,16 +31,44 @@ final class RecordingsUITests: XCTestCase {
             seen.insert(focused(app).label)
         }
         attach(app, "recordings-after-down")
-        XCTAssertTrue(seen.contains { $0.hasPrefix("The Headlines") || $0.hasPrefix("Grand Final") || $0.hasPrefix("Feature Film") },
+        XCTAssertTrue(seen.contains { $0.hasPrefix("Grand Final") || $0.hasPrefix("Feature Film") || $0.hasPrefix("AFL: Collingwood") },
                       "focus never reached a recording tile: \(seen)")
         XCUIRemote.shared.press(.right)
         XCTAssertFalse(focused(app).label.isEmpty)
+    }
+
+    /// D-44 (Apple 119): no library. The featured recording (Continue: The Headlines), the cards, and Coming up, whose
+    /// "All ›" opens Scheduled.
+    @MainActor
+    func testFeaturedRecordingCardsAndComingUpOpenScheduled() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-recordings"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        let any = app.descendants(matching: .any)
+        let featured = any["recordings.featured"]
+        XCTAssertTrue(featured.waitForExistence(timeout: 10), "no featured recording")
+        XCTAssertTrue(featured.label.hasPrefix("The Headlines"), featured.label)
+        XCTAssertTrue(app.buttons["recordings.featured.play"].exists, "the featured recording offers Resume")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Late Movie'")).firstMatch.exists,
+                       "a failed recording is not on the tab (Scheduled › Needs attention has it)")
+        let all = app.buttons["recordings.comingUp.all"]
+        XCTAssertTrue(all.exists, "Coming up has All ›")
+        for _ in 0..<6 where !focused(app).identifier.hasPrefix("recordings.comingUp") { XCUIRemote.shared.press(.down) }
+        for _ in 0..<6 where focused(app).identifier != "recordings.comingUp.all" { XCUIRemote.shared.press(.right) }
+        attach(app, "recordings-tab")
+        XCTAssertEqual(focused(app).identifier, "recordings.comingUp.all", "focus never reached All ›")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["Cancel schedule"].waitForExistence(timeout: 5) || any["scheduled.page"].waitForExistence(timeout: 1),
+                      "All › did not open Scheduled")
+        attach(app, "recordings-scheduled")
     }
 
     @MainActor
     func testReviewSheetIsFocusableAndOffersDelete() throws {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-recordings"
+        app.launchEnvironment["PIGTV_UI_TEST_RECORDINGS_SECTION"] = "scheduled"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         app.launch()
         let banner = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Review'")).firstMatch

@@ -225,7 +225,9 @@ enum GuideFixtures {
             #"{"id":28,"title":"Documentary: Deep Oceans","channel_name":"Sky News","channel_logo":"\#(logoKey(2))","started_at":\#(now - 52 * hour),"status":"completed","duration_sec":3300,"watched":true}"#,
             #"{"id":27,"title":"Classic Replay","channel_name":"Sky Sports Main Event","started_at":\#(now - 75 * hour),"status":"completed","duration_sec":5400}"#,
             #"{"id":26,"title":"Weekend Special","channel_name":"TCM","started_at":\#(now - 4 * hour),"status":"scheduled"}"#,
-            #"{"id":25,"title":"Late Movie","channel_name":"HBO","channel_logo":"\#(logoKey(6))","started_at":\#(now - 100 * hour),"status":"failed","native_error":"The recording could not be prepared."}"#]
+            #"{"id":25,"title":"Late Movie","channel_name":"HBO","channel_logo":"\#(logoKey(6))","started_at":\#(now - 100 * hour),"status":"failed","native_error":"The recording could not be prepared."}"#,
+            // Apple 119: a game ("A v B"), drawn with its two teams' badges.
+            #"{"id":24,"title":"AFL: Collingwood v Carlton","channel_name":"Fox Footy 504","started_at":\#(now - 26 * hour),"status":"completed","duration_sec":9000,"file_size_bytes":5153960755}"#]
         // The fixture server has no `recordingPositions`, so progress comes
         // from this device's saved positions (as on an older server).
         for (id, seconds) in [(30, 600.0), (29, 4100.0), (28, 3290.0)] {

@@ -1,57 +1,75 @@
 import SwiftUI
 
-/// Sizes for the Recordings page (tvOS tiles match Home's cards).
-private enum RecordingsMetrics {
+// D-44 batch 5 (Apple 119, R5-Recordings-*): the Recordings tab. No library: the featured recording across the top
+// (Continue, else the newest), the rest as large cards, and Coming up as a slim strip at the bottom whose "All ›" opens
+// Scheduled. The iPhone draws the same recordings as a swipeable card stack, with Coming up as a fixed card at the
+// bottom that opens Scheduled. What it lists is `RecordingsHome` (pure, tested).
+
+/// Sizes for the Recordings tab.
+enum RecordingsMetrics {
     #if os(tvOS)
     static let pagePadding: CGFloat = 40
-    static let tileMinWidth: CGFloat = 260
-    static let tileMaxWidth: CGFloat = 320
-    static let rowTileWidth: CGFloat = 260
-    static let spacing: CGFloat = 30
+    static let gap: CGFloat = 28
+    static let featuredArtWidth: CGFloat = 760
+    static let featuredArtHeight: CGFloat = 428
+    static let featuredBadge: CGFloat = 170
+    static let cardWidth: CGFloat = 330
+    static let cardBadge: CGFloat = 70
+    static let spacing: CGFloat = 22
+    static let kicker: Font = .system(size: 19, weight: .bold)
+    static let featuredTitle: Font = .system(size: 56, weight: .heavy)
+    static let featuredMeta: Font = .system(size: 23)
     static let title: Font = .system(size: 22, weight: .semibold)
     static let detail: Font = .system(size: 18)
+    static let strip: Font = .system(size: 18)
+    static let stripLabel: Font = .system(size: 16, weight: .heavy)
     #else
     static let pagePadding: CGFloat = 20
-    static let tileMinWidth: CGFloat = 150
-    static let tileMaxWidth: CGFloat = 240
-    static let rowTileWidth: CGFloat = 170
+    static let gap: CGFloat = 18
+    static let featuredArtWidth: CGFloat = 500
+    static let featuredArtHeight: CGFloat = 282
+    static let featuredBadge: CGFloat = 120
+    static let cardWidth: CGFloat = 250
+    static let cardBadge: CGFloat = 46
     static let spacing: CGFloat = 14
+    static let kicker: Font = .caption.weight(.bold)
+    static let featuredTitle: Font = .largeTitle.weight(.heavy)
+    static let featuredMeta: Font = .callout
     static let title: Font = .subheadline.weight(.semibold)
     static let detail: Font = .caption
+    static let strip: Font = .subheadline
+    static let stripLabel: Font = .caption.weight(.bold)
     #endif
     static let radius = PigRadius.card
-    static let artRatio: CGFloat = 1.7
+    static let artRatio: CGFloat = 16 / 9
 }
 
-/// A failed library recording or a failed/missed schedule, for the
-/// "needs attention" list.
-private enum AttentionItem: Identifiable {
-    case schedule(ScheduledRecording)
-    case recording(Recording)
-    var id: String {
-        switch self {
-        case .schedule(let item): "schedule-\(item.id)"
-        case .recording(let item): "recording-\(item.id)"
-        }
-    }
+/// Where the Recordings tab's stack goes: Scheduled, or a recording (by id, so a refreshed list keeps the page).
+enum RecordingsRoute: Hashable {
+    case scheduled
+    case recording(Int)
+}
+
+/// A recording to play: resumed (the player asks), or the one being made from its start (C-L).
+struct RecordingPlay: Identifiable {
+    let recording: Recording
+    var fromStart = false
+    var id: String { "\(recording.id)|\(fromStart)" }
 }
 
 struct RecordingsView: View {
-    /// Not observed (audit R05): it draws the recordings store and the
-    /// action state, and nothing else BrowseModel holds.
+    /// Not observed (audit R05): it draws the recordings store and the action state, and nothing else BrowseModel holds.
     let model: BrowseModel
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
+    @State private var path: [RecordingsRoute] = RecordingsView.initialPath
     @State private var selected: Recording?
-    @State private var cancellation: ScheduledRecording?
-    /// #12 (D-42): the losing schedule whose "Record this one instead" is being confirmed.
-    @State private var choosing: ScheduledRecording?
-    @State private var section = RecordingsView.initialSection
-    @State private var search = ""
-    @State private var reviewing = false
-    /// C-M: the recording rules sheet.
-    @State private var showingRules = false
-    @Environment(\.colorScheme) private var scheme
+    @State private var playing: RecordingPlay?
+    /// The iPhone's card stack: the recording shown.
+    @State private var page: Int?
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
 
     init(model: BrowseModel) {
         self.model = model
@@ -60,73 +78,52 @@ struct RecordingsView: View {
     }
 
     /// The offline fixture can open on Scheduled (PIGTV_UI_TEST_RECORDINGS_SECTION=scheduled, DEBUG only).
-    private static var initialSection: String {
+    private static var initialPath: [RecordingsRoute] {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_RECORDINGS_SECTION"] == "scheduled" { return "scheduled" }
+        if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_RECORDINGS_SECTION"] == "scheduled" { return [.scheduled] }
         #endif
-        return "library"
+        return []
     }
 
-    private var failed: [Recording] { RecordingsRows.failedRecordings(model.recordings, schedules: model.schedules) }
+    private var shelf: [Recording] { RecordingsHome.shelf(model.recordings) }
+    private var featured: Recording? { RecordingsHome.featured(shelf) { model.progress(for: $0) } }
+    private var cards: [Recording] { RecordingsHome.cards(shelf, featured: featured) }
+    private var comingUp: [ScheduledRecording] { RecordingsHome.comingUp(model.schedules) }
+    /// The game recordings' teams come from the Sport data already loaded (C-R cards).
+    private var games: [SportsGame] { model.sportFront.front?.games ?? [] }
 
-    /// Everything but the failed ones, which the banner owns.
-    private var filtered: [Recording] {
-        model.recordings.filter { $0.status != "failed" }.filter {
-            search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) ||
-                ($0.channel_name?.localizedCaseInsensitiveContains(search) ?? false)
-        }
-    }
-
-    private var problems: [ScheduledRecording] { RecordingsRows.problemSchedules(model.schedules) }
-
-    private var continueWatching: [Recording] {
-        search.isEmpty ? RecordingsRows.continueWatching(model.recordings) { model.progress(for: $0) } : []
-    }
-
-    private var attentionTitle: String? {
-        RecordingsRows.attentionTitle(failedSchedules: problems.filter { $0.status == "failed" }.count,
-                                      missedSchedules: problems.filter { $0.status == "missed" }.count,
-                                      failedRecordings: failed.count)
-    }
-
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: RecordingsMetrics.tileMinWidth, maximum: RecordingsMetrics.tileMaxWidth),
-                  spacing: RecordingsMetrics.spacing, alignment: .top)]
+    private var compact: Bool {
+        #if os(iOS)
+        sizeClass == .compact
+        #else
+        false
+        #endif
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                PigPageHeader(title: "Recordings")
-                #if !os(tvOS)
-                sectionPicker
-                #endif
-                if let error = model.recordingsError {
-                    RetryBanner(message: error) { Task { await model.loadRecordings() } }
-                }
-                if let message = model.actionMessage {
-                    Text(message).font(.callout).foregroundStyle(.secondary)
-                }
-                if let error = model.actionError { Text(error).foregroundStyle(.secondary).padding(.horizontal) }
-                if section == "library" { library } else { scheduled }
-                if model.recordingsBusy { ProgressView("Refreshing recordings…") }
+        NavigationStack(path: $path) {
+            Group {
+                if compact { stack } else { wide }
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .pigPageBackdrop()
-            // Build 31: only when older than a minute. The tvOS remote has no
-            // pull-to-refresh, so there it reloads on every appearance
-            // (anything older than 10 s).
+            .navigationDestination(for: RecordingsRoute.self) { route in
+                switch route {
+                case .scheduled: ScheduledPage(model: model)
+                case .recording(let id):
+                    if let item = model.recordings.first(where: { $0.id == id }) { RecordingDetails(model: model, original: item) }
+                }
+            }
+            // Build 31: only when older than a minute. The tvOS remote has no pull-to-refresh, so there it reloads on
+            // every appearance (anything older than 10 s).
             #if os(tvOS)
             .task { await model.loadRecordingsIfStale(maxAge: 10) }
             #else
             .task { await model.loadRecordingsIfStale() }
             #endif
-            // Review F6: while the page is on screen it keeps itself current, so a
-            // recording that starts, finishes or fails shows without a remote press.
-            // Quiet (no spinner, unchanged rows are not republished); it stops when
-            // the page is not visible.
+            // Review F6: while the page is on screen it keeps itself current, quietly; it stops when it is not visible.
             .whileVisible {
                 while !Task.isCancelled {
                     let wait = RecordingsRows.refreshInterval(recordings: model.recordings, schedules: model.schedules, now: Date())
@@ -135,61 +132,58 @@ struct RecordingsView: View {
                 }
             }
             .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }
-            .sheet(isPresented: $reviewing) { RecordingAttentionSheet(model: model) }
-            .sheet(isPresented: $showingRules) { RecordingRulesSheet(model: model) }
-            .closesForOutsidePlay { selected = nil; reviewing = false; showingRules = false } // #179
-            .confirmationDialog("Cancel this recording?", isPresented: Binding(
-                get: { cancellation != nil }, set: { if !$0 { cancellation = nil } }
-            ), presenting: cancellation) { item in
-                Button(item.status == "recording" ? "Stop recording" : "Cancel schedule", role: .destructive) {
-                    Task { await model.cancel(item) }
+            .fullScreenCover(item: $playing) { play in
+                RecordingPlayerScreen(recording: play.recording, client: model.client, fromStart: play.fromStart) {
+                    Task { await model.loadRecordings() }
                 }
-            } message: { item in
-                Text("\(item.title). If it is already recording, it will stop. The recorded portion will be kept.")
             }
+            .closesForOutsidePlay { selected = nil; playing = nil } // #179
         }
     }
 
-    private var sectionPicker: some View {
-        Picker("View", selection: $section) {
-            Text("Library").tag("library")
-            Text("Scheduled").tag("scheduled")
+    private func open(_ item: Recording) { selected = item }
+
+    @ViewBuilder
+    private var status: some View {
+        if let error = model.recordingsError {
+            RetryBanner(message: error) { Task { await model.loadRecordings() } }
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, RecordingsMetrics.pagePadding)
+        if let message = model.actionMessage {
+            Text(message).font(.callout).foregroundStyle(.secondary).padding(.horizontal, RecordingsMetrics.pagePadding)
+        }
+        if let error = model.actionError {
+            Text(error).foregroundStyle(.secondary).padding(.horizontal, RecordingsMetrics.pagePadding)
+        }
     }
 
-    // MARK: Library
+    // MARK: Apple TV and iPad
 
-    private var searchField: some View {
-        TextField("Search recordings", text: $search)
-            .padding(.horizontal, RecordingsMetrics.pagePadding)
-    }
-
-    private var library: some View {
-        VStack(spacing: 12) {
-            #if !os(tvOS)
-            searchField
-            #endif
+    private var wide: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PigPageHeader(title: "Recordings")
+            status
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    #if os(tvOS)
-                    // The TV has no pull-to-refresh and its focus lifts rows
-                    // under anything pinned above them, so the controls scroll
-                    // away with the content.
-                    VStack(spacing: 12) { sectionPicker; searchField }
-                        .padding(.horizontal, -RecordingsMetrics.pagePadding)
-                    #endif
-                    if let title = attentionTitle {
-                        AttentionBanner(title: title) { reviewing = true }
+                VStack(alignment: .leading, spacing: RecordingsMetrics.gap) {
+                    if let featured {
+                        FeaturedRecording(item: featured, progress: model.progress(for: featured),
+                                          teams: RecordingTeams.match(title: featured.title, games: games),
+                                          client: model.client, canWatchFromStart: canWatchFromStart(featured),
+                                          play: { playing = RecordingPlay(recording: featured, fromStart: $0) },
+                                          details: { open(featured) })
+                            .tvFocusSection()
+                    } else if !model.recordingsBusy {
+                        RecordingsEmpty()
                     }
-                    if !continueWatching.isEmpty {
+                    if !cards.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            PigSectionHeader(title: "Continue watching")
+                            PigSectionHeader(title: "Ready to watch")
                             ScrollView(.horizontal, showsIndicators: false) {
                                 LazyHStack(alignment: .top, spacing: RecordingsMetrics.spacing) {
-                                    ForEach(continueWatching) { item in
-                                        tile(item).frame(width: RecordingsMetrics.rowTileWidth)
+                                    ForEach(cards) { item in
+                                        RecordingCard(item: item, progress: model.progress(for: item),
+                                                      teams: RecordingTeams.match(title: item.title, games: games),
+                                                      client: model.client) { open(item) }
+                                            .frame(width: RecordingsMetrics.cardWidth)
                                     }
                                 }
                                 .padding(.vertical, 12).padding(.horizontal, 4)
@@ -198,19 +192,11 @@ struct RecordingsView: View {
                         }
                         .tvFocusSection()
                     }
-                    VStack(alignment: .leading, spacing: 10) {
-                        PigSectionHeader(title: "All recordings")
-                        if filtered.isEmpty && !model.recordingsBusy {
-                            Text(search.isEmpty ? "No recordings yet. Choose a programme in Guide to schedule one." : "No matching recordings.")
-                                .foregroundStyle(.secondary).padding(.vertical, 8)
-                        } else {
-                            LazyVGrid(columns: columns, alignment: .leading, spacing: RecordingsMetrics.spacing) {
-                                ForEach(filtered) { item in tile(item) }
-                            }
-                            .padding(.vertical, 8)
-                        }
-                    }
-                    .tvFocusSection()
+                    #if os(tvOS)
+                    ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
+                        .tvFocusSection()
+                    #endif
+                    if model.recordingsBusy { ProgressView("Refreshing recordings…") }
                 }
                 .padding(.horizontal, RecordingsMetrics.pagePadding)
                 .padding(.bottom, 24)
@@ -219,142 +205,134 @@ struct RecordingsView: View {
             .refreshable { await model.loadRecordings() }
             #endif
         }
+        #if !os(tvOS)
+        .safeAreaInset(edge: .bottom) {
+            ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
+                .padding(.horizontal, RecordingsMetrics.pagePadding).padding(.bottom, 8)
+        }
+        #endif
     }
 
-    private func tile(_ item: Recording) -> some View {
-        RecordingTile(item: item, progress: model.progress(for: item), client: model.client) { selected = item }
+    private func canWatchFromStart(_ item: Recording) -> Bool {
+        item.canWatchFromStart && model.client.info?.features.recordingWatchLive == true
     }
 
-    // MARK: Scheduled
+    // MARK: iPhone
 
-    private var scheduled: some View {
-        List {
-            #if os(tvOS)
-            sectionPicker
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
-            #endif
-            if model.rulesAvailable {
-                // C-M: the rules that make schedules on their own.
-                Button { showingRules = true } label: {
-                    Label("Recording rules", systemImage: "repeat.circle")
+    private var all: [Recording] { featured.map { [$0] + cards } ?? cards }
+
+    @ViewBuilder
+    private var stack: some View {
+        #if os(iOS)
+        VStack(alignment: .leading, spacing: 8) {
+            PigPageHeader(title: "Recordings") {
+                if all.count > 1 {
+                    Text("\((all.firstIndex { $0.id == page } ?? 0) + 1) of \(all.count)")
+                        .font(.subheadline.monospacedDigit()).fontDesign(.rounded).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("recordings.stack.position")
                 }
-                .accessibilityIdentifier("recordings.rules")
-                .scheduleSurface(scheme)
             }
-            ForEach(model.schedules.filter { $0.isActive }) { item in
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(item.title).font(.headline)
-                    if item.rule_id != nil {
-                        Text("From a rule").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
-                    Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption.monospacedDigit()).fontDesign(.rounded)
-                    Text(item.statusLabel).font(.caption.bold())
-                    if let beaten = item.beatenText(in: model.schedules) {
-                        // Server 0410 (#12, D-42): it lost its clash and waits; choosing it makes the winner wait instead.
-                        Text(beaten).font(.caption).foregroundStyle(Color.pigWarning)
-                            .accessibilityIdentifier("recordings.beaten.\(item.id)")
-                        if item.canChoose {
-                            Button("Record this one instead") { choosing = item }
-                                .disabled(model.mutationBusy)
-                                .accessibilityIdentifier("recordings.choose.\(item.id)")
-                        }
-                    } else if let clash = item.clashText(in: model.schedules) {
-                        Text(clash).font(.caption).foregroundStyle(Color.pigWarning)
-                            .accessibilityIdentifier("recordings.clash.\(item.id)")
-                    }
-                    if item.canCancel {
-                        Button(item.status == "recording" ? "Stop recording" : "Cancel schedule", role: .destructive) {
-                            cancellation = item
-                        }.disabled(model.mutationBusy)
+            status
+            if all.isEmpty {
+                if !model.recordingsBusy { RecordingsEmpty().padding(.horizontal, RecordingsMetrics.pagePadding) }
+                Spacer()
+            } else {
+                TabView(selection: Binding(get: { page ?? all.first?.id }, set: { page = $0 })) {
+                    ForEach(all) { item in
+                        RecordingStackCard(item: item, progress: model.progress(for: item),
+                                           teams: RecordingTeams.match(title: item.title, games: games), client: model.client,
+                                           canWatchFromStart: canWatchFromStart(item),
+                                           play: { playing = RecordingPlay(recording: item, fromStart: $0) },
+                                           details: { open(item) })
+                            .padding(.horizontal, 28).padding(.bottom, 40)
+                            .tag(Optional(item.id))
                     }
                 }
-                .scheduleSurface(scheme)
-            }
-            if !problems.isEmpty {
-                Section("Recent problems") {
-                    ForEach(problems) { item in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(item.title).font(.headline)
-                                Spacer()
-                                Text(item.status.capitalized).font(.caption.bold())
-                                    .foregroundStyle(item.status == "missed" ? Color.pigWarning : Color.pigDanger)
-                            }
-                            Text(item.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
-                            Text("\(item.start.formatted(date: .abbreviated, time: .shortened)) – \(item.end.formatted(date: .omitted, time: .shortened))")
-                                .font(.caption.monospacedDigit()).fontDesign(.rounded)
-                            if let error = item.error {
-                                Text(error).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        .scheduleSurface(scheme)
-                        #if os(tvOS)
-                        // No action, but focusable so the focus engine can scroll to it.
-                        .focusable()
-                        #endif
-                    }
-                }
+                .tabViewStyle(.page(indexDisplayMode: .always))
+                .indexViewStyle(.page(backgroundDisplayMode: .never))
+                .accessibilityIdentifier("recordings.stack")
             }
         }
-        #if !os(tvOS)
-        .scrollContentBackground(.hidden) // brand 1.6: rows sit on the page canvas and corner bloom
+        .safeAreaInset(edge: .bottom) {
+            ComingUpCard(items: comingUp, now: Date()) { path.append(.scheduled) }
+        }
         .refreshable { await model.loadRecordings() }
         #endif
-        .confirmationDialog(Text(choosing.map { "Record \($0.title) instead?" } ?? ""), isPresented: Binding(
-            get: { choosing != nil }, set: { if !$0 { choosing = nil } }
-        ), titleVisibility: .visible, presenting: choosing) { item in
-            Button("Record this one") { Task { await model.choose(item) } }
-            Button("Cancel", role: .cancel) {}
-        } message: { item in
-            Text(item.chooseMessage(in: model.schedules))
-        }
-        .overlay {
-            if !model.schedules.contains(where: \.isActive) && !model.recordingsBusy && problems.isEmpty {
-                Text("Nothing scheduled. Browse Guide to choose a programme.")
-                    .foregroundStyle(.secondary).padding()
-            }
-        }
     }
 }
 
-private extension View {
-    /// A scheduled-recording row: the same raised surface and corner radius as a
-    /// recording tile, sitting straight on the page canvas.
-    func scheduleSurface(_ scheme: ColorScheme) -> some View {
-        self
-            .padding(.horizontal, 24).padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: RecordingsMetrics.radius))
-            .listRowInsets(EdgeInsets(top: 6, leading: RecordingsMetrics.pagePadding, bottom: 6, trailing: RecordingsMetrics.pagePadding))
-            .listRowBackground(Color.clear)
-            #if os(iOS)
-            .listRowSeparator(.hidden)
-            #endif
+/// Nothing recorded yet (always drawn: Mark's rule for every page).
+private struct RecordingsEmpty: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("No recordings yet").font(RecordingsMetrics.title)
+            Text("Choose a programme in the TV Guide, or a game in Sport, and record it. It shows here once it starts.")
+                .font(RecordingsMetrics.detail).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("recordings.empty")
     }
 }
 
-// MARK: Poster tile
+// MARK: Art
 
-/// One recording as a poster: the channel's logo on the guide's tile colour
-/// (never a frame grab, which could spoil a result), the title, "Channel ·
-/// duration", and a progress bar when partly watched.
-private struct RecordingTile: View {
+/// A recording's art: the two teams' badges for a game ("A v B"), else the programme's artwork (C-N), else the channel's
+/// logo, else the channel's name. Never a frame grab, which could spoil a result.
+struct RecordingArt: View {
     let item: Recording
-    let progress: RecordingProgress
+    let teams: [RecordTeam]?
     let client: APIClient
-    let action: () -> Void
+    var badge: CGFloat = RecordingsMetrics.cardBadge
     @Environment(\.colorScheme) private var scheme
 
-    private var detail: String {
-        var parts = [item.channel_name ?? "Channel unavailable"]
-        if let duration = item.duration_sec, duration > 0 { parts.append(DetailText.duration(duration)) }
-        return parts.joined(separator: " · ")
+    var body: some View {
+        ZStack {
+            Color.logoTile(scheme)
+            if let teams, teams.count == 2 {
+                HStack(spacing: badge * 0.3) {
+                    SportBadge(name: teams[0].name, logo: teams[0].logo, league: "", client: client, size: badge)
+                    Text("v").font(.system(size: badge * 0.3, weight: .heavy)).foregroundStyle(.secondary)
+                    SportBadge(name: teams[1].name, logo: teams[1].logo, league: "", client: client, size: badge)
+                }
+            } else if item.image != nil {
+                ChannelArtwork(logo: item.image, client: client, fill: true)
+            } else if item.channel_logo != nil {
+                ChannelArtwork(logo: item.channel_logo, client: client).padding(.horizontal, badge * 0.5).padding(.vertical, badge * 0.3)
+            } else {
+                Text(item.channel_name ?? item.title).font(.system(size: badge * 0.4, weight: .heavy))
+                    .foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center).padding(12)
+            }
+        }
+        .accessibilityHidden(true)
     }
+}
 
-    private var label: String {
+/// "REC · NOW" on a recording being made.
+private struct RecNowBadge: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(Color.pigDanger).frame(width: 9, height: 9)
+            Text("REC · NOW")
+        }
+        .font(CardBadgeFont.font)
+        .foregroundStyle(Color.pigDanger)
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(Color.pigCanvas, in: RoundedRectangle(cornerRadius: PigRadius.inner))
+    }
+}
+
+private enum CardBadgeFont {
+    #if os(tvOS)
+    static let font: Font = .system(size: 15, weight: .heavy)
+    #else
+    static let font: Font = .caption2.weight(.heavy)
+    #endif
+}
+
+/// The accessibility label shared by a recording's card and featured block.
+nonisolated enum RecordingLabel {
+    static func text(_ item: Recording, progress: RecordingProgress) -> String {
         var parts = [item.title, item.channel_name ?? "channel unavailable"]
         if let duration = item.duration_sec, duration > 0 { parts.append(DetailText.duration(duration)) }
         if item.status == "recording" { parts.append("recording now") }
@@ -363,199 +341,295 @@ private struct RecordingTile: View {
         else if let fraction = progress.fraction { parts.append("\(Int((fraction * 100).rounded())) percent watched") }
         return parts.joined(separator: ", ")
     }
+}
+
+// MARK: Featured
+
+/// The featured recording (Apple TV, iPad): its art with the resume bar, the kicker, title and line, and its actions.
+private struct FeaturedRecording: View {
+    let item: Recording
+    let progress: RecordingProgress
+    let teams: [RecordTeam]?
+    let client: APIClient
+    let canWatchFromStart: Bool
+    let play: (_ fromStart: Bool) -> Void
+    let details: () -> Void
+    @FocusState private var primaryFocused: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: RecordingsMetrics.gap * 1.6) {
+            RecordingArt(item: item, teams: teams, client: client, badge: RecordingsMetrics.featuredBadge)
+                .frame(width: RecordingsMetrics.featuredArtWidth, height: RecordingsMetrics.featuredArtHeight)
+                .clipShape(RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+                .overlay(alignment: .bottom) {
+                    if let fraction = progress.fraction {
+                        PigProgressBar(fraction: fraction, height: 8).padding(24)
+                    }
+                }
+                .overlay(alignment: .topLeading) { if item.status == "recording" { RecNowBadge().padding(16) } }
+            VStack(alignment: .leading, spacing: 12) {
+                Text(RecordingsHome.kicker(item, progress: progress, now: Date()))
+                    .font(RecordingsMetrics.kicker).tracking(1).foregroundStyle(Color.pigAccentText)
+                Text(item.title).font(RecordingsMetrics.featuredTitle).lineLimit(2).minimumScaleFactor(0.7)
+                Text(RecordingsHome.meta(item, progress: progress))
+                    .font(RecordingsMetrics.featuredMeta.monospacedDigit()).fontDesign(.rounded).foregroundStyle(.secondary)
+                if item.isPreparingForPlayback {
+                    Text("Preparing for playback…").font(RecordingsMetrics.featuredMeta).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 16) {
+                    if let label = item.playLabel {
+                        Button(progress.fraction == nil ? "Play" : "Resume", systemImage: "play.fill") { play(false) }
+                            .pigPrimaryButton()
+                            .focused($primaryFocused)
+                            .accessibilityLabel(progress.fraction == nil ? label : "Resume \(item.title)")
+                            .accessibilityIdentifier("recordings.featured.play")
+                    } else if canWatchFromStart {
+                        Button("Watch from start", systemImage: "play.fill") { play(true) }
+                            .pigPrimaryButton()
+                            .focused($primaryFocused)
+                            .accessibilityIdentifier("recordings.featured.watchFromStart")
+                    }
+                    Button("Details") { details() }
+                        .accessibilityLabel("Details of \(item.title)")
+                        .accessibilityIdentifier("recordings.featured.details")
+                }
+                .padding(.top, 14)
+                .defaultFocus($primaryFocused, true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(RecordingLabel.text(item, progress: progress))
+        .accessibilityIdentifier("recordings.featured")
+    }
+}
+
+// MARK: Cards
+
+/// A recording as a large card: its art (REC · NOW, Watched), title, line and resume bar.
+private struct RecordingCard: View {
+    let item: Recording
+    let progress: RecordingProgress
+    let teams: [RecordTeam]?
+    let client: APIClient
+    let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 0) {
-                art
-                VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 8) {
+                RecordingArt(item: item, teams: teams, client: client)
+                    .aspectRatio(RecordingsMetrics.artRatio, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
+                    .overlay(alignment: .topLeading) { if item.status == "recording" { RecNowBadge().padding(8) } }
+                    .overlay(alignment: .topTrailing) {
+                        if progress.watched {
+                            Text("Watched").font(CardBadgeFont.font).foregroundStyle(.secondary)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(Color.pigCanvas, in: RoundedRectangle(cornerRadius: PigRadius.inner))
+                                .padding(8)
+                        }
+                    }
+                VStack(alignment: .leading, spacing: 4) {
                     Text(item.title).font(RecordingsMetrics.title).lineLimit(1)
-                    PigProgressBar(fraction: progress.fraction ?? 0)
-                        .opacity(progress.fraction == nil ? 0 : 1)
                     if item.isPreparingForPlayback {
                         Text("Preparing for playback…").font(RecordingsMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
                     } else {
-                        Text(detail).font(RecordingsMetrics.detail.monospacedDigit()).fontDesign(.rounded)
-                            .foregroundStyle(.secondary).lineLimit(1)
+                        Text(RecordingsHome.meta(item, progress: progress))
+                            .font(RecordingsMetrics.detail.monospacedDigit()).fontDesign(.rounded)
+                            .foregroundStyle(item.status == "recording" ? Color.pigDanger : Color.pigSecondary).lineLimit(1)
                     }
+                    PigProgressBar(fraction: progress.fraction ?? 0, height: 5)
+                        .opacity(progress.fraction == nil ? 0 : 1)
                 }
-                .padding(12)
-                .opacity(progress.watched ? 0.6 : 1)
+                .padding(.horizontal, 2)
             }
+            .padding(10)
+            .opacity(progress.watched ? 0.55 : 1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .clipShape(RoundedRectangle(cornerRadius: RecordingsMetrics.radius))
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: RecordingsMetrics.radius))
-        .accessibilityLabel(label)
+        .accessibilityLabel(RecordingLabel.text(item, progress: progress))
+    }
+}
+
+// MARK: Coming up
+
+/// The slim strip at the bottom (Apple TV, iPad): COMING UP, the next few schedules (a clash outlined in amber), and
+/// "All ›", which opens Scheduled; so does every chip.
+private struct ComingUpStrip: View {
+    let items: [ScheduledRecording]
+    let now: Date
+    let open: () -> Void
+
+    #if os(tvOS)
+    private let shown = 4
+    #else
+    private let shown = 3
+    #endif
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("COMING UP").font(RecordingsMetrics.stripLabel).tracking(1.2).foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+            if items.isEmpty {
+                Text("Nothing scheduled").font(RecordingsMetrics.strip).foregroundStyle(.secondary)
+            }
+            ForEach(items.prefix(shown)) { item in
+                let clash = RecordingsHome.clashes(item)
+                Button(action: open) {
+                    HStack(spacing: 10) {
+                        Text(RecordingsHome.chip(item, now: now))
+                            .monospacedDigit().fontDesign(.rounded)
+                            .foregroundStyle(clash ? Color.pigWarning : Color.pigSecondary)
+                        Text(item.title).fontWeight(.bold).lineLimit(1)
+                    }
+                    .font(RecordingsMetrics.strip)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .overlay {
+                        if clash { RoundedRectangle(cornerRadius: PigRadius.compact).strokeBorder(Color.pigWarning, lineWidth: 2) }
+                    }
+                }
+                .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact))
+                .accessibilityLabel("\(item.title), \(RecordingsHome.chip(item, now: now))")
+                .accessibilityIdentifier("recordings.comingUp.item")
+            }
+            Spacer(minLength: 0)
+            Button(action: open) {
+                Text(items.isEmpty ? "All ›" : "All \(items.count) ›").font(RecordingsMetrics.strip.weight(.bold))
+                    .foregroundStyle(Color.pigAccentText)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+            }
+            .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: PigRadius.compact))
+            .accessibilityLabel("All scheduled recordings")
+            .accessibilityIdentifier("recordings.comingUp.all")
+        }
+        .padding(.leading, 22).padding(.trailing, 10).padding(.vertical, 10)
+        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("recordings.comingUp")
+    }
+}
+
+#if os(iOS)
+/// The iPhone's Coming up: a fixed card at the bottom; a tap opens Scheduled.
+private struct ComingUpCard: View {
+    let items: [ScheduledRecording]
+    let now: Date
+    let open: () -> Void
+
+    private var clashes: Int { items.filter(RecordingsHome.clashes).count }
+
+    var body: some View {
+        Button(action: open) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(items.isEmpty ? "Coming up" : "Coming up · \(items.count)").font(.headline.weight(.heavy))
+                    Spacer()
+                    if clashes > 0 {
+                        Text(clashes == 1 ? "1 clash" : "\(clashes) clashes").font(.footnote.weight(.bold))
+                            .foregroundStyle(Color.pigWarning)
+                    }
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                }
+                if let next = items.first {
+                    HStack(spacing: 10) {
+                        Text(RecordingsHome.when(next.start, now: now)).font(.subheadline.monospacedDigit()).fontDesign(.rounded)
+                            .foregroundStyle(.secondary)
+                        Text(next.title).font(.subheadline.weight(.bold)).lineLimit(1)
+                    }
+                } else {
+                    Text("Nothing scheduled").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .foregroundStyle(Color("PigText"))
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+            .shadow(color: Color.pigShadow.opacity(0.3), radius: 14, y: -6)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12).padding(.bottom, 6)
+        .accessibilityLabel(items.first.map { "Coming up, \(items.count) scheduled. Next: \($0.title), \(RecordingsHome.when($0.start, now: now))" }
+                            ?? "Coming up, nothing scheduled")
+        .accessibilityHint("Opens Scheduled")
+        .accessibilityIdentifier("recordings.comingUp.card")
+    }
+}
+
+/// One card of the iPhone's stack: the art with Continue, the resume bar, the kicker and title, and Play/Resume and
+/// a More menu.
+private struct RecordingStackCard: View {
+    let item: Recording
+    let progress: RecordingProgress
+    let teams: [RecordTeam]?
+    let client: APIClient
+    let canWatchFromStart: Bool
+    let play: (_ fromStart: Bool) -> Void
+    let details: () -> Void
+
+    private var kicker: String {
+        var parts: [String] = []
+        if let started = item.started { parts.append(started.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))) }
+        if let channel = item.channel_name { parts.append(channel) }
+        return parts.joined(separator: " · ").uppercased()
     }
 
-    private var art: some View {
-        Color.logoTile(scheme)
-            .aspectRatio(RecordingsMetrics.artRatio, contentMode: .fit)
-            .overlay {
-                Group {
-                    if item.image != nil {
-                        // C-N: the programme's own artwork, filling the tile.
-                        ChannelArtwork(logo: item.image, client: client, fill: true)
-                    } else if item.channel_logo != nil {
-                        ChannelArtwork(logo: item.channel_logo, client: client).padding(.horizontal, 24).padding(.vertical, 14)
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: details) {
+                RecordingArt(item: item, teams: teams, client: client, badge: 110)
+                    .overlay(alignment: .topLeading) {
+                        if item.status == "recording" {
+                            RecNowBadge().padding(14)
+                        } else if let fraction = progress.fraction, let duration = item.duration_sec {
+                            Text("Continue · \(DetailText.duration(duration * (1 - fraction))) left")
+                                .font(.caption.weight(.bold)).foregroundStyle(Color.pigAccentText)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(Color.pigAccent.opacity(0.18), in: Capsule())
+                                .padding(14)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(RecordingLabel.text(item, progress: progress))
+            .accessibilityHint("Opens the recording")
+            PigProgressBar(fraction: progress.fraction ?? 0, height: 4).opacity(progress.fraction == nil ? 0 : 1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(kicker).font(.caption2.weight(.bold)).tracking(1.2).foregroundStyle(.secondary).lineLimit(1)
+                Text(item.title).font(.title3.weight(.heavy)).lineLimit(2)
+                HStack(spacing: 8) {
+                    if item.playLabel != nil {
+                        Button { play(false) } label: {
+                            Label(progress.fraction == nil ? "Play" : "Resume", systemImage: "play.fill").frame(maxWidth: .infinity)
+                        }
+                        .pigPrimaryButton()
+                    } else if canWatchFromStart {
+                        Button { play(true) } label: {
+                            Label("Watch from start", systemImage: "play.fill").frame(maxWidth: .infinity)
+                        }
+                        .pigPrimaryButton()
                     } else {
-                        Image(systemName: "play.fill").font(.system(size: 34, weight: .semibold))
-                            .foregroundStyle(Color.pigAccent)
+                        Text(item.isPreparingForPlayback ? "Preparing for playback…" : "Plays once it has finished")
+                            .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    Button(action: details) {
+                        Image(systemName: "ellipsis").frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Details of \(item.title)")
                 }
-                .opacity(progress.watched ? 0.45 : 1)
+                .padding(.top, 8)
             }
-            .overlay(alignment: .topLeading) {
-                if item.status == "recording" {
-                    CardBadge(text: "Live", systemImage: "record.circle.fill", colour: .pigDanger).padding(8)
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                if progress.watched {
-                    CardBadge(text: "Watched", systemImage: "checkmark", colour: .gray).padding(8)
-                }
-            }
-            .accessibilityHidden(true)
-    }
-}
-
-// MARK: Needs attention
-
-/// "N recordings failed" with a Review action.
-private struct AttentionBanner: View {
-    let title: String
-    let review: () -> Void
-    var body: some View {
-        Button(action: review) {
-            HStack(spacing: 14) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.pigWarning)
-                Text(title).font(RecordingsMetrics.title)
-                Spacer()
-                Text("Review").font(RecordingsMetrics.title).foregroundStyle(Color.pigAccentText)
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 18).padding(.vertical, 14)
+            .padding(.horizontal, 16).padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.pigSurface)
         }
-        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: RecordingsMetrics.radius))
-        .accessibilityLabel("\(title). Review")
+        .background(Color.pigRaised)
+        .clipShape(RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+        .shadow(color: Color.pigShadow.opacity(0.4), radius: 20, y: 12)
     }
 }
-
-/// The failed and missed items, each with a Delete (confirmed).
-private struct RecordingAttentionSheet: View {
-    let model: BrowseModel
-    @ObservedObject private var store: RecordingsStore
-    @ObservedObject private var actions: ActionState
-    @State private var deleting: AttentionItem?
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var scheme
-
-    init(model: BrowseModel) {
-        self.model = model
-        _store = ObservedObject(wrappedValue: model.recordingStore)
-        _actions = ObservedObject(wrappedValue: model.actions)
-    }
-
-    private var items: [AttentionItem] {
-        RecordingsRows.problemSchedules(model.schedules).map(AttentionItem.schedule)
-            + RecordingsRows.failedRecordings(model.recordings, schedules: model.schedules).map(AttentionItem.recording)
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                ForEach(items) { item in
-                    row(item)
-                        .padding(.horizontal, 20).padding(.vertical, 14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: RecordingsMetrics.radius))
-                        .listRowBackground(Color.clear)
-                        #if os(iOS)
-                        .listRowSeparator(.hidden)
-                        #endif
-                }
-                if items.isEmpty {
-                    Text("Nothing needs attention.").foregroundStyle(.secondary)
-                }
-                if let error = model.actionError { Text(error).font(.callout).foregroundStyle(.secondary) }
-            }
-            #if !os(tvOS)
-            .scrollContentBackground(.hidden)
-            #endif
-            .navigationTitle("Needs attention")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .pigPageBackdrop()
-            .toolbar {
-                #if !os(tvOS)
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                #endif
-            }
-            .confirmationDialog("Delete this item?", isPresented: Binding(
-                get: { deleting != nil }, set: { if !$0 { deleting = nil } }
-            ), titleVisibility: .visible, presenting: deleting) { item in
-                Button("Delete", role: .destructive) { Task { await delete(item) } }
-                Button("Keep it", role: .cancel) {}
-            } message: { item in
-                Text("This removes \(title(item)) and any partial file from the server.")
-            }
-        }
-    }
-
-    private func title(_ item: AttentionItem) -> String {
-        switch item {
-        case .schedule(let value): value.title
-        case .recording(let value): value.title
-        }
-    }
-
-    private func delete(_ item: AttentionItem) async {
-        switch item {
-        case .schedule(let value): await model.deleteSchedule(value)
-        case .recording(let value): await model.delete(value)
-        }
-        if items.isEmpty { dismiss() }
-    }
-
-    @ViewBuilder
-    private func row(_ item: AttentionItem) -> some View {
-        let heading = title(item)
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(heading).font(.headline)
-                Spacer()
-                switch item {
-                case .schedule(let value):
-                    Text(value.status.capitalized).font(.caption.bold())
-                        .foregroundStyle(value.status == "missed" ? Color.pigWarning : Color.pigDanger)
-                case .recording:
-                    Text("Failed").font(.caption.bold()).foregroundStyle(Color.pigDanger)
-                }
-            }
-            switch item {
-            case .schedule(let value):
-                Text(value.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
-                Text("\(value.start.formatted(date: .abbreviated, time: .shortened)) – \(value.end.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption.monospacedDigit()).fontDesign(.rounded)
-                if let error = value.error { Text(error).font(.caption).foregroundStyle(.secondary) }
-            case .recording(let value):
-                Text(value.channel_name ?? "Channel unavailable").foregroundStyle(.secondary)
-                if let date = value.started { Text(date, style: .date).font(.caption) }
-                if let error = value.native_error { Text(error).font(.caption).foregroundStyle(.secondary) }
-            }
-            Button(role: .destructive) { deleting = item } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .disabled(model.mutationBusy)
-            #if !os(tvOS)
-            .buttonStyle(.borderless)
-            #endif
-        }
-    }
-}
+#endif
 
 struct RecordingDetails: View {
     /// Not observed (audit R05): the stores this page draws from are below.
@@ -704,83 +778,5 @@ struct RecordingDetails: View {
             parts.append(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
         }
         return parts.joined(separator: " · ")
-    }
-}
-
-
-// MARK: Recording rules (C-M)
-
-/// The rules that make schedules ("every game of", "series"), each with an
-/// on/off switch and Delete. Loaded when shown.
-private struct RecordingRulesSheet: View {
-    let model: BrowseModel
-    @ObservedObject private var actions: ActionState
-    @State private var rules: [RecordingRule] = []
-    @State private var loading = true
-    @State private var error: String?
-    @State private var deleting: RecordingRule?
-    @Environment(\.dismiss) private var dismiss
-
-    init(model: BrowseModel) {
-        self.model = model
-        _actions = ObservedObject(wrappedValue: model.actions)
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if let error { Text(error).foregroundStyle(.secondary) }
-                if !loading && rules.isEmpty && error == nil {
-                    Text("No rules yet. Choose Record series on a programme, or Record every game on a Sport event.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(rules) { rule in
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(rule.summary).font(.headline)
-                        if let setBy = rule.setBy {
-                            Text(setBy).font(.caption).foregroundStyle(.secondary)
-                                .accessibilityIdentifier("rules.setBy.\(rule.id)")
-                        }
-                        Text(rule.detail).font(.caption).foregroundStyle(.secondary)
-                        HStack(spacing: 20) {
-                            Button(rule.isOn ? "Turn off" : "Turn on") {
-                                Task { await model.setRule(rule, enabled: !rule.isOn); await reload() }
-                            }
-                            Button("Delete", role: .destructive) { deleting = rule }
-                        }
-                        // A3 (build 48): one change at a time.
-                        .disabled(actions.mutationBusy)
-                    }
-                    .padding(.vertical, 6)
-                }
-                // A3: a rule change that failed says so (the reload after it shows the rule unchanged).
-                if let failure = actions.actionError {
-                    Text(failure).font(.caption).foregroundStyle(Color.pigDanger).accessibilityIdentifier("rules-action-error")
-                } else if let message = actions.actionMessage {
-                    Text(message).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("rules-action-message")
-                }
-            }
-            .navigationTitle("Recording rules")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-            .overlay { if loading { ProgressView() } }
-            .task { await reload() }
-            .confirmationDialog("Delete this rule?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                                titleVisibility: .visible, presenting: deleting) { rule in
-                Button("Delete rule", role: .destructive) { Task { await model.deleteRule(rule); await reload() } }
-                Button("Keep it", role: .cancel) {}
-            } message: { _ in
-                Text("Its recordings that have not started are cancelled. Anything recorded is kept.")
-            }
-        }
-    }
-
-    private func reload() async {
-        do {
-            rules = try await model.loadRules()
-            error = nil
-        } catch {
-            self.error = "Could not load the rules. \(error.localizedDescription)"
-        }
-        loading = false
     }
 }
