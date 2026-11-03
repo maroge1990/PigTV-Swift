@@ -76,6 +76,9 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
   Username and password, Menu back); Offline's countdown, Try now focused, and Use a different server opening Sign in at
   the server. Unit: `SettingsMenuTests`, `SettingsSportTests` (Score delay's PUT and 409 on a `URLProtocol`, the logo
   match), `SignInStepTests`, `OfflineRetryTests`.
+- `SportPhoneFrontUITests` (Apple 139, iPhone only; the tvOS tiers skip it): the iPhone front page on
+  `sport-pages-d43.json`: the carousel, a card per sport with fixture rows, a header opens its page, spoiler-free draws no
+  score. Run it on the iPhone 17 simulator (`-only-testing:PigTVUITests/SportPhoneFrontUITests`).
 - `SportBannerUITests` (D-43, build 97; `front` on `sport-front-0427.json`, times moved to the clock): no tiles, the
   banner's list scrolls in place, a rail header opens a sport page whose banner lists its leagues and flips the content,
   Menu restores focus, a one-league sport is full width, the quiet and nothing-in-72-hours banners.

@@ -346,7 +346,19 @@ controls are not used for live play.
   per sport (`SportFrontLayout.sections`: rails grouped by C-U's `sport`, in the rails' order) with a header button
   ("Football ›", `sport.rail.header.<sport>`) and its leagues' rails of `SportGameCard`s (334 × 132; a followed team's
   card has the pink outline and its team a star). Sports with no rail: "Also in your sports" buttons
-  (`sport.also.<sport>`). iPad and iPhone keep the earlier tiles-and-hero-band page (`SportFrontPage`) until their mock-ups.
+  (`sport.also.<sport>`). The iPad (regular width) draws this page too (D-44).
+- **iPhone front page (`SportFrontPhonePage`, D-44, R5-Front-iPhone, Apple 139)**: the header (pig, "Sport", a "Scores
+  shown / hidden" chip), a 212 pt carousel of `follows[]` in the order sent (#215: playing now, then soonest; one card
+  each with the teams' 48 pt badges, the score, the clock and channel, Watch or Remind me and Record every game; dots and
+  "1 of 7 follows"), then one card per sport (`SportFrontLayout.sections`) under its "Football ›" header (opens the sport
+  page) with its first three games as `SportFixtureRow`s: logo · Team v Team · logo, the score on the right, the state
+  (red while live), time and channel beneath; a session's row has its league's square badge. Words: `SportPhoneLayout`
+  (pure, tests `SportPhoneLayoutTests`), spoiler-free applied (unknown counts as on, #192; nothing hidden is read out).
+- **Shared words (Apple 137–138)**: a next-round card (C-R `nextRound`, #218) reads "Next round · Sat 15 Nov" with no
+  channel, Watch or Remind me (`SportFrontText.isNextRound`/`startLine`/`channelLine`); a live card's clock is short
+  (`cardClock`: "Q4 0:17", "OT1 10:00", #211), the down and distance stay in the banner; C-T's `%` is one decimal
+  (`FixtureText.standingValue`); standings values are never cut. Cricket files a match under C-S's own `league` first
+  (#210); Follow a driver lists C-P's whole grid (`drivers`, #202).
 - **Sport page (`SportPageView`, pushed in the front page's `NavigationStack` by `SportRoute`)**: the banner with the
   sport's leagues (`sports[]` of that `sport`, as sent) and a back button; hero by `SportPageRules.hero` (a follow live →
   the sport's league live → a follow's soonest next → the league's soonest scheduled game, Remind me → the sport's quiet
