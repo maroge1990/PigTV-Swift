@@ -40,7 +40,7 @@ final class BrandRulesTests: XCTestCase {
 
     /// Tab roots: each draws the page canvas and its corner bloom (`pigPageBackdrop`, PigPageBackground).
     private static let tabRootFiles = ["SportFrontView.swift", "SportsDashboardView.swift", "SportView.swift", "GuideView.swift",
-                                       "RecordingsView.swift", "LibraryView.swift"]
+                                       "RecordingsView.swift", "SettingsView.swift"]
 
     /// The views drawn over video: §7 applies (protected dark surfaces, black panels from 82 %).
     private static let playerFiles: Set<String> = [

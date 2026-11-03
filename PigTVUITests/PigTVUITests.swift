@@ -6,6 +6,8 @@ final class PigTVUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "settings"
+        // D-44 batch 6: Appearance is its own page beside the Settings menu.
+        app.launchEnvironment["PIGTV_UI_TEST_SETTINGS_PAGE"] = "appearance"
         app.launch()
         var previousMode: String?
         for mode in ["light", "dark", "system", "light", "dark"] {
@@ -19,11 +21,18 @@ final class PigTVUITests: XCTestCase {
                     XCUIRemote.shared.press(distance > 0 ? .down : .up)
                 }
             } else {
-                // Initial focus may be in the tab bar. Reach the first target;
-                // subsequent moves exercise the known adjacent appearance rows.
-                for _ in 0..<8 {
+                // Initial focus may be in the tab bar. Reach the first target (down into the menu, which lands on
+                // Appearance, then right into its page); subsequent moves exercise the known adjacent appearance rows.
+                let menuItem = app.buttons["settings.menu.appearance"]
+                for _ in 0..<10 {
                     if button.hasFocus { break }
-                    XCUIRemote.shared.press(.down)
+                    let current = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
+                    if current.identifier.hasPrefix("settings.menu.") {
+                        XCUIRemote.shared.press(menuItem.hasFocus ? .right : current.frame.midY < menuItem.frame.midY ? .down : .up)
+                    } else {
+                        XCUIRemote.shared.press(.down)
+                    }
+                    Thread.sleep(forTimeInterval: 0.5)
                 }
                 XCTAssertTrue(button.hasFocus, app.debugDescription)
             }

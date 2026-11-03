@@ -38,10 +38,12 @@ final class SportSettingsUITests: XCTestCase {
         XCTAssertEqual(spoilers.value as? String, "On")
         XCTAssertTrue(app.buttons["settings.sport.add"].exists, "Add a sport")
 
+        // D-44 batch 6: the Sport page sits beside the Settings menu; from the menu's Sport item, Right enters the page.
         var reached = false
         for _ in 0..<14 {
             if football.hasFocus { reached = true; break }
-            XCUIRemote.shared.press(.down)
+            XCUIRemote.shared.press(focused(app).identifier.hasPrefix("settings.menu.") ? .right : .down)
+            _ = waitUntil(1) { football.hasFocus }
         }
         XCTAssertTrue(reached, "focus never reached Football: \(focused(app).identifier)")
         attach(app, "settings-sport-section")

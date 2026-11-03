@@ -155,7 +155,7 @@ final class BrandDepthUITests: XCTestCase {
             XCTAssertTrue(app.buttons["Stay signed in"].waitForExistence(timeout: 5))
             shot(app, "sign-out-confirmation-\(mode)")
             XCUIRemote.shared.press(.menu)
-            XCTAssertTrue(app.buttons["appearance.dark"].exists)
+            XCTAssertTrue(app.buttons["settings.account.signOut"].exists)
             app.terminate()
             app = launch("search", mode)
             XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 10))
@@ -191,8 +191,9 @@ final class BrandDepthUITests: XCTestCase {
             XCTAssertTrue(app.buttons["scheduled.cancel.90"].waitForExistence(timeout: 3))
             app.terminate()
             let settings = launch("settings", mode)
-            focus(settings, label: "Sign out")
-            for _ in 0..<6 { XCUIRemote.shared.press(.down) }
+            // D-44 batch 6: Diagnostics is its own page beside the menu; the page follows the focused item.
+            focus(settings, id: "settings.menu.diagnostics")
+            XCTAssertTrue(settings.staticTexts["Top Shelf extension"].waitForExistence(timeout: 5) || settings.otherElements["settings.page"].exists)
             shot(settings, "settings-diagnostics-\(mode)")
             settings.terminate()
         }
