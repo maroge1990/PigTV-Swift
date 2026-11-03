@@ -152,4 +152,60 @@ final class RecordingUndoTests: XCTestCase {
         XCTAssertEqual(model.removalLog.all().map(\.id), [99], "another account's removal waits for that account")
         XCTAssertEqual(deletes(log, "/api/recordings/99"), 0)
     }
+
+    /// Codex 5b round 1 (medium): the mask was cleared once the DELETE returned, but its own refresh returned at once
+    /// while another was running; that older refresh, fetched before the delete, brought the recording back. Nor may a
+    /// refresh that fails after the delete show it again. It stays hidden until a refresh that began after it loads.
+    func testADeletedRecordingStaysGoneThroughAStaleRefreshAndAFailedOne() async throws {
+        let log = Locked<[String]>([])
+        let deleted = Locked(false)
+        let failing = Locked(false)
+        let staleRequests = Locked(0)
+        let http = try LocalHTTPServer { request in
+            log.value.append("\(request.method) \(request.path)")
+            switch (request.method, request.path) {
+            case ("DELETE", "/api/recordings/30"):
+                deleted.value = true
+                return .json(#"{"success":true}"#)
+            case ("GET", "/api/recordings"):
+                if failing.value { return .json(#"{"error":"busy"}"#, status: 500) }
+                let body = deleted.value ? "[]" : #"[{"id":30,"title":"The Headlines","status":"completed"}]"#
+                var response = LocalHTTPServer.Response.json(body)
+                if !deleted.value { staleRequests.value += 1; response.delay = 0.8 } // fetched before the delete, answered after
+                return response
+            case ("GET", "/api/recordings/scheduled"):
+                return .json("[]")
+            default:
+                return .notFound
+            }
+        }
+        defer { http.stop() }
+        let model = try model(http)
+        let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":30,"title":"The Headlines","status":"completed"}"#.utf8))
+        model.recordings = [recording]
+        func shown() -> Bool { !RecordingsHome.shelf(model.recordings, hidden: model.recordingStore.pendingRemovals).isEmpty }
+        let stale = Task { await model.loadRecordings(quietly: true) }
+        await waitUntil { staleRequests.value == 1 }
+        let presenter = presenter()
+        model.deleteWithUndo(recording, presenter: presenter)
+        presenter.commitPendingUndo()
+        await waitUntil { deleted.value && model.removalLog.all().isEmpty }
+        await stale.value
+        XCTAssertTrue(deleted.value)
+        XCTAssertFalse(shown(), "the refresh fetched before the delete brought it back")
+        XCTAssertFalse(model.recordings.contains { $0.id == 30 }, "nor is it in the list it loaded")
+
+        // A failed refresh after it: still gone.
+        failing.value = true
+        model.recordings = [recording] // as a list loaded before the delete would still hold it
+        await model.loadRecordings()
+        XCTAssertNotNil(model.recordingsError)
+        XCTAssertFalse(shown(), "a failed refresh showed it again")
+
+        // A refresh that began after the delete and loaded: settled.
+        failing.value = false
+        await model.loadRecordings()
+        XCTAssertTrue(model.recordingStore.pendingRemovals.isEmpty)
+        XCTAssertFalse(shown())
+    }
 }

@@ -70,6 +70,9 @@ final class RecordingsStore: ObservableObject {
     @Published var rulesError: String?
     /// Apple 122 (D-44 point 9): what a destructive action hid at once while its Undo runs (`RecordingsHome.key`).
     @Published var pendingRemovals: Set<String> = []
+    /// Apple 125 (Codex 5b round 1, medium): removals the server confirmed, by key, with when. Each stays hidden (and is
+    /// filtered out of any list fetched before it) until a refresh that began after it has loaded.
+    var tombstones: [String: Date] = [:]
 }
 
 /// Favourites and Home's history. Nothing draws the load's busy or error

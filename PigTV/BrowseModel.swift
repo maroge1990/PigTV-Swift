@@ -474,14 +474,20 @@ final class BrowseModel: ObservableObject {
         if !quietly { recordingsBusy = true }
         if recordingsError != nil { recordingsError = nil }
         defer { recordingsLoading = false; if !quietly { recordingsBusy = false } }
+        let began = Date()
         do {
-            let files: [Recording] = try await client.decodedOffMain("recordings")
-            if files != recordings { recordings = files }
+            let loaded: [Recording] = try await client.decodedOffMain("recordings")
             let query = client.info?.features.scheduleHistory == true
                 ? [URLQueryItem(name: "include", value: "recent")]
                 : []
-            let planned: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled", query: query)
+            let fetched: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled", query: query)
+            // Apple 125: nothing the server confirmed removed comes back from a list fetched before (or around) it.
+            let stones = recordingStore.tombstones
+            let files = loaded.filter { stones[RecordingsHome.key($0)] == nil }
+            let planned = fetched.filter { stones[RecordingsHome.key($0)] == nil }
+            if files != recordings { recordings = files }
             if planned != schedules { schedules = planned }
+            settleTombstones(loadedSince: began) { !$0.hasPrefix("rule:") }
         } catch { recordingsError = UserMessage.text(for: error) }
     }
 
@@ -748,13 +754,23 @@ final class BrowseModel: ObservableObject {
             switch await self.performRemoval(kind, id: id) {
             case .done:
                 if let op { self.removalLog.remove(op) }
+                // Apple 125: hidden until a refresh that began after now has loaded (`settleTombstones`); a refresh
+                // already running, or one that fails, never shows it again.
+                self.recordingStore.tombstones[key] = Date()
                 await self.loadRecordings()
                 if kind == .rule { await self.reloadRules() }
-                self.recordingStore.pendingRemovals.remove(key)
             case .failed(let message):
                 self.actionError = message
                 self.recordingStore.pendingRemovals.remove(key)
             }
+        }
+    }
+
+    /// A list that began loading after a removal was confirmed has loaded: that removal is settled (no longer hidden).
+    private func settleTombstones(loadedSince began: Date, _ applies: (String) -> Bool) {
+        for (key, at) in recordingStore.tombstones where at < began && applies(key) {
+            recordingStore.tombstones[key] = nil
+            recordingStore.pendingRemovals.remove(key)
         }
     }
 
@@ -885,8 +901,11 @@ final class BrowseModel: ObservableObject {
     func reloadRules() async {
         guard rulesAvailable, !isFixture else { return }
         do {
-            let loaded = try await loadRules()
+            let began = Date()
+            let stones = recordingStore.tombstones
+            let loaded = try await loadRules().filter { stones[RecordingsHome.key($0)] == nil }
             if loaded != recordingStore.rules { recordingStore.rules = loaded }
+            settleTombstones(loadedSince: began) { $0.hasPrefix("rule:") }
             recordingStore.change(\.rulesError, to: nil)
         } catch {
             recordingStore.change(\.rulesError, to: "Could not load the rules. \(UserMessage.text(for: error) ?? "")")
