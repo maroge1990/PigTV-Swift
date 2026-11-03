@@ -61,6 +61,23 @@ final class CricketLeagueTests: XCTestCase {
         }
     }
 
+    // #210 (C-S since 0436): the match's own `league` decides, before the C-R card, the competition or the one
+    // International group: with both groups followed, the Test that led neither now leads the one the server names.
+    func testTheMatchsOwnLeagueDecides() throws {
+        var page = try page()
+        page.lead?.league = "Women's Cricket"
+        if let index = page.others.firstIndex(where: { $0.competition == "WBBL" }) { page.others[index].league = "Cricket" }
+        let leagues = ["Cricket", "Women's Cricket"]
+        let women = CricketLeagueFilter.apply(page, scope: CricketLeagueScope(league: "Women's Cricket", leagues: leagues, labels: labels))
+        XCTAssertEqual(women.lead?.id, "1525661", "the server named its league")
+        let men = CricketLeagueFilter.apply(page, scope: CricketLeagueScope(league: "Cricket", leagues: leagues, labels: labels))
+        XCTAssertNil(men.lead)
+        XCTAssertTrue(men.others.contains { $0.id == "1525661" })
+        XCTAssertEqual(men.mine.map(\.competition), ["WBBL"], "the field beats the competition's name")
+        let json = #"{"id":"1","league":"BBL","competition":"Big Bash League","teams":[],"status":"live"}"#
+        XCTAssertEqual(try JSONDecoder().decode(CricketOther.self, from: Data(json.utf8)).league, "BBL")
+    }
+
     func testTheScoreboardHasAnInningsPerColumn() throws {
         let lead = try XCTUnwrap(try page().lead)
         let board = CricketPageText.scoreboard(lead)

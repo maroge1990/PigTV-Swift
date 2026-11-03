@@ -104,6 +104,8 @@ nonisolated struct CricketLead: Decodable, Equatable, Sendable {
     var id: String
     var seriesId: String?
     var competition: String?
+    /// C-S since 0436 (#210): the followed C-U league the match is on the page for, or nil (none, or an older server).
+    var league: String?
     /// "3rd Test".
     var label: String?
     /// test | odi | t20 | first-class | list-a.
@@ -130,7 +132,7 @@ nonisolated struct CricketLead: Decodable, Equatable, Sendable {
     var channels: [SportEventChannel]
 
     enum CodingKeys: String, CodingKey {
-        case id, seriesId, competition, label, format, venue, city, start, end, status, breakLabel, day, session, teams, innings,
+        case id, seriesId, competition, league, label, format, venue, city, start, end, status, breakLabel, day, session, teams, innings,
              summary, crease, seriesLine, days, nextStart, channels
     }
 
@@ -146,6 +148,7 @@ nonisolated struct CricketLead: Decodable, Equatable, Sendable {
         self.id = id
         seriesId = c.cricketID(.seriesId)
         competition = c.optional(String.self, .competition)
+        league = c.optional(String.self, .league)
         label = c.optional(String.self, .label)
         format = c.optional(String.self, .format)
         venue = c.optional(String.self, .venue)
@@ -213,6 +216,8 @@ nonisolated struct CricketOther: Decodable, Equatable, Identifiable, Sendable {
     var id: String
     var seriesId: String?
     var competition: String?
+    /// C-S since 0436 (#210), as the lead's.
+    var league: String?
     var teams: [CricketTeam]
     /// As ESPN shows them, one per team ("329 & 200/5"); nil for a team that has not batted.
     var scores: [String?]
@@ -223,13 +228,14 @@ nonisolated struct CricketOther: Decodable, Equatable, Identifiable, Sendable {
     var nextStart: Double?
     var channels: [SportEventChannel]
 
-    enum CodingKeys: String, CodingKey { case id, seriesId, competition, teams, scores, line, status, start, nextStart, channels }
+    enum CodingKeys: String, CodingKey { case id, seriesId, competition, league, teams, scores, line, status, start, nextStart, channels }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         guard let id = c.cricketID(.id) else { throw DecodingError.keyNotFound(CodingKeys.id, .init(codingPath: c.codingPath, debugDescription: "no id")) }
         self.id = id
         seriesId = c.cricketID(.seriesId)
         competition = c.optional(String.self, .competition)
+        league = c.optional(String.self, .league)
         teams = c.optional(LossyList<CricketTeam>.self, .teams)?.items ?? []
         scores = c.optional([String?].self, .scores) ?? []
         line = c.optional(String.self, .line)
@@ -524,6 +530,7 @@ nonisolated extension CricketOther {
         id = lead.id
         seriesId = lead.seriesId
         competition = [lead.competition, lead.label].compactMap { $0 }.joined(separator: " · ")
+        league = lead.league
         teams = lead.teams
         scores = lead.teams.indices.map { $0 < lead.innings.count ? CricketPageText.innings(lead.innings[$0]) : nil }
         line = lead.summary
@@ -535,8 +542,8 @@ nonisolated extension CricketOther {
 }
 
 /// D-43 (1 Nov): the Cricket page under a sport page's banner shows the selected league: its lead match and tour, then
-/// the other followed leagues' matches. C-S does not say which followed league a match is in, so the client works it
-/// out: the C-R card of the same ESPN match (its id ends in the match's id) names its league; else the match's
+/// the other followed leagues' matches. Since 0436 (#210) C-S names the followed league a match is on the page for
+/// (`league`), and that decides; an older server's (or a match of none) is worked out: the C-R card of the same ESPN match (its id ends in the match's id) names its league; else the match's
 /// competition is a followed league's name or label ("WBBL", "Sheffield Shield"); else, with one International group
 /// followed, it is that group's (a tour's competition is the tour's name). Pure (tests `CricketLeagueTests`).
 nonisolated struct CricketLeagueScope: Equatable, Sendable {
@@ -580,7 +587,9 @@ nonisolated enum CricketLeagueFilter {
     }
 
     /// The followed league a C-S match belongs to, or nil when it cannot be told.
-    static func league(ofMatch id: String, competition: String?, scope: CricketLeagueScope) -> String? {
+    static func league(ofMatch id: String, league named: String? = nil, competition: String?,
+                       scope: CricketLeagueScope) -> String? {
+        if let named = named?.trimmingCharacters(in: .whitespaces), !named.isEmpty { return named }
         if let league = scope.cardLeagues[id] { return league }
         if let competition = competition?.trimmingCharacters(in: .whitespaces).lowercased(), !competition.isEmpty {
             if let league = scope.leagues.first(where: {
@@ -598,12 +607,12 @@ nonisolated enum CricketLeagueFilter {
     /// The page for `scope.league`, from a page already made spoiler-safe (`CricketPageText.visible`). A match whose league
     /// cannot be told belongs to no league: it is among the others on every league's page, never a league's lead.
     static func apply(_ page: CricketPage, scope: CricketLeagueScope) -> Scoped {
-        func isMine(_ id: String, _ competition: String?) -> Bool {
-            league(ofMatch: id, competition: competition, scope: scope) == scope.league
+        func isMine(_ id: String, _ named: String?, _ competition: String?) -> Bool {
+            league(ofMatch: id, league: named, competition: competition, scope: scope) == scope.league
         }
         var out = Scoped(lead: nil, series: nil, mine: [], others: [])
         if let lead = page.lead {
-            if isMine(lead.id, lead.competition) {
+            if isMine(lead.id, lead.league, lead.competition) {
                 out.lead = lead
                 out.series = page.series
             } else {
@@ -611,7 +620,7 @@ nonisolated enum CricketLeagueFilter {
             }
         }
         for other in page.others {
-            if isMine(other.id, other.competition) { out.mine.append(other) } else { out.others.append(other) }
+            if isMine(other.id, other.league, other.competition) { out.mine.append(other) } else { out.others.append(other) }
         }
         return out
     }
