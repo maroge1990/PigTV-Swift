@@ -8,6 +8,8 @@ import XCTest
 // its throwaway login (TEST_RUNNER_PIGTV_STAGING_URL, …_USER, …_PASS); never a real server.
 final class StagingSportTVUITests: XCTestCase {
     private var shot = 0
+    /// The last focus() walk, press by press, for a failure note.
+    private var trace: [String] = []
 
     private func focused(_ app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
@@ -36,11 +38,21 @@ final class StagingSportTVUITests: XCTestCase {
     /// Moves focus onto `target` with the remote, steering by the frames; true when it got there.
     @discardableResult
     private func focus(_ app: XCUIApplication, on target: XCUIElement, presses: Int = 40) -> Bool {
+        var stuck: (id: String, frame: CGRect)?
+        trace = []
         for _ in 0..<presses {
             if target.hasFocus { return true }
             let current = focused(app)
-            guard current.exists else { press(.down); continue }
+            guard current.exists else { trace.append("none"); press(.down); continue }
             let to = target.frame, from = current.frame
+            trace.append("\(current.identifier) \(Int(from.minX)),\(Int(from.minY)) \(Int(from.width))x\(Int(from.height))")
+            // Up or down went nowhere (nothing focusable above in this column, e.g. the cricket page's Record): go left.
+            if let last = stuck, last.id == current.identifier, last.frame == from {
+                stuck = nil
+                press(.left)
+                continue
+            }
+            stuck = (current.identifier, from)
             if from.midY < to.minY - 1 {
                 press(.down)
             } else if from.minY > to.maxY + 1 {
@@ -89,14 +101,26 @@ final class StagingSportTVUITests: XCTestCase {
     }
 
     private func signIn(_ app: XCUIApplication, url: String, user: String, pass: String) {
-        let server = app.textFields["http://pigtv.local:3000"]
-        guard server.waitForExistence(timeout: 15) else { return } // already signed in
-        type(app, into: server, url)
-        note("server-field", "typed \(url.count) chars, field holds \"\(server.value as? String ?? "?")\"")
+        // Sign in is two steps since D-44 batch 6: the server address, then a tile (password or pairing).
+        let server = app.textFields["signin.address"]
+        let password = app.buttons["signin.password"]
+        // The simulator may remember the server from an earlier run and open at step 2.
+        guard server.waitForExistence(timeout: 15) || password.exists else { return } // already signed in
+        if !password.exists {
+            type(app, into: server, url)
+            note("server-field", "typed \(url.count) chars, field holds \"\(server.value as? String ?? "?")\"")
+            let next = app.buttons["signin.continue"]
+            XCTAssertTrue(focus(app, on: next, presses: 12), "could not reach Continue: \(focused(app).identifier)")
+            press(.select)
+            XCTAssertTrue(password.waitForExistence(timeout: 20), "the server step did not finish")
+        }
         attach(app, "signin-after-server")
-        type(app, into: app.textFields["Username"], user)
-        type(app, into: app.secureTextFields["Password"], pass)
-        let signIn = app.buttons["Sign in"]
+        XCTAssertTrue(focus(app, on: password, presses: 12), "could not reach the password tile")
+        press(.select)
+        XCTAssertTrue(app.textFields["signin.username"].waitForExistence(timeout: 5), "the password step did not open")
+        type(app, into: app.textFields["signin.username"], user)
+        type(app, into: app.secureTextFields["signin.passwordField"], pass)
+        let signIn = app.buttons["signin.submit"]
         XCTAssertTrue(focus(app, on: signIn, presses: 12), "could not reach Sign in: \(focused(app).identifier)")
         press(.select)
     }
@@ -105,8 +129,19 @@ final class StagingSportTVUITests: XCTestCase {
     private func selectLeague(_ app: XCUIApplication, _ title: String) -> Bool {
         let row = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'sport.banner.item.' AND label BEGINSWITH %@", title)).firstMatch
-        guard row.waitForExistence(timeout: 10) else { return false }
-        guard focus(app, on: row, presses: 20) else { return false }
+        guard row.waitForExistence(timeout: 10) else {
+            note("no-row-\(title)", app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'sport.banner.item.'"))
+                .allElementsBoundByIndex.map { "\($0.identifier) \($0.label)" }.joined(separator: "\n"))
+            return false
+        }
+        // The list sits right of the banner's back button and starts above it: steering by frames would press Up into
+        // the tab bar, so go through the back button and Right.
+        let back = app.buttons["sport.banner.back"]
+        if !row.hasFocus, back.exists, focus(app, on: back, presses: 12) { press(.right) }
+        guard focus(app, on: row, presses: 20) else {
+            note("no-focus-\(title)", "focus stayed on \(focused(app).identifier); target \(row.frame)\n" + trace.joined(separator: "\n"))
+            return false
+        }
         press(.select)
         return true
     }
@@ -228,9 +263,28 @@ final class StagingSportTVUITests: XCTestCase {
         let settings = app.tabBars.buttons["Settings"]
         XCTAssertTrue(focus(app, on: settings, presses: 8), "no Settings tab: \(focused(app).identifier)")
         press(.select)
+        // D-44 batch 6: Settings is a menu beside its page, and the page follows the focused menu item.
+        let sportItem = app.buttons["settings.menu.sport"]
+        XCTAssertTrue(sportItem.waitForExistence(timeout: 20) && focus(app, on: sportItem, presses: 12),
+                      "no Sport item in Settings: \(focused(app).identifier)")
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settings.sport.row.'"))
-        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 20), "no Sport section in Settings")
-        XCTAssertTrue(focus(app, on: rows.firstMatch, presses: 30), "could not reach the Sport section: \(focused(app).identifier)")
+        guard rows.firstMatch.waitForExistence(timeout: 20) else {
+            XCTFail("no Sport page in Settings")
+            note("staging-sport-log", log.joined(separator: "\n"))
+            return
+        }
+        // Into the page with Right: steering by frames would move down the menu, and the page follows the menu.
+        press(.right)
+        Thread.sleep(forTimeInterval: 1)
+        // Read-only: Down to the first sport row and select only that, never the switches above it.
+        for _ in 0..<15 where focused(app).identifier.hasPrefix("settings.sport.") && !focused(app).identifier.hasPrefix("settings.sport.row.") {
+            press(.down)
+        }
+        guard focused(app).identifier.hasPrefix("settings.sport.row.") else {
+            XCTFail("could not reach a sport row in Settings › Sport: focus on \(focused(app).identifier)")
+            note("staging-sport-log", log.joined(separator: "\n"))
+            return
+        }
         Thread.sleep(forTimeInterval: 1)
         log.append("settings: rows \(rows.allElementsBoundByIndex.map(\.identifier)), spoilerFree "
                    + "\(app.buttons["settings.sport.spoilerFree"].value ?? "?"), failed \(any["settings.sport.failed"].exists)")
