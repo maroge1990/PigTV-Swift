@@ -336,7 +336,7 @@ private struct PlayerTestScreen: View {
 // channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
     static let screens: Set<String> = ["programme", "programme-later", "record", "record-change", "record-sport", "schedule", "channel", "recording",
-                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume"]
+                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume", "signin-server"]
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
@@ -359,6 +359,8 @@ private struct DesignTestScreen: View {
             app.injectHomeFixture(sportFollows: ["record", "record-change", "record-sport"].contains(screen))
             app.serverText = "http://pigtv.local:3000"
             if screen == "pairing" { app.injectPairingReview() }
+            // D-44 batch 6: Sign in's step 1 (the server), as after "Use a different server".
+            if screen == "signin-server" { app.signInAtServer = true }
             if let browse = app.browse { GuideFixtures.addSchedules(to: browse) }
             ready = true
             // Codex 5a round 1: PIGTV_UI_TEST_RECORD_FLIP=recording | gone changes the scheduled programme's row 4 s after

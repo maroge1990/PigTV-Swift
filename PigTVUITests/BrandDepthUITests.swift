@@ -237,7 +237,8 @@ final class BrandDepthUITests: XCTestCase {
             shot(app, "pairing-code-\(mode)")
             XCUIRemote.shared.press(.select)
             XCTAssertFalse(app.buttons["Cancel pairing"].exists)
-            XCTAssertTrue(app.secureTextFields.firstMatch.exists)
+            // D-44 batch 6: cancelled, Sign in is back on its two tiles.
+            XCTAssertTrue(app.buttons["signin.password"].waitForExistence(timeout: 5))
             shot(app, "pairing-cancel-return-\(mode)")
             app.terminate()
         }

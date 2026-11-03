@@ -221,6 +221,28 @@ final class AppModel: ObservableObject {
 
     /// D-44 batch 6: Sign in starts at its server step (not the two tiles) after "Use a different server".
     @Published var signInAtServer = false
+    /// Sign in's step 1: the address this session last reached, and what it said (pairing or not).
+    @Published private(set) var checkedServer: String?
+    @Published private(set) var checkedInfo: ServerInfo?
+
+    /// Sign in's Continue: reaches the address's `/api/info` before offering the ways to sign in.
+    func checkServer() async -> Bool {
+        guard !authBusy else { return false }
+        authBusy = true
+        defer { authBusy = false }
+        do {
+            let address = try ServerAddress(serverText)
+            let info: ServerInfo = try await APIClient(address: address).request("info")
+            try info.validate()
+            checkedServer = serverText
+            checkedInfo = info
+            signInAtServer = false
+            return true
+        } catch {
+            if !UserMessage.isCancellation(error) { self.error = UserMessage.text(for: error) }
+            return false
+        }
+    }
 
     /// `chooseServer`: signed out from "Use a different server", so Sign in asks for the server first.
     func logout(chooseServer: Bool = false) async {
