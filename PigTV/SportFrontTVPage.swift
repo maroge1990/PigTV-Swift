@@ -99,6 +99,7 @@ struct SportFrontTVPage: View {
                                return (label: "Open \(sport)", action: { open(sport) })
                            }) {
             SportHeroButtons(game: game, now: now, app: app, flow: flow,
+                             team: model.heroFollowIndex.flatMap { front.follows.indices.contains($0) ? front.follows[$0].name : nil },
                              open: sport.map { name in (label: "Open \(name)", action: { open(name) }) },
                              focus: $heroFocused)
         }

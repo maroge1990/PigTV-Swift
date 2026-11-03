@@ -58,12 +58,13 @@ final class SportRecordFlow: ObservableObject {
     func attach(_ app: AppModel) { self.app = app }
 
     /// The record page (Change recording when one of its channels has it scheduled).
-    func record(_ event: SportEvent, game: SportsGame? = nil) { app?.record(event, game: game) }
+    func record(_ event: SportEvent, game: SportsGame? = nil, team: String? = nil) { app?.record(event, game: game, team: team) }
 
     /// The menu's RECORD items for a card: the same items as the Guide's (`ProgrammeMenu`), for its best channel.
-    func menuItems(_ event: SportEvent, game: SportsGame?, now: Date = Date()) -> [ProgrammeMenuItem] {
+    /// `team`: the follow the menu is for (#49), so "Record every <team> game" is that team's.
+    func menuItems(_ event: SportEvent, game: SportsGame?, team: String? = nil, now: Date = Date()) -> [ProgrammeMenuItem] {
         guard let browse = app?.browse else { return [] }
-        return Self.menuItems(browse.recordRequest(event: event, game: game, now: now), rulesAvailable: browse.rulesAvailable, now: now)
+        return Self.menuItems(browse.recordRequest(event: event, game: game, team: team, now: now), rulesAvailable: browse.rulesAvailable, now: now)
     }
 
     /// Pure; tested (SportRecordMenuTests).
@@ -71,14 +72,14 @@ final class SportRecordFlow: ObservableObject {
         guard let request, let first = request.airings.first else { return [] }
         let subject = ProgrammeMenuSubject(channelName: first.channel.name, programme: first.programme,
                                            recordingStatus: request.schedule?.statusWord, rulesAvailable: rulesAvailable,
-                                           everyGameTeam: request.followedTeam ?? request.teams.first?.name, isGame: true)
+                                           everyGameTeam: request.everyGameTeam, isGame: true)
         return ProgrammeMenu.items(subject, now: now).filter(\.isRecordSection)
     }
 
     /// A menu item chosen: Record this game at once on the best channel (with the game's id, the usual padding), a team
     /// rule, or the record page. A quick one that fails opens the page with its error.
-    func run(_ item: ProgrammeMenuItem, event: SportEvent, game: SportsGame?) {
-        guard let app, let browse = app.browse, let request = browse.recordRequest(event: event, game: game),
+    func run(_ item: ProgrammeMenuItem, event: SportEvent, game: SportsGame?, team: String? = nil) {
+        guard let app, let browse = app.browse, let request = browse.recordRequest(event: event, game: game, team: team),
               let first = request.airings.first else { return }
         switch item {
         case .recordThis:
@@ -90,16 +91,16 @@ final class SportRecordFlow: ObservableObject {
                 }
             }
         case .recordEvery:
-            guard let team = request.followedTeam ?? request.teams.first?.name,
+            guard let team = request.everyGameTeam,
                   let rule = RecordPlan.rule(.everyTeam(team), request: request, before: nil, after: nil) else { return }
             Task {
                 guard await browse.addRule(rule) else {
-                    app.record(event, game: game, error: browse.actionError ?? "The rule could not be added.")
+                    app.record(event, game: game, team: team, error: browse.actionError ?? "The rule could not be added.")
                     return
                 }
             }
         default:
-            app.record(event, game: game)
+            app.record(event, game: game, team: team)
         }
     }
 }
@@ -161,6 +162,8 @@ struct SportHeroButtons: View {
     let now: Date
     let app: AppModel
     let flow: SportRecordFlow
+    /// #49: the follow the hero shows (the front page's flipped follow), so Record's team rules are that team's.
+    var team: String? = nil
     /// "Open Football" (the front page); nil on a sport page.
     var open: (label: String, action: () -> Void)? = nil
     /// The page's default focus: the first button (Watch or Remind me, else Record, else the sport's page).
@@ -188,7 +191,7 @@ struct SportHeroButtons: View {
             case .details, .none:
                 EmptyView()
             }
-            Button("Record", systemImage: "record.circle") { flow.record(event, game: game) }
+            Button("Record", systemImage: "record.circle") { flow.record(event, game: game, team: team) }
                 .modifier(HeroFocus(focus: primary ? nil : focus))
                 .accessibilityIdentifier("sport.banner.hero.record")
         }

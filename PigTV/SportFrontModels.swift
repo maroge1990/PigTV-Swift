@@ -499,14 +499,20 @@ nonisolated enum SportFrontLayout {
         return game.competitors[1 - mine].name
     }
 
+    /// Every competitor that is a followed team (both, when the account follows both sides).
+    static func followedSides(_ game: SportsGame, names: [String]) -> [Int] {
+        game.competitors.indices.filter { matches(game.competitors[$0].name, names: names) }
+    }
+
+    private static func matches(_ competitor: String, names: [String]) -> Bool {
+        let name = competitor.lowercased()
+        return names.map { $0.lowercased() }.contains { $0 == name || $0.hasSuffix(" " + name) || name.hasSuffix(" " + $0) }
+    }
+
     /// Which competitor is a followed team (its name or the follow's, either ending the other: "Packers" in "Green Bay
     /// Packers"), for the card's star; nil when none matches.
     static func followedSide(_ game: SportsGame, names: [String]) -> Int? {
-        let wanted = names.map { $0.lowercased() }
-        return game.competitors.firstIndex { competitor in
-            let name = competitor.name.lowercased()
-            return wanted.contains { $0 == name || $0.hasSuffix(" " + name) || name.hasSuffix(" " + $0) }
-        }
+        game.competitors.firstIndex { matches($0.name, names: names) }
     }
 
     /// The hero's words in the banner. `hidden`: spoiler-free (the answer's or the preference): no score, no situation.

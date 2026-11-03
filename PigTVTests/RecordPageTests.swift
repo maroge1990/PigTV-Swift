@@ -207,3 +207,43 @@ final class RecordPageTests: XCTestCase {
         XCTAssertFalse(browse.mutationBusy)
     }
 }
+
+extension RecordPageTests {
+    /// #49 (Codex batch 7a, high): with both opponents followed, each side's carousel card and the hero record that
+    /// side's team, never the first followed match; with no team named, nothing is guessed: the menu offers no team
+    /// rule and the record page offers both teams. Before Apple 140 Man City's card added a Liverpool rule.
+    @MainActor
+    func testBothOpponentsFollowedEachCardRecordsItsOwnTeam() throws {
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:9"), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        let front = try SportFrontLayoutTests.front { json in
+            var follows = json["follows"] as? [[String: Any]] ?? []
+            follows.insert(["league": "EPL", "sport": "Football", "name": "Man City", "logo": NSNull(), "state": "live",
+                            "gameId": "espn:soccer/eng.1:1", "start": follows[0]["start"] ?? 0], at: 1)
+            json["follows"] = follows
+        }
+        browse.sportFront.setFixture(front)
+        let game = try XCTUnwrap(front.game("espn:soccer/eng.1:1"))
+        let event = try XCTUnwrap(SportFrontText.event(game))
+        let at = Date(timeIntervalSince1970: front.now / 1000)
+        let cards = SportPhoneLayout.cards(front, hidden: false, now: at)
+        XCTAssertEqual(cards[0].team, "Liverpool")
+        XCTAssertEqual(cards[1].team, "Man City")
+        for card in cards.prefix(2) {
+            let request = try XCTUnwrap(browse.recordRequest(event: event, game: game, team: card.team, now: at))
+            XCTAssertEqual(request.everyGameTeam, card.team)
+            let items = SportRecordFlow.menuItems(request, rulesAvailable: true, now: at)
+            XCTAssertTrue(items.contains { $0.title == "Record every \(card.team) game" }, items.map(\.title).joined(separator: ", "))
+            XCTAssertEqual(RecordPlan.whats(request, rulesAvailable: true), [.this, .everyTeam(card.team), .everyLeague("EPL")])
+        }
+        let unnamed = try XCTUnwrap(browse.recordRequest(event: event, game: game, now: at))
+        XCTAssertNil(unnamed.followedTeam)
+        XCTAssertEqual(unnamed.followedTeams, ["Liverpool", "Man City"])
+        XCTAssertNil(unnamed.everyGameTeam, "no guess between two followed sides")
+        XCTAssertFalse(SportRecordFlow.menuItems(unnamed, rulesAvailable: true, now: at).contains { $0.id == "recordEvery" })
+        XCTAssertEqual(RecordPlan.whats(unnamed, rulesAvailable: true),
+                       [.this, .everyTeam("Liverpool"), .everyTeam("Man City"), .everyLeague("EPL")])
+        let rows = SportPhoneLayout.groups(front, hidden: false, now: at)[0].rows
+        XCTAssertEqual(rows[0].sides.map(\.followed), [true, true], "both sides starred")
+    }
+}

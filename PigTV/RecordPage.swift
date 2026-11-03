@@ -33,8 +33,15 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
     /// C-M since 0440: the Sport card's game, sent with the schedule.
     var gameId: String? = nil
     var teams: [RecordTeam] = []
-    /// The team the household follows, when one of `teams` is.
+    /// The team a rule is for: the one the caller named (a follow's card, the hero's follow), else the one followed side;
+    /// nil when neither or both sides are followed (#49: never the first match of two).
     var followedTeam: String? = nil
+    /// Every followed side (both when the account follows both teams).
+    var followedTeams: [String] = []
+
+    /// "Record every <team> game"'s team: `followedTeam`, else (nobody followed) the first side, else nil: with both sides
+    /// followed and no team named, the record page offers each (#49).
+    var everyGameTeam: String? { followedTeam ?? (followedTeams.isEmpty ? teams.first?.name : nil) }
     /// The league's catalogue sport ("Football"), for a `team` rule.
     var sport: String? = nil
     var isGame = false
@@ -72,6 +79,7 @@ nonisolated enum RecordPlan {
         var out: [What] = [.this]
         guard rulesAvailable else { return out }
         if request.isGame || request.league != nil {
+            // #49: the team named or the one followed side; both sides when both (or neither) are followed.
             let teams = request.followedTeam.map { [$0] } ?? request.teams.prefix(2).map(\.name)
             out += teams.map(What.everyTeam)
             if let league = request.league?.trimmingCharacters(in: .whitespaces), !league.isEmpty,
@@ -229,7 +237,7 @@ extension BrowseModel {
     /// A Sport event (with its C-O/C-R card when there is one: the game's id, its teams and their logos): every channel
     /// carrying it that has not ended, best first; Change recording on the channel that is scheduled (`RecordPlan.bind`),
     /// or on `preferredChannel` when it is, else a new recording there.
-    func recordRequest(event: SportEvent, game: SportsGame? = nil, now: Date = Date(),
+    func recordRequest(event: SportEvent, game: SportsGame? = nil, team: String? = nil, now: Date = Date(),
                        preferredChannel: String? = nil) -> RecordRequest? {
         let channels = SportFrontText.recordChoices(event, now: now)
         let airings = (channels.isEmpty ? event.best.map { [$0] } ?? [] : channels).map { channel in
@@ -248,13 +256,20 @@ extension BrowseModel {
             teams = []
         }
         let front = sportFront.front
-        let followed = game.flatMap { game in
-            SportFrontLayout.followedSide(game, names: front?.follows.map(\.name) ?? []).map { game.competitors[$0].name }
+        // #49: the followed sides, all of them; the team named by the caller wins, never a guess between two.
+        let followedTeams = game.map { game in
+            game.followed == true
+                ? SportFrontLayout.followedSides(game, names: front?.follows.map(\.name) ?? []).map { game.competitors[$0].name }
+                : []
+        } ?? []
+        let named = team.flatMap { team in
+            game.flatMap { game in SportFrontLayout.followedSide(game, names: [team]).map { game.competitors[$0].name } } ?? team
         }
+        let followed = named ?? (followedTeams.count == 1 ? followedTeams[0] : nil)
         let bound = RecordPlan.bind(schedules: airings.map { activeSchedule(channel: $0.channel, programme: $0.programme) },
                                     channels: airings.map(\.channel.id), preferred: preferredChannel)
         var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id, teams: teams,
-                             followedTeam: game?.followed == true ? followed : nil,
+                             followedTeam: followed, followedTeams: followedTeams,
                              sport: front?.sports.first { $0.league == event.league }?.sport, isGame: true,
                              schedule: bound.schedule)
         request.preferredChannel = bound.channel
@@ -272,8 +287,9 @@ extension BrowseModel {
 
 extension AppModel {
     /// Opens the record page for a Sport event (its card when there is one) through the app's presentation layer.
-    func record(_ event: SportEvent, game: SportsGame? = nil, error: String? = nil, onChannel channel: String? = nil) {
-        guard let browse, var request = browse.recordRequest(event: event, game: game, preferredChannel: channel) else { return }
+    func record(_ event: SportEvent, game: SportsGame? = nil, team: String? = nil, error: String? = nil,
+                onChannel channel: String? = nil) {
+        guard let browse, var request = browse.recordRequest(event: event, game: game, team: team, preferredChannel: channel) else { return }
         request.error = error
         presenter.present(.record(request))
     }

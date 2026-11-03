@@ -51,6 +51,8 @@ nonisolated struct SportPhoneCard: Equatable, Identifiable, Sendable {
     /// "2nd half 67' · Optus Sport 1 HD", "Mon 5:00 am · Fox Sports 503 HD", "Nothing in the next three days".
     let line: String
     let gameId: String?
+    /// #49: the follow this card is for: its team rules are this team's, never the other followed side's.
+    let team: String
     let accessibilityLabel: String
 }
 
@@ -75,7 +77,7 @@ nonisolated enum SportPhoneLayout {
             let line = "Nothing in the next three days"
             return SportPhoneCard(index: index, id: follow.key, kicker: league, live: false,
                                   sides: [.init(name: follow.name, logo: follow.cachedLogo, followed: true)],
-                                  title: follow.name, session: nil, score: nil, line: line, gameId: nil,
+                                  title: follow.name, session: nil, score: nil, line: line, gameId: nil, team: follow.name,
                                   accessibilityLabel: [follow.name, league, line].joined(separator: ", "))
         }
         let row = row(game, in: front, hidden: hidden, now: now, follows: [follow.name], calendar: calendar)
@@ -103,7 +105,7 @@ nonisolated enum SportPhoneLayout {
         return SportPhoneCard(index: index, id: follow.key, kicker: kicker, live: live,
                               sides: row.sides.isEmpty ? [.init(name: follow.name, logo: follow.cachedLogo, followed: true)] : row.sides,
                               title: row.sides.isEmpty ? game.title : nil, session: row.sides.isEmpty ? game.session : nil,
-                              score: row.score, line: text, gameId: game.id,
+                              score: row.score, line: text, gameId: game.id, team: follow.name,
                               accessibilityLabel: ([kicker] + names + [row.score, text].compactMap { $0 })
                                 .filter { !$0.isEmpty }.joined(separator: ", "))
     }
@@ -130,9 +132,9 @@ nonisolated enum SportPhoneLayout {
                     calendar: Calendar = .current) -> SportFixtureRowModel {
         let drawn = SportFrontText.drawn(game, in: front, hidden: hidden)
         let two = game.competitors.count == 2
-        let star = two && game.followed == true ? SportFrontLayout.followedSide(game, names: follows) : nil
+        let stars = two && game.followed == true ? SportFrontLayout.followedSides(game, names: follows) : []
         let sides = two ? game.competitors.enumerated().map { index, team in
-            SportFixtureRowModel.Side(name: team.name, logo: team.cachedLogo, followed: star == index)
+            SportFixtureRowModel.Side(name: team.name, logo: team.cachedLogo, followed: stars.contains(index))
         } : []
         let score = two ? drawn.scores.flatMap { $0.count == 2 ? $0.joined(separator: "–") : nil } : nil
         let ongoing = SportFrontHero.ongoing.contains(game.status)

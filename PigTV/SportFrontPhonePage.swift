@@ -185,7 +185,7 @@ struct SportFrontPhonePage: View {
             .accessibilityLabel(card.accessibilityLabel)
             .accessibilityIdentifier("sport.front.follow.\(card.index)")
             Spacer(minLength: 0)
-            if let game { actions(game, now: now) }
+            if let game { actions(game, team: card.team, now: now) }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
         .frame(width: SportPhoneMetrics.cardWidth, height: SportPhoneMetrics.cardHeight, alignment: .topLeading)
@@ -209,7 +209,7 @@ struct SportFrontPhonePage: View {
     /// Watch (on now) or Remind me (before), the one rose primary; Record every game when the game has a team to follow
     /// with a rule, else Record (the record page).
     @ViewBuilder
-    private func actions(_ game: SportsGame, now: Date) -> some View {
+    private func actions(_ game: SportsGame, team: String?, now: Date) -> some View {
         if !game.terminal, let event = SportFrontText.event(game) {
             HStack(spacing: 8) {
                 switch SportFrontText.action(game, now: now) {
@@ -228,11 +228,12 @@ struct SportFrontPhonePage: View {
                 case .details, .none:
                     EmptyView()
                 }
-                let every = flow.menuItems(event, game: game, now: now).first { $0.id == "recordEvery" }
+                // #49: the rule is the card's own follow's team, and the button names it.
+                let every = flow.menuItems(event, game: game, team: team, now: now).first { $0.id == "recordEvery" }
                 Button {
-                    if let every { flow.run(every, event: event, game: game) } else { flow.record(event, game: game) }
+                    if let every { flow.run(every, event: event, game: game, team: team) } else { flow.record(event, game: game, team: team) }
                 } label: {
-                    Text(every == nil ? "Record" : "Record every game").lineLimit(1).minimumScaleFactor(0.8)
+                    Text(every?.title ?? "Record").lineLimit(1).minimumScaleFactor(0.7)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
