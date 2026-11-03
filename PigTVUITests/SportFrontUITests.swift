@@ -117,6 +117,52 @@ final class SportFrontUITests: XCTestCase {
         attach(app, "sport-front-record-page-second-channel")
     }
 
+    /// Apple 115 (D-44 point 4): a long press on a Sport card offers the one menu's RECORD section first (Record this
+    /// game, More options…); More options… opens the record page on that game.
+    @MainActor
+    func testALongPressOnACardOffersTheRecordMenu() throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let id = "espn:football/nfl:401"
+        let app = try launch { json in
+            var games = json["games"] as? [[String: Any]] ?? []
+            for index in games.indices where games[index]["id"] as? String == id {
+                games[index]["channels"] = [
+                    ["sourceId": 1, "id": "espn-hd", "name": "ESPN HD", "start": now + 3_600_000, "end": now + 4 * 3_600_000],
+                    ["sourceId": 2, "id": "fox-footy", "name": "Fox Footy", "start": now + 3_600_000, "end": now + 4 * 3_600_000],
+                ]
+            }
+            json["games"] = games
+        }
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.front"].waitForExistence(timeout: 15), "the Sport front page")
+        let card = app.buttons["sport.front.game.\(id)"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "the Packers card")
+        for _ in 0..<30 where !card.hasFocus {
+            let at = focused(app)
+            guard at.exists else { XCUIRemote.shared.press(.down); continue }
+            if abs(at.frame.midY - card.frame.midY) < 20 {
+                XCUIRemote.shared.press(at.frame.midX < card.frame.midX ? .right : .left)
+            } else {
+                XCUIRemote.shared.press(at.frame.midY < card.frame.midY ? .down : .up)
+            }
+        }
+        XCTAssertTrue(card.hasFocus, "focus: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select, forDuration: 1.5)
+        // The system menu's items are "Other" elements on tvOS.
+        let recordThis = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Record this game'")).firstMatch
+        let more = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'More options'")).firstMatch
+        XCTAssertTrue(recordThis.waitForExistence(timeout: 5), "no Record this game in the card's menu")
+        XCTAssertTrue(more.exists, "no More options…")
+        XCTAssertLessThan(recordThis.frame.minY, more.frame.minY, "Record first")
+        attach(app, "sport-card-record-menu")
+        // The system menu starts on its first item (Record this game) and does not report focus: one down is More options….
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(any["record.page"].waitForExistence(timeout: 5), "More options… did not open the record page")
+        XCTAssertTrue(app.buttons["record.on.1"].exists, "both channels, on the record page")
+        attach(app, "sport-card-record-page")
+    }
+
     /// C-R since 0415 (#198; maroge1990/PigTV#200): a card with a recording that loses its clash shows "Set to record"
     /// and "Clashes with …" (the Chiefs game, with spoilers shown or not: it is not a score).
     @MainActor

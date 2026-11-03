@@ -206,8 +206,9 @@ struct SportFixtureContent: View {
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
         .contextMenu {
+            // Apple 115: the one menu's RECORD section (this game, every <team> game, More options…).
             if let record = SportCardActions.recordEvent(card: card, event: event), record.best != nil, game.status != "done" {
-                Button("Record", systemImage: "record.circle") { flow.record(record) }
+                SportRecordMenu(flow: flow, event: record, game: card.flatMap { $0.terminal ? nil : $0 })
             }
         }
         .accessibilityIdentifier("sport.fixture.game.\(game.id)")

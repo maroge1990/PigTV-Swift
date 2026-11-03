@@ -138,7 +138,7 @@ struct SportFrontTVPage: View {
                         ForEach(front.games(in: rail)) { game in
                             SportGameCard(game: game, front: front, hidden: hidden, now: now, client: browse.client,
                                           onSelect: { SportGamePress.select(game, app: app, presenter: presenter) },
-                                          onPin: { model.pin(game.id) })
+                                          onPin: { model.pin(game.id) }, flow: flow)
                         }
                     }
                     .fixedSize(horizontal: false, vertical: true)

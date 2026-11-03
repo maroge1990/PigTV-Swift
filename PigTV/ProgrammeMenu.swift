@@ -8,7 +8,8 @@ import SwiftUI
 
 /// One menu item.
 nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
-    case recordThis(times: String)
+    /// `game`: a Sport card's ("Record this game").
+    case recordThis(times: String, game: Bool = false)
     /// D-44 batch 5 (Apple 114): already scheduled or recording: the record page as "Change recording" (its times, and
     /// Cancel recording with Undo). Replaces batch 4's "Cancel this recording".
     case changeRecording(status: String)
@@ -35,7 +36,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .recordThis: "Record this programme"
+        case .recordThis(_, let game): game ? "Record this game" : "Record this programme"
         case .changeRecording: "Change recording"
         case .recordEvery(let title, _): title
         case .moreOptions: "More options…"
@@ -49,7 +50,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     /// The second line of a RECORD item.
     var detail: String? {
         switch self {
-        case .recordThis(let times): "\(times), with the usual padding"
+        case .recordThis(let times, _): "\(times), with the usual padding"
         case .changeRecording(let status): status
         case .recordEvery(_, let detail): detail
         case .moreOptions: "Start early, finish late"
@@ -86,8 +87,10 @@ nonisolated struct ProgrammeMenuSubject: Equatable, Sendable {
     /// The active schedule's state, when this programme is scheduled ("Recording scheduled", "Recording now").
     var recordingStatus: String? = nil
     var rulesAvailable = false
-    /// Sport: "Record every game" with this second line instead of a series rule.
-    var everyGame: String? = nil
+    /// Sport (Apple 115): the team "Record every <team> game" follows, instead of a series rule; nil: no team rule.
+    var everyGameTeam: String? = nil
+    /// A Sport card's menu: "Record this game".
+    var isGame = false
     var canWatchFromStart = false
     var isFavourite = false
 
@@ -103,10 +106,12 @@ nonisolated enum ProgrammeMenu {
             if let status = subject.recordingStatus {
                 items.append(.changeRecording(status: status))
             } else {
-                items.append(.recordThis(times: programme.timeRange))
+                items.append(.recordThis(times: programme.timeRange, game: subject.isGame))
             }
-            if let everyGame = subject.everyGame {
-                items.append(.recordEvery(title: "Record every game", detail: everyGame))
+            if subject.isGame {
+                if let team = subject.everyGameTeam, subject.rulesAvailable {
+                    items.append(.recordEvery(title: "Record every \(team) game", detail: "Every game of the team, never replays"))
+                }
             } else if subject.rulesAvailable {
                 items.append(.recordEvery(title: "Record every new episode", detail: "\(programme.title) on \(subject.channelName)"))
             }

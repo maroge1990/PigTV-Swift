@@ -48,8 +48,9 @@ enum SportSectionMetrics {
     #endif
 }
 
-/// D-44 batch 5 (Apple 114): a Sport screen's recording. Record opens the record page (every channel carrying the game,
-/// best first, each on its own airing: #204, C-I #20) through the app's presentation layer.
+/// D-44 batch 5 (Apple 114–115): a Sport screen's recording. Record opens the record page (every channel carrying the
+/// game, best first, each on its own airing: #204, C-I #20) through the app's presentation layer; a card's long press
+/// offers the one menu's RECORD section (this game or Change recording, every <team> game, More options…).
 @MainActor
 final class SportRecordFlow: ObservableObject {
     private weak var app: AppModel?
@@ -58,6 +59,73 @@ final class SportRecordFlow: ObservableObject {
 
     /// The record page (Change recording when one of its channels has it scheduled).
     func record(_ event: SportEvent, game: SportsGame? = nil) { app?.record(event, game: game) }
+
+    /// The menu's RECORD items for a card: the same items as the Guide's (`ProgrammeMenu`), for its best channel.
+    func menuItems(_ event: SportEvent, game: SportsGame?, now: Date = Date()) -> [ProgrammeMenuItem] {
+        guard let browse = app?.browse else { return [] }
+        return Self.menuItems(browse.recordRequest(event: event, game: game, now: now), rulesAvailable: browse.rulesAvailable, now: now)
+    }
+
+    /// Pure; tested (SportRecordMenuTests).
+    nonisolated static func menuItems(_ request: RecordRequest?, rulesAvailable: Bool, now: Date) -> [ProgrammeMenuItem] {
+        guard let request, let first = request.airings.first else { return [] }
+        let subject = ProgrammeMenuSubject(channelName: first.channel.name, programme: first.programme,
+                                           recordingStatus: request.schedule?.statusWord, rulesAvailable: rulesAvailable,
+                                           everyGameTeam: request.followedTeam ?? request.teams.first?.name, isGame: true)
+        return ProgrammeMenu.items(subject, now: now).filter(\.isRecordSection)
+    }
+
+    /// A menu item chosen: Record this game at once on the best channel (with the game's id, the usual padding), a team
+    /// rule, or the record page. A quick one that fails opens the page with its error.
+    func run(_ item: ProgrammeMenuItem, event: SportEvent, game: SportsGame?) {
+        guard let app, let browse = app.browse, let request = browse.recordRequest(event: event, game: game),
+              let first = request.airings.first else { return }
+        switch item {
+        case .recordThis:
+            Task {
+                guard await browse.schedule(channel: first.channel, programme: first.programme, before: nil, after: nil,
+                                            gameId: request.gameId) else {
+                    app.record(event, game: game, error: browse.actionError ?? "The recording could not be scheduled.")
+                    return
+                }
+            }
+        case .recordEvery:
+            guard let team = request.followedTeam ?? request.teams.first?.name,
+                  let rule = RecordPlan.rule(.everyTeam(team), request: request, before: nil, after: nil) else { return }
+            Task {
+                guard await browse.addRule(rule) else {
+                    app.record(event, game: game, error: browse.actionError ?? "The rule could not be added.")
+                    return
+                }
+            }
+        default:
+            app.record(event, game: game)
+        }
+    }
+}
+
+/// A card's long-press RECORD section (put inside its `contextMenu`).
+struct SportRecordMenu: View {
+    let flow: SportRecordFlow
+    let event: SportEvent
+    var game: SportsGame? = nil
+
+    var body: some View {
+        let items = flow.menuItems(event, game: game)
+        if !items.isEmpty {
+            Section("Record") {
+                ForEach(items) { item in
+                    Button { flow.run(item, event: event, game: game) } label: {
+                        Label {
+                            Text(item.title)
+                            if let detail = item.detail { Text(detail) }
+                        } icon: { Image(systemName: item.systemImage) }
+                    }
+                    .accessibilityIdentifier("menu.\(item.id)")
+                }
+            }
+        }
+    }
 }
 
 extension View {
@@ -149,6 +217,8 @@ struct SportGameCard: View {
     let onSelect: () -> Void
     /// Long press "Make this the hero" (the front page).
     var onPin: (() -> Void)? = nil
+    /// Apple 115: the long press's RECORD section (nil: none, e.g. a finished game).
+    var flow: SportRecordFlow? = nil
 
     var body: some View {
         let drawn = SportFrontText.drawn(game, in: front, hidden: hidden)
@@ -175,6 +245,9 @@ struct SportGameCard: View {
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportCardMetrics.radius))
         .contextMenu {
+            if let flow, !game.terminal, let event = SportFrontText.event(game) {
+                SportRecordMenu(flow: flow, event: event, game: game)
+            }
             if let onPin { Button("Make this the hero", systemImage: "star") { onPin() } }
         }
         .accessibilityIdentifier("sport.front.game.\(game.id)")

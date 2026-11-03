@@ -201,6 +201,8 @@ struct SportMotorCardsContent: View {
     let now: Date
     let client: APIClient?
     let label: String
+    /// Apple 115: the cards' long-press RECORD section.
+    var flow: SportRecordFlow? = nil
     @Environment(\.sportPresenter) private var presenter
 
     var body: some View {
@@ -212,9 +214,8 @@ struct SportMotorCardsContent: View {
             } else {
                 HStack(alignment: .top, spacing: SportCardMetrics.spacing) {
                     ForEach(games) { game in
-                        SportGameCard(game: game, front: front, hidden: hidden, now: now, client: client) {
-                            SportGamePress.select(game, app: app, presenter: presenter)
-                        }
+                        SportGameCard(game: game, front: front, hidden: hidden, now: now, client: client,
+                                      onSelect: { SportGamePress.select(game, app: app, presenter: presenter) }, flow: flow)
                     }
                 }
             }

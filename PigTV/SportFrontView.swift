@@ -532,6 +532,9 @@ private struct SportFrontPage: View {
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: FrontMetrics.radius))
         .contextMenu {
+            if !game.terminal, let event = SportFrontText.event(game) {
+                SportRecordMenu(flow: flow, event: event, game: game)
+            }
             Button("Make this the hero", systemImage: "star") { model.pin(game.id) }
         }
         .accessibilityIdentifier("sport.front.game.\(game.id)")

@@ -252,7 +252,7 @@ struct SportPageView: View {
                                    labels: model.labels, flow: flow)
             case .motorCards:
                 SportMotorCardsContent(app: app, league: league, front: front, hidden: f1.hidesSpoilers, now: now,
-                                       client: browse.client, label: label)
+                                       client: browse.client, label: label, flow: flow)
             case .games: games(league, front: front, now: now)
             }
         }
@@ -274,9 +274,8 @@ struct SportPageView: View {
                                              spacing: SportCardMetrics.spacing, alignment: .topLeading)],
                           alignment: .leading, spacing: SportCardMetrics.spacing) {
                     ForEach(games) { game in
-                        SportGameCard(game: game, front: front, hidden: f1.hidesSpoilers, now: now, client: browse.client) {
-                            SportGamePress.select(game, app: app, presenter: presenter)
-                        }
+                        SportGameCard(game: game, front: front, hidden: f1.hidesSpoilers, now: now, client: browse.client,
+                                      onSelect: { SportGamePress.select(game, app: app, presenter: presenter) }, flow: flow)
                     }
                 }
             }

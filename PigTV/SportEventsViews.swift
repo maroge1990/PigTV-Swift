@@ -94,14 +94,8 @@ struct SportEventsContent: View {
     private func eventHeader(_ event: SportEventsEvent, now: Date, hidden: Bool, detail: String? = nil) -> some View {
         HStack(alignment: .center, spacing: 18) {
             if let card = front.game(event.id) {
-                SportGameCard(game: card, front: front, hidden: hidden, now: now, client: browse.client) {
-                    SportGamePress.select(card, app: app, presenter: presenter)
-                }
-                .contextMenu {
-                    if !card.terminal, let record = SportFrontText.event(card) {
-                        Button("Record", systemImage: "record.circle") { flow.record(record) }
-                    }
-                }
+                SportGameCard(game: card, front: front, hidden: hidden, now: now, client: browse.client,
+                              onSelect: { SportGamePress.select(card, app: app, presenter: presenter) }, flow: flow)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.name).font(SportPageMetrics.cardTitle).lineLimit(1)
@@ -121,14 +115,8 @@ struct SportEventsContent: View {
             LazyHStack(alignment: .top, spacing: 14) {
                 ForEach(events) { event in
                     if let card = front.game(event.id) {
-                        SportGameCard(game: card, front: front, hidden: hidden, now: now, client: browse.client) {
-                            SportGamePress.select(card, app: app, presenter: presenter)
-                        }
-                        .contextMenu {
-                            if !card.terminal, let record = SportFrontText.event(card) {
-                                Button("Record", systemImage: "record.circle") { flow.record(record) }
-                            }
-                        }
+                        SportGameCard(game: card, front: front, hidden: hidden, now: now, client: browse.client,
+                                      onSelect: { SportGamePress.select(card, app: app, presenter: presenter) }, flow: flow)
                     }
                 }
             }

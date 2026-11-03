@@ -34,6 +34,19 @@ final class ProgrammeMenuTests: XCTestCase {
         XCTAssertEqual(items[0].id, "changeRecording")
     }
 
+    /// Apple 115: a Sport card's RECORD section: this game, every game of the team, More options….
+    func testASportCardRecordsThisGameOrEveryGameOfTheTeam() {
+        let later = programme(2400, 9000)
+        let items = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Optus Sport 1", programme: later, rulesAvailable: true,
+                                                             everyGameTeam: "Liverpool", isGame: true), now: now)
+            .filter(\.isRecordSection)
+        XCTAssertEqual(items.map(\.title), ["Record this game", "Record every Liverpool game", "More options…"])
+        let noRules = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Optus Sport 1", programme: later,
+                                                               everyGameTeam: "Liverpool", isGame: true), now: now)
+        XCTAssertFalse(noRules.contains { $0.id == "recordEvery" }, "no team rule without the server's rules")
+        XCTAssertFalse(noRules.map(\.title).contains("Record every new episode"), "never a series rule for a game")
+    }
+
     func testEndedProgrammesAndTilesHaveNoRecordSection() {
         let ended = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "SBS", programme: programme(-7200, -60),
                                                              rulesAvailable: true), now: now)
