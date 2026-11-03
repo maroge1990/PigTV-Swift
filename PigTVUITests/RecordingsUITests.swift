@@ -92,6 +92,33 @@ final class RecordingsUITests: XCTestCase {
         XCTAssertTrue(reached, "focus never reached a Delete in Needs attention: \(focused(app).identifier)")
     }
 
+    /// D-44 (Apple 121, R5-View): a card opens View recording on the tab's own stack: the art, its state, the facts and
+    /// its actions; Menu goes back to the tab.
+    @MainActor
+    func testACardOpensViewRecordingAndMenuGoesBack() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-recordings"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'AFL: Collingwood'")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "no game card")
+        for _ in 0..<12 where !card.hasFocus {
+            let at = focused(app).frame, to = card.frame
+            XCUIRemote.shared.press(abs(at.midY - to.midY) > 40 ? .down : (at.midX < to.midX ? .right : .left))
+            for _ in 0..<10 where !card.hasFocus { Thread.sleep(forTimeInterval: 0.1) }
+        }
+        XCTAssertTrue(card.hasFocus, "focus never reached the game card")
+        XCUIRemote.shared.press(.select)
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["recording.facts"].waitForExistence(timeout: 5), "View recording did not open")
+        XCTAssertEqual(any["recording.state"].label, "Recorded")
+        XCTAssertTrue(app.buttons["recording.play"].exists && app.buttons["recording.findBreaks"].exists
+                      && app.buttons["recording.delete"].exists, "Play, Find breaks and Delete")
+        attach(app, "recording-view")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(any["recordings.featured"].waitForExistence(timeout: 5), "Menu did not go back to the tab")
+    }
+
     /// #12 (D-42, server 0410; maroge1990/PigTV#200): a schedule that loses its clash says why it waits and offers
     /// "Record this one instead", which asks first (PIGTV_UI_TEST_CLASH=1: 92 wins, 93 loses).
     @MainActor

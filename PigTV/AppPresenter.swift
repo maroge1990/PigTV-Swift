@@ -135,7 +135,7 @@ extension View {
             if let browse {
                 switch item {
                 case .recording(let recording):
-                    RecordingDetails(model: browse, original: recording)
+                    RecordingView(model: browse, original: recording)
                 case .channelSchedule(let channel):
                     ChannelPageView(model: browse, presenter: presenter, channel: channel) {
                         presenter.dismiss { app.beginPlayback(browse.asChannel(channel)) }

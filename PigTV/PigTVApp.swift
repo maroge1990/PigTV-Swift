@@ -328,7 +328,7 @@ private struct PlayerTestScreen: View {
 // channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
     static let screens: Set<String> = ["programme", "programme-later", "record", "record-change", "record-sport", "schedule", "channel", "recording",
-                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume"]
+                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume"]
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
@@ -390,7 +390,10 @@ private struct DesignTestScreen: View {
         case "recording-player", "recording-loading", "recording-preparing", "recording-error", "recording-resume":
             RecordingPlayerScreen(recording: browse.recordings[1], client: browse.client)
         case "recording":
-            RecordingDetails(model: browse, original: browse.recordings[1])
+            RecordingView(model: browse, original: browse.recordings[1])
+        case "recording-game":
+            // Apple 121: a game recording, drawn with its two teams.
+            if let game = browse.recordings.first(where: { $0.id == 24 }) { RecordingView(model: browse, original: game) }
         case "search", "jump":
             GuideSearchPage(model: browse, date: Date(), canJump: true, startWithJump: screen == "jump",
                             openChannel: { _ in }, openProgramme: { _, _ in }, showGuide: { _ in })

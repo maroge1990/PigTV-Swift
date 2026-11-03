@@ -66,7 +66,6 @@ struct RecordingsView: View {
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
     @State private var path: [RecordingsRoute] = RecordingsView.initialPath
-    @State private var selected: Recording?
     @State private var playing: RecordingPlay?
     /// The iPhone's card stack: the recording shown.
     @State private var page: Int?
@@ -117,7 +116,7 @@ struct RecordingsView: View {
                 case .scheduled: ScheduledPage(model: model)
                 case .rules, .attention: ScheduledSubpage(model: model, route: route)
                 case .recording(let id):
-                    if let item = model.recordings.first(where: { $0.id == id }) { RecordingDetails(model: model, original: item) }
+                    if let item = model.recordings.first(where: { $0.id == id }) { RecordingView(model: model, original: item) }
                 }
             }
             // Build 31: only when older than a minute. The tvOS remote has no pull-to-refresh, so there it reloads on
@@ -135,17 +134,17 @@ struct RecordingsView: View {
                     await model.loadRecordings(quietly: true)
                 }
             }
-            .fullScreenCover(item: $selected) { item in RecordingDetails(model: model, original: item) }
             .fullScreenCover(item: $playing) { play in
                 RecordingPlayerScreen(recording: play.recording, client: model.client, fromStart: play.fromStart) {
                     Task { await model.loadRecordings() }
                 }
             }
-            .closesForOutsidePlay { selected = nil; playing = nil } // #179
+            .closesForOutsidePlay { playing = nil } // #179
         }
     }
 
-    private func open(_ item: Recording) { selected = item }
+    /// Apple 121: View recording is a page on the tab's stack.
+    private func open(_ item: Recording) { path.append(.recording(item.id)) }
 
     @ViewBuilder
     private var status: some View {
@@ -634,153 +633,3 @@ private struct RecordingStackCard: View {
     }
 }
 #endif
-
-struct RecordingDetails: View {
-    /// Not observed (audit R05): the stores this page draws from are below.
-    let model: BrowseModel
-    @ObservedObject private var store: RecordingsStore
-    @ObservedObject private var actions: ActionState
-    // The channel's logo comes from the guide row and the EPG artwork.
-    @ObservedObject private var guideStore: GuideStore
-    @ObservedObject private var artwork: ArtworkStore
-    let original: Recording
-    @State private var deleting = false
-    @State private var playing = false
-    /// C-L: playing the in-progress recording from its start.
-    @State private var watchingFromStart = false
-    @Environment(\.dismiss) private var dismiss
-    @FocusState private var playFocused: Bool
-    init(model: BrowseModel, original: Recording) {
-        self.model = model
-        self.original = original
-        _store = ObservedObject(wrappedValue: model.recordingStore)
-        _actions = ObservedObject(wrappedValue: model.actions)
-        _guideStore = ObservedObject(wrappedValue: model.guideStore)
-        _artwork = ObservedObject(wrappedValue: model.artwork)
-    }
-
-    private var item: Recording { model.recordings.first { $0.id == original.id } ?? original }
-
-    /// The channel's logo, found by name in the loaded guide.
-    private var logo: String? {
-        guard let name = item.channel_name, let row = model.guide.first(where: { $0.name == name }) else { return nil }
-        return model.logo(for: row)
-    }
-
-    private var resumeFraction: Double? {
-        model.progress(for: item).fraction
-    }
-
-    /// C-L: still recording, and the server can play it from its start.
-    private var canWatchFromStart: Bool {
-        item.canWatchFromStart && model.client.info?.features.recordingWatchLive == true
-    }
-
-    var body: some View {
-        let playLabel = item.playLabel
-        DetailPage {
-            DetailHero(logo: logo, client: model.client) {
-                HStack(alignment: .top) {
-                    ChannelLine(logo: logo, client: model.client, name: item.channel_name ?? "Channel unavailable",
-                                number: nil, detail: "Recording")
-                    Spacer(minLength: 20)
-                    statusBadge
-                }
-                .padding(.bottom, 12)
-                if let date = item.started {
-                    Eyebrow(text: "\(DetailText.day(date, now: Date())) · \(date.formatted(date: .omitted, time: .shortened))")
-                }
-                Text(item.title).font(DetailType.title).lineLimit(3).fixedSize(horizontal: false, vertical: true)
-                if !meta.isEmpty {
-                    Text(meta).font(DetailType.meta).foregroundStyle(.secondary)
-                }
-                if let resumeFraction {
-                    HStack(spacing: 18) {
-                        PigProgressBar(fraction: resumeFraction, height: 6).frame(maxWidth: 640)
-                        Text("Resumes where you left off").font(DetailType.meta).foregroundStyle(.secondary)
-                    }
-                }
-                if item.isPreparingForPlayback {
-                    Text("Preparing for playback…").font(DetailType.meta).foregroundStyle(.secondary)
-                }
-                if item.is_partial == 1 {
-                    HStack(spacing: 14) {
-                        StatusBadge(text: "Partial recording", systemImage: "clock.badge.exclamationmark", colour: .pigWarning)
-                        Text("The beginning of the programme may be missing.").font(DetailType.meta).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            DetailActions {
-                if let playLabel {
-                    Button(resumeFraction == nil ? playLabel : "Resume", systemImage: "play.fill") { playing = true }
-                        .pigPrimaryButton()
-                        .focused($playFocused)
-                } else if canWatchFromStart {
-                    Button("Watch from start", systemImage: "play.fill") { watchingFromStart = true }
-                        .pigPrimaryButton()
-                        .focused($playFocused)
-                        .accessibilityIdentifier("recording.watchFromStart")
-                }
-                if item.status == "completed" {
-                    Button("Find breaks", systemImage: "wand.and.stars") {
-                        Task { await model.detectAds(item) }
-                    }
-                    .disabled(model.mutationBusy || item.ad_detect_status == "running" || item.ad_detect_status == "pending")
-                }
-                Button("Refresh", systemImage: "arrow.clockwise") {
-                    Task { await model.loadRecordings() }
-                }
-                .disabled(model.recordingsBusy)
-                Button(role: .destructive) { deleting = true } label: {
-                    Label("Delete", systemImage: "trash").foregroundStyle(Color.pigDanger)
-                }
-                .disabled(model.mutationBusy)
-            }
-            .defaultFocus($playFocused, true)
-            if playLabel == nil {
-                Text(canWatchFromStart ? "Still recording: watch it from the start while the rest records."
-                     : "Playback is available once the recording has finished.").font(DetailType.meta).foregroundStyle(.secondary)
-            }
-            if let message = model.actionMessage { Text(message).font(DetailType.meta).foregroundStyle(.secondary) }
-            if let error = model.actionError { Text(error).font(DetailType.meta).foregroundStyle(.secondary) }
-            // 16 Oct (Mark): the break times are not listed here. Breaks are
-            // still detected, skipped in the player and marked on its scrub bar.
-        }
-        .interactiveDismissDisabled(model.mutationBusy)
-        .fullScreenCover(isPresented: $playing) { RecordingPlayerScreen(recording: item, client: model.client) { Task { await model.loadRecordings() } } }
-        .fullScreenCover(isPresented: $watchingFromStart) {
-            RecordingPlayerScreen(recording: item, client: model.client, fromStart: true) { Task { await model.loadRecordings() } }
-        }
-        .closesForOutsidePlay { playing = false; watchingFromStart = false } // #179
-        .confirmationDialog("Delete this recording?", isPresented: $deleting, titleVisibility: .visible) {
-            Button("Delete recording and file", role: .destructive) {
-                Task {
-                    await model.delete(item)
-                    if !model.recordings.contains(where: { $0.id == original.id }) { dismiss() }
-                }
-            }
-            Button("Keep it", role: .cancel) {}
-        } message: {
-            Text("This removes \(item.title) and its file from the server. If it is still recording, recording stops first.")
-        }
-    }
-
-    @ViewBuilder
-    private var statusBadge: some View {
-        switch item.status {
-        case "recording": StatusBadge(text: "Recording now", systemImage: "record.circle.fill", colour: .pigDanger)
-        case "completed": StatusBadge(text: "Recorded", systemImage: "checkmark.circle.fill")
-        case "failed": StatusBadge(text: "Failed", systemImage: "exclamationmark.triangle.fill", colour: .gray)
-        default: StatusBadge(text: item.status.capitalized, colour: .gray)
-        }
-    }
-
-    private var meta: String {
-        var parts: [String] = []
-        if let duration = item.duration_sec, duration > 0 { parts.append(DetailText.duration(duration)) }
-        if let bytes = item.file_size_bytes, bytes >= 0, bytes < Double(Int64.max) {
-            parts.append(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
-        }
-        return parts.joined(separator: " · ")
-    }
-}

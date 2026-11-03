@@ -88,4 +88,19 @@ final class RecordingsHomeTests: XCTestCase {
         XCTAssertEqual(ScheduledRows.attentionSummary(attention), "1 missed · 1 failed")
         XCTAssertEqual(ScheduledRows.attention(recordings: [failed], schedules: [missed], hidden: ["recording:5"]).map(\.id), ["schedule-4"])
     }
+
+    /// Apple 121: View recording's eyebrow, where it was left, its facts and its state.
+    func testViewRecordingSaysWhereItWasLeftAndItsFacts() throws {
+        let game = try recording(#"{"id":24,"title":"AFL: Collingwood v Carlton","channel_name":"Fox Footy 504","started_at":1762000000000,"status":"completed","duration_sec":9000,"file_size_bytes":5153960755,"is_partial":1}"#)
+        XCTAssertTrue(RecordingFacts.eyebrow(game).hasSuffix("· FOX FOOTY 504"), RecordingFacts.eyebrow(game))
+        XCTAssertEqual(RecordingFacts.position(game, progress: RecordingProgress(fraction: 0.5, watched: false)), "1:15:00 of 2:30:00")
+        XCTAssertNil(RecordingFacts.position(game, progress: .none))
+        let facts = RecordingFacts.facts(game)
+        XCTAssertEqual(facts.map(\.0), ["Length", "Channel", "Partial"])
+        XCTAssertTrue(facts[0].1.hasPrefix("2 h 30 min · "), facts[0].1)
+        XCTAssertEqual(RecordingFacts.state(game), "Recorded")
+        let live = try recording(#"{"id":2,"title":"Live","status":"recording"}"#)
+        XCTAssertEqual(RecordingFacts.state(live), "Recording now")
+        XCTAssertEqual(RecordingFacts.facts(live).map(\.0), ["Channel"])
+    }
 }
