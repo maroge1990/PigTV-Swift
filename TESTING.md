@@ -50,6 +50,12 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI)
   fixtures (What, When it stops, Record on best first, Change recording's Save changes and Cancel recording with Undo).
   `RecordPageTests` (unit) covers its choices and the requests it sends on a `LocalHTTPServer` (`gameId`; the
   `PUT recordings/scheduled/:id` and its 404/405/409 answers).
+- `RecordingsUITests` (push tier; D-44 batch 5, Apple 119–122): the Recordings tab's featured recording, cards and Coming
+  up, whose All › opens Scheduled; Scheduled's rules and Needs attention beside Coming up and the clash choice (#12); a
+  card opening View recording on the tab's stack; Remove acting at once with the Undo toast (focus on Undo, Select puts
+  it back). `RecordingsHomeTests` (unit) covers what the tab, Scheduled and View recording list and say, and the team
+  match; `RecordingUndoTests` the held server call (hidden at once, nothing sent on Undo, waits for a change in flight,
+  a refused call comes back with its error). `PhoneGuideFilterUITests.testAFailedOnNowMenuActionSaysWhy` (iOS, #219).
 - `GuideFastScrollUITests` (build 46): on 300 channels, holding Down then Up leaves focus on a row on screen, not pulled
   back to the starting row (the fast swipe's landing scroll was clamped to a stale planned row).
 - `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all four tabs.
@@ -77,12 +83,13 @@ data, not the real feed.
 
 | Variable | Values |
 |---|---|
-| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` · `sport-event` · `sport-channels` |
+| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `recording-game` (a game's View recording) · `recordings` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` · `sport-event` · `sport-channels` |
 | `PIGTV_UI_TEST_APPEARANCE` | `light` or `dark` (the tvOS simulator has no `simctl ui appearance`) |
 | `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the library and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
 | `PIGTV_UI_TEST_MEDIA` | A local movie file the `player` fixture plays |
 | `PIGTV_UI_TEST_HOME_SCROLL`, `PIGTV_UI_TEST_SPORT_SCROLL` | A shelf or section title to scroll into view (e.g. `Sport now & next`, `Replays`) |
-| `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens on Scheduled |
+| `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens with Scheduled pushed |
+| `PIGTV_UI_TEST_UNDO` | `1` (with `tab-recordings`): a recording just deleted, its Undo toast held on screen |
 | `PIGTV_UI_TEST_CLASH` | `1`: the Recordings fixture adds two schedules that clash; one loses (`beatenBy`) and offers "Record this one instead" (#12) |
 | `PIGTV_UI_TEST_FRONT_F1` | `1` (with `front`): the Motorsport page embeds the F1 fixture's weekend |
 | `PIGTV_UI_TEST_TABPROBE` | `1`: measure the longest stall after each tab switch (`debug.tabSwitch`) |
