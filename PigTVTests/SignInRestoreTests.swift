@@ -55,6 +55,9 @@ final class SignInRestoreTests: XCTestCase {
         let keychain = KeychainStore()
         try keychain.save(token: "fixture-token", for: address)
         defer { try? keychain.remove(for: address) }
+        let saved = UserDefaults.standard.string(forKey: "pigtv.guide.filter")
+        UserDefaults.standard.set("all", forKey: "pigtv.guide.filter") // no category filter: nothing waits for them
+        defer { UserDefaults.standard.set(saved, forKey: "pigtv.guide.filter") }
         let model = AppModel()
         model.serverText = server.baseURL
         let began = Date()
@@ -95,5 +98,40 @@ final class SignInRestoreTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(1500))
         XCTAssertTrue(model.categories.isEmpty, "the old session's categories never land after sign-out")
         XCTAssertNil(model.error)
+    }
+
+    /// Apple 163 (161 Codex round 2, medium): with a category filter saved, the guide would draw its rows before the
+    /// categories arrived (Sport empty, a category showing every channel): the restore then still waits for them.
+    func testASavedCategoryFilterWaitsForTheCategories() async throws {
+        XCTAssertFalse(AppModel.guideFilterNeedsCategories(nil))
+        XCTAssertFalse(AppModel.guideFilterNeedsCategories("all"))
+        XCTAssertFalse(AppModel.guideFilterNeedsCategories("favourites"))
+        XCTAssertTrue(AppModel.guideFilterNeedsCategories("sport"))
+        let server = try LocalHTTPServer { request in
+            switch request.path {
+            case "/api/info":
+                return .json(#"{"name":"PigTV","version":"3.7.0","apiVersion":1,"features":{"library":true,"playbackResolve":true}}"#)
+            case "/api/auth/me":
+                return .json(#"{"id":1,"username":"mark","role":"admin"}"#)
+            case "/api/library/categories":
+                var answer = LocalHTTPServer.Response.json(#"[{"id":"sport","sourceId":1,"name":"Sport","channelCount":3,"sport":true}]"#)
+                answer.delay = 0.5
+                return answer
+            default:
+                return .json("{}")
+            }
+        }
+        defer { server.stop() }
+        let address = try ServerAddress(server.baseURL)
+        let keychain = KeychainStore()
+        try keychain.save(token: "fixture-token", for: address)
+        defer { try? keychain.remove(for: address) }
+        let saved = UserDefaults.standard.string(forKey: "pigtv.guide.filter")
+        UserDefaults.standard.set("sport", forKey: "pigtv.guide.filter")
+        defer { UserDefaults.standard.set(saved, forKey: "pigtv.guide.filter") }
+        let model = AppModel()
+        model.serverText = server.baseURL
+        await model.restore()
+        XCTAssertEqual(model.categories.map(\.name), ["Sport"], "the categories are there before the guide draws")
     }
 }

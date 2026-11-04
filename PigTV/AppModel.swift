@@ -89,6 +89,9 @@ final class AppModel: ObservableObject {
             unreachable = nil
             categoriesTask?.cancel()
             categoriesTask = Task { await self.loadCategories() } // #55: the tabs show without waiting for it
+            // Apple 163 (161 Codex round 2, medium): a saved category filter needs the categories before the guide draws
+            // its rows (else Sport shows none and a category every channel): then the restore still waits for them.
+            if Self.guideFilterNeedsCategories(UserDefaults.standard.string(forKey: "pigtv.guide.filter")) { await categoriesTask?.value }
             openPendingLink()
         } catch {
             // A cancelled restore (the app went to the background) is retried
@@ -295,6 +298,12 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled, self.client === client, !UserMessage.isCancellation(error) else { return }
             self.error = UserMessage.text(for: error)
         }
+    }
+
+    /// Apple 163: a guide filter other than All and Favourites names categories (Sport, or one category).
+    nonisolated static func guideFilterNeedsCategories(_ filter: String?) -> Bool {
+        guard let filter, !filter.isEmpty else { return false }
+        return filter != "all" && filter != "favourites"
     }
 
     /// Tests: the categories load after a restore, finished.

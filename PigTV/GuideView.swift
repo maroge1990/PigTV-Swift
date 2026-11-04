@@ -236,6 +236,8 @@ struct GuideView: View {
                 else if rowsRefresh == nil { scheduleRowsRefresh(after: .milliseconds(400)) }
             }
             .onChange(of: favouriteKeys) { refreshRows() }
+            // Apple 163: the categories can arrive after the rows (161 loads them in the background)
+            .onChange(of: app.categories.count) { refreshRows() }
             // Every layout (16 Oct): this was on the iPad/tvOS grid only, so the
             // iPhone's On now list ignored a category change until the Guide
             // reappeared. Coalesced (R18); the grid returns to the top row and
