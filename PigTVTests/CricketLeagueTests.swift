@@ -20,7 +20,20 @@ final class CricketLeagueTests: XCTestCase {
         XCTAssertEqual(shown.series?.name, "Australia in South Africa")
         XCTAssertEqual(Set(shown.mine.compactMap(\.competition)), ["West Indies in Bangladesh", "India in New Zealand"],
                        "other tours: the only International group followed")
-        XCTAssertTrue(shown.others.allSatisfy { ["WBBL", "Sheffield Shield"].contains($0.competition ?? "") })
+        XCTAssertFalse(shown.mine.contains { ["WBBL", "Sheffield Shield"].contains($0.competition ?? "") })
+    }
+
+    // #212 (Mark, 4 Nov 2026): "if you have only 'mens international' selected that should be all that you see". Before
+    // Apple 144 the page added the other followed leagues' matches (here the WBBL's four) as "Your other cricket today".
+    func testALeaguesPageShowsOnlyThatLeague() throws {
+        let page = try page()
+        let international = CricketLeagueFilter.apply(page, scope: try scope("Cricket"))
+        let shown = Set(international.mine.map(\.id) + [international.lead?.id].compactMap { $0 })
+        XCTAssertTrue(shown.isDisjoint(with: ["1543947", "1543948", "1543949", "1543950"]), "no WBBL match on the internationals' page")
+        let mirror = Mirror(reflecting: international).children.compactMap(\.label)
+        XCTAssertFalse(mirror.contains("others"), "the page has no other leagues' section to fill")
+        let wbbl = CricketLeagueFilter.apply(page, scope: try scope("WBBL"))
+        XCTAssertFalse(wbbl.mine.contains { $0.id == "1525661" }, "and no Test on the WBBL's")
     }
 
     func testSwitchingToTheWBBLChangesTheMatches() throws {
@@ -30,7 +43,7 @@ final class CricketLeagueTests: XCTestCase {
         XCTAssertNil(wbbl.lead, "the Test is not the WBBL's")
         XCTAssertNil(wbbl.series)
         XCTAssertEqual(Set(wbbl.mine.map(\.id)), ["1543947", "1543948", "1543949", "1543950"])
-        XCTAssertTrue(wbbl.others.contains { $0.id == "1525661" }, "the Test among the other leagues'")
+        XCTAssertFalse(wbbl.mine.contains { $0.id == "1525661" }, "the Test is not on the WBBL's page (#212)")
         XCTAssertTrue(Set(wbbl.mine.map(\.id)).isDisjoint(with: Set(international.mine.map(\.id) + [international.lead?.id ?? ""])))
         XCTAssertFalse(wbbl.isEmpty)
     }
@@ -55,7 +68,7 @@ final class CricketLeagueTests: XCTestCase {
             for league in leagues {
                 let shown = CricketLeagueFilter.apply(page, scope: CricketLeagueScope(league: league, leagues: leagues, labels: labels))
                 XCTAssertNil(shown.lead, "\(league) first in \(leagues): the Test is neither group's")
-                XCTAssertTrue(shown.others.contains { $0.id == "1525661" }, "\(league): the Test among the others")
+                XCTAssertFalse(shown.mine.contains { $0.id == "1525661" }, "\(league): the Test is on neither page (#212)")
                 XCTAssertTrue(shown.mine.isEmpty, "\(league): no tour is claimed")
             }
         }
@@ -72,7 +85,7 @@ final class CricketLeagueTests: XCTestCase {
         XCTAssertEqual(women.lead?.id, "1525661", "the server named its league")
         let men = CricketLeagueFilter.apply(page, scope: CricketLeagueScope(league: "Cricket", leagues: leagues, labels: labels))
         XCTAssertNil(men.lead)
-        XCTAssertTrue(men.others.contains { $0.id == "1525661" })
+        XCTAssertFalse(men.mine.contains { $0.id == "1525661" })
         XCTAssertEqual(men.mine.map(\.competition), ["WBBL"], "the field beats the competition's name")
         let json = #"{"id":"1","league":"BBL","competition":"Big Bash League","teams":[],"status":"live"}"#
         XCTAssertEqual(try JSONDecoder().decode(CricketOther.self, from: Data(json.utf8)).league, "BBL")

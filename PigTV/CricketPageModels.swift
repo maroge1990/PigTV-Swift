@@ -580,8 +580,6 @@ nonisolated enum CricketLeagueFilter {
         var series: CricketSeries?
         /// The league's other matches today and tomorrow.
         var mine: [CricketOther]
-        /// The other followed leagues' matches (the C-S lead among them when it is not this league's).
-        var others: [CricketOther]
         /// C-S has nothing for the league: its C-R games instead.
         var isEmpty: Bool { lead == nil && mine.isEmpty }
     }
@@ -604,24 +602,20 @@ nonisolated enum CricketLeagueFilter {
         return groups.count == 1 ? groups[0] : nil
     }
 
-    /// The page for `scope.league`, from a page already made spoiler-safe (`CricketPageText.visible`). A match whose league
-    /// cannot be told belongs to no league: it is among the others on every league's page, never a league's lead.
+    /// The page for `scope.league`, from a page already made spoiler-safe (`CricketPageText.visible`): only that league's
+    /// matches (#212, Mark 4 Nov 2026: with only International (men) chosen, that is all you see). Another league's match,
+    /// or one whose league cannot be told, is on no league's page; the other followed leagues' matches are on their own
+    /// pages and the Sport front page.
     static func apply(_ page: CricketPage, scope: CricketLeagueScope) -> Scoped {
         func isMine(_ id: String, _ named: String?, _ competition: String?) -> Bool {
             league(ofMatch: id, league: named, competition: competition, scope: scope) == scope.league
         }
-        var out = Scoped(lead: nil, series: nil, mine: [], others: [])
-        if let lead = page.lead {
-            if isMine(lead.id, lead.league, lead.competition) {
-                out.lead = lead
-                out.series = page.series
-            } else {
-                out.others.append(CricketOther(lead: lead))
-            }
+        var out = Scoped(lead: nil, series: nil, mine: [])
+        if let lead = page.lead, isMine(lead.id, lead.league, lead.competition) {
+            out.lead = lead
+            out.series = page.series
         }
-        for other in page.others {
-            if isMine(other.id, other.league, other.competition) { out.mine.append(other) } else { out.others.append(other) }
-        }
+        out.mine = page.others.filter { isMine($0.id, $0.league, $0.competition) }
         return out
     }
 }

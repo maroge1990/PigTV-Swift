@@ -180,8 +180,8 @@ struct CricketPageView: View {
 
     // MARK: One league (D-43)
 
-    /// The selected league: its lead's scoreboard (innings by column) and days beside its tour, its other matches, then the
-    /// other leagues' matches today; its C-R games when the page has nothing for it.
+    /// The selected league: its lead's scoreboard (innings by column) and days beside its tour, then its other matches; its
+    /// C-R games when the page has nothing for it. Never another league's matches (#212).
     @ViewBuilder
     private func scoped(_ page: CricketLeagueFilter.Scoped, scope: CricketLeagueScope, now: Date, spoilerFree: Bool) -> some View {
         let label = SportLabels.label(scope.league, in: scope.labels)
@@ -213,7 +213,6 @@ struct CricketPageView: View {
         if page.isEmpty {
             if let fallback { fallback } else { nothingOn }
         }
-        if !page.others.isEmpty { matches("Your other cricket today", page.others, now: now) }
     }
 
     private func matches(_ title: String, _ list: [CricketOther], now: Date) -> some View {
