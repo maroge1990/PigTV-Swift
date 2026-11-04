@@ -184,3 +184,18 @@ nonisolated enum SportPhoneLayout {
         "\(min(index + 1, count)) of \(count) \(count == 1 ? "follow" : "follows")"
     }
 }
+
+/// #225 (Mark, 4 Nov 2026): a card's two buttons, "Watch" (on now) or "Remind me" (before), then "Record": one style
+/// family, the same width and height. Record opens the record page (every channel, and every game of the card's team
+/// when it has one), whose own wording stays longer. Pure (tests `SportPhonePageTests`).
+nonisolated enum SportPhoneCardButtons {
+    static let record = "Record"
+    /// The rose primary before Record: "Watch" or "Remind me"; none otherwise.
+    static func primary(_ action: SportFrontText.Action) -> String? {
+        switch action {
+        case .watch: "Watch"
+        case .remind: "Remind me"
+        case .details, .none: nil
+        }
+    }
+}

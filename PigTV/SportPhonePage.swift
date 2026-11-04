@@ -122,8 +122,8 @@ struct SportPhoneCarousel: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Watch (on now) or Remind me (before), the one rose primary; Record every game when the game has a team to follow
-    /// with a rule, else Record (the record page).
+    /// Watch (on now) or Remind me (before), the one rose primary, then Record (the record page, which offers every game of
+    /// the card's team, #49): the same glass family, width and height (#225).
     @ViewBuilder
     private func actions(_ game: SportsGame, team: String?, now: Date) -> some View {
         if !game.terminal, let event = SportFrontText.event(game) {
@@ -131,28 +131,24 @@ struct SportPhoneCarousel: View {
                 switch SportFrontText.action(game, now: now) {
                 case .watch:
                     Button { SportGamePress.watch(game, event: event, app: app, presenter: presenter) } label: {
-                        Label("Watch", systemImage: "play.fill").frame(maxWidth: .infinity)
+                        Label(SportPhoneCardButtons.primary(.watch) ?? "", systemImage: "play.fill").frame(maxWidth: .infinity)
                     }
                     .pigPrimaryButton()
                     .accessibilityIdentifier("\(identifier).card.watch")
                 case .remind:
                     Button { app.watchWhenStarts(event, now: Date()) } label: {
-                        Label("Remind me", systemImage: "bell").frame(maxWidth: .infinity)
+                        Label(SportPhoneCardButtons.primary(.remind) ?? "", systemImage: "bell").frame(maxWidth: .infinity)
                     }
                     .pigPrimaryButton()
                     .accessibilityIdentifier("\(identifier).card.remind")
                 case .details, .none:
                     EmptyView()
                 }
-                // #49: the rule is the card's own follow's team, and the button names it.
-                let every = flow.menuItems(event, game: game, team: team, now: now).first { $0.id == "recordEvery" }
-                Button {
-                    if let every { flow.run(every, event: event, game: game, team: team) } else { flow.record(event, game: game, team: team) }
-                } label: {
-                    Text(every?.title ?? "Record").lineLimit(1).minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity)
+                // #49: the record page's rule is the card's own follow's team.
+                Button { flow.record(event, game: game, team: team) } label: {
+                    Label(SportPhoneCardButtons.record, systemImage: "record.circle").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
                 .tint(Color("PigText"))
                 .accessibilityIdentifier("\(identifier).card.record")
             }
