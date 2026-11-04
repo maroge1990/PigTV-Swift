@@ -178,13 +178,21 @@ final class CacheTests: XCTestCase {
         return urls.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }
     }
 
+    /// #221: whether 40 quick writes coalesced depended on the runner's speed (CI's slow runner listed the folder 27
+    /// times). The first prune pass is now held until every write has been made, so the test proves the coalescing
+    /// itself: the writes made during a pass are taken by that prune's next pass, never by a prune each.
     func testWritesPastTheCapArePrunedWithoutANewStoreAndPrunesAreCoalesced() async throws {
         let store = ArtworkDiskStore(directory: temp.appendingPathComponent("budget"), limit: 10_000)
+        let release = DispatchSemaphore(value: 0)
+        let once = OnceFlag()
+        ArtworkBudget.afterPass = { if once.take() { release.wait() } }
+        defer { ArtworkBudget.afterPass = nil }
         for i in 0..<40 { store.write(Data(repeating: UInt8(i), count: 1_000), key: "logo\(i)") }
+        release.signal()
         await store.budget.idle()
         XCTAssertLessThanOrEqual(folderBytes(store), 10_000, "the cap holds while the app runs")
         XCTAssertNotNil(store.read(key: "logo39"), "the newest is kept")
-        XCTAssertLessThan(store.budget.prunes, 20, "the folder is listed per prune, not per image (\(store.budget.prunes))")
+        XCTAssertLessThanOrEqual(store.budget.prunes, 3, "the folder is listed per prune, not per image (\(store.budget.prunes))")
         XCTAssertEqual(store.budget.counted, folderBytes(store), "the running count matches the disk")
     }
 
