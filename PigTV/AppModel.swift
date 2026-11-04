@@ -90,9 +90,11 @@ final class AppModel: ObservableObject {
             // on the next launch; it is not "unreachable" and not an alert.
             if UserMessage.isCancellation(error) { return }
             if error as? PigTVError == .unauthorised {
-                if let address = try? ServerAddress(serverText) { try? keychain.remove(for: address) }
-                canRestore = false
-                self.error = error.localizedDescription
+                // #54 (Apple 160): the saved sign-in is kept: a 401 at launch can be passing (the server's database
+                // restored, a restart); the sign-in screen offers "Retry saved sign-in", and signing in or pairing
+                // replaces it. Only Sign out deletes it.
+                canRestore = true
+                self.error = "PigTV didn't accept the saved sign-in. Retry it, or sign in or pair again."
             } else if let urlError = error as? URLError {
                 // Server asleep, wrong network or Tailscale down: show a
                 // dedicated screen rather than a generic alert.
