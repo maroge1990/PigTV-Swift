@@ -33,4 +33,34 @@ final class SignInRestoreTests: XCTestCase {
         await model.restore()
         XCTAssertTrue(model.loggedIn, "the retry signs in with the same saved sign-in")
     }
+
+    /// #55 (AUD-APL-13): launch asked info, then who is signed in, then the categories, one after another, before the
+    /// app showed anything. The first two now go together and the categories are not waited for.
+    func testRestoreAsksInfoAndTheUserTogetherAndDoesNotWaitForCategories() async throws {
+        let server = try LocalHTTPServer { request in
+            var answer: LocalHTTPServer.Response
+            switch request.path {
+            case "/api/info":
+                answer = .json(#"{"name":"PigTV","version":"3.7.0","apiVersion":1,"features":{"library":true,"playbackResolve":true}}"#)
+            case "/api/auth/me":
+                answer = .json(#"{"id":1,"username":"mark","role":"admin"}"#)
+            default:
+                answer = .json("[]")
+            }
+            answer.delay = 0.5
+            return answer
+        }
+        defer { server.stop() }
+        let address = try ServerAddress(server.baseURL)
+        let keychain = KeychainStore()
+        try keychain.save(token: "fixture-token", for: address)
+        defer { try? keychain.remove(for: address) }
+        let model = AppModel()
+        model.serverText = server.baseURL
+        let began = Date()
+        await model.restore()
+        let took = Date().timeIntervalSince(began)
+        XCTAssertTrue(model.loggedIn)
+        XCTAssertLessThan(took, 0.95, "two answers at once, categories not awaited (one after another: 1.5 s); took \(took)")
+    }
 }

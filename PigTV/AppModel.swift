@@ -72,9 +72,13 @@ final class AppModel: ObservableObject {
             guard let token = try keychain.token(for: address) else { return }
             canRestore = true
             let candidate = APIClient(address: address, token: token)
+            // #55 (Apple 161): who is signed in is asked at the same time as what the server can do (it was one after
+            // the other, behind the splash); the categories are no longer waited for (below).
+            let userAnswer = Task { () async throws -> User in try await candidate.request("auth/me") }
+            defer { userAnswer.cancel() } // nothing left running if info fails first
             let info: ServerInfo = try await candidate.request("info")
             try info.validate()
-            let user: User = try await candidate.request("auth/me")
+            let user = try await userAnswer.value
             let authenticated = APIClient(address: address, token: token, info: info, accountID: user.id)
             self.client = authenticated
             self.serverInfo = info
@@ -83,7 +87,7 @@ final class AppModel: ObservableObject {
             self.user = user
             canRestore = false
             unreachable = nil
-            await loadCategories()
+            Task { await self.loadCategories() } // #55: the tabs show without waiting for it
             openPendingLink()
         } catch {
             // A cancelled restore (the app went to the background) is retried
