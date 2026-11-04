@@ -63,4 +63,37 @@ final class SignInRestoreTests: XCTestCase {
         XCTAssertTrue(model.loggedIn)
         XCTAssertLessThan(took, 0.95, "two answers at once, categories not awaited (one after another: 1.5 s); took \(took)")
     }
+
+    /// Apple 162 (161 Codex round 1, medium): the categories load after the tabs show, so a sign-out before it answers
+    /// must not let the old session's categories (or its error) land in the next one.
+    func testCategoriesThatAnswerAfterSignOutAreDropped() async throws {
+        let server = try LocalHTTPServer { request in
+            switch request.path {
+            case "/api/info":
+                return .json(#"{"name":"PigTV","version":"3.7.0","apiVersion":1,"features":{"library":true,"playbackResolve":true}}"#)
+            case "/api/auth/me":
+                return .json(#"{"id":1,"username":"mark","role":"admin"}"#)
+            case "/api/library/categories":
+                var answer = LocalHTTPServer.Response.json(#"[{"id":"sport","sourceId":1,"name":"Sport","channelCount":3}]"#)
+                answer.delay = 1
+                return answer
+            default:
+                return .json("{}")
+            }
+        }
+        defer { server.stop() }
+        let address = try ServerAddress(server.baseURL)
+        let keychain = KeychainStore()
+        try keychain.save(token: "fixture-token", for: address)
+        defer { try? keychain.remove(for: address) }
+        let model = AppModel()
+        model.serverText = server.baseURL
+        await model.restore()
+        XCTAssertTrue(model.loggedIn)
+        try await Task.sleep(for: .milliseconds(200)) // the categories request is on its way
+        await model.logout()
+        try await Task.sleep(for: .milliseconds(1500))
+        XCTAssertTrue(model.categories.isEmpty, "the old session's categories never land after sign-out")
+        XCTAssertNil(model.error)
+    }
 }

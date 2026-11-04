@@ -87,7 +87,8 @@ final class AppModel: ObservableObject {
             self.user = user
             canRestore = false
             unreachable = nil
-            Task { await self.loadCategories() } // #55: the tabs show without waiting for it
+            categoriesTask?.cancel()
+            categoriesTask = Task { await self.loadCategories() } // #55: the tabs show without waiting for it
             openPendingLink()
         } catch {
             // A cancelled restore (the app went to the background) is retried
@@ -262,6 +263,8 @@ final class AppModel: ObservableObject {
     }
 
     private func clearSession() {
+        categoriesTask?.cancel() // Apple 162: an old session's categories never land in the next one
+        categoriesTask = nil
         cancelPairing()
         cancelPendingWatch()
         cancelHandoff()
@@ -279,11 +282,23 @@ final class AppModel: ObservableObject {
         canRestore = false
     }
 
+    /// Apple 162 (161 Codex round 1, medium): it runs after the tabs show, so its answer is published only while the
+    /// session that asked is still the current one (a sign-out or another server may have come meanwhile).
+    private var categoriesTask: Task<Void, Never>?
     private func loadCategories() async {
         guard let client else { return }
-        do { categories = try await client.request("library/categories") }
-        catch { self.error = UserMessage.text(for: error) }
+        do {
+            let answer: [Category] = try await client.request("library/categories")
+            guard !Task.isCancelled, self.client === client else { return }
+            categories = answer
+        } catch {
+            guard !Task.isCancelled, self.client === client, !UserMessage.isCancellation(error) else { return }
+            self.error = UserMessage.text(for: error)
+        }
     }
+
+    /// Tests: the categories load after a restore, finished.
+    func categoriesLoaded() async { await categoriesTask?.value }
 
     // MARK: Deep links (A4.1 Top Shelf)
 
