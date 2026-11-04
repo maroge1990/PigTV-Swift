@@ -80,6 +80,12 @@ enum HLSFixture {
 final class FakePigTVServer: @unchecked Sendable {
     let http: LocalHTTPServer
 
+    /// #37 (C-W): how the fake answers `POST /api/playback/{id}/pause` (the n-th ask, its body). A struct, not a bare
+    /// closure parameter, so a test's trailing closure still means `resolve`.
+    struct PauseAnswer: Sendable {
+        let answer: @Sendable (Int, String) -> LocalHTTPServer.Response
+    }
+
     /// `resolve(n)` builds the n-th resolve answer (1-based) as JSON.
     init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil,
          sportEvents: String? = nil,
@@ -87,10 +93,12 @@ final class FakePigTVServer: @unchecked Sendable {
          reminders: String? = nil,
          markers: LocalHTTPServer.Response? = nil,
          warm: LocalHTTPServer.Response = .init(status: 204, contentType: "application/json", body: Data()),
-         watch: (@Sendable (Int) -> LocalHTTPServer.Response)? = nil) throws {
+         watch: (@Sendable (Int) -> LocalHTTPServer.Response)? = nil,
+         livePause: PauseAnswer? = nil) throws {
         let counter = Locked(0)
         let watchCount = Locked(0)
         let longCount = Locked(0)
+        let pauseCount = Locked(0)
         let warmed = Locked<Set<String>>([])
         let resolve = resolve ?? { count, request in
             FakePigTVServer.decision(session: "s\(count)", warm: warmed.value.contains(FakePigTVServer.channelKey(request.body)))
@@ -109,6 +117,11 @@ final class FakePigTVServer: @unchecked Sendable {
                 guard let watch else { return .notFound }
                 watchCount.value += 1
                 return watch(watchCount.value)
+            }
+            // #37 (C-W): POST /api/playback/{id}/pause, the n-th ask and its body.
+            if request.method == "POST", request.path.hasPrefix("/api/playback/"), request.path.hasSuffix("/pause"), let livePause {
+                pauseCount.value += 1
+                return livePause.answer(pauseCount.value, String(decoding: request.body, as: UTF8.self))
             }
             // #17: `long-plain.m3u8`, `long-slow.m3u8` (6 s to answer), `long-fail1.m3u8` (the first ask fails).
             if request.method == "GET", request.path.hasPrefix("/api/recordings/"), let name = request.path.split(separator: "/").last,

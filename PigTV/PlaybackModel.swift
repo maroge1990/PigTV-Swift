@@ -87,6 +87,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
     @Published private(set) var pauseNotice: String?
     private var pausedAt: Date?
     private var pauseTimer: Task<Void, Never>?
+    /// Apple 157 (156 Codex round 1, high): the pause state the server should have, and one sender at a time that
+    /// always ends on the latest wish, so a slow "paused" can never land after the "resumed" that followed it.
+    private var pauseWanted: (session: String, paused: Bool)?
+    private var pauseSent: (session: String, paused: Bool)?
+    private var pauseSender: Task<Void, Never>?
+    private var livePauseSupported: Bool { client.info?.features.livePause == true }
     private var conflictTask: Task<Void, Never>?
     private var seenPrompts = Set<Int>()
     private var pendingDeclines = Set<Int>()
@@ -596,10 +602,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// warns 2 minutes before the end; the resume tells it too, and goes to live (or starts again) when the paused point
     /// has gone. `now` for tests.
     func livePauseChanged(paused: Bool, now: Date = Date()) {
+        // Apple 157 (156 Codex round 1, medium): only a server that keeps a paused play's stream (C-W) gets any of this.
+        guard livePauseSupported else { return }
         if paused {
             guard itemPlayed, pausedAt == nil else { return }
             pausedAt = now
-            if let sessionID { let client = client; Task { await client.setLivePause(sessionID, paused: true) } }
+            if let sessionID { wantPause(sessionID, true) }
             pauseTimer?.cancel()
             pauseTimer = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(LivePause.warnSeconds))
@@ -618,9 +626,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
         pauseNotice = nil
         switch LivePause.resume(after: now.timeIntervalSince(at)) {
         case .inPlace:
-            if let sessionID { let client = client; Task { await client.setLivePause(sessionID, paused: false) } }
+            if let sessionID { wantPause(sessionID, false) }
         case .toLive:
-            if let sessionID { let client = client; Task { await client.setLivePause(sessionID, paused: false) } }
+            if let sessionID { wantPause(sessionID, false) }
             goToLive()
         case .again:
             // The server has ended the stream: back to live on a new one.
@@ -631,6 +639,21 @@ final class PlaybackModel: ObservableObject, Identifiable {
 
     /// For tests: whether a pause is being timed.
     var isLivePaused: Bool { pausedAt != nil }
+
+    /// The server should have this pause state for this session: sent by one sender, in order, ending on the latest.
+    private func wantPause(_ session: String, _ paused: Bool) {
+        pauseWanted = (session, paused)
+        guard pauseSender == nil else { return }
+        let client = client
+        pauseSender = Task { [weak self] in
+            while let self, let want = self.pauseWanted,
+                  !(self.pauseSent?.session == want.session && self.pauseSent?.paused == want.paused) {
+                await client.setLivePause(want.session, paused: want.paused)
+                self.pauseSent = want
+            }
+            self?.pauseSender = nil
+        }
+    }
 
     private func armStartTimer(generation: UUID) {
         let startTimeout = startTimeout

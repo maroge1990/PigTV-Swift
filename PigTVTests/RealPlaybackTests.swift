@@ -83,19 +83,24 @@ final class RealPlaybackTests: XCTestCase {
     }
 
     /// #37 (C-W): a viewer's pause tells the server (it keeps the stream up to 30 minutes), and so does playing again;
-    /// a server without `livePause` is never asked.
+    /// a server without `livePause` is never asked, and its pause is not timed (Apple 157, 156 Codex round 1, medium).
     func testAPausedLivePlayTellsTheServerAndSoDoesTheResume() async throws {
         try requireFixture()
         for flag in [true, false] {
-            let server = try FakePigTVServer()
+            let server = try FakePigTVServer(livePause: .init { _, _ in .json(#"{"pausedUntil":1}"#) })
             let playback = PlaybackModel(channel: channel(), client: try server.client(extraFeatures: flag ? #""livePause":true"# : ""),
                                          programmes: programmes())
             playback.start()
             try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
             playback.player.pause()
-            try await waitFor("the pause seen") { playback.isLivePaused }
+            if flag {
+                try await waitFor("the pause seen") { playback.isLivePaused }
+            } else {
+                try await Task.sleep(for: .milliseconds(500))
+                XCTAssertFalse(playback.isLivePaused, "an older server's pause is not timed")
+            }
             playback.player.play()
-            try await waitFor("the resume seen") { !playback.isLivePaused }
+            try await waitFor("the resume seen") { !playback.isLivePaused && self.isPlaying(playback) }
             try await Task.sleep(for: .milliseconds(300))
             let asked = server.http.requests(path: "/api/playback/s1/pause").map { String(decoding: $0.body, as: UTF8.self) }
             if flag {
@@ -106,6 +111,32 @@ final class RealPlaybackTests: XCTestCase {
             _ = await playback.stop()
             server.http.stop()
         }
+    }
+
+    /// Apple 157 (156 Codex round 1, high): pause and resume were sent by separate tasks, so a slow "paused" could reach
+    /// the server after the "resumed" that followed it, leaving a playing stream paused there. One sender now: the
+    /// resume goes only once the pause has been answered.
+    func testAResumeIsSentOnlyAfterTheSlowPauseIsAnswered() async throws {
+        try requireFixture()
+        let times = Locked<[(String, Date)]>([])
+        let server = try FakePigTVServer(livePause: .init { n, body in
+            times.value.append((body, Date()))
+            var answer = LocalHTTPServer.Response.json(#"{"pausedUntil":1}"#)
+            if n == 1 { answer.delay = 1.5 }
+            return answer
+        })
+        let playback = PlaybackModel(channel: channel(), client: try server.client(extraFeatures: #""livePause":true"#), programmes: programmes())
+        playback.start()
+        try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
+        playback.player.pause()
+        try await waitFor("the pause seen") { playback.isLivePaused }
+        playback.player.play()
+        try await waitFor("both sent", timeout: 6) { times.value.count == 2 }
+        let sent = times.value
+        XCTAssertEqual(sent.map(\.0), [#"{"paused":true}"#, #"{"paused":false}"#])
+        XCTAssertGreaterThanOrEqual(sent[1].1.timeIntervalSince(sent[0].1), 1.4, "the resume waited for the pause's answer")
+        _ = await playback.stop()
+        server.http.stop()
     }
 
     /// The whole live start: resolve → item → ready → AVPlayer actually
