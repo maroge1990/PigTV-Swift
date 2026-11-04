@@ -307,6 +307,8 @@ nonisolated struct RuleBody: Encodable, Sendable {
     var newOnly: Bool? = nil
     /// C-M `team` (0414): the team's catalogue sport (required for that kind).
     var sport: String? = nil
+    /// C-M `game` (0465, #234): the C-R card id of the one game to record once it is listed.
+    var gameId: String? = nil
 }
 
 nonisolated struct RuleEnabledBody: Encodable, Sendable { let enabled: Bool }

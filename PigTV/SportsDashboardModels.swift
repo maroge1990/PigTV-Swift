@@ -45,6 +45,19 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   var recording: RecordingMark? = nil
   /// C-R since 0437 (#218, additive): a weekly league's next round past the 72 hours (normally no channels yet).
   var nextRound: Bool? = nil
+  /// C-R since 0465 (#234): the game waits on a `game` rule to be recorded once the guide lists it.
+  var recordWhenListed: RecordWhenListed? = nil
+
+  struct RecordWhenListed: Decodable, Equatable, Sendable {
+    var ruleId: Int? = nil
+    enum CodingKeys: String, CodingKey { case ruleId }
+    init(ruleId: Int? = nil) { self.ruleId = ruleId }
+    /// Never throws: a field of the wrong type is left out.
+    init(from decoder: Decoder) throws {
+      guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+      ruleId = (try? c.decodeIfPresent(Int.self, forKey: .ruleId)) ?? nil
+    }
+  }
 
   /// The card's recording, when the server gave a usable one.
   var recordingMark: RecordingMark? { recording?.isValid == true ? recording : nil }
@@ -241,5 +254,22 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
 nonisolated enum SportsPresentationPolicy {
   static func canRender(storedRevision: Int, current: SportsPreferences?) -> Bool {
     current?.revision == storedRevision
+  }
+}
+
+/// #234 (Mark, 4 Nov): a future game the guide does not list yet (no channels) can be recorded once it is: what selecting
+/// its card offers. Nil when the card has a channel (its usual Watch / details), is not a two-sided game to come, is
+/// already set to record, or the server cannot (`recordGameRules`).
+nonisolated enum SportFutureRecord {
+  enum Offer: Equatable { case record, cancel(ruleId: Int) }
+  static let recordTitle = "Record when it's listed"
+  static let cancelTitle = "Don't record it"
+  static let waitingLabel = "Records when it's listed"
+
+  static func offer(_ game: SportsGame, now: Date, serverCan: Bool) -> Offer? {
+    guard serverCan, game.channels.isEmpty, game.status == "scheduled", game.competitors.count == 2,
+          game.recordingMark == nil, game.start > now.timeIntervalSince1970 * 1000 else { return nil }
+    if let id = game.recordWhenListed?.ruleId { return .cancel(ruleId: id) }
+    return .record
   }
 }

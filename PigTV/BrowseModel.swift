@@ -977,6 +977,25 @@ final class BrowseModel: ObservableObject {
         }
     }
 
+    /// #234: a rule known only by its id (a card's `recordWhenListed`).
+    @discardableResult
+    func deleteRule(id: Int) async -> Bool {
+        struct Deleted: Decodable { let cancelled: Int? }
+        guard !mutationBusy else { return false }
+        mutationBusy = true
+        actionError = nil
+        defer { mutationBusy = false }
+        do {
+            let _: Deleted = try await client.request("recordings/rules/\(id)", method: "DELETE")
+            actionMessage = "It won't be recorded."
+            await loadRecordings()
+            return true
+        } catch {
+            actionError = "Could not change that. \(UserMessage.text(for: error))"
+            return false
+        }
+    }
+
     @discardableResult
     func deleteRule(_ rule: RecordingRule) async -> Bool {
         struct Deleted: Decodable { let cancelled: Int? }

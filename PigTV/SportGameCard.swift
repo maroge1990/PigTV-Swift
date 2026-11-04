@@ -140,7 +140,8 @@ extension View {
 @MainActor
 enum SportGamePress {
     static func select(_ game: SportsGame, app: AppModel, presenter: SportPresenter?) {
-        guard let event = SportFrontText.event(game) else { return }
+        // #234: a future game the guide does not list yet: offer to record it once it is (else, as before, nothing)
+        guard let event = SportFrontText.event(game) else { presenter?.askFuture(game); return }
         switch SportFrontText.action(game, now: Date()) {
         case .watch: watch(game, event: event, app: app, presenter: presenter)
         case .remind, .details: presenter?.open(event, .details)
@@ -231,7 +232,7 @@ struct SportGameCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 if game.competitors.count == 2 { teams(drawn) } else { session(drawn) }
                 Spacer(minLength: 0)
-                if let mark = game.recordingMark { recordingMark(mark) }
+                if let mark = game.recordingMark { recordingMark(mark) } else if game.recordWhenListed != nil { waitingMark }
                 bottom(drawn, live: live)
             }
             .padding(SportCardMetrics.padding)
@@ -318,6 +319,17 @@ struct SportGameCard: View {
                     .foregroundStyle(Color.pigAccentText).lineLimit(1).fixedSize().layoutPriority(2)
             }
         }
+    }
+
+    /// #234: "Records when it's listed" (a dashed red ring): a `game` rule waits for the guide.
+    private var waitingMark: some View {
+        HStack(spacing: 8) {
+            Circle().strokeBorder(Color.pigDanger, style: StrokeStyle(lineWidth: 2, dash: [3, 2]))
+                .frame(width: 12, height: 12).accessibilityHidden(true)
+            Text(SportFutureRecord.waitingLabel).font(SportCardMetrics.small.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("sport.card.recordWhenListed.\(game.id)")
     }
 
     /// "Recording" (a red dot) or "Set to record" (a red ring), and "Clashes with …" when it loses its clash (C-R since

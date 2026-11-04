@@ -710,6 +710,33 @@ enum ContractChecks {
         try expect(marked.games.count == 2 && marked.games[0].recordingMark?.scheduleId == 93 && marked.games[0].recordingMark?.ruleId == 4
                    && marked.games[0].recordingMark?.clashLine == "Clashes with Evening Match" && marked.games[1].recordingMark == nil,
                    "C-R: a card's recording and its clash")
+        // #234 (server 0465): a game waiting for its listing to be recorded; what selecting a card offers.
+        let waitingFront = try JSONDecoder().decode(SportFront.self, from: Data(#"""
+            {"now":1,"spoilerFree":false,"scores":"fresh","sports":[],"follows":[],"hero":{"reason":"none"},"rails":[],
+             "games":[{"id":"espn:football/nfl:9","league":"NFL","title":"Cardinals at Seahawks","start":4102444800000,
+                       "competitors":[{"id":"a","name":"Cardinals","logo":null},{"id":"b","name":"Seahawks","logo":null}],"status":"scheduled","freshness":"fresh","progress":{},
+                       "availability":"unmatched","broadcastStatus":"unavailable","channels":[],"events":[],"canWatch":false},
+                      {"id":"espn:football/nfl:10","league":"NFL","title":"Bears at Lions","start":4102444800000,
+                       "competitors":[{"id":"c","name":"Bears","logo":null},{"id":"d","name":"Lions","logo":null}],"status":"scheduled","freshness":"fresh","progress":{},
+                       "availability":"unmatched","broadcastStatus":"unavailable","channels":[],"events":[],"canWatch":false,
+                       "recordWhenListed":{"ruleId":12}},
+                      {"id":"espn:football/nfl:11","league":"NFL","title":"Rams at 49ers","start":4102444800000,
+                       "competitors":[{"id":"e","name":"Rams","logo":null},{"id":"f","name":"49ers","logo":null}],"status":"scheduled","freshness":"fresh","progress":{},
+                       "availability":"unmatched","broadcastStatus":"unavailable","channels":[],"events":[],"canWatch":false,
+                       "recordWhenListed":{"ruleId":"x"}}]}
+            """#.utf8))
+        let offerNow = Date(timeIntervalSince1970: 1_800_000_000)
+        try expect(waitingFront.games.count == 3 && waitingFront.games[1].recordWhenListed?.ruleId == 12 && waitingFront.games[2].recordWhenListed?.ruleId == nil,
+                   "C-R: recordWhenListed, a malformed one never drops the card")
+        try expect(SportFutureRecord.offer(waitingFront.games[0], now: offerNow, serverCan: true) == .record
+                   && SportFutureRecord.offer(waitingFront.games[1], now: offerNow, serverCan: true) == .cancel(ruleId: 12)
+                   && SportFutureRecord.offer(waitingFront.games[0], now: offerNow, serverCan: false) == nil
+                   && SportFutureRecord.offer(waitingFront.games[0], now: Date(timeIntervalSince1970: 4_200_000_000), serverCan: true) == nil,
+                   "#234: a future game with no listing offers Record when it's listed (or Don't record it); never on an older server, never once it has started")
+        let gameFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"recordGameRules":true}}"#.utf8))
+        try expect(gameFlags.features.recordGameRules == true, "#234: the server's recordGameRules")
+        let gameBody = String(decoding: try JSONEncoder().encode(RuleBody(kind: "game", match: "Cardinals at Seahawks", gameId: "espn:football/nfl:9")), as: UTF8.self)
+        try expect(gameBody.contains(#""gameId":"espn:football\/nfl:9""#) || gameBody.contains(#""gameId":"espn:football/nfl:9""#), "#234: the rule body carries gameId")
         let prefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":true,"sports":["F1","NFL"],"teams":{"NFL":["Green Bay Packers"],"F1":["Oscar Piastri"]},"following":{"F1":"Oscar Piastri","NFL":"Green Bay Packers"}}"#.utf8))
         try expect(prefs.spoilerFree && prefs.sports == ["F1", "NFL"] && prefs.teams["NFL"] == ["Green Bay Packers"] && prefs.f1Following == "Oscar Piastri", "C-R: the extended preferences")
         let olderPrefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":false,"following":{"F1":null,"NFL":"GB"}}"#.utf8))

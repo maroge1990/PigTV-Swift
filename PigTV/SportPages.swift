@@ -23,6 +23,8 @@ struct SportPresentation: Identifiable {
 @MainActor
 final class SportPresenter: ObservableObject {
     @Published var presented: SportPresentation?
+    /// #234: a future game with no listing yet whose card was selected: the "Record when it's listed" question.
+    @Published var future: SportsGame?
     private var afterDismiss: (() -> Void)?
     private let app: AppModel
     /// D-39: the tab the screen belongs to ("sport-front", "tv"), recorded with every play started here.
@@ -32,6 +34,28 @@ final class SportPresenter: ObservableObject {
 
     func open(_ event: SportEvent, _ page: SportPage) { presented = SportPresentation(event: event, page: page) }
     func play(_ event: SportEvent) { app.playSportEvent(event, origin: origin) }
+
+    /// #234: what selecting a card without a listing offers, if anything (the server must have `game` rules).
+    func futureOffer(_ game: SportsGame) -> SportFutureRecord.Offer? {
+        SportFutureRecord.offer(game, now: Date(), serverCan: app.browse?.client.info?.features.recordGameRules == true)
+    }
+    /// Asks; true when there was something to ask.
+    @discardableResult
+    func askFuture(_ game: SportsGame) -> Bool {
+        guard futureOffer(game) != nil else { return false }
+        future = game
+        return true
+    }
+    /// The answer: add or remove the game's `game` rule (C-M). The card says so at its next refresh.
+    func answerFuture(_ game: SportsGame) {
+        guard let offer = futureOffer(game), let browse = app.browse else { return }
+        Task {
+            switch offer {
+            case .record: await browse.addRule(RuleBody(kind: "game", match: game.title, gameId: game.id))
+            case .cancel(let id): await browse.deleteRule(id: id)
+            }
+        }
+    }
 
     func close(then action: @escaping () -> Void) {
         afterDismiss = action
@@ -74,6 +98,19 @@ private struct SportPages: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.sportPresenter, presenter)
+            // #234: a future game the guide does not list yet
+            .confirmationDialog(presenter.future?.title ?? "", isPresented: Binding(get: { presenter.future != nil },
+                                                                                  set: { if !$0 { presenter.future = nil } }),
+                                titleVisibility: .visible, presenting: presenter.future) { game in
+                let offer = presenter.futureOffer(game)
+                Button(offer == .record ? SportFutureRecord.recordTitle : SportFutureRecord.cancelTitle,
+                       role: offer == .record ? nil : .destructive) { presenter.answerFuture(game) }
+                Button("Cancel", role: .cancel) {}
+            } message: { game in
+                Text(presenter.futureOffer(game) == .record
+                     ? "It isn't in the TV guide yet. PigTV records it on its best channel as soon as it's listed."
+                     : "It's set to record once it's listed in the TV guide.")
+            }
             .detailCover(item: $presenter.presented, onDismiss: presenter.dismissed) { presentation in
                 switch presentation.page {
                 case .details:

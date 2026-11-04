@@ -72,6 +72,8 @@ struct ServerInfo: Decodable {
         var recordingWatchLive: Bool? = nil
         // C-M (server 0219, R5): `recordings/rules`; schedules carry `rule_id`.
         var recordingRules: Bool? = nil
+        // C-M `game` / C-R `recordWhenListed` (server 0466, #234): Record on a game the guide does not list yet.
+        var recordGameRules: Bool? = nil
         // C-N (server 0220, R6): recording and schedule rows carry `image`.
         var recordingArtwork: Bool? = nil
     }
