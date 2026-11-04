@@ -179,7 +179,11 @@ struct SportBanner<Actions: View>: View {
                     let moved = window.focusing(index)
                     guard moved != window else { return }
                     window = moved
-                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(moved.start, anchor: .top) }
+                    // #233 (Mark, Apple 149): an animated scroll moved the rows while tvOS chose the next focus (and scrolled
+                    // the list itself), so scrolling up focus jumped past a row and back. The window moves at once.
+                    var instant = Transaction()
+                    instant.disablesAnimations = true
+                    withTransaction(instant) { proxy.scrollTo(moved.start, anchor: .top) }
                 }
             }
             Text(window.moreLine(names: names) ?? " ").font(SportBannerMetrics.rowTrailing).foregroundStyle(.secondary)

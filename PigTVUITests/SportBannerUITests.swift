@@ -115,6 +115,31 @@ final class SportBannerUITests: XCTestCase {
         attach(app, "d43-front-list-scrolled")
     }
 
+    /// #233 (Mark, Apple 149): scrolling the follows up from the bottom, focus jumped past the 4th item from the top and
+    /// then back down: the list scrolled itself (an animated scrollTo) while tvOS scrolled it too, and focus was judged
+    /// against moving rows. Each press now moves focus one item, down and back up.
+    @MainActor
+    func testFocusMovesOneFollowPerPressBothWays() throws {
+        let app = try launch()
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.banner"].waitForExistence(timeout: 5))
+        for _ in 0..<12 where focused(app).identifier != "sport.banner.item.0" {
+            let id = focused(app).identifier
+            XCUIRemote.shared.press(id.hasPrefix("sport.banner.item.") ? .up : id.hasPrefix("sport.banner.") ? .right : .down)
+        }
+        XCTAssertEqual(focused(app).identifier, "sport.banner.item.0")
+        // Quick presses, as a viewer scrolls (the list's own scroll animation is still running between them).
+        for _ in 0..<6 { XCUIRemote.shared.press(.down); Thread.sleep(forTimeInterval: 0.12) }
+        XCTAssertTrue(waitUntil(3) { focused(app).identifier == "sport.banner.item.6" }, "down to the last: \(focused(app).identifier)")
+        var path: [String] = []
+        for _ in 0..<6 {
+            XCUIRemote.shared.press(.up)
+            Thread.sleep(forTimeInterval: 0.12)
+            path.append(focused(app).identifier)
+        }
+        XCTAssertEqual(path, (0...5).reversed().map { "sport.banner.item.\($0)" })
+    }
+
     @MainActor
     func testARailHeaderOpensTheSportPageWhoseBannerListsItsLeagues() throws {
         let app = try launch()
