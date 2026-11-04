@@ -438,6 +438,14 @@ final class APIClient {
         }.value
     }
 
+    /// C-W (#37): tells the server a live play is paused or resumed (best-effort: a failure changes nothing here).
+    func setLivePause(_ sessionID: String, paused: Bool) async {
+        guard info?.features.livePause == true, validSessionID(sessionID) else { return }
+        struct Body: Encodable { let paused: Bool }
+        struct Answer: Decodable { let pausedUntil: Double? }
+        let _: Answer? = try? await request("playback/\(sessionID)/pause", method: "POST", body: Body(paused: paused))
+    }
+
     func release(_ sessionID: String) async throws {
         guard validSessionID(sessionID) else {
             throw PigTVError.message("The server returned an invalid playback session identifier.")

@@ -470,6 +470,11 @@ struct PlayerScreen: View {
             if let warning = playback.coordinationWarning {
                 Text(warning).font(.caption).padding()
                     .background(Color.pigMediaPanel).foregroundStyle(Color.pigMediaText)
+            } else if let notice = playback.pauseNotice {
+                // #37 (C-W): a long pause
+                Text(notice).font(.caption).padding()
+                    .background(Color.pigMediaPanel).foregroundStyle(Color.pigMediaText)
+                    .accessibilityIdentifier("player.pauseNotice")
             }
         }
         #if os(iOS)

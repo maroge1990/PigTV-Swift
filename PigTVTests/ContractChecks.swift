@@ -745,6 +745,8 @@ enum ContractChecks {
                    "#234: the server's newer rule wins over an answer given before it")
         let gameFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"recordGameRules":true}}"#.utf8))
         try expect(gameFlags.features.recordGameRules == true, "#234: the server's recordGameRules")
+        let pauseFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"livePause":true}}"#.utf8))
+        try expect(pauseFlags.features.livePause == true, "#37: the server's livePause (C-W)")
         let gameBody = String(decoding: try JSONEncoder().encode(RuleBody(kind: "game", match: "Cardinals at Seahawks", gameId: "espn:football/nfl:9")), as: UTF8.self)
         try expect(gameBody.contains(#""gameId":"espn:football\/nfl:9""#) || gameBody.contains(#""gameId":"espn:football/nfl:9""#), "#234: the rule body carries gameId")
         let prefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":true,"sports":["F1","NFL"],"teams":{"NFL":["Green Bay Packers"],"F1":["Oscar Piastri"]},"following":{"F1":"Oscar Piastri","NFL":"Green Bay Packers"}}"#.utf8))

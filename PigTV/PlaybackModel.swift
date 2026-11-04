@@ -83,6 +83,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private(set) var catchingUp = false
     @Published var recordingPrompt: RecordingPrompt?
     @Published private(set) var coordinationWarning: String?
+    /// #37 (C-W): what the player says during a long pause ("the stream stops in 2 minutes"), else nil.
+    @Published private(set) var pauseNotice: String?
+    private var pausedAt: Date?
+    private var pauseTimer: Task<Void, Never>?
     private var conflictTask: Task<Void, Never>?
     private var seenPrompts = Set<Int>()
     private var pendingDeclines = Set<Int>()
@@ -552,6 +556,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     func timeControlChanged(_ status: AVPlayer.TimeControlStatus) {
         guard !ended else { return }
         updateWatchTime(playing: status == .playing)
+        livePauseChanged(paused: status == .paused)
         switch status {
         case .playing:
             cancelWaitTimers()
@@ -586,6 +591,46 @@ final class PlaybackModel: ObservableObject, Identifiable {
             buffering = false
         }
     }
+
+    /// #37 (C-W): a viewer's pause after the first picture tells the server (it keeps the stream up to 30 min) and
+    /// warns 2 minutes before the end; the resume tells it too, and goes to live (or starts again) when the paused point
+    /// has gone. `now` for tests.
+    func livePauseChanged(paused: Bool, now: Date = Date()) {
+        if paused {
+            guard itemPlayed, pausedAt == nil else { return }
+            pausedAt = now
+            if let sessionID { let client = client; Task { await client.setLivePause(sessionID, paused: true) } }
+            pauseTimer?.cancel()
+            pauseTimer = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(LivePause.warnSeconds))
+                guard !Task.isCancelled, let self else { return }
+                self.pauseNotice = LivePause.notice(after: LivePause.warnSeconds)
+                try? await Task.sleep(for: .seconds(LivePause.maxSeconds - LivePause.warnSeconds))
+                guard !Task.isCancelled else { return }
+                self.pauseNotice = LivePause.notice(after: LivePause.maxSeconds)
+            }
+            return
+        }
+        guard let at = pausedAt else { return }
+        pausedAt = nil
+        pauseTimer?.cancel()
+        pauseTimer = nil
+        pauseNotice = nil
+        switch LivePause.resume(after: now.timeIntervalSince(at)) {
+        case .inPlace:
+            if let sessionID { let client = client; Task { await client.setLivePause(sessionID, paused: false) } }
+        case .toLive:
+            if let sessionID { let client = client; Task { await client.setLivePause(sessionID, paused: false) } }
+            goToLive()
+        case .again:
+            // The server has ended the stream: back to live on a new one.
+            clearItem()
+            start()
+        }
+    }
+
+    /// For tests: whether a pause is being timed.
+    var isLivePaused: Bool { pausedAt != nil }
 
     private func armStartTimer(generation: UUID) {
         let startTimeout = startTimeout
@@ -757,6 +802,11 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
 
     private func clearItem() {
+        // #37: a pause belongs to the item it paused
+        pausedAt = nil
+        pauseTimer?.cancel()
+        pauseTimer = nil
+        pauseNotice = nil
         currentURL = nil
         currentStrategy = nil
         finishMeasurement()

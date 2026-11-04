@@ -107,4 +107,17 @@ final class PlayerSharedTests: XCTestCase {
         app.zapList = [browse.asChannel(browse.guide[1])]
         XCTAssertEqual(app.playerChannels.map(\.name), ["B"], "the row order the guide showed when playback began")
     }
+
+    /// #37 (C-W): a paused live play resumes in place within the server's ~6-minute window, at live after it, and on a
+    /// new stream after 30 minutes; the warning comes 2 minutes before the end.
+    func testLivePauseResumesInPlaceAtLiveOrAgain() {
+        XCTAssertEqual(LivePause.resume(after: 60), .inPlace)
+        XCTAssertEqual(LivePause.resume(after: 5 * 60), .inPlace)
+        XCTAssertEqual(LivePause.resume(after: 6 * 60), .toLive, "the paused point has rolled out of the server's window")
+        XCTAssertEqual(LivePause.resume(after: 29 * 60), .toLive)
+        XCTAssertEqual(LivePause.resume(after: 30 * 60), .again, "the server ended the stream at 30 minutes")
+        XCTAssertNil(LivePause.notice(after: 27 * 60))
+        XCTAssertEqual(LivePause.notice(after: 28 * 60), "Paused for 28 minutes: the stream stops in 2 minutes unless you play.")
+        XCTAssertEqual(LivePause.notice(after: 30 * 60), "Paused for 30 minutes, so the stream was stopped. Play goes back to live.")
+    }
 }

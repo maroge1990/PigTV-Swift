@@ -82,6 +82,32 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// #37 (C-W): a viewer's pause tells the server (it keeps the stream up to 30 minutes), and so does playing again;
+    /// a server without `livePause` is never asked.
+    func testAPausedLivePlayTellsTheServerAndSoDoesTheResume() async throws {
+        try requireFixture()
+        for flag in [true, false] {
+            let server = try FakePigTVServer()
+            let playback = PlaybackModel(channel: channel(), client: try server.client(extraFeatures: flag ? #""livePause":true"# : ""),
+                                         programmes: programmes())
+            playback.start()
+            try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
+            playback.player.pause()
+            try await waitFor("the pause seen") { playback.isLivePaused }
+            playback.player.play()
+            try await waitFor("the resume seen") { !playback.isLivePaused }
+            try await Task.sleep(for: .milliseconds(300))
+            let asked = server.http.requests(path: "/api/playback/s1/pause").map { String(decoding: $0.body, as: UTF8.self) }
+            if flag {
+                XCTAssertEqual(asked, [#"{"paused":true}"#, #"{"paused":false}"#], "pause, then resume")
+            } else {
+                XCTAssertTrue(asked.isEmpty, "an older server is never asked")
+            }
+            _ = await playback.stop()
+            server.http.stop()
+        }
+    }
+
     /// The whole live start: resolve → item → ready → AVPlayer actually
     /// playing → play-start event → stop releases the session.
     func testLiveChannelReallyPlays() async throws {

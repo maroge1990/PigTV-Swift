@@ -66,6 +66,8 @@ struct ServerInfo: Decodable {
         var providerReminders: Bool? = nil
         // R11 (server 0198): `POST playback/warm` exists.
         var warming: Bool? = nil
+        // C-W (server 0468, #37): `POST playback/{id}/pause`: a paused live play keeps its stream up to 30 minutes.
+        var livePause: Bool? = nil
         // C-L (server 0218, R3): `GET recordings/{id}/watch`; recording rows
         // carry `watch_live` (a segmented recording in progress can be played
         // from its start).

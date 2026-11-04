@@ -330,3 +330,26 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
 
     private static func clamp(_ value: Double) -> Double { value.isFinite ? min(1, max(0, value)) : 0 }
 }
+
+/// #37 (Mark, 30 Oct; C-W): a paused live play keeps its stream up to 30 minutes on a server with `livePause`. The
+/// server keeps about 6 minutes of the channel, so a longer pause resumes at live, and past 30 minutes the stream has
+/// gone and the play starts again at live. A warning 2 minutes before the end.
+nonisolated enum LivePause {
+    static let maxSeconds: TimeInterval = 30 * 60
+    static let warnSeconds: TimeInterval = 28 * 60
+    /// The server's window (90 four-second pieces) less a margin.
+    static let windowSeconds: TimeInterval = 5 * 60 + 30
+
+    enum Resume: Equatable { case inPlace, toLive, again }
+
+    static func resume(after paused: TimeInterval) -> Resume {
+        paused >= maxSeconds ? .again : paused >= windowSeconds ? .toLive : .inPlace
+    }
+
+    /// What the player says while paused, or nil.
+    static func notice(after paused: TimeInterval) -> String? {
+        if paused >= maxSeconds { return "Paused for 30 minutes, so the stream was stopped. Play goes back to live." }
+        if paused >= warnSeconds { return "Paused for 28 minutes: the stream stops in 2 minutes unless you play." }
+        return nil
+    }
+}
