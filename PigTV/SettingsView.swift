@@ -462,17 +462,18 @@ struct SettingsPageBody<Content: View>: View {
         }
         .accessibilityIdentifier("settings.page")
         #else
-        VStack(alignment: .leading, spacing: 0) {
-            if showsTitle {
-                Text(title).font(SettingsType.pageTitle).accessibilityAddTraits(.isHeader)
-                    .padding(.horizontal, SettingsMetrics.pagePadding).padding(.top, 8)
-            }
-            Form { content }
-                .scrollContentBackground(.hidden)
-                .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier("settings.page")
+        // #227 (Mark's iPad test, 4 Nov 2026): beside the menu, the page's first card starts on the menu's first row's
+        // line. Before Apple 148 the page drew its own title there, so its content began about 60 pt lower than the menu;
+        // the selected menu row already names the page, so the title is only VoiceOver's header now. The iPhone's pages
+        // keep the navigation bar's title.
+        Form { content }
+            .scrollContentBackground(.hidden)
+            .contentMargins(.top, 5, for: .scrollContent) // the menu rows' text and the first row's on one line
+            .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(showsTitle ? title : "")
+            .accessibilityIdentifier("settings.page")
         #endif
     }
 }
