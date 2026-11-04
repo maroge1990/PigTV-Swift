@@ -90,6 +90,55 @@ final class SportPhoneFrontUITests: XCTestCase {
         XCTAssertTrue(any["sport.page.phone.carousel"].waitForExistence(timeout: 5), "back on the sport's page")
     }
 
+    private func shot(_ app: XCUIApplication, _ name: String) {
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let dir = ProcessInfo.processInfo.environment["PIGTV_SCREENSHOT_DIR"], !dir.isEmpty {
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
+        }
+    }
+
+    /// #225 (Mark, 4 Nov 2026): a card's two buttons are Remind me (or Watch) and Record, the same width and height. Run on
+    /// an iPhone simulator. Before Apple 144 the second read "Record every … game" in a smaller bordered style.
+    @MainActor
+    func testACardsTwoButtonsAreTheSameSizeAndTheSecondSaysRecord() throws {
+        let app = try launch()
+        XCTAssertTrue(app.descendants(matching: .any)["sport.front.carousel"].waitForExistence(timeout: 15))
+        let record = app.buttons.matching(identifier: "sport.front.card.record").firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 5), "a card's Record")
+        XCTAssertEqual(record.label, "Record")
+        let primaries = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["sport.front.card.remind", "sport.front.card.watch"]))
+        let primary = try XCTUnwrap(primaries.allElementsBoundByIndex.first {
+            abs($0.frame.midY - record.frame.midY) < 2 && $0.frame.maxX <= record.frame.minX + 1
+        }, "a Watch or Remind me beside it")
+        XCTAssertEqual(primary.frame.width, record.frame.width, accuracy: 1, "\(primary.frame) and \(record.frame)")
+        XCTAssertEqual(primary.frame.height, record.frame.height, accuracy: 1, "\(primary.frame) and \(record.frame)")
+        shot(app, "225-iphone-card-buttons")
+    }
+
+    /// #228 (Mark's iPad test, 4 Nov 2026): an 11-inch iPad in landscape keeps a league's standings beside the round's
+    /// games without covering them, a gap between the two. Run on an iPad simulator. Before Apple 144 a standings row was
+    /// wider than its 380 pt column, so the table spread left over the second column of game cards.
+    @MainActor
+    func testAnIPadInLandscapeKeepsTheStandingsBesideTheGamesWithoutCoveringThem() throws {
+        let app = try launch(idiom: .pad, environment: ["PIGTV_UI_TEST_OPEN_SPORT": "Australian football"])
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let table = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'sport.fixture.table.'")).firstMatch
+        XCTAssertTrue(table.waitForExistence(timeout: 15), "the standings")
+        let grid = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'sport.fixture.grid.'")).firstMatch
+        let window = app.windows.firstMatch.frame
+        guard window.width >= 1100 else { throw XCTSkip("stacked below 1100 pt (\(window.width))") }
+        XCTAssertLessThan(table.frame.minY, grid.frame.maxY, "beside the games")
+        XCTAssertGreaterThanOrEqual(table.frame.minX, grid.frame.maxX + 8, "a gap, not an overlap: \(table.frame) beside \(grid.frame)")
+        XCTAssertLessThanOrEqual(table.frame.maxX, window.maxX + 1, "inside the page")
+        shot(app, "228-ipad-landscape-standings")
+    }
+
     /// D-44 (Apple 142): an iPad in portrait stacks a league's panels, so the AFL standings sit inside the page rather
     /// than running off its right edge beside the round's games. Run on an iPad simulator. Before Apple 142 the table
     /// was drawn beside the games at a fixed width, wider than the space left.

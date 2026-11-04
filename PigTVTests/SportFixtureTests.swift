@@ -8,6 +8,19 @@ import XCTest
 // a game's C-R card found for Watch and Record. Before Apple 99 the NFL page's own layout was embedded and a C-T league
 // showed only its C-R cards.
 final class SportFixtureTests: XCTestCase {
+    // #228 (Mark's iPad test, 4 Nov 2026): the standings beside the games had six values held 44 pt wide in a 380 pt table,
+    // so a row was wider than the table: it overflowed over the second column's scores and left the name a few letters.
+    // Now a football row (P W D L GD Pts) leaves its name at least 120 pt (a followed row, with its star), and the games
+    // keep two cards of at least 300 pt on an 11-inch iPad in landscape (1194 pt, 32 pt margins, a 24 pt gap).
+    func testTheIPadStandingsLeaveTheNameRoomAndTheGamesTheirScores() {
+        XCTAssertLessThan(SportFixtureMetrics.touchTableBefore.nameRoom(values: 6), 0, "the cause: the row was wider than the table")
+        let table = SportFixtureMetrics.touchTable
+        XCTAssertGreaterThanOrEqual(table.nameRoom(values: 6), 120)
+        let card = (1194 - 2 * 32 - 24 - table.width - 14) / 2
+        XCTAssertGreaterThanOrEqual(card, 300, "each game card \(card) pt")
+        XCTAssertEqual(SportFixtureMetrics.tvTable.width, 680, "Apple TV unchanged")
+    }
+
     private func nfl() throws -> NFLPage { try JSONDecoder().decode(NFLPage.self, from: try NFLPageTests.fixture()) }
     private func afl() throws -> LeaguePage { try SportPagesFixture.part(["leagues", "AFL"]) }
 

@@ -6,18 +6,45 @@ import SwiftUI
 // one table). A followed team has the star and its card the pink outline; its row the pink tint. Spoiler-free hides
 // scores, records, the live situation and the standings (rules: SportFixtureModels.swift).
 
-enum SportFixtureMetrics {
+nonisolated enum SportFixtureMetrics {
+    /// A standings table's sizes on one platform.
+    struct Table: Equatable, Sendable {
+        var width: CGFloat
+        var valueWidth: CGFloat
+        var rankWidth: CGFloat
+        var badge: CGFloat
+        var spacing: CGFloat
+        /// A followed row's star.
+        var star: CGFloat = 14
+        /// The list card's and a followed row's padding, both sides.
+        var inset: CGFloat
+
+        /// #228: what a row of `values` columns leaves its team name: the width less the rank, badge, star, each value at
+        /// its least, the gaps between them all and the spacer's least. Pure (tests `SportFixtureTests`).
+        func nameRoom(values: Int) -> CGFloat {
+            width - inset - (rankWidth + badge + star + CGFloat(values) * valueWidth + CGFloat(values + 4) * spacing + 4)
+        }
+    }
+
+    static let tvTable = Table(width: 680, valueWidth: 42, rankWidth: 28, badge: 24, spacing: 10, inset: 2 * 22 + 2 * 8)
+    // #228 (Mark, 4 Nov 2026: "a lot of dead space in the standings table"): on iPad the values were held 44 pt wide with
+    // 10 pt gaps, wider together than the 380 pt table, so a row overflowed onto the games' scores and the team name was
+    // cut to a few letters. The values now take what two or three digits need (a wider one, "137.2", is still drawn
+    // whole), the table is 80 pt wider and the game cards give that up.
+    static let touchTable = Table(width: 460, valueWidth: 28, rankWidth: 22, badge: 24, spacing: 6, inset: 2 * 16 + 2 * 8)
+    /// Before Apple 144 (#228's cause).
+    static let touchTableBefore = Table(width: 380, valueWidth: 44, rankWidth: 28, badge: 24, spacing: 10, inset: 2 * 16 + 2 * 8)
+
     #if os(tvOS)
-    static let standingsWidth: CGFloat = 680
+    static let table = tvTable
     static let columns = 3
     static let cardHeight: CGFloat = 156
-    static let valueWidth: CGFloat = 42
     #else
-    static let standingsWidth: CGFloat = 380
+    static let table = touchTable
     static let columns = 2
     static let cardHeight: CGFloat = 130
-    static let valueWidth: CGFloat = 44
     #endif
+    static var standingsWidth: CGFloat { table.width }
 }
 
 struct SportFixtureContent: View {
@@ -171,12 +198,13 @@ struct SportFixtureContent: View {
                         SportBadge(name: side.name, logo: side.logo, league: fixture.league, client: browse.client,
                                    size: SportPageMetrics.badge, disc: side.logo == nil ? (side.abbr, side.color) : nil)
                         SportFollowStar(followed: side.followed)
-                        Text(side.name).font(SportPageMetrics.rowName).lineLimit(1)
+                        Text(side.name).font(SportPageMetrics.rowName).lineLimit(1).minimumScaleFactor(0.85)
                         if let record = side.record {
-                            Text(record).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1)
+                            Text(record).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1).layoutPriority(-1)
                         }
                         Spacer(minLength: 6)
-                        if let score = side.score { Text(score).font(SportPageMetrics.score).monospacedDigit() }
+                        // #228: a score is always drawn whole; the name and record give way
+                        if let score = side.score { Text(score).font(SportPageMetrics.score).monospacedDigit().fixedSize().layoutPriority(1) }
                     }
                 }
                 if let situation = game.situation {
@@ -267,10 +295,11 @@ struct SportFixtureContent: View {
     private func tableRows(_ table: FixtureLeague.Table) -> some View {
         VStack(spacing: 2) {
             ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
-                HStack(spacing: narrow ? 6 : 10) {
+                HStack(spacing: narrow ? 6 : SportFixtureMetrics.table.spacing) {
                     Text(String(row.rank ?? index + 1)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).monospacedDigit()
-                        .frame(minWidth: narrow ? 20 : 28, alignment: .trailing)
-                    SportBadge(name: row.name, logo: row.logo, league: leagueName, client: browse.client, size: narrow ? 20 : 24)
+                        .frame(minWidth: narrow ? 20 : SportFixtureMetrics.table.rankWidth, alignment: .trailing)
+                    SportBadge(name: row.name, logo: row.logo, league: leagueName, client: browse.client,
+                               size: narrow ? 20 : SportFixtureMetrics.table.badge)
                         .fixedSize()
                     SportFollowStar(followed: row.followed)
                     Text(row.name).font(SportPageMetrics.rowName).lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)
@@ -278,7 +307,7 @@ struct SportFixtureContent: View {
                     ForEach(Array(row.values.enumerated()), id: \.offset) { _, value in
                         // #211: a value is drawn whole ("4-2-1", "137.2"); the team's name gives way.
                         Text(value ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit().lineLimit(1).fixedSize()
-                            .frame(minWidth: narrow ? 26 : SportFixtureMetrics.valueWidth, alignment: .trailing)
+                            .frame(minWidth: narrow ? 26 : SportFixtureMetrics.table.valueWidth, alignment: .trailing)
                     }
                 }
                 .frame(minHeight: SportPageMetrics.row - 4)
