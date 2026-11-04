@@ -438,12 +438,20 @@ final class APIClient {
         }.value
     }
 
-    /// C-W (#37): tells the server a live play is paused or resumed (best-effort: a failure changes nothing here).
-    func setLivePause(_ sessionID: String, paused: Bool) async {
-        guard info?.features.livePause == true, validSessionID(sessionID) else { return }
+    /// C-W (#37): tells the server a live play is paused or resumed. True once the server has it; false on a failure
+    /// (the caller tries again); true too for a stream the server no longer has (404: nothing left to tell).
+    func setLivePause(_ sessionID: String, paused: Bool) async -> Bool {
+        guard info?.features.livePause == true, validSessionID(sessionID) else { return true }
         struct Body: Encodable { let paused: Bool }
         struct Answer: Decodable { let pausedUntil: Double? }
-        let _: Answer? = try? await request("playback/\(sessionID)/pause", method: "POST", body: Body(paused: paused))
+        do {
+            let _: Answer = try await request("playback/\(sessionID)/pause", method: "POST", body: Body(paused: paused))
+            return true
+        } catch PigTVError.http(404) {
+            return true
+        } catch {
+            return false
+        }
     }
 
     func release(_ sessionID: String) async throws {

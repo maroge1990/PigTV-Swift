@@ -139,6 +139,27 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// Apple 158 (157 Codex round 2, medium): a resume the server did not take (a 500) was counted as sent, leaving a
+    /// playing stream paused on the server. It is sent again until the server has it.
+    func testAFailedResumeIsSentAgain() async throws {
+        try requireFixture()
+        let bodies = Locked<[String]>([])
+        let server = try FakePigTVServer(livePause: .init { n, body in
+            bodies.value.append(body)
+            return n == 2 ? .json(#"{"error":"busy"}"#, status: 500) : .json(#"{"pausedUntil":null}"#)
+        })
+        let playback = PlaybackModel(channel: channel(), client: try server.client(extraFeatures: #""livePause":true"#), programmes: programmes())
+        playback.start()
+        try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
+        playback.player.pause()
+        try await waitFor("the pause seen") { playback.isLivePaused }
+        playback.player.play()
+        try await waitFor("the resume sent again", timeout: 6) { bodies.value.count >= 3 }
+        XCTAssertEqual(Array(bodies.value.prefix(3)), [#"{"paused":true}"#, #"{"paused":false}"#, #"{"paused":false}"#])
+        _ = await playback.stop()
+        server.http.stop()
+    }
+
     /// The whole live start: resolve → item → ready → AVPlayer actually
     /// playing → play-start event → stop releases the session.
     func testLiveChannelReallyPlays() async throws {

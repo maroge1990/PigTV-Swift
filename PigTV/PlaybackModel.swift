@@ -646,10 +646,19 @@ final class PlaybackModel: ObservableObject, Identifiable {
         guard pauseSender == nil else { return }
         let client = client
         pauseSender = Task { [weak self] in
+            var failures = 0
             while let self, let want = self.pauseWanted,
                   !(self.pauseSent?.session == want.session && self.pauseSent?.paused == want.paused) {
-                await client.setLivePause(want.session, paused: want.paused)
-                self.pauseSent = want
+                if await client.setLivePause(want.session, paused: want.paused) {
+                    self.pauseSent = want
+                    failures = 0
+                } else {
+                    // Apple 158 (157 Codex round 2, medium): a failed send is not delivered: tried again (1, 2, 4… s, at
+                    // most 30 s apart), always with the latest wish, until the server has it or the play ends.
+                    failures += 1
+                    try? await Task.sleep(for: .seconds(min(30, pow(2, Double(failures - 1)))))
+                    if Task.isCancelled || self.ended { break }
+                }
             }
             self?.pauseSender = nil
         }
