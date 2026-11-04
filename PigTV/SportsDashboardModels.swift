@@ -266,20 +266,21 @@ nonisolated enum SportFutureRecord {
   static let cancelTitle = "Don't record it"
   static let waitingLabel = "Records when it's listed"
 
-  /// `answered`: this device's own answer since the card was drawn (Apple 154, 152 Codex round 1, medium): a rule id it
-  /// added, or nil for one it removed; absent, the card's `recordWhenListed`.
-  static func offer(_ game: SportsGame, now: Date, serverCan: Bool, answered: Int?? = .none) -> Offer? {
+  /// This device's answer (Apple 154): the rule it added (or nil, removed), and what the card said when it answered.
+  struct Answer: Equatable, Sendable { let basis: Int?; let rule: Int? }
+
+  /// `answered`: this device's own answer, used only while the card still says what it said when answered (Apple 155,
+  /// 152 Codex round 2: a refreshed card that says something else is newer, e.g. a rule replaced on another device).
+  static func offer(_ game: SportsGame, now: Date, serverCan: Bool, answered: Answer? = nil) -> Offer? {
     guard serverCan, game.channels.isEmpty, game.status == "scheduled", game.competitors.count == 2,
           game.recordingMark == nil, game.start > now.timeIntervalSince1970 * 1000 else { return nil }
     if let id = waiting(game, answered: answered) { return .cancel(ruleId: id) }
     return .record
   }
 
-  /// The rule a card waits on, this device's answer first.
-  static func waiting(_ game: SportsGame, answered: Int??) -> Int? {
-    switch answered {
-    case .some(let rule): return rule
-    case .none: return game.recordWhenListed?.ruleId
-    }
+  /// The rule a card waits on: this device's answer while the card has not changed since, else the card's.
+  static func waiting(_ game: SportsGame, answered: Answer?) -> Int? {
+    if let answered, answered.basis == game.recordWhenListed?.ruleId { return answered.rule }
+    return game.recordWhenListed?.ruleId
   }
 }

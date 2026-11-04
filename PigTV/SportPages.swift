@@ -29,7 +29,7 @@ final class SportPresenter: ObservableObject {
     /// saved since the cards were drawn (game id -> its rule id, or nil once removed), so a card changes at once.
     @Published private(set) var futureSaving = false
     @Published var futureError: String?
-    @Published private(set) var futureAnswers: [String: Int?] = [:]
+    @Published private(set) var futureAnswers: [String: SportFutureRecord.Answer] = [:]
     private var afterDismiss: (() -> Void)?
     private let app: AppModel
     /// D-39: the tab the screen belongs to ("sport-front", "tv"), recorded with every play started here.
@@ -66,10 +66,10 @@ final class SportPresenter: ObservableObject {
             defer { futureSaving = false }
             switch offer {
             case .record:
-                if let rule = await browse.addGameRule(game) { futureAnswers[game.id] = .some(rule) }
+                if let rule = await browse.addGameRule(game) { futureAnswers[game.id] = .init(basis: game.recordWhenListed?.ruleId, rule: rule) }
                 else { futureError = browse.actionError ?? "It couldn't be set to record. Try again." }
             case .cancel(let id):
-                if await browse.deleteRule(id: id) { futureAnswers[game.id] = .some(nil) }
+                if await browse.deleteRule(id: id) { futureAnswers[game.id] = .init(basis: game.recordWhenListed?.ruleId, rule: nil) }
                 else { futureError = browse.actionError ?? "It couldn't be changed. Try again." }
             }
         }

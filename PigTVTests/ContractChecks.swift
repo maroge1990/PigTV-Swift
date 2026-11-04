@@ -734,11 +734,15 @@ enum ContractChecks {
                    && SportFutureRecord.offer(waitingFront.games[0], now: Date(timeIntervalSince1970: 4_200_000_000), serverCan: true) == nil,
                    "#234: a future game with no listing offers Record when it's listed (or Don't record it); never on an older server, never once it has started")
         // Apple 154 (152 Codex round 1, medium): this device's answer changes the card at once, before the next refresh.
-        try expect(SportFutureRecord.offer(waitingFront.games[0], now: offerNow, serverCan: true, answered: .some(31)) == .cancel(ruleId: 31)
-                   && SportFutureRecord.offer(waitingFront.games[1], now: offerNow, serverCan: true, answered: .some(nil)) == .record
-                   && SportFutureRecord.waiting(waitingFront.games[1], answered: .none) == 12
-                   && SportFutureRecord.waiting(waitingFront.games[1], answered: .some(nil)) == nil,
+        try expect(SportFutureRecord.offer(waitingFront.games[0], now: offerNow, serverCan: true, answered: .init(basis: nil, rule: 31)) == .cancel(ruleId: 31)
+                   && SportFutureRecord.offer(waitingFront.games[1], now: offerNow, serverCan: true, answered: .init(basis: 12, rule: nil)) == .record
+                   && SportFutureRecord.waiting(waitingFront.games[1], answered: nil) == 12
+                   && SportFutureRecord.waiting(waitingFront.games[1], answered: .init(basis: 12, rule: nil)) == nil,
                    "#234: after Record, Don't record it at once; after Don't record it, Record again")
+        // Apple 155 (152 Codex round 2): a refreshed card that says something else (rule 12, recreated elsewhere after this
+        // device added 31) is newer than this device's answer.
+        try expect(SportFutureRecord.offer(waitingFront.games[1], now: offerNow, serverCan: true, answered: .init(basis: nil, rule: 31)) == .cancel(ruleId: 12),
+                   "#234: the server's newer rule wins over an answer given before it")
         let gameFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"recordGameRules":true}}"#.utf8))
         try expect(gameFlags.features.recordGameRules == true, "#234: the server's recordGameRules")
         let gameBody = String(decoding: try JSONEncoder().encode(RuleBody(kind: "game", match: "Cardinals at Seahawks", gameId: "espn:football/nfl:9")), as: UTF8.self)
