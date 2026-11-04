@@ -212,7 +212,30 @@ private struct HeroFocus: ViewModifier {
 }
 
 /// A game card in a rail or a league's games.
+/// #234: "Records when it's listed" (a dashed red ring) while a `game` rule waits for the guide; follows this device's
+/// answers at once (Apple 154), the card's `recordWhenListed` otherwise.
+struct SportFutureMark: View {
+    let game: SportsGame
+    @ObservedObject var presenter: SportPresenter
+
+    var body: some View {
+        if presenter.futureRule(game) != nil { Self.mark(game) }
+    }
+
+    static func mark(_ game: SportsGame) -> some View {
+        HStack(spacing: 8) {
+            Circle().strokeBorder(Color.pigDanger, style: StrokeStyle(lineWidth: 2, dash: [3, 2]))
+                .frame(width: 12, height: 12).accessibilityHidden(true)
+            Text(SportFutureRecord.waitingLabel).font(SportCardMetrics.small.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("sport.card.recordWhenListed.\(game.id)")
+    }
+}
+
 struct SportGameCard: View {
+    /// #234: this device's "Record when it's listed" answers (Apple 154).
+    @Environment(\.sportPresenter) private var presenter
     let game: SportsGame
     let front: SportFront
     let hidden: Bool
@@ -232,7 +255,9 @@ struct SportGameCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 if game.competitors.count == 2 { teams(drawn) } else { session(drawn) }
                 Spacer(minLength: 0)
-                if let mark = game.recordingMark { recordingMark(mark) } else if game.recordWhenListed != nil { waitingMark }
+                if let mark = game.recordingMark { recordingMark(mark) }
+                else if let presenter { SportFutureMark(game: game, presenter: presenter) }
+                else if game.recordWhenListed != nil { SportFutureMark.mark(game) }
                 bottom(drawn, live: live)
             }
             .padding(SportCardMetrics.padding)
@@ -319,17 +344,6 @@ struct SportGameCard: View {
                     .foregroundStyle(Color.pigAccentText).lineLimit(1).fixedSize().layoutPriority(2)
             }
         }
-    }
-
-    /// #234: "Records when it's listed" (a dashed red ring): a `game` rule waits for the guide.
-    private var waitingMark: some View {
-        HStack(spacing: 8) {
-            Circle().strokeBorder(Color.pigDanger, style: StrokeStyle(lineWidth: 2, dash: [3, 2]))
-                .frame(width: 12, height: 12).accessibilityHidden(true)
-            Text(SportFutureRecord.waitingLabel).font(SportCardMetrics.small.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("sport.card.recordWhenListed.\(game.id)")
     }
 
     /// "Recording" (a red dot) or "Set to record" (a red ring), and "Clashes with …" when it loses its clash (C-R since

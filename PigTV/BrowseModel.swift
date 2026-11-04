@@ -977,6 +977,23 @@ final class BrowseModel: ObservableObject {
         }
     }
 
+    /// #234: "Record when it's listed": the game's `game` rule; its id, or nil (actionError says why).
+    func addGameRule(_ game: SportsGame) async -> Int? {
+        guard !mutationBusy else { return nil }
+        mutationBusy = true
+        actionError = nil
+        defer { mutationBusy = false }
+        do {
+            let rule: RecordingRule = try await client.request("recordings/rules", method: "POST",
+                                                               body: RuleBody(kind: "game", match: game.title, gameId: game.id))
+            actionMessage = "It will record once it's in the TV guide."
+            return rule.id
+        } catch {
+            actionError = "It couldn't be set to record. \(UserMessage.text(for: error))"
+            return nil
+        }
+    }
+
     /// #234: a rule known only by its id (a card's `recordWhenListed`).
     @discardableResult
     func deleteRule(id: Int) async -> Bool {

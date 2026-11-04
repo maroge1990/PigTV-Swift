@@ -266,10 +266,20 @@ nonisolated enum SportFutureRecord {
   static let cancelTitle = "Don't record it"
   static let waitingLabel = "Records when it's listed"
 
-  static func offer(_ game: SportsGame, now: Date, serverCan: Bool) -> Offer? {
+  /// `answered`: this device's own answer since the card was drawn (Apple 154, 152 Codex round 1, medium): a rule id it
+  /// added, or nil for one it removed; absent, the card's `recordWhenListed`.
+  static func offer(_ game: SportsGame, now: Date, serverCan: Bool, answered: Int?? = .none) -> Offer? {
     guard serverCan, game.channels.isEmpty, game.status == "scheduled", game.competitors.count == 2,
           game.recordingMark == nil, game.start > now.timeIntervalSince1970 * 1000 else { return nil }
-    if let id = game.recordWhenListed?.ruleId { return .cancel(ruleId: id) }
+    if let id = waiting(game, answered: answered) { return .cancel(ruleId: id) }
     return .record
+  }
+
+  /// The rule a card waits on, this device's answer first.
+  static func waiting(_ game: SportsGame, answered: Int??) -> Int? {
+    switch answered {
+    case .some(let rule): return rule
+    case .none: return game.recordWhenListed?.ruleId
+    }
   }
 }

@@ -25,6 +25,11 @@ final class SportPresenter: ObservableObject {
     @Published var presented: SportPresentation?
     /// #234: a future game with no listing yet whose card was selected: the "Record when it's listed" question.
     @Published var future: SportsGame?
+    /// Apple 154 (152 Codex round 1): an answer being saved (no second one meanwhile), a failure to show, and the answers
+    /// saved since the cards were drawn (game id -> its rule id, or nil once removed), so a card changes at once.
+    @Published private(set) var futureSaving = false
+    @Published var futureError: String?
+    @Published private(set) var futureAnswers: [String: Int?] = [:]
     private var afterDismiss: (() -> Void)?
     private let app: AppModel
     /// D-39: the tab the screen belongs to ("sport-front", "tv"), recorded with every play started here.
@@ -37,8 +42,11 @@ final class SportPresenter: ObservableObject {
 
     /// #234: what selecting a card without a listing offers, if anything (the server must have `game` rules).
     func futureOffer(_ game: SportsGame) -> SportFutureRecord.Offer? {
-        SportFutureRecord.offer(game, now: Date(), serverCan: app.browse?.client.info?.features.recordGameRules == true)
+        SportFutureRecord.offer(game, now: Date(), serverCan: app.browse?.client.info?.features.recordGameRules == true,
+                                answered: futureAnswers[game.id])
     }
+    /// The rule this card waits on, this device's answers first.
+    func futureRule(_ game: SportsGame) -> Int? { SportFutureRecord.waiting(game, answered: futureAnswers[game.id]) }
     /// Asks; true when there was something to ask.
     @discardableResult
     func askFuture(_ game: SportsGame) -> Bool {
@@ -49,10 +57,20 @@ final class SportPresenter: ObservableObject {
     /// The answer: add or remove the game's `game` rule (C-M). The card says so at its next refresh.
     func answerFuture(_ game: SportsGame) {
         guard let offer = futureOffer(game), let browse = app.browse else { return }
+        guard !futureSaving, !browse.mutationBusy else {
+            futureError = "PigTV is still saving another change. Try again in a moment."
+            return
+        }
+        futureSaving = true
         Task {
+            defer { futureSaving = false }
             switch offer {
-            case .record: await browse.addRule(RuleBody(kind: "game", match: game.title, gameId: game.id))
-            case .cancel(let id): await browse.deleteRule(id: id)
+            case .record:
+                if let rule = await browse.addGameRule(game) { futureAnswers[game.id] = .some(rule) }
+                else { futureError = browse.actionError ?? "It couldn't be set to record. Try again." }
+            case .cancel(let id):
+                if await browse.deleteRule(id: id) { futureAnswers[game.id] = .some(nil) }
+                else { futureError = browse.actionError ?? "It couldn't be changed. Try again." }
             }
         }
     }
@@ -110,6 +128,11 @@ private struct SportPages: ViewModifier {
                 Text(presenter.futureOffer(game) == .record
                      ? "It isn't in the TV guide yet. PigTV records it on its best channel as soon as it's listed."
                      : "It's set to record once it's listed in the TV guide.")
+            }
+            .alert("Not saved", isPresented: Binding(get: { presenter.futureError != nil }, set: { if !$0 { presenter.futureError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(presenter.futureError ?? "")
             }
             .detailCover(item: $presenter.presented, onDismiss: presenter.dismissed) { presentation in
                 switch presentation.page {
