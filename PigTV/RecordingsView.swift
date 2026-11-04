@@ -42,6 +42,11 @@ enum RecordingsMetrics {
     #endif
     static let radius = PigRadius.card
     static let artRatio: CGFloat = 16 / 9
+    /// #229 (Mark, 4 Nov 2026): the iPhone's recording card, empty card and Coming up card share one edge, the page
+    /// header's (PigPageHeaderMetrics.edge). Before Apple 149 they sat 28, 20 and 12 pt in: three widths.
+    static let phoneEdge: CGFloat = 16
+    /// The iPhone recording card's height while the first answer loads (a placeholder of the card's size, no jump).
+    static let phoneCardHeight: CGFloat = 420
 }
 
 /// Where the Recordings tab's stack goes: Scheduled, or a recording (by id, so a refreshed list keeps the page).
@@ -241,7 +246,18 @@ struct RecordingsView: View {
             }
             status
             if all.isEmpty {
-                if !model.recordingsBusy { RecordingsEmpty().padding(.horizontal, RecordingsMetrics.pagePadding) }
+                // #229: while the first answer loads, a card of the recording card's size where it will be, so nothing
+                // jumps; then the empty card or the recordings, faded in.
+                if model.recordingsBusy {
+                    RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous).fill(Color.pigSurface)
+                        .frame(height: RecordingsMetrics.phoneCardHeight)
+                        .overlay { ProgressView() }
+                        .padding(.horizontal, RecordingsMetrics.phoneEdge)
+                        .accessibilityIdentifier("recordings.loading")
+                        .transition(.opacity)
+                } else {
+                    RecordingsEmpty(card: true).padding(.horizontal, RecordingsMetrics.phoneEdge).transition(.opacity)
+                }
                 Spacer()
             } else {
                 TabView(selection: Binding(get: { page ?? all.first?.id }, set: { page = $0 })) {
@@ -251,15 +267,18 @@ struct RecordingsView: View {
                                            canWatchFromStart: canWatchFromStart(item),
                                            play: { playing = RecordingPlay(recording: item, fromStart: $0) },
                                            details: { open(item) })
-                            .padding(.horizontal, 28).padding(.bottom, 40)
+                            .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, 40)
                             .tag(Optional(item.id))
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .indexViewStyle(.page(backgroundDisplayMode: .never))
                 .accessibilityIdentifier("recordings.stack")
+                .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.25), value: all.isEmpty)
+        .animation(.easeOut(duration: 0.25), value: model.recordingsBusy)
         .safeAreaInset(edge: .bottom) {
             ComingUpCard(items: comingUp, now: Date()) { path.append(.scheduled) }
         }
@@ -270,6 +289,8 @@ struct RecordingsView: View {
 
 /// Nothing recorded yet (always drawn: Mark's rule for every page).
 private struct RecordingsEmpty: View {
+    /// #229: the iPhone draws it as a card the width of the recording and Coming up cards.
+    var card = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("No recordings yet").font(RecordingsMetrics.title)
@@ -277,6 +298,9 @@ private struct RecordingsEmpty: View {
                 .font(RecordingsMetrics.detail).foregroundStyle(.secondary)
         }
         .padding(.vertical, 24)
+        .padding(.horizontal, card ? 16 : 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(card ? Color.pigSurface : .clear, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("recordings.empty")
     }
@@ -560,7 +584,7 @@ private struct ComingUpCard: View {
             .shadow(color: Color.pigShadow.opacity(0.3), radius: 14, y: -6)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 12).padding(.bottom, 6)
+        .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, 6)
         .accessibilityLabel(items.first.map { "Coming up, \(items.count) scheduled. Next: \($0.title), \(RecordingsHome.when($0.start, now: now))" }
                             ?? "Coming up, nothing scheduled")
         .accessibilityHint("Opens Scheduled")
@@ -639,6 +663,8 @@ private struct RecordingStackCard: View {
         .background(Color.pigRaised)
         .clipShape(RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .shadow(color: Color.pigShadow.opacity(0.4), radius: 20, y: 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("recordings.stack.card")
     }
 }
 #endif
