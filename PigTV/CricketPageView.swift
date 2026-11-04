@@ -37,7 +37,7 @@ private enum CricketMetrics {
     static let dayWidth: CGFloat = 132
     static let cardPadding = EdgeInsets(top: 18, leading: 24, bottom: 18, trailing: 24)
     #else
-    static let title: Font = .largeTitle.bold()
+    static var title: Font { PigPageHeaderMetrics.title } // #226: the tabs' title style
     static let matchTitle: Font = .title.bold()
     static let kicker: Font = .caption.weight(.bold)
     static let cardTitle: Font = .title3.bold()

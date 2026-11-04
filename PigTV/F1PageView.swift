@@ -41,7 +41,7 @@ private enum F1Metrics {
     static let cardPadding = EdgeInsets(top: 20, leading: 28, bottom: 20, trailing: 28)
     static let bell: CGFloat = 48
     #else
-    static let title: Font = .largeTitle.bold()
+    static var title: Font { PigPageHeaderMetrics.title } // #226: the tabs' title style
     static let eyebrow: Font = .caption.bold()
     static let heroName: Font = .title.bold()
     static let heroPlace: Font = .subheadline

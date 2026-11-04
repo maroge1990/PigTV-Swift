@@ -209,7 +209,8 @@ struct SportPhonePageHeader: View {
             .accessibilityLabel("Back to \(back)")
             .accessibilityIdentifier("sport.page.back")
             HStack(spacing: 10) {
-                Text(title).font(.title.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.7)
+                // #226: the tabs' title style (PigPageHeaderMetrics), under the back line
+                Text(title).font(PigPageHeaderMetrics.title).lineLimit(1).minimumScaleFactor(0.7)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("page.header.title")
                 Spacer(minLength: 8)

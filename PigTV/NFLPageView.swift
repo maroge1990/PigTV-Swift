@@ -32,7 +32,7 @@ private enum NFLMetrics {
     static let radius = PigRadius.card
     static let cardPadding = EdgeInsets(top: 16, leading: 22, bottom: 16, trailing: 22)
     #else
-    static let title: Font = .largeTitle.bold()
+    static var title: Font { PigPageHeaderMetrics.title } // #226: the tabs' title style
     static let cardTitle: Font = .title3.bold()
     static let team: Font = .headline
     static let score: Font = .title3.bold()

@@ -68,13 +68,6 @@ enum GuideTypography {
         .caption
         #endif
     }
-    static var title: Font {
-        #if os(tvOS)
-        .system(size: 34, weight: .bold)
-        #else
-        .title3.bold()
-        #endif
-    }
 }
 
 // Lets a label style be chosen at runtime (SwiftUI's styles are distinct types).

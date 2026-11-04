@@ -186,7 +186,7 @@ struct PigPageHeader<Trailing: View>: View {
     var body: some View {
         HStack(spacing: PigPageHeaderMetrics.spacing) {
             PigBrandMark(width: PigPageHeaderMetrics.markWidth, height: PigPageHeaderMetrics.markHeight)
-            Text(title).font(GuideTypography.title).lineLimit(1)
+            Text(title).font(PigPageHeaderMetrics.title).lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("page.header.title")
             if let subtitle {
@@ -207,17 +207,26 @@ extension PigPageHeader where Trailing == EmptyView {
 }
 
 nonisolated enum PigPageHeaderMetrics {
+    #if os(tvOS)
     static let markWidth: CGFloat = 58
     static let markHeight: CGFloat = 48
     /// The row is the pig's height on every tab, whatever the trailing controls need.
     static let rowHeight: CGFloat = markHeight
-    #if os(tvOS)
     static let spacing: CGFloat = 14
     /// From the safe area's leading edge (where Home and Sport already drew it).
     static let edge: CGFloat = 0
+    static var title: Font { .system(size: 34, weight: .bold) }
     #else
+    // #226 (Mark, 4 Nov 2026): every iPhone and iPad tab takes the Sport page's pig (34 x 28 at a 16 pt edge), and the
+    // title is smaller and lighter than the Sport page's 34 pt heavy: 22 pt semibold (title2), level with the pig. Before
+    // Apple 147 the Sport tab drew its own header and the other tabs a 58 x 48 pig with a 20 pt bold title at 20 pt.
+    static let markWidth: CGFloat = 34
+    static let markHeight: CGFloat = 28
+    /// One touch row on every tab, whatever the trailing controls need.
+    static let rowHeight: CGFloat = 44
     static let spacing: CGFloat = 10
-    static let edge: CGFloat = 20
+    static let edge: CGFloat = 16
+    static var title: Font { .title2.weight(.semibold) }
     #endif
 }
 

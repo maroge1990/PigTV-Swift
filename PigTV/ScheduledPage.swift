@@ -24,7 +24,7 @@ private enum ScheduledMetrics {
     static let columnGap: CGFloat = 24
     static let sideWidth: CGFloat = 420
     static let dayWidth: CGFloat = 82
-    static let heading: Font = .largeTitle.weight(.heavy)
+    static var heading: Font { PigPageHeaderMetrics.title } // #226: the tabs' title style
     static let section: Font = .caption.weight(.bold)
     static let day: Font = .subheadline.weight(.bold)
     static let time: Font = .footnote

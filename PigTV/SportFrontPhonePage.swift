@@ -90,19 +90,14 @@ struct SportFrontPhonePage: View {
         }
     }
 
+    /// #226: the one page header every tab draws (PigPageHeader), the scores chip trailing.
     private var header: some View {
-        HStack(spacing: 10) {
-            PigBrandMark(width: 34, height: 28)
-            Text("Sport").font(.largeTitle.weight(.heavy)).lineLimit(1)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("page.header.title")
-            Spacer(minLength: 8)
+        PigPageHeader(title: "Sport") {
             Text(SportPhoneLayout.scoresChip(hidden: hidden)).font(.footnote).foregroundStyle(.secondary)
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(Color.pigRaised, in: Capsule())
                 .accessibilityIdentifier("sport.front.scores")
         }
-        .padding(.horizontal, SportPhoneMetrics.edge)
     }
 
     @ViewBuilder

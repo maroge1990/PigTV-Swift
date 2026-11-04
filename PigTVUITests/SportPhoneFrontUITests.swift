@@ -102,6 +102,27 @@ final class SportPhoneFrontUITests: XCTestCase {
         }
     }
 
+    /// #226 (Mark, 4 Nov 2026): the iPhone Sport front page's header is every tab's: the same pig, title size and place as
+    /// the TV Guide's. Before Apple 147 it drew its own (a 34 pt heavy title at another edge than the other tabs' 20 pt one).
+    @MainActor
+    func testTheSportHeaderIsEveryTabsHeader() throws {
+        let app = try launch()
+        let title = { (name: String) in
+            app.staticTexts.matching(identifier: "page.header.title").matching(NSPredicate(format: "label == %@", name)).firstMatch
+        }
+        XCTAssertTrue(title("Sport").waitForExistence(timeout: 15))
+        let sport = title("Sport").frame
+        shot(app, "226-iphone-sport-header")
+        app.tabBars.buttons["TV Guide"].firstMatch.tap()
+        XCTAssertTrue(title("TV Guide").waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.6)
+        let guide = title("TV Guide").frame
+        print(String(format: "HEADER2 Sport x %.1f y %.1f h %.1f · Guide x %.1f y %.1f h %.1f", sport.minX, sport.minY, sport.height, guide.minX, guide.minY, guide.height))
+        XCTAssertEqual(sport.minX, guide.minX, accuracy: 0.5, "title x")
+        XCTAssertEqual(sport.minY, guide.minY, accuracy: 0.5, "title y")
+        XCTAssertEqual(sport.height, guide.height, accuracy: 0.5, "title size")
+    }
+
     /// #225 (Mark, 4 Nov 2026): a card's two buttons are Remind me (or Watch) and Record, the same width and height. Run on
     /// an iPhone simulator. Before Apple 144 the second read "Record every … game" in a smaller bordered style.
     @MainActor

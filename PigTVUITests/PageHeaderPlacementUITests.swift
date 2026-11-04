@@ -42,7 +42,9 @@ final class PageHeaderPlacementUITests: XCTestCase {
                 #if os(tvOS)
                 XCUIRemote.shared.press(.right)
                 #else
-                app.tabBars.buttons[name].firstMatch.tap()
+                // iPad draws its tabs at the top, not as a tab bar
+                let tab = app.tabBars.buttons[name].firstMatch
+                (tab.exists ? tab : app.buttons[name].firstMatch).tap()
                 #endif
             }
             let frame = try XCTUnwrap(headerFrame(name), "\(name): no page header title")
