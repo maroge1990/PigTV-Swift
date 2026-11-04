@@ -2,10 +2,12 @@ import Foundation
 
 struct ServerInfo: Decodable {
     let name: String
-    let version: String
+    /// #47 (Apple 159): optional: /api/info's fallback (a failed feature check) may not know it, and a missing one must
+    /// never stop the app restoring its sign-in.
+    var version: String? = nil
     let build: String?
     let display: String?
-    var identity: String { display ?? "v\(version)" + (build.map { " · build \($0)" } ?? "") }
+    var identity: String { display ?? (version.map { "v\($0)" } ?? "PigTV") + (build.map { " · build \($0)" } ?? "") }
     let apiVersion: Int
     let features: Features
     /// Audit R11 (server 0198): the admin's "Warm the next channel" setting.

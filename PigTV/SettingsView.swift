@@ -80,7 +80,7 @@ nonisolated enum SettingsMenu {
     static func aboutSummary(appBuild: String, server: ServerInfo?) -> String {
         let app = "App \(appBuild)"
         guard let server else { return app }
-        return "\(app) · Server \(server.build ?? server.version)"
+        return "\(app) · Server \(server.build ?? server.version ?? "?")"
     }
 
     private static func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
@@ -158,7 +158,7 @@ struct LibrarySettings: View {
                                     .accessibilityIdentifier("settings.menu.\(item.rawValue)")
                             }
                         } footer: {
-                            Text("App \(Self.appVersion) (\(Self.appBuild))" + (model.serverInfo.map { " · Server \($0.build ?? $0.version)" } ?? ""))
+                            Text("App \(Self.appVersion) (\(Self.appBuild))" + (model.serverInfo.map { " · Server \($0.build ?? $0.version ?? "?")" } ?? ""))
                                 .font(.footnote.monospacedDigit()).fontDesign(.rounded)
                                 .frame(maxWidth: .infinity).padding(.top, 12)
                         }
@@ -526,7 +526,7 @@ struct SettingsAccountPage: View {
             }
             Section {
                 Text("App \(LibrarySettings.appVersion) (\(LibrarySettings.appBuild))"
-                     + (model.serverInfo.map { " · Server \($0.build ?? $0.version)" } ?? ""))
+                     + (model.serverInfo.map { " · Server \($0.build ?? $0.version ?? "?")" } ?? ""))
                     .font(SettingsType.footnote).fontDesign(.rounded).monospacedDigit()
                     .foregroundStyle(Color("PigSecondary"))
                     #if os(iOS)

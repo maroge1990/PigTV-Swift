@@ -745,6 +745,13 @@ enum ContractChecks {
                    "#234: the server's newer rule wins over an answer given before it")
         let gameFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"recordGameRules":true}}"#.utf8))
         try expect(gameFlags.features.recordGameRules == true, "#234: the server's recordGameRules")
+        // #47 (server 0474): the fallback /api/info (a feature check failed): no or null version, only the base flags.
+        for body in [#"{"name":"PigTV","version":null,"build":"0474","display":null,"apiVersion":1,"features":{"library":true,"playbackResolve":true,"guide":true,"devicePairing":true}}"#,
+                     #"{"name":"PigTV","build":null,"display":null,"apiVersion":1,"features":{"library":true,"playbackResolve":true,"guide":true,"devicePairing":true}}"#] {
+            let fallback = try JSONDecoder().decode(ServerInfo.self, from: Data(body.utf8))
+            try fallback.validate()
+            try expect(fallback.features.livePause == nil && !fallback.identity.isEmpty, "#47: the fallback decodes, validates, and turns nothing optional on")
+        }
         let pauseFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"livePause":true}}"#.utf8))
         try expect(pauseFlags.features.livePause == true, "#37: the server's livePause (C-W)")
         let gameBody = String(decoding: try JSONEncoder().encode(RuleBody(kind: "game", match: "Cardinals at Seahawks", gameId: "espn:football/nfl:9")), as: UTF8.self)
