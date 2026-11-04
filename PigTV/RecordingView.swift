@@ -132,7 +132,7 @@ struct RecordingView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("recording.view")
         .fullScreenCover(item: $playing) { play in
-            RecordingPlayerScreen(recording: play.recording, client: model.client, fromStart: play.fromStart) {
+            RecordingPlayerScreen(recording: play.recording, client: model.client, fromStart: play.fromStart, fromLive: play.fromLive) {
                 Task { await model.loadRecordings() }
             }
         }
@@ -261,6 +261,11 @@ struct RecordingView: View {
             .pigPrimaryButton()
             .focused($playFocused)
             .accessibilityIdentifier("recording.watchFromStart")
+            // #17: the same recording, joined near its live edge, with everything before it to rewind into.
+            Button { playing = RecordingPlay(recording: item, fromLive: true) } label: {
+                Label(RecordingLiveEdge.title, systemImage: "dot.radiowaves.left.and.right").frame(maxWidth: compact ? .infinity : nil)
+            }
+            .accessibilityIdentifier("recording.playFromLive")
         }
     }
 

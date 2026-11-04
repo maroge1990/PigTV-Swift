@@ -109,4 +109,15 @@ final class RecordingResumeTests: XCTestCase {
         XCTAssertNotNil(BrowseModel(client: first, accountID: 1).progress(for: recording).fraction)
         XCTAssertNil(BrowseModel(client: second, accountID: 2).progress(for: recording).fraction, "another login sees nothing")
     }
+
+    /// #17: "Play from live" joins a recording being made 30 s behind its playlist's end (the live player's hold), never
+    /// before the start; nothing seekable yet is nil (the start).
+    func testPlayFromLiveJoinsThirtySecondsBehindTheEdge() {
+        XCTAssertEqual(RecordingLiveEdge.target([(0, 7200)]), 7170, "a two-hour game: half a minute from its live edge")
+        XCTAssertEqual(RecordingLiveEdge.target([(0, 12)]), 0, "younger than the hold: from its start")
+        XCTAssertEqual(RecordingLiveEdge.target([(0, 40), (100, 400)]), 370, "the last range")
+        XCTAssertNil(RecordingLiveEdge.target([]))
+        XCTAssertNil(RecordingLiveEdge.target([(0, .nan)]))
+        XCTAssertEqual(RecordingLiveEdge.title, "Play from live")
+    }
 }

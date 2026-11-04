@@ -62,3 +62,13 @@ extension APIClient {
         _ = try? await response("recordings/\(id)/position", method: "PUT", body: PositionBody(position_sec: seconds), timeout: 8)
     }
 }
+
+/// #17: "Play from live" on a recording being made: where it joins its playlist. The last seekable range's end, less the
+/// live player's hold (`PlayerSeekWindow.liveOffset`), never before that range's start; nil when nothing is seekable yet.
+nonisolated enum RecordingLiveEdge {
+    static let title = "Play from live"
+    static func target(_ ranges: [(start: Double, end: Double)]) -> Double? {
+        guard let last = ranges.last, last.start.isFinite, last.end.isFinite, last.end > last.start else { return nil }
+        return PlayerSeekWindow.liveTarget(start: last.start, end: last.end, live: true)
+    }
+}

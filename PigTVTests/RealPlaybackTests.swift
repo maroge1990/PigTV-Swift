@@ -416,6 +416,26 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// #17: "Play from live" asks for the same live playlist (never the file), with no resume question even when a
+    /// position is saved; where it joins is `RecordingLiveEdge` (this fixture is shorter than the hold: its start).
+    func testPlayFromLivePlaysTheLivePlaylistWithoutAResumeQuestion() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(watch: { _ in .json(Self.liveWatch) })
+        UserDefaults.standard.set(3.0, forKey: Self.resumeKey(server, 4243))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
+        let playback = RecordingPlayerModel(recording: try inProgressRecording(),
+                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromLive: true)
+        playback.start()
+        try await waitFor("the live recording to play", timeout: 12) { playback.hasPlayed }
+        XCTAssertNil(playback.resumePrompt, "joining live is not a resume question")
+        XCTAssertTrue(playback.watchingLive)
+        XCTAssertEqual(recordingItemPath(playback), "/api/recordings/4243/master.m3u8")
+        XCTAssertTrue(server.http.requests(path: "/api/recordings/4243/playback").isEmpty, "the file was not asked for")
+        XCTAssertNil(playback.error)
+        await playback.stop()
+        server.http.stop()
+    }
+
     /// Finished meanwhile (409 finished): the file plays from its start, still
     /// without asking where to resume.
     func testWatchFromStartOfAFinishedRecordingPlaysTheFile() async throws {

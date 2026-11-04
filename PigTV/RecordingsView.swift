@@ -62,7 +62,9 @@ enum RecordingsRoute: Hashable {
 struct RecordingPlay: Identifiable {
     let recording: Recording
     var fromStart = false
-    var id: String { "\(recording.id)|\(fromStart)" }
+    /// #17: near the live edge of the one being made.
+    var fromLive = false
+    var id: String { "\(recording.id)|\(fromStart)|\(fromLive)" }
 }
 
 struct RecordingsView: View {
@@ -143,7 +145,7 @@ struct RecordingsView: View {
                 }
             }
             .fullScreenCover(item: $playing) { play in
-                RecordingPlayerScreen(recording: play.recording, client: model.client, fromStart: play.fromStart) {
+                RecordingPlayerScreen(recording: play.recording, client: model.client, fromStart: play.fromStart, fromLive: play.fromLive) {
                     Task { await model.loadRecordings() }
                 }
             }
@@ -180,6 +182,7 @@ struct RecordingsView: View {
                                           teams: RecordingTeams.match(title: featured.title, games: games),
                                           client: model.client, canWatchFromStart: canWatchFromStart(featured),
                                           play: { playing = RecordingPlay(recording: featured, fromStart: $0) },
+                                          playFromLive: { playing = RecordingPlay(recording: featured, fromLive: true) },
                                           details: { open(featured) },
                                           delete: { model.deleteWithUndo(featured, presenter: presenter) })
                             .tvFocusSection()
@@ -384,6 +387,8 @@ private struct FeaturedRecording: View {
     let client: APIClient
     let canWatchFromStart: Bool
     let play: (_ fromStart: Bool) -> Void
+    /// #17: Play from live, beside Watch from start.
+    let playFromLive: () -> Void
     let details: () -> Void
     /// Apple 122: at once, with Undo.
     let delete: () -> Void
@@ -421,6 +426,8 @@ private struct FeaturedRecording: View {
                             .pigPrimaryButton()
                             .focused($primaryFocused)
                             .accessibilityIdentifier("recordings.featured.watchFromStart")
+                        Button(RecordingLiveEdge.title, systemImage: "dot.radiowaves.left.and.right") { playFromLive() }
+                            .accessibilityIdentifier("recordings.featured.playFromLive")
                     }
                     Button("Details") { details() }
                         .accessibilityLabel("Details of \(item.title)")

@@ -51,6 +51,9 @@ final class RecordingPlayerModel: ObservableObject {
     /// C-L: play a recording that is still being made from its start (its
     /// live HLS playlist), switching to the finished file when that goes.
     private let fromStart: Bool
+    /// #17: the same live playlist, joined near its live edge (`RecordingLiveEdge`) with everything before it to rewind
+    /// into: the game that started before you sat down.
+    private let fromLive: Bool
     /// Playing the in-progress recording's live playlist (not its file).
     @Published private(set) var watchingLive = false
     /// Where to carry on after a switch (live playlist ended → the file); no
@@ -60,10 +63,11 @@ final class RecordingPlayerModel: ObservableObject {
     private var liveEndObserver: NSObjectProtocol?
     static let maxLiveRestarts = 3
 
-    init(recording: Recording, client: APIClient, fromStart: Bool = false) {
+    init(recording: Recording, client: APIClient, fromStart: Bool = false, fromLive: Bool = false) {
         self.recording = recording
         self.client = client
         self.fromStart = fromStart
+        self.fromLive = fromLive
         player.allowsExternalPlayback = false
     }
 
@@ -106,7 +110,7 @@ final class RecordingPlayerModel: ObservableObject {
         resumePrompt = nil
         let client = client, id = recording.id, featureOn = positionsOn
         let positionTask = Task { featureOn ? await client.recordingPosition(id: id) : nil }
-        let watchLive = fromStart && client.info?.features.recordingWatchLive == true
+        let watchLive = (fromStart || fromLive) && client.info?.features.recordingWatchLive == true
         startupTask = Task { [self] in
             defer { preparing = false; startupTask = nil }
             do {
@@ -221,7 +225,27 @@ final class RecordingPlayerModel: ObservableObject {
         PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
         let at = continueAt
         continueAt = nil
+        if at == nil, fromLive {
+            // #17: once the playlist is loaded, near its end (where the live player holds), never before its start.
+            let edge = await liveEdge(of: item, generation: generation)
+            await beginPlayback(resumeAt: edge, generation: generation)
+            return
+        }
         await beginPlayback(resumeAt: (at ?? 0) > 1 ? at : nil, generation: generation)
+    }
+
+    /// #17: where "Play from live" joins `item`: its seekable range's live target, once it is ready (about 5 s at most;
+    /// nil, the start, if it never says).
+    private func liveEdge(of item: AVPlayerItem, generation: UUID) async -> Double? {
+        for _ in 0..<50 {
+            guard !stopped, self.generation == generation, item.status != .failed else { return nil }
+            if item.status == .readyToPlay, let edge = RecordingLiveEdge.target(item.seekableTimeRanges.map {
+                let range = $0.timeRangeValue
+                return (range.start.seconds, range.end.seconds)
+            }) { return edge }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return nil
     }
 
     /// What AVPlayer's failure handlers call; also the seam RealPlaybackTests
@@ -423,9 +447,10 @@ struct RecordingPlayerScreen: View {
     private let onClose: (() -> Void)?
     @FocusState private var resumeFocused: Bool
 
-    /// `fromStart` (C-L): a recording still in progress, played from its start.
-    init(recording: Recording, client: APIClient, fromStart: Bool = false, onClose: (() -> Void)? = nil) {
-        _model = StateObject(wrappedValue: RecordingPlayerModel(recording: recording, client: client, fromStart: fromStart))
+    /// `fromStart` (C-L): a recording still in progress, played from its start; `fromLive` (#17): near its live edge.
+    init(recording: Recording, client: APIClient, fromStart: Bool = false, fromLive: Bool = false, onClose: (() -> Void)? = nil) {
+        _model = StateObject(wrappedValue: RecordingPlayerModel(recording: recording, client: client, fromStart: fromStart,
+                                                                fromLive: fromLive))
         self.onClose = onClose
     }
 
