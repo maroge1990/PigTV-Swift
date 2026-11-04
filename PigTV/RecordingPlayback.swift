@@ -54,6 +54,9 @@ final class RecordingPlayerModel: ObservableObject {
     /// #17: the same live playlist, joined near its live edge (`RecordingLiveEdge`) with everything before it to rewind
     /// into: the game that started before you sat down.
     private let fromLive: Bool
+    /// #17 (Apple 150 Codex round 1, medium): true until the live-edge join has happened, through a slow first load and
+    /// the restarts after an initial failure (which would otherwise carry on at 0, the start).
+    private var liveJoinPending: Bool
     /// Playing the in-progress recording's live playlist (not its file).
     @Published private(set) var watchingLive = false
     /// Where to carry on after a switch (live playlist ended → the file); no
@@ -68,6 +71,7 @@ final class RecordingPlayerModel: ObservableObject {
         self.client = client
         self.fromStart = fromStart
         self.fromLive = fromLive
+        self.liveJoinPending = fromLive
         player.allowsExternalPlayback = false
     }
 
@@ -225,19 +229,28 @@ final class RecordingPlayerModel: ObservableObject {
         PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
         let at = continueAt
         continueAt = nil
-        if at == nil, fromLive {
-            // #17: once the playlist is loaded, near its end (where the live player holds), never before its start.
-            let edge = await liveEdge(of: item, generation: generation)
+        if liveJoinPending {
+            // #17: once the playlist is loaded, near its end (where the live player holds), never before its start. One
+            // that never says where its end is is an error with Retry, never a silent start from the beginning.
+            guard let edge = await liveEdge(of: item, generation: generation) else {
+                // A failed item is liveEnded's (it asks again, the join still pending).
+                guard !stopped, self.generation == generation, watchingLive, error == nil, item.status != .failed else { return }
+                player.pause()
+                error = "The live point of this recording could not be reached. Try again in a moment."
+                canRetry = true
+                return
+            }
+            liveJoinPending = false
             await beginPlayback(resumeAt: edge, generation: generation)
             return
         }
         await beginPlayback(resumeAt: (at ?? 0) > 1 ? at : nil, generation: generation)
     }
 
-    /// #17: where "Play from live" joins `item`: its seekable range's live target, once it is ready (about 5 s at most;
-    /// nil, the start, if it never says).
+    /// #17: where "Play from live" joins `item`: its seekable range's live target, once it is ready (15 s at most; nil if
+    /// it never says, or the item fails or is replaced meanwhile).
     private func liveEdge(of item: AVPlayerItem, generation: UUID) async -> Double? {
-        for _ in 0..<50 {
+        for _ in 0..<150 {
             guard !stopped, self.generation == generation, item.status != .failed else { return nil }
             if item.status == .readyToPlay, let edge = RecordingLiveEdge.target(item.seekableTimeRanges.map {
                 let range = $0.timeRangeValue
@@ -265,7 +278,8 @@ final class RecordingPlayerModel: ObservableObject {
             canRetry = true
             return
         }
-        continueAt = position ?? 0
+        // #17: a live join that has not happened yet is tried again at the edge, not carried on at the start.
+        continueAt = liveJoinPending ? nil : position ?? 0
         started = false
         start()
     }

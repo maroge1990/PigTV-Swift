@@ -32,6 +32,18 @@ enum HLSFixture {
         return Data(text.replacingOccurrences(of: "VIDEO-RANGE=SDR", with: "VIDEO-RANGE=\(videoRange)").utf8)
     }
 
+    /// #17: a 90 s playlist (the three segments 15 times, a discontinuity before each repeat), so a live-edge join is
+    /// told apart from the start (its target is 60 s).
+    static func longPlaylist(repeats: Int = 15) -> Data {
+        var text = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n"
+        for n in 0..<repeats {
+            if n > 0 { text += "#EXT-X-DISCONTINUITY\n" }
+            text += "#EXT-X-MAP:URI=\"fixture-init.mp4\"\n"
+            for s in 0..<3 { text += "#EXTINF:2.000000,\nfixture-seg\(s).m4s\n" }
+        }
+        return Data((text + "#EXT-X-ENDLIST\n").utf8)
+    }
+
     static func contentType(_ name: String) -> String {
         if name.hasSuffix(".m3u8") { return "application/vnd.apple.mpegurl" }
         if name.hasSuffix(".mp4") { return "video/mp4" }
@@ -78,6 +90,7 @@ final class FakePigTVServer: @unchecked Sendable {
          watch: (@Sendable (Int) -> LocalHTTPServer.Response)? = nil) throws {
         let counter = Locked(0)
         let watchCount = Locked(0)
+        let longCount = Locked(0)
         let warmed = Locked<Set<String>>([])
         let resolve = resolve ?? { count, request in
             FakePigTVServer.decision(session: "s\(count)", warm: warmed.value.contains(FakePigTVServer.channelKey(request.body)))
@@ -96,6 +109,14 @@ final class FakePigTVServer: @unchecked Sendable {
                 guard let watch else { return .notFound }
                 watchCount.value += 1
                 return watch(watchCount.value)
+            }
+            // #17: `long-plain.m3u8`, `long-slow.m3u8` (6 s to answer), `long-fail1.m3u8` (the first ask fails).
+            if request.method == "GET", request.path.hasPrefix("/api/recordings/"), let name = request.path.split(separator: "/").last,
+               name.hasPrefix("long-"), name.hasSuffix(".m3u8") {
+                longCount.value += 1
+                if name == "long-fail1.m3u8", longCount.value == 1 { return .json(#"{"error":"Not being recorded"}"#, status: 500) }
+                return .init(status: 200, contentType: HLSFixture.contentType(String(name)), body: HLSFixture.longPlaylist(),
+                             delay: name == "long-slow.m3u8" ? 6 : 0)
             }
             return FakePigTVServer.route(request, counter: counter, markers: markers, resolve: resolve)
         }

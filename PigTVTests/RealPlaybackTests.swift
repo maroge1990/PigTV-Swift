@@ -436,6 +436,26 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// #17 (Apple 150 Codex round 1, medium): the join waited 5 s for the playlist and then silently started at 0, and an
+    /// initial failure retried with continueAt 0 (the start). Now a slow playlist (6 s) and a failed first ask both still
+    /// join near the live edge of a 90 s recording (60 s), never at its start.
+    func testPlayFromLiveJoinsTheEdgeAfterASlowOrFailedFirstLoad() async throws {
+        try requireFixture()
+        for name in ["long-plain", "long-slow", "long-fail1"] {
+            let server = try FakePigTVServer(watch: { _ in
+                .json(#"{"url":"/api/recordings/4243/\#(name).m3u8","container":"hls","recording":true,"videoRange":"SDR","fps":"25/1","durationSec":90}"#)
+            })
+            let playback = RecordingPlayerModel(recording: try inProgressRecording(),
+                                                client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromLive: true)
+            playback.start()
+            try await waitFor("\(name) to play", timeout: 20) { playback.hasPlayed }
+            XCTAssertGreaterThan(playback.player.currentTime().seconds, 55, "\(name): near the live edge, not the start")
+            XCTAssertNil(playback.error, name)
+            await playback.stop()
+            server.http.stop()
+        }
+    }
+
     /// Finished meanwhile (409 finished): the file plays from its start, still
     /// without asking where to resume.
     func testWatchFromStartOfAFinishedRecordingPlaysTheFile() async throws {
