@@ -130,6 +130,116 @@ struct PigHeroCard<Content: View>: View {
     }
 }
 
+/// #243 (Apple 170): the one hero for a programme, on the programme page and on the channel page (its programme on now).
+/// The channel (small logo, name · number) with a status pill, the kicker, the title, date · times · length, progress
+/// and what is left while it is on, the description, then the actions, inside the card on both pages. The channel page
+/// adds its Up next column (`beside`): beside the hero on Apple TV, under a rule on touch. Before, the two pages laid
+/// the same facts out two ways (a large logo and Watch inside the card on one, a small logo and the actions below the
+/// card on the other).
+struct ProgrammeHero<Actions: View>: View {
+    let logo: String?
+    let client: APIClient?
+    let channelName: String
+    /// "ABC TV · 2".
+    let channelLine: String
+    /// "On now", "Starts in 20 min", "Tomorrow", "Ended", "On now · REC".
+    let kicker: String
+    var kickerColour: Color = .pigAccentText
+    /// The red dot before the kicker (the channel is recording).
+    var recording = false
+    /// nil: nothing in the guide right now.
+    let title: String?
+    let meta: String
+    /// 0...1 while the programme is on.
+    var progress: Double? = nil
+    /// "29 min left".
+    var remaining: String? = nil
+    var description: String? = nil
+    var status: AnyView? = nil
+    var beside: AnyView? = nil
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        PigHeroCard {
+            #if os(tvOS)
+            HStack(alignment: .top, spacing: PigSpacing.xl) {
+                main.frame(maxWidth: .infinity, alignment: .leading)
+                if let beside {
+                    beside
+                        .frame(width: ProgrammeHeroMetrics.besideWidth, alignment: .leading)
+                        .padding(.leading, PigSpacing.xl)
+                        .overlay(alignment: .leading) { Rectangle().fill(Color.pigBorder).frame(width: 1) }
+                }
+            }
+            #else
+            main
+            if let beside {
+                Rectangle().fill(Color.pigBorder).frame(height: 1).accessibilityHidden(true)
+                beside
+            }
+            #endif
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("programme.hero")
+    }
+
+    private var main: some View {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            HStack(alignment: .top, spacing: PigSpacing.l) {
+                HStack(spacing: PigSpacing.m) {
+                    ChannelLogoTile(logo: logo, client: client, name: channelName, size: DetailMetrics.smallLogo)
+                    Text(channelLine).font(DetailType.channel).foregroundStyle(Color.pigSecondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if let status { status }
+            }
+            HStack(spacing: PigSpacing.s) {
+                if recording {
+                    Circle().fill(Color.pigDanger).frame(width: 12, height: 12).accessibilityHidden(true)
+                }
+                Eyebrow(text: kicker, colour: kickerColour)
+            }
+            .accessibilityElement(children: .combine)
+            .padding(.top, PigSpacing.s)
+            if let title {
+                Text(title).font(DetailType.title).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text(meta).font(DetailType.meta).foregroundStyle(Color.pigSecondary).monospacedDigit()
+            } else {
+                Text("No programme information right now").font(DetailType.meta).foregroundStyle(Color.pigSecondary)
+            }
+            if let progress {
+                HStack(spacing: PigSpacing.m) {
+                    PigProgressBar(fraction: progress, height: 6).frame(maxWidth: ProgrammeHeroMetrics.progressWidth)
+                    if let remaining {
+                        Text(remaining).font(DetailType.meta).foregroundStyle(Color.pigSecondary)
+                            .monospacedDigit().fontDesign(.rounded)
+                    }
+                }
+            }
+            if let description, !description.isEmpty {
+                Text(description)
+                    .font(DetailType.body).foregroundStyle(Color.pigSecondary).lineSpacing(6)
+                    .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, PigSpacing.xs)
+            }
+            DetailActions { actions }
+                .padding(.top, PigSpacing.s)
+        }
+    }
+}
+
+nonisolated enum ProgrammeHeroMetrics {
+    #if os(tvOS)
+    static let besideWidth: CGFloat = 460
+    static let progressWidth: CGFloat = 640
+    #else
+    static let besideWidth: CGFloat = 320
+    static let progressWidth: CGFloat = 480
+    #endif
+}
+
 /// A recording state as a word in its colour: "Recording scheduled" with the red dot over a 14 % red fill.
 struct StatusPill: View {
     let text: String

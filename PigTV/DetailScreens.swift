@@ -67,8 +67,13 @@ struct ProgrammeDetails: View {
                 let now = context.date
                 let live = programme.isLive(at: now)
                 VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
-                    hero(now: now, live: live)
-                    DetailActions {
+                    ProgrammeHero(logo: model.logo(for: channel), client: model.client, channelName: channel.name,
+                                  channelLine: channelLine, kicker: eyebrow(now: now, live: live),
+                                  kickerColour: programme.end <= now ? .pigSecondary : .pigAccentText,
+                                  title: programme.title, meta: meta(now: now),
+                                  progress: live ? now.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start) : nil,
+                                  remaining: live ? "\(DetailText.duration(programme.end.timeIntervalSince(now).rounded(.up))) left" : nil,
+                                  description: programme.description, status: status) {
                         // One rose primary: Watch while it is on, else Record.
                         if live {
                             Button("Watch live", systemImage: "play.fill", action: watch)
@@ -110,6 +115,7 @@ struct ProgrammeDetails: View {
                             Button("Channel schedule", systemImage: "list.bullet.rectangle", action: openSchedule)
                         }
                         FavouriteButton(model: model, channel: model.asChannel(channel))
+                    
                     }
                     .defaultFocus($focus, live ? .watch : .record)
                     if programme.end <= now {
@@ -148,40 +154,12 @@ struct ProgrammeDetails: View {
         if primary { button.pigPrimaryButton() } else { button.pigSecondaryButton() }
     }
 
-    /// R5-Programme-*: the channel, the recording state as a word, when, the title, the date and times, the description.
-    private func hero(now: Date, live: Bool) -> some View {
-        PigHeroCard {
-            HStack(alignment: .top, spacing: PigSpacing.l) {
-                HStack(spacing: PigSpacing.m) {
-                    ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
-                                    size: DetailMetrics.smallLogo)
-                    Text([channel.name, model.number(for: channel).map { String($0) }].compactMap { $0 }.joined(separator: " · "))
-                        .font(DetailType.channel).foregroundStyle(Color.pigSecondary).lineLimit(1)
-                }
-                Spacer(minLength: 20)
-                statusPill
-            }
-            Eyebrow(text: eyebrow(now: now, live: live), colour: programme.end <= now ? .pigSecondary : .pigAccentText)
-                .padding(.top, PigSpacing.s)
-            Text(programme.title).font(DetailType.title).lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(meta(now: now)).font(DetailType.meta).foregroundStyle(Color.pigSecondary).monospacedDigit()
-            if live {
-                HStack(spacing: PigSpacing.m) {
-                    PigProgressBar(fraction: now.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start), height: 6)
-                        .frame(maxWidth: 640)
-                    Text("\(DetailText.duration(programme.end.timeIntervalSince(now).rounded(.up))) left")
-                        .font(DetailType.meta).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
-                }
-            }
-            if let description = programme.description, !description.isEmpty {
-                Text(description)
-                    .font(DetailType.body).foregroundStyle(Color.pigSecondary).lineSpacing(6)
-                    .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, PigSpacing.xs)
-            }
-        }
+    private var channelLine: String {
+        [channel.name, model.number(for: channel).map { String($0) }].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private var status: AnyView? {
+        schedule != nil || recorded != nil ? AnyView(statusPill) : nil
     }
 
     @ViewBuilder
@@ -202,26 +180,11 @@ struct ProgrammeDetails: View {
                 Text(AlsoOn.heading(channel: channel.name, programme: programme, now: now))
                     .font(DetailType.section.weight(.heavy)).padding(.top, PigSpacing.s)
                     .accessibilityAddTraits(.isHeader)
+                // #243 (Apple 170): the channel page's row (time over length, title, description), one row style for both
                 ForEach(next, id: \.startTime) { other in
-                    Button { openProgramme(other) } label: {
-                        HStack(spacing: PigSpacing.m) {
-                            Text(other.start.formatted(date: .omitted, time: .shortened))
-                                .font(DetailType.rowTitle).fontDesign(.rounded).monospacedDigit()
-                                .lineLimit(1).fixedSize()
-                                .frame(minWidth: DetailMetrics.timeColumn, alignment: .leading)
-                            Text(other.title).font(DetailType.rowTitle).lineLimit(1).layoutPriority(1)
-                            if let description = other.description, !description.isEmpty {
-                                Text(description).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).lineLimit(1)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").foregroundStyle(Color.pigSecondary).accessibilityHidden(true)
-                        }
-                        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                    .accessibilityLabel("\(other.start.formatted(date: .omitted, time: .shortened)), \(other.title)")
+                    ScheduleRow(programme: other, now: now,
+                                scheduled: model.marks.scheduledKeys.contains(ScheduledRecording.key(channel: channel.name, start: other.startTime)),
+                                action: { openProgramme(other) })
                 }
             }
             #if os(tvOS)
@@ -239,8 +202,7 @@ struct ProgrammeDetails: View {
 
     /// "Mon 3 Nov · 10:20 pm – 11:20 pm · 1 h".
     private func meta(now: Date) -> String {
-        [programme.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)), programme.timeRange,
-         programme.durationText].joined(separator: " · ")
+        [programme.start.formatted(PigHeaderDate.format), programme.timeRange, programme.durationText].joined(separator: " · ")
     }
 }
 
@@ -337,73 +299,30 @@ struct ChannelPageView: View {
 
     private var recordingNow: Bool { marks.recordingChannels.contains(channel.name) }
 
+    /// #243 (Apple 170): the shared ProgrammeHero, with Up next beside it.
     private func hero(row: OnNowRow, now: Date) -> some View {
-        PigHeroCard {
-            #if os(tvOS)
-            HStack(alignment: .top, spacing: PigSpacing.xl) {
-                ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name)
-                onNow(row: row, now: now).frame(maxWidth: .infinity, alignment: .leading)
-                if let next = row.next {
-                    upNext(next, now: now)
-                        .frame(width: 460, alignment: .leading)
-                        .padding(.leading, PigSpacing.xl)
-                        .overlay(alignment: .leading) { Rectangle().fill(Color.pigBorder).frame(width: 1) }
-                }
+        let current = row.current
+        return ProgrammeHero(
+            logo: model.logo(for: channel), client: model.client, channelName: channel.name,
+            channelLine: [channel.name, model.number(for: channel).map { String($0) }].compactMap { $0 }.joined(separator: " · "),
+            kicker: recordingNow ? "On now · REC" : "On now", kickerColour: recordingNow ? .pigDanger : .pigAccentText,
+            recording: recordingNow, title: current?.title,
+            meta: current.map { [$0.start.formatted(PigHeaderDate.format), $0.timeRange, $0.durationText].joined(separator: " · ") } ?? "",
+            progress: current == nil ? nil : row.progress,
+            remaining: current.map { "\(DetailText.duration($0.end.timeIntervalSince(now).rounded(.up))) left" },
+            description: current?.description,
+            beside: row.next.map { AnyView(upNext($0, now: now)) }
+        ) {
+            Button("Watch live", systemImage: "play.fill", action: watch)
+                .pigPrimaryButton()
+                .focused($watchFocused)
+                .accessibilityIdentifier("channel.watch")
+            if let current, let recording = model.recordingInProgress(channel: channel, programme: current) {
+                Button("Watch from start", systemImage: "backward.end.fill") { presenter.present(.recordingPlayer(recording)) }
             }
-            #else
-            HStack(spacing: PigSpacing.l) {
-                ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name)
-                channelLine
-            }
-            onNow(row: row, now: now)
-            if let next = row.next {
-                Rectangle().fill(Color.pigBorder).frame(height: 1).accessibilityHidden(true)
-                upNext(next, now: now)
-            }
-            #endif
+            FavouriteButton(model: model, channel: model.asChannel(channel))
         }
-    }
-
-    private var channelLine: some View {
-        Text([channel.name, model.number(for: channel).map { String($0) }].compactMap { $0 }.joined(separator: " · "))
-            .font(DetailType.channel).foregroundStyle(Color.pigSecondary).lineLimit(1)
-    }
-
-    @ViewBuilder
-    private func onNow(row: OnNowRow, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: PigSpacing.s) {
-            #if os(tvOS)
-            channelLine
-            #endif
-            if let current = row.current {
-                HStack(spacing: PigSpacing.s) {
-                    if recordingNow {
-                        Circle().fill(Color.pigDanger).frame(width: 12, height: 12).accessibilityHidden(true)
-                    }
-                    Eyebrow(text: recordingNow ? "On now · REC" : "On now", colour: recordingNow ? .pigDanger : .pigAccentText)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(recordingNow ? "On now, recording" : "On now")
-                Text(current.title).font(DetailType.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                Text("\(current.timeRange) · \(DetailText.duration(current.end.timeIntervalSince(now).rounded(.up))) left")
-                    .font(DetailType.meta).fontDesign(.rounded).monospacedDigit().foregroundStyle(Color.pigSecondary)
-                PigProgressBar(fraction: row.progress, height: 6).frame(maxWidth: 760)
-            } else {
-                Text("No programme information right now").font(DetailType.meta).foregroundStyle(Color.pigSecondary)
-            }
-            DetailActions {
-                Button("Watch live", systemImage: "play.fill", action: watch)
-                    .pigPrimaryButton()
-                    .focused($watchFocused)
-                    .accessibilityIdentifier("channel.watch")
-                if let current = row.current, let recording = model.recordingInProgress(channel: channel, programme: current) {
-                    Button("Watch from start", systemImage: "backward.end.fill") { presenter.present(.recordingPlayer(recording)) }
-                }
-                FavouriteButton(model: model, channel: model.asChannel(channel))
-            }
-            .defaultFocus($watchFocused, true)
-            .padding(.top, PigSpacing.s)
-        }
+        .defaultFocus($watchFocused, true)
     }
 
     private func upNext(_ next: GuideProgramme, now: Date) -> some View {

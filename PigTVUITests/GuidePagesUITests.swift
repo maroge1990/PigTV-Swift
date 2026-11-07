@@ -135,6 +135,10 @@ final class GuidePagesUITests: XCTestCase {
         XCTAssertTrue(waitUntil { record.hasFocus }, "Record is not focused: \(focusedLabel(app))")
         let alsoOn = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Also on \(tile)")).firstMatch
         XCTAssertTrue(alsoOn.exists, "no Also on \(tile) list")
+        // #243 (Apple 170): one ProgrammeHero on both pages, its actions inside the card
+        let hero = app.descendants(matching: .any)["programme.hero"]
+        XCTAssertTrue(hero.exists, "the programme page's hero")
+        XCTAssertTrue(hero.frame.contains(record.frame), "Record sits inside the hero card")
         attach(app, "Programme page")
         XCUIRemote.shared.press(.menu)
         XCTAssertTrue(waitUntil { !record.exists }, "Back did not leave the page")
@@ -157,6 +161,9 @@ final class GuidePagesUITests: XCTestCase {
         XCTAssertTrue(watch.waitForExistence(timeout: 5), "no channel page")
         XCTAssertTrue(waitUntil { watch.hasFocus }, "Watch live is not focused: \(focusedLabel(app))")
         XCTAssertTrue(app.staticTexts["UP NEXT"].exists, "no Up next")
+        let hero = app.descendants(matching: .any)["programme.hero"]
+        XCTAssertTrue(hero.exists && hero.frame.contains(watch.frame) && hero.frame.contains(app.staticTexts["UP NEXT"].frame),
+                      "the same hero as the programme page, Watch live inside, Up next beside")
         XCTAssertTrue(app.buttons["details.favourite"].exists, "no favourite on the channel page")
         XCTAssertTrue(app.staticTexts["Today"].exists || app.staticTexts["Tomorrow"].exists, "no days list")
         XCTAssertFalse(app.buttons["Channel and favourites"].exists)
