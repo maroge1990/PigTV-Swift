@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 
 // D-43 (1 Nov, mock-ups V2-Motor-1, V2-Motor-4): the Motorsport page's content under the banner (rules in
 // SportMotorModels.swift). Formula 1: five session tiles and a circuit-stats tile with the map, then the starting grid
@@ -298,5 +299,30 @@ struct SportRaceContent: View {
         guard let next else { return }
         let card = front.games.first { $0.league == page.league && ($0.title == next.name || $0.start == next.start) }
         SportCardActions.select(card: card, event: nil, app: app, presenter: presenter)
+    }
+}
+
+/// The circuit map (a logo-cache path), decoded large enough for the card; nothing while it loads or when absent.
+struct CircuitMap: View {
+    let path: String?
+    let client: APIClient
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let image { Image(uiImage: image).resizable().scaledToFit() }
+            else { Image(systemName: "flag.checkered").font(.system(size: PigType.hero)).foregroundStyle(.tertiary) }
+        }
+        .task(id: path) {
+            guard let path, let data = try? await client.artworkData(path) else { image = nil; return }
+            image = await Task.detached(priority: .utility) {
+                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 900,
+                        kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
+                return UIImage(cgImage: cg)
+            }.value
+        }
     }
 }

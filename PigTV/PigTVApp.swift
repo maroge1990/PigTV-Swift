@@ -64,10 +64,6 @@ struct PigTVApp: App {
             TopShelfCardsTestScreen()
         } else if (ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").hasPrefix("player") {
             PlayerTestScreen()
-        } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"], screen.hasPrefix("f1") {
-            F1TestScreen(screen: screen)
-        } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"], screen.hasPrefix("nfl") {
-            NFLTestScreen(screen: screen)
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "front" {
             SportFrontTestScreen()
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
@@ -123,64 +119,6 @@ private struct GuideTestScreen: View {
             // PIGTV_UI_TEST_APPEARANCE=light|dark: the tvOS simulator cannot
             // switch its own appearance (simctl ui appearance is unsupported).
             .preferredColorScheme(fixtureScheme)
-    }
-}
-
-// Offline Formula 1 page (#21): PIGTV_UI_TEST_SCREEN=f1 | f1-live | f1-spoilers (F1PageFixtures).
-private struct F1TestScreen: View {
-    let screen: String
-    @StateObject private var model = AppModel()
-    var body: some View {
-        Group {
-            if let browse = model.browse {
-                NavigationStack { F1PageView(app: model, browse: browse, model: browse.f1Page) }
-                    .sportPages(app: model, browse: browse, clock: Date())
-            } else {
-                Color.clear
-            }
-        }
-        #if os(tvOS)
-        .buttonStyle(PigSecondaryButtonStyle())
-        #endif
-        .preferredColorScheme(fixtureScheme)
-        .task {
-            model.injectHomeFixture()
-            guard let browse = model.browse else { return }
-            browse.f1Page.setFixture(F1PageFixtures.page(live: screen == "f1-live", guide: browse.guide),
-                                     preferences: screen == "f1-spoilers"
-                                        ? SportPagePreferences(spoilerFree: true, f1Following: "Oscar Piastri")
-                                        : SportPagePreferences(f1Following: screen == "f1-live" ? "Oscar Piastri" : nil))
-        }
-    }
-}
-
-// C-Q (#21, Apple 86): the NFL page offline. PIGTV_UI_TEST_SCREEN=nfl | nfl-following (the Packers) | nfl-spoilers,
-// on the server's own answer given base64 in PIGTV_UI_TEST_NFL_JSON (the UI test reads it from the unit tests' fixture).
-private struct NFLTestScreen: View {
-    let screen: String
-    @StateObject private var model = AppModel()
-    var body: some View {
-        Group {
-            if let browse = model.browse {
-                NavigationStack { NFLPageView(app: model, browse: browse) }
-                    .sportPages(app: model, browse: browse, clock: Date())
-            } else {
-                Color.clear
-            }
-        }
-        #if os(tvOS)
-        .buttonStyle(PigSecondaryButtonStyle())
-        #endif
-        .preferredColorScheme(fixtureScheme)
-        .task {
-            model.injectHomeFixture()
-            guard let browse = model.browse,
-                  let base64 = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_NFL_JSON"], let data = Data(base64Encoded: base64),
-                  let page = try? JSONDecoder().decode(NFLPage.self, from: data) else { return }
-            browse.nflPage.setFixture(page)
-            browse.f1Page.setFixture(F1Page(available: false), preferences: SportPagePreferences(
-                spoilerFree: screen == "nfl-spoilers", nflFollowing: screen == "nfl" ? nil : "GB"))
-        }
     }
 }
 
@@ -248,13 +186,24 @@ private struct SportFrontTestScreen: View {
         for (league, value) in leagues { if let page: LeaguePage = Self.part(value) { browse.leaguePages.setFixture(page, league: league) } }
         for (league, value) in events { if let page: SportEventsPage = Self.part(value) { browse.eventPages.setFixture(page, league: league) } }
         if let cricket: CricketPage = Self.part(pages["cricket"]) { browse.cricketPage.setFixture(cricket) }
-        browse.nflPage.setFixture(NFLPage(available: false))
+        // #243 (Apple 168): the NFL's page (C-Q) from PIGTV_UI_TEST_NFL_JSON (base64), its followed team from
+        // PIGTV_UI_TEST_NFL_FOLLOW; the retired NFLPageView's tests run on the D-43 page.
+        let environment = ProcessInfo.processInfo.environment
+        if let base64 = environment["PIGTV_UI_TEST_NFL_JSON"], let data = Data(base64Encoded: base64),
+           let nfl = try? JSONDecoder().decode(NFLPage.self, from: data) {
+            browse.nflPage.setFixture(nfl)
+        } else {
+            browse.nflPage.setFixture(NFLPage(available: false))
+        }
         var teams: [String: [String]] = [:]
         for follow in front.follows { teams[follow.league, default: []].append(follow.name) }
-        let f1 = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_F1"] == "1"
-            ? F1PageFixtures.page(live: false, guide: browse.guide) : F1Page(available: false)
+        // PIGTV_UI_TEST_FRONT_F1=1: the F1 fixture's weekend; =live: the same weekend with its race on now.
+        let f1Mode = environment["PIGTV_UI_TEST_FRONT_F1"]
+        let f1 = f1Mode == "1" || f1Mode == "live"
+            ? F1PageFixtures.page(live: f1Mode == "live", guide: browse.guide) : F1Page(available: false)
         browse.f1Page.setFixture(f1, preferences: SportPagePreferences(
-            spoilerFree: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPOILERS"] == "1",
+            spoilerFree: environment["PIGTV_UI_TEST_SPOILERS"] == "1",
+            nflFollowing: environment["PIGTV_UI_TEST_NFL_FOLLOW"],
             sports: front.sports.map(\.league), teams: teams))
     }
 }

@@ -52,18 +52,31 @@ final class SportPagesUITests: XCTestCase {
         json["events"] = events
     }
 
-    private func launch(sport: String, spoilers: Bool = false, f1: Bool = false, nobodyFollowed: Bool = false) throws -> XCUIApplication {
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures/sport-pages-d43.json")
-        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+    private func launch(sport: String, spoilers: Bool = false, f1: Bool = false, nobodyFollowed: Bool = false,
+                        f1Live: Bool = false, nfl: Bool = false, nflFollow: String? = nil) throws -> XCUIApplication {
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("PigTVTests/Fixtures")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent("sport-pages-d43.json")))
+            as? [String: Any])
         if nobodyFollowed { Self.unfollowed(&json) }
+        if nfl, var front = json["front"] as? [String: Any], var sports = front["sports"] as? [[String: Any]] {
+            // The NFL as the server lists it (sportCatalog: American football › NFL), with nothing in the next 72 hours.
+            sports.append(["league": "NFL", "sport": "American football", "live": 0, "line": "next"])
+            front["sports"] = sports
+            json["front"] = front
+        }
         let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "front"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         app.launchEnvironment["PIGTV_UI_TEST_OPEN_SPORT"] = sport
         if spoilers { app.launchEnvironment["PIGTV_UI_TEST_SPOILERS"] = "1" }
-        if f1 { app.launchEnvironment["PIGTV_UI_TEST_FRONT_F1"] = "1" }
+        if f1 || f1Live { app.launchEnvironment["PIGTV_UI_TEST_FRONT_F1"] = f1Live ? "live" : "1" }
+        if nfl {
+            app.launchEnvironment["PIGTV_UI_TEST_NFL_JSON"] = try Data(contentsOf: fixtures.appendingPathComponent("nfl-page-0379.json"))
+                .base64EncodedString()
+        }
+        if let nflFollow { app.launchEnvironment["PIGTV_UI_TEST_NFL_FOLLOW"] = nflFollow }
         app.launchEnvironment["PIGTV_UI_TEST_PAGES_JSON"] = try JSONSerialization.data(withJSONObject: Self.shifted(json, by: delta))
             .base64EncodedString()
         app.launch()
@@ -113,6 +126,63 @@ final class SportPagesUITests: XCTestCase {
         XCTAssertTrue(any["sport.race.last"].exists && any["sport.race.next"].exists)
         XCTAssertFalse(any["f1.session.race"].exists)
         attach(app, "d43-motorsport-nascar")
+    }
+
+    /// #243 (Apple 168): F1's weekend on the D-43 page, as the retired F1PageView's tests had it: spoiler-free hides the
+    /// grid and both standings, and a race on now shows LIVE on its session tile (selecting it plays).
+    @MainActor
+    func testF1SpoilerFreeAndALiveRace() throws {
+        var app = try launch(sport: "Motorsport", spoilers: true, f1: true)
+        var any = app.descendants(matching: .any)
+        XCTAssertTrue(any["f1.session.race"].waitForExistence(timeout: 5), "the session tiles")
+        XCTAssertTrue(app.staticTexts["Results hidden"].exists, "spoiler-free hides the results")
+        XCTAssertFalse(app.staticTexts["Kimi Antonelli"].exists, "no driver's name is left on screen")
+        attach(app, "d43-f1-spoiler-free")
+        app.terminate()
+        app = try launch(sport: "Motorsport", f1Live: true)
+        any = app.descendants(matching: .any)
+        XCTAssertTrue(any["f1.session.race"].waitForExistence(timeout: 5))
+        // a button's texts make its label on tvOS
+        let live = any.matching(NSPredicate(format: "identifier BEGINSWITH 'f1.session.' AND label CONTAINS 'LIVE'"))
+        XCTAssertEqual(live.count, 1, "the session on now is marked LIVE")
+        XCTAssertTrue(app.staticTexts["Kimi Antonelli"].exists, "results and standings shown")
+        attach(app, "d43-f1-live")
+    }
+
+    /// #243 (Apple 168): the NFL on the D-43 fixture page, as the retired NFLPageView's tests had it: the current week
+    /// with the one before to switch to, the standings; following the Packers puts their conference first; spoiler-free
+    /// hides scores and standings.
+    @MainActor
+    func testTheNFLWeeksStandingsFollowedTeamAndSpoilerFree() throws {
+        var app = try launch(sport: "American football", nfl: true)
+        var any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.fixture.grid.8"].waitForExistence(timeout: 8), "opens on week 8")
+        let unfollowed = any.matching(NSPredicate(format: "identifier BEGINSWITH 'sport.fixture.group.'")).allElementsBoundByIndex
+        XCTAssertEqual(unfollowed.min { $0.frame.minY < $1.frame.minY }?.identifier, "sport.fixture.group.AFC", "AFC first unfollowed")
+        XCTAssertTrue(app.staticTexts["27"].exists, "Thursday's final score")
+        XCTAssertTrue(any["sport.fixture.round.7"].exists, "week 7 to switch to")
+        attach(app, "d43-nfl-week-8")
+        moveDown(app, to: "sport.fixture.round.")
+        for _ in 0..<3 where focused(app).identifier != "sport.fixture.round.7" { XCUIRemote.shared.press(.left) }
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(any["sport.fixture.grid.7"].waitForExistence(timeout: 5), "week 7")
+        XCTAssertTrue(waitUntil(5) { app.staticTexts["24"].exists }, "week 7's finals")
+        app.terminate()
+
+        app = try launch(sport: "American football", nfl: true, nflFollow: "GB")
+        any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.fixture.grid.8"].waitForExistence(timeout: 8))
+        let groups = any.matching(NSPredicate(format: "identifier BEGINSWITH 'sport.fixture.group.'")).allElementsBoundByIndex
+        let first = groups.min { $0.frame.minY < $1.frame.minY }
+        XCTAssertEqual(first?.identifier, "sport.fixture.group.NFC", "the Packers' conference first (AFC is first otherwise)")
+        attach(app, "d43-nfl-following")
+        app.terminate()
+
+        app = try launch(sport: "American football", spoilers: true, nfl: true)
+        any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.fixture.standings.hidden"].waitForExistence(timeout: 8), "standings hidden")
+        XCTAssertFalse(app.staticTexts["27"].exists, "no score with spoiler-free on")
+        attach(app, "d43-nfl-spoiler-free")
     }
 
     @MainActor

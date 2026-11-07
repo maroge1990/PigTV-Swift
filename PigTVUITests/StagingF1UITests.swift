@@ -1,8 +1,8 @@
 import XCTest
 
 #if os(iOS)
-// T3 against the Unraid staging server (fake providers, ESPN's real F1 feed): signs in, opens Sport → Formula 1 and
-// attaches screenshots, then flips the household spoiler switch and back. Skipped unless the test runner is given
+// T3 against the Unraid staging server (fake providers, ESPN's real F1 feed): signs in, opens Sport → Motorsport (the
+// F1 weekend) and attaches screenshots in landscape and portrait. Skipped unless the test runner is given
 // the staging address and its throwaway login (TEST_RUNNER_PIGTV_STAGING_URL, …_USER, …_PASS); never a real server.
 final class StagingF1UITests: XCTestCase {
     private func attach(_ app: XCUIApplication, _ name: String) {
@@ -36,18 +36,13 @@ final class StagingF1UITests: XCTestCase {
         let sport = app.buttons["Sport"].firstMatch
         XCTAssertTrue(sport.waitForExistence(timeout: 30), "not signed in")
         sport.tap()
-        let f1 = app.buttons["sport.page.f1"]
-        XCTAssertTrue(f1.waitForExistence(timeout: 20), "no Formula 1 entry: is sportPages on?")
-        f1.tap()
-        XCTAssertTrue(app.staticTexts["f1.weekend"].waitForExistence(timeout: 30), "the F1 page did not load")
+        // #243 (Apple 168): the F1 weekend is the Motorsport page's content (D-43/D-44); spoiler-free lives in Settings.
+        let motorsport = app.buttons["sport.rail.header.Motorsport"]
+        XCTAssertTrue(motorsport.waitForExistence(timeout: 20), "no Motorsport rail: is F1 followed and sportFront on?")
+        motorsport.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["f1.page"].waitForExistence(timeout: 30), "the F1 weekend did not load")
         sleep(3) // the circuit map
         attach(app, "staging-f1-ipad-landscape")
-        let spoilers = app.buttons["f1.spoilers"]
-        spoilers.tap()
-        XCTAssertTrue(app.staticTexts["Results hidden"].waitForExistence(timeout: 10))
-        attach(app, "staging-f1-ipad-spoiler-free")
-        spoilers.tap()
-        XCTAssertTrue(app.staticTexts["Results hidden"].waitForNonExistence(timeout: 10), "the switch did not come back")
         XCUIDevice.shared.orientation = .portrait
         sleep(2)
         attach(app, "staging-f1-ipad-portrait")

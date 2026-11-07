@@ -318,20 +318,15 @@ controls are not used for live play.
   `SportEvent.airing(on:)` answers the chosen channel's times, else the event's (an older server). The Watch-now rule
   (`SportRows.playsChannelNow(_:on:now:)`), `watchWhenStarts`, `recordingRow`/`isScheduled` and every `RecordSheet` use it,
   so a channel showing a session late is never played or recorded on another channel's hour.
-- **The F1 page (build 75, #21).** Shown when the server advertises `sportPages`: a "Sport pages" row above the league chips
-  (`SportPageLinks`) pushes `F1PageView` in the Sport tab's `NavigationStack`. `F1PageModels.swift` decodes C-P tolerantly
-  (`F1Page`, sessions in time order, a broken session or row dropped) and holds the pure rules (`F1PageText`: the focus
-  session, pills, headline, "Sat 31 Oct · 5:30 am", the session as a C-I `SportEvent` titled "Mexico City GP · Practice 1").
-  `F1PageModel` (`BrowseModel.f1Page`) loads the page and the household's preferences (`sports/pages/preferences`, server
-  0346) every 60 s while visible; a switch is sent as its own field and put back if refused; a 404 keeps them on the device.
-  A session's Watch, channel picker, Record and bell ("Watch when it starts") are the Sport tab's own, through the screen's
-  `SportPresenter`. Layout: the approved mock-ups; tvOS and an iPad at least 1150 pt wide use the wide layout (weekend ·
-  circuit card · sessions, then results beside the championships, cards of equal height); iPhone and iPad portrait stack it.
-  Spoiler-free hides the results, the pole/winner/fastest labels and the standings. No points column on the results (C-P
-  sends none). Fixtures `PIGTV_UI_TEST_SCREEN=f1 | f1-live | f1-spoilers` (`F1PageFixtures`); tests `F1PageTextTests`
-  (decoding the server's own answer, `PigTVTests/Fixtures/f1-page-0346.json`), `F1PageModelTests`, `F1PageUITests`, and
-  `StagingF1UITests` (iPad against the Unraid staging server; skipped unless `TEST_RUNNER_PIGTV_STAGING_URL`, `_USER`,
-  `_PASS` are given).
+- **F1 and NFL data (C-P, C-Q).** `F1PageModels.swift` decodes C-P tolerantly (`F1Page`, sessions in time order, a
+  broken session or row dropped) and holds the pure rules (`F1PageText`: the focus session, "Sat 31 Oct · 5:30 am", the
+  session as a C-I `SportEvent`); `NFLPageModels.swift` does the same for C-Q. `F1PageModel` (`BrowseModel.f1Page`)
+  also loads the household's preferences (`sports/pages/preferences`) every 60 s while visible. Both are drawn only by
+  the D-43/D-44 sport pages (`SportF1Content`, `SportFixtureContent(.nfl)`); the standalone `F1PageView` and
+  `NFLPageView` were retired in build 168 (#243). Fixtures: `PIGTV_UI_TEST_FRONT_F1=1 | live` and
+  `PIGTV_UI_TEST_NFL_JSON` / `_NFL_FOLLOW` with the pages fixture; tests `F1PageTextTests`, `F1PageModelTests`, the
+  NFL and F1 cases in `SportPagesUITests`, and `StagingF1UITests` (iPad against the Unraid staging server; skipped
+  unless `TEST_RUNNER_PIGTV_STAGING_URL`, `_USER`, `_PASS` are given).
 
 ### Apple TV front page and sport pages (C-R, D-43, build 97)
 

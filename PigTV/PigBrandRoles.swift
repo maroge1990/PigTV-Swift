@@ -127,3 +127,12 @@ struct PigLockup: View {
     /// The pig's ink height for a given ink width (the same in every lockup and in mark.svg).
     static func pigInkHeight(forWidth width: CGFloat) -> CGFloat { width * BrandLayout.markInkAspect }
 }
+
+extension Color {
+    /// A team colour as C-P sends it ("00D2BE"); nil when absent or not hex.
+    nonisolated init?(teamHex: String?) {
+        guard let raw = teamHex?.trimmingCharacters(in: CharacterSet(charactersIn: "# ")), raw.count == 6,
+              let value = UInt32(raw, radix: 16) else { return nil }
+        self.init(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
+    }
+}

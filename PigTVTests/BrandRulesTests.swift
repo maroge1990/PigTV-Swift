@@ -15,7 +15,6 @@ final class BrandRulesTests: XCTestCase {
     /// Files that could not be changed with the rest of #190, each with its reason. Only literal radii are allowed here.
     private static let radiusAllowlist: [String: String] = [
         "CricketPageView.swift": "build 99 (D-43 sport pages) is under Codex review; its radii move with the review's fixes",
-        "F1PageView.swift": "build 99 (D-43 sport pages) is under Codex review",
         "SportFrontView.swift": "build 99 (D-43 sport pages) is under Codex review",
         "SportFrontTVPage.swift": "build 99 (D-43 sport pages) is under Codex review",
         "SportEventsViews.swift": "build 99 (D-43 sport pages) is under Codex review",
