@@ -49,7 +49,8 @@ struct SportFrontTVPage: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: PigSpacing.l) {
+            // D-43: the banner, then the rails 20 pt below it (the television's m is the nearest step)
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
                 if let front = model.front {
                     if model.stale, let updated = model.updatedAt {
                         Text("Couldn't refresh. Last updated \(updated.formatted(date: .omitted, time: .shortened)).")

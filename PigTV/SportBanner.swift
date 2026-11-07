@@ -114,7 +114,8 @@ struct SportBanner<Actions: View>: View {
                 .accessibilityLabel("Back to Sport")
                 .accessibilityIdentifier("sport.banner.back")
             }
-            VStack(alignment: .leading, spacing: PigSpacing.s) {
+            // The banner is a fixed 250 pt (D-43): its hero keeps the small steps so the title and actions fit inside it.
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 HStack(spacing: PigSpacing.s) {
                     if hero.live {
                         Circle().fill(Color.pigDanger).frame(width: 12, height: 12).accessibilityHidden(true)
@@ -132,7 +133,7 @@ struct SportBanner<Actions: View>: View {
                         .accessibilityIdentifier("sport.banner.hero.line")
                 }
                 HStack(spacing: PigSpacing.s) { actions() }
-                    .padding(.top, PigSpacing.s)
+                    .padding(.top, PigSpacing.xs)
                     .tvFocusSection()
             }
         }
