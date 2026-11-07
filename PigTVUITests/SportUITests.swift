@@ -17,6 +17,37 @@ final class SportUITests: XCTestCase {
         add(shot)
     }
 
+    /// #243 (Apple 173; 172 Codex round 1): a server with the sport pages but no front page (sportFront off) keeps the
+    /// legacy Sport tab's links, and each opens the D-43 content (the old NFL/F1 pages were retired in 168).
+    @MainActor
+    func testTheLegacySportTabStillOpensTheSportPages() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "sport-legacy-pages"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        let f1 = app.buttons["sport.page.f1"]
+        XCTAssertTrue(f1.waitForExistence(timeout: 15), "the Formula 1 link")
+        XCTAssertTrue(app.buttons["sport.page.nfl"].exists, "the NFL link")
+        XCTAssertTrue(app.buttons["sport.page.cricket"].exists, "the Cricket link")
+        // focus starts on the shelves below the links: up (or down) towards the Formula 1 link
+        for _ in 0..<10 where focused(app).identifier != "sport.page.f1" {
+            let id = focused(app).identifier
+            if id.hasPrefix("sport.page.") { XCUIRemote.shared.press(.left) }
+            else { XCUIRemote.shared.press(focused(app).frame.minY > f1.frame.minY ? .up : .down) }
+        }
+        XCTAssertEqual(focused(app).identifier, "sport.page.f1")
+        XCUIRemote.shared.press(.select)
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.legacy.f1"].waitForExistence(timeout: 8), "the Formula 1 page")
+        XCTAssertTrue(any["f1.page"].waitForExistence(timeout: 8), "with the D-43 weekend")
+        attach(app, "legacy-f1")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(f1.waitForExistence(timeout: 5))
+        for _ in 0..<4 where focused(app).identifier != "sport.page.nfl" { XCUIRemote.shared.press(.right) }
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(any["sport.legacy.nfl"].waitForExistence(timeout: 8), "the NFL page")
+    }
+
     @MainActor
     func testChipsCardsChannelPickerAndEventPage() throws {
         let app = XCUIApplication()

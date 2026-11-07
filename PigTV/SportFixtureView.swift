@@ -53,7 +53,8 @@ struct SportFixtureContent: View {
     let app: AppModel
     let browse: BrowseModel
     let source: Source
-    let front: SportFront
+    /// nil on the legacy Sport tab (no front page to match games against).
+    let front: SportFront?
     let label: String
     let flow: SportRecordFlow
     @ObservedObject private var nfl: NFLPageModel
@@ -67,7 +68,7 @@ struct SportFixtureContent: View {
     @State private var view: String?
     @State private var tableGroup: String?
 
-    init(app: AppModel, browse: BrowseModel, source: Source, front: SportFront, label: String, flow: SportRecordFlow) {
+    init(app: AppModel, browse: BrowseModel, source: Source, front: SportFront?, label: String, flow: SportRecordFlow) {
         self.app = app
         self.browse = browse
         self.source = source

@@ -78,6 +78,10 @@ struct SportView: View {
                 header
                 LazyVStack(alignment: .leading, spacing: SportMetrics.sectionSpacing) {
                     SportPendingBanner(app: app)
+                    // C-P (#21): the sport pages, above the event shelves (#243: onto the D-43 content).
+                    if browse.sportPagesEnabled {
+                        SportPageLinks(app: app, browse: browse)
+                    }
                     if !leagues.isEmpty {
                         chips(leagues, chosen: chosen)
                     }
@@ -323,5 +327,109 @@ private struct SportEmptyState: View {
         .frame(maxWidth: .infinity)
         .tvFocusSection()
         .background(Color.guideCell(scheme).opacity(0.7), in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+    }
+}
+
+/// #243 (Apple 173; 172 Codex round 1, medium): the legacy Sport tab (a server with `sportPages` but no `sportFront`:
+/// fixtures or the collector switched off, or an older server) keeps its way to the sport pages. Each link opens the
+/// D-43 page's own content (the retired NFLPageView/F1PageView are not coming back); Cricket its page as before.
+struct SportPageLinks: View {
+    let app: AppModel
+    let browse: BrowseModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
+            Text("Sport pages").font(SportMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
+            HStack(spacing: SportMetrics.cardSpacing) {
+                NavigationLink {
+                    SportLegacyPage(title: "Formula 1", identifier: "sport.legacy.f1") { SportF1Content(app: app, browse: browse) }
+                } label: {
+                    HStack(spacing: PigSpacing.m) {
+                        Image(systemName: "flag.checkered").font(.system(size: PigType.sectionTitle, weight: .semibold))
+                            .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                            Text("Formula 1").font(SportMetrics.title)
+                            Text("Race weekend, results, championship").font(SportMetrics.detail).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(SportMetrics.cardPadding)
+                    .frame(width: SportMetrics.cardWidth, alignment: .leading)
+                }
+                .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportMetrics.radius))
+                .accessibilityIdentifier("sport.page.f1")
+                // C-Q (#21): the NFL page, with the server's `sportPageNfl` flag.
+                if browse.nflPageEnabled {
+                    NavigationLink {
+                        SportLegacyNFLPage(app: app, browse: browse)
+                    } label: {
+                        HStack(spacing: PigSpacing.m) {
+                            Image(systemName: "football").font(.system(size: PigType.sectionTitle, weight: .semibold))
+                                .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                                Text("NFL").font(SportMetrics.title)
+                                Text("This week's games, standings").font(SportMetrics.detail).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(SportMetrics.cardPadding)
+                        .frame(width: SportMetrics.cardWidth, alignment: .leading)
+                    }
+                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportMetrics.radius))
+                    .accessibilityIdentifier("sport.page.nfl")
+                }
+                // C-S (#21): the Cricket page, with the server's `sportPageCricket` flag.
+                if browse.cricketPageEnabled {
+                    NavigationLink {
+                        CricketPageView(app: app, browse: browse)
+                    } label: {
+                        HStack(spacing: PigSpacing.m) {
+                            Image(systemName: "figure.cricket").font(.system(size: PigType.sectionTitle, weight: .semibold))
+                                .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                                Text("Cricket").font(SportMetrics.title)
+                                Text("The match, its series, other games").font(SportMetrics.detail).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(SportMetrics.cardPadding)
+                        .frame(width: SportMetrics.cardWidth, alignment: .leading)
+                    }
+                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportMetrics.radius))
+                    .accessibilityIdentifier("sport.page.cricket")
+                }
+            }
+            .padding(.vertical, PigSpacing.l)
+        }
+        .tvFocusSection()
+    }
+}
+
+/// A legacy sport page: its title, then the D-43 content below it.
+struct SportLegacyPage<Content: View>: View {
+    let title: String
+    let identifier: String
+    @ViewBuilder var content: Content
+    var body: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: PigSpacing.l) {
+                Text(title).font(.system(size: PigType.pageTitle, weight: .bold)).accessibilityAddTraits(.isHeader)
+                content
+            }
+            .padding(.horizontal, SportMetrics.pagePadding)
+            .padding(.bottom, PigSpacing.empty)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+/// The NFL's page on the legacy tab: C-Q's fixture content with no front page to match games against.
+struct SportLegacyNFLPage: View {
+    let app: AppModel
+    let browse: BrowseModel
+    @StateObject private var flow = SportRecordFlow()
+    var body: some View {
+        SportLegacyPage(title: "NFL", identifier: "sport.legacy.nfl") {
+            SportFixtureContent(app: app, browse: browse, source: .nfl, front: nil, label: "NFL", flow: flow)
+        }
+        .sportRecordFlow(flow, app: app)
     }
 }
