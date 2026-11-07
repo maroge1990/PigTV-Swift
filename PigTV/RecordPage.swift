@@ -381,7 +381,7 @@ struct RecordPage: View {
             guard changing, !model.isFixture else { return }
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(20)) } catch { return }
-                await model.loadRecordings(quietly: true)
+                await model.loadRecordingsIfStale(maxAge: 19, quietly: true) // #239: shared with any other page
             }
         }
     }

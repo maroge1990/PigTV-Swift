@@ -219,8 +219,7 @@ struct GuideView: View {
                     let wait = max(1, 15 * 60 - Date().timeIntervalSince(lastPeriodicRefresh))
                     do { try await Task.sleep(for: .seconds(wait)) } catch { return }
                     lastPeriodicRefresh = Date()
-                    await model.refreshGuideIfStale()
-                    await model.loadRecordings(quietly: true)
+                    await model.refreshGuideIfStale() // #239: recordings come from AppFreshness
                 }
             }
             .onAppear {

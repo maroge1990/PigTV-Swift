@@ -141,7 +141,8 @@ struct RecordingsView: View {
                 while !Task.isCancelled {
                     let wait = RecordingsRows.refreshInterval(recordings: model.recordings, schedules: model.schedules, now: Date())
                     do { try await Task.sleep(for: .seconds(wait)) } catch { return }
-                    await model.loadRecordings(quietly: true)
+                    // #239: through the shared staleness check (AppFreshness may have just loaded them)
+                    await model.loadRecordingsIfStale(maxAge: max(1, wait - 1), quietly: true)
                 }
             }
             .fullScreenCover(item: $playing) { play in

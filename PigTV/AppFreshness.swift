@@ -7,6 +7,8 @@ import Foundation
 @MainActor
 enum AppFreshness {
     static let interval: Duration = .seconds(60)
+    /// Just under the interval, so each minute's pass finds them stale unless a page has just loaded them.
+    static let recordingsMaxAge: TimeInterval = 55
 
     /// One pass. `export` is the Top Shelf export (tests count it).
     static func refresh(_ browse: BrowseModel, export: (BrowseModel) -> Void = { $0.exportTopShelf() }) async {
@@ -19,6 +21,9 @@ enum AppFreshness {
             await browse.loadFavouritesIfStale()
             await browse.refreshGuideIfStale()
         }
+        // #239: recordings and schedules too, so no page needs its own idle timer for them (pages that need them sooner,
+        // while something records, ask through the same staleness check).
+        await browse.loadRecordingsIfStale(maxAge: recordingsMaxAge, quietly: true)
         export(browse)
     }
 

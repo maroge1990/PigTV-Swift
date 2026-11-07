@@ -446,11 +446,13 @@ final class BrowseModel: ObservableObject {
         lastLoads[key].map { now.timeIntervalSince($0) < maxAge } ?? false
     }
 
-    func loadRecordingsIfStale(maxAge: TimeInterval = appearMaxAge) async {
+    /// #239: every view that wants recordings current asks through here, so two pages (or a page and the app's minute
+    /// loop, AppFreshness) asking within `maxAge` of each other make one request.
+    func loadRecordingsIfStale(maxAge: TimeInterval = appearMaxAge, quietly: Bool = false) async {
         // The offline fixture has no server: a failed load would only add a
         // "Could not connect" banner (or, on a machine with a server, replace it).
         guard !isFixture, !isFresh("recordings", maxAge: maxAge) else { return }
-        await loadRecordings()
+        await loadRecordings(quietly: quietly)
     }
 
     func loadFavouritesIfStale(maxAge: TimeInterval = appearMaxAge) async {

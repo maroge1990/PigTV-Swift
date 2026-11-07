@@ -94,6 +94,11 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private var pauseSender: Task<Void, Never>?
     private var livePauseSupported: Bool { client.info?.features.livePause == true }
     private var conflictTask: Task<Void, Never>?
+    /// #239: false while the app is not the active scene (ContentView sets it): the conflict poll then asks the server
+    /// nothing until the app is active again, instead of every 5 s from the background.
+    var sceneActive = true
+    /// How often the conflict poll asks (tests shorten it).
+    var conflictInterval: Duration = .seconds(5)
     private var seenPrompts = Set<Int>()
     private var pendingDeclines = Set<Int>()
     private let client: APIClient
@@ -963,6 +968,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
         guard conflictTask == nil else { return }
         conflictTask = Task {
             while !Task.isCancelled && !ended {
+                guard sceneActive else {
+                    do { try await Task.sleep(for: conflictInterval) } catch { return }
+                    continue
+                }
                 updateLiveEdge()
                 refreshMetadata()
                 await sendPendingDeclines()
@@ -985,7 +994,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                     if error as? PigTVError == .http(404) { return } // older server
                     coordinationWarning = "Recording notifications are temporarily unavailable."
                 }
-                do { try await Task.sleep(for: .seconds(5)) }
+                do { try await Task.sleep(for: conflictInterval) }
                 catch { return }
             }
         }

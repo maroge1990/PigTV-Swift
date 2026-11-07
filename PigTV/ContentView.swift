@@ -74,6 +74,7 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             model.warmer.setActive(phase == .active) // R11: any other phase cancels warming
+            model.playback?.sceneActive = phase == .active // #239: the conflict poll rests while the app is not active
             if phase == .background {
                 model.presenter.commitPendingUndo() // #49: an action waiting on its Undo is done before the app is suspended
                 Task { await model.background() }

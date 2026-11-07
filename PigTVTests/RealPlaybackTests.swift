@@ -114,6 +114,27 @@ final class RealPlaybackTests: XCTestCase {
         }
     }
 
+    /// #239 (Apple 172): the conflict poll asked the server every 5 s whatever the app was doing; it now rests while the
+    /// scene is not active, and asks again once it is.
+    func testTheConflictPollRestsWhileTheAppIsNotActive() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let playback = PlaybackModel(channel: channel(), client: try server.client(), programmes: programmes())
+        playback.conflictInterval = .milliseconds(100)
+        playback.start()
+        try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
+        try await waitFor("the poll running") { server.http.requests(path: "/api/playback/conflict").count >= 2 }
+        playback.sceneActive = false
+        try await Task.sleep(for: .milliseconds(250)) // one request may already be on its way
+        let resting = server.http.requests(path: "/api/playback/conflict").count
+        try await Task.sleep(for: .milliseconds(1_000))
+        XCTAssertEqual(server.http.requests(path: "/api/playback/conflict").count, resting, "no request while not active")
+        playback.sceneActive = true
+        try await waitFor("the poll back") { server.http.requests(path: "/api/playback/conflict").count >= resting + 2 }
+        _ = await playback.stop()
+        server.http.stop()
+    }
+
     /// Apple 157 (156 Codex round 1, high): pause and resume were sent by separate tasks, so a slow "paused" could reach
     /// the server after the "resumed" that followed it, leaving a playing stream paused there. One sender now: the
     /// resume goes only once the pause has been answered.

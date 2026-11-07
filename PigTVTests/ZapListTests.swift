@@ -62,6 +62,20 @@ final class AppFreshnessTests: XCTestCase {
         XCTAssertEqual(exports, 1, "the Top Shelf is exported after the refresh")
     }
 
+    /// #239 (Apple 172): recordings are kept current by the same minute pass, and two askers inside the interval (a
+    /// page and the pass, or two pages) make one request.
+    func testTheRefreshLoadsStaleRecordingsOnceForEveryAsker() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client())
+        browse.guide = GuideFixtures.channels()
+        await AppFreshness.refresh(browse) { _ in }
+        XCTAssertEqual(server.http.requests(path: "/api/recordings", method: "GET").count, 1, "the pass loads stale recordings")
+        await browse.loadRecordingsIfStale(maxAge: AppFreshness.recordingsMaxAge, quietly: true) // a page asking too
+        await AppFreshness.refresh(browse) { _ in }
+        XCTAssertEqual(server.http.requests(path: "/api/recordings", method: "GET").count, 1, "one request for every asker")
+    }
+
     func testTheRefreshDoesNothingOnTheOfflineFixture() async throws {
         let server = try FakePigTVServer()
         defer { server.http.stop() }
