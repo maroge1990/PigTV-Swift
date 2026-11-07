@@ -37,6 +37,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// #36: when this play's item was ready to play and when a display-mode switch finished (nil until then).
     private var readyAt: Date?
     private var modeSwitchedAt: Date?
+    /// The item generation whose display criteria asked the television for a mode switch (Apple 175): only that item's
+    /// switch counts, not a previous player handing the display back.
+    private var modeRequestedFor: UUID?
     #if os(tvOS)
     private var modeSwitchObserver: NSObjectProtocol?
     #endif
@@ -361,7 +364,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 resolveBegan = Date()
                 readyAt = nil
                 modeSwitchedAt = nil
-                observeModeSwitch()
                 PigTVSignpost.event("LiveResolveRequest")
                 // A channel whose copied audio this device could not decode
                 // ('fmt?') asks for re-encoded audio straight away.
@@ -468,13 +470,19 @@ final class PlaybackModel: ObservableObject, Identifiable {
         PigTVSignpost.event("LiveItemCreated")
         currentURL = url
         currentStrategy = strategy
+        // #36 (Apple 175, 174 Codex round 1): this item's phases only; a fallback item measures its own readiness.
+        readyAt = nil
+        modeSwitchedAt = nil
+        modeRequestedFor = nil
         #if os(tvOS)
         displayCriteria = mode?.criteria()
+        if displayCriteria != nil { requestModeSwitch(for: generation) }
         if mode == nil, assetCriteria {
             Task { [weak self] in
                 let criteria = try? await item.asset.load(.preferredDisplayCriteria)
                 guard let self, let criteria, !self.ended, self.itemGeneration == generation else { return }
                 self.displayCriteria = criteria
+                self.requestModeSwitch(for: generation)
             }
         }
         #endif
@@ -488,7 +496,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
         observation = item.observe(\.status, options: [.initial, .new]) { @Sendable [weak self] item, _ in
             if item.status == .readyToPlay {
                 PigTVSignpost.event("LiveReadyToPlay")
-                Task { @MainActor [weak self] in self?.noteReady() }
+                let at = Date()
+                Task { @MainActor [weak self] in
+                    // a replaced item's late callback never stands for the current one (174 Codex round 1)
+                    guard let self, self.itemGeneration == generation else { return }
+                    self.noteReady(at: at)
+                }
             }
             guard item.status == .failed else { return }
             let failure = item.error as NSError?
@@ -732,13 +745,18 @@ final class PlaybackModel: ObservableObject, Identifiable {
         return StartPhases(resolveMs: eventContext?.resolveMs, readyMs: since(readyAt), modeMs: since(modeSwitchedAt), frameMs: frameMs)
     }
 
-    private func noteReady() {
+    private func noteReady(at: Date) {
         guard !ended, readyAt == nil else { return }
-        readyAt = Date()
+        readyAt = at
     }
 
-    /// From the press until the first picture: a display-mode switch the item asks for (HDR, frame rate) may end before
-    /// or after it is ready to play.
+    /// This item's display criteria asked for a mode switch (HDR, frame rate): its end, before or after the item is
+    /// ready, is this play's. A switch that ends before the request (a previous player's return) is not counted.
+    private func requestModeSwitch(for generation: UUID) {
+        modeRequestedFor = generation
+        observeModeSwitch()
+    }
+
     private func observeModeSwitch() {
         #if os(tvOS)
         guard modeSwitchObserver == nil else { return }
@@ -752,7 +770,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
 
     private func noteModeSwitched() {
-        guard !ended, modeSwitchedAt == nil, !firstPlayReported else { return }
+        guard !ended, modeSwitchedAt == nil, !firstPlayReported, modeRequestedFor == itemGeneration else { return }
         modeSwitchedAt = Date()
     }
 

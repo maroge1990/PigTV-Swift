@@ -137,6 +137,27 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// Apple 175 (174 Codex round 1): a display-mode switch that ends before this play asked for one (a previous player
+    /// handing the display back while the new resolve is pending) is not this play's.
+    func testAModeSwitchEndingBeforeThePlayAskedIsNotCounted() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let playback = PlaybackModel(channel: channel(), client: try server.client(), programmes: programmes())
+        playback.start()
+        // switches ending from the press until the item is installed (the resolve pending): none of them is this play's
+        let deadline = Date().addingTimeInterval(10)
+        while playback.player.currentItem == nil, Date() < deadline {
+            NotificationCenter.default.post(name: Notification.Name("AVDisplayManagerModeSwitchEndNotification"), object: nil)
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
+        let phases = playback.startPhases(frameMs: nil)
+        XCTAssertNotNil(phases.readyMs)
+        XCTAssertNil(phases.modeMs, "the earlier switch is not counted")
+        _ = await playback.stop()
+        server.http.stop()
+    }
+
     /// #239 (Apple 172): the conflict poll asked the server every 5 s whatever the app was doing; it now rests while the
     /// scene is not active, and asks again once it is.
     func testTheConflictPollRestsWhileTheAppIsNotActive() async throws {
