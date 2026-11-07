@@ -513,4 +513,16 @@ struct PlaybackEvent: Encodable {
     // D-39 (Apple 89): which tab the play was started from ("sport-front", "tv", "guide"); absent when unknown. The
     // server's client-event route ignores fields it does not log.
     var origin: String?
+    // #36 (Apple 174, server 0487), play-start only: where the start went, ms since the play began.
+    var phases: StartPhases?
+}
+
+/// #36: a play's start, step by step (ms since the play began; each optional): the server's answer, the item ready to
+/// play (playlist and first segments fetched), the television's display-mode switch done (only when one happened), the
+/// first picture.
+nonisolated struct StartPhases: Encodable, Equatable, Sendable {
+    var resolveMs: Double?
+    var readyMs: Double?
+    var modeMs: Double?
+    var frameMs: Double?
 }

@@ -34,6 +34,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// D-39: the tab this play was started from, sent with its play-start event ("sport-front", "tv", "guide").
     var origin: String?
     private var resolveBegan = Date()
+    /// #36: when this play's item was ready to play and when a display-mode switch finished (nil until then).
+    private var readyAt: Date?
+    private var modeSwitchedAt: Date?
+    #if os(tvOS)
+    private var modeSwitchObserver: NSObjectProtocol?
+    #endif
     private var firstPlayReported = false
     private var playingSince: Date?
     private var watchedSeconds: Double = 0
@@ -353,6 +359,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 }
                 guard !ended else { return }
                 resolveBegan = Date()
+                readyAt = nil
+                modeSwitchedAt = nil
+                observeModeSwitch()
                 PigTVSignpost.event("LiveResolveRequest")
                 // A channel whose copied audio this device could not decode
                 // ('fmt?') asks for re-encoded audio straight away.
@@ -477,7 +486,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
         // this method's main-actor isolation would trap if AVFoundation ever
         // delivered the change on another queue (dynamic isolation check).
         observation = item.observe(\.status, options: [.initial, .new]) { @Sendable [weak self] item, _ in
-            if item.status == .readyToPlay { PigTVSignpost.event("LiveReadyToPlay") }
+            if item.status == .readyToPlay {
+                PigTVSignpost.event("LiveReadyToPlay")
+                Task { @MainActor [weak self] in self?.noteReady() }
+            }
             guard item.status == .failed else { return }
             let failure = item.error as NSError?
             let diagnostic = Self.failureCodes(failure)
@@ -709,8 +721,39 @@ final class PlaybackModel: ObservableObject, Identifiable {
         if !firstPlayReported, var event = eventContext {
             firstPlayReported = true
             event.totalMs = Date().timeIntervalSince(resolveBegan) * 1000
+            event.phases = startPhases(frameMs: event.totalMs)
             report(event)
         }
+    }
+
+    /// #36: this play's phases, from the same clock as resolveMs and totalMs.
+    func startPhases(frameMs: Double?) -> StartPhases {
+        let since = { (date: Date?) in date.map { max(0, $0.timeIntervalSince(self.resolveBegan) * 1000) } }
+        return StartPhases(resolveMs: eventContext?.resolveMs, readyMs: since(readyAt), modeMs: since(modeSwitchedAt), frameMs: frameMs)
+    }
+
+    private func noteReady() {
+        guard !ended, readyAt == nil else { return }
+        readyAt = Date()
+    }
+
+    /// From the press until the first picture: a display-mode switch the item asks for (HDR, frame rate) may end before
+    /// or after it is ready to play.
+    private func observeModeSwitch() {
+        #if os(tvOS)
+        guard modeSwitchObserver == nil else { return }
+        // By name: AVKit's AVDisplayManager notification (tvOS 11.2), no AVKit-only symbol touched (crash lessons).
+        modeSwitchObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("AVDisplayManagerModeSwitchEndNotification"), object: nil, queue: .main
+        ) { @Sendable [weak self] _ in
+            Task { @MainActor [weak self] in self?.noteModeSwitched() }
+        }
+        #endif
+    }
+
+    private func noteModeSwitched() {
+        guard !ended, modeSwitchedAt == nil, !firstPlayReported else { return }
+        modeSwitchedAt = Date()
     }
 
     func playbackFailed(detail: String, codeName: String? = nil, code: Int? = nil, errorCodes: [PlayerErrorCode] = [],
@@ -1005,6 +1048,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
         ended = true
         stopping = true
         clearItem()
+        #if os(tvOS)
+        if let modeSwitchObserver { NotificationCenter.default.removeObserver(modeSwitchObserver) }
+        modeSwitchObserver = nil
+        #endif
         let task = Task<String?, Never> {
             await resolveTask?.value
             await Task.detached(priority: .utility) {

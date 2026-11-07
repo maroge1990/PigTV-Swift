@@ -114,6 +114,29 @@ final class RealPlaybackTests: XCTestCase {
         }
     }
 
+    /// #36 (Apple 174): the play-start says where its start went: the answer, ready to play, the first picture (and the
+    /// display-mode switch on a television when one happens), each in ms since the play began, in order.
+    func testThePlayStartCarriesItsPhases() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer()
+        let playback = PlaybackModel(channel: channel(), client: try server.client(), programmes: programmes())
+        playback.start()
+        try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
+        try await waitFor("the play-start sent") {
+            server.http.requests(path: "/api/playback/client-event").contains { String(decoding: $0.body, as: UTF8.self).contains("play-start") }
+        }
+        let body = try XCTUnwrap(server.http.requests(path: "/api/playback/client-event").map(\.body)
+            .first { String(decoding: $0, as: UTF8.self).contains("play-start") })
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let phases = try XCTUnwrap(json["phases"] as? [String: Double], "phases sent")
+        let resolve = try XCTUnwrap(phases["resolveMs"]), ready = try XCTUnwrap(phases["readyMs"]), frame = try XCTUnwrap(phases["frameMs"])
+        XCTAssertLessThanOrEqual(resolve, ready, "the answer before the item was ready")
+        XCTAssertLessThanOrEqual(ready, frame, "ready before the first picture")
+        XCTAssertEqual(frame, try XCTUnwrap(json["totalMs"] as? Double), accuracy: 0.001, "the first picture is the total")
+        _ = await playback.stop()
+        server.http.stop()
+    }
+
     /// #239 (Apple 172): the conflict poll asked the server every 5 s whatever the app was doing; it now rests while the
     /// scene is not active, and asks again once it is.
     func testTheConflictPollRestsWhileTheAppIsNotActive() async throws {
