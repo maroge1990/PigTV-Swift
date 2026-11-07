@@ -102,15 +102,15 @@ struct SportsDashboardView: View {
   private var page: some View {
     NavigationStack {
       ScrollView {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: PigSpacing.xl) {
           PigPageHeader(
             title: model.dashboard?.scope == "preview"
               ? "Sport · Illustrative preview"
               : league.map { "\($0) · Next 72 hours" } ?? "Sport · Today")
-          VStack(alignment: .leading, spacing: 24) {
+          VStack(alignment: .leading, spacing: PigSpacing.l) {
             ViewThatFits(in: .horizontal) {
               HStack { navigationActions }
-              VStack(alignment: .leading, spacing: 12) { navigationActions }
+              VStack(alignment: .leading, spacing: PigSpacing.s) { navigationActions }
             }
             if let waitingLabel {
               Text(waitingLabel)
@@ -134,7 +134,7 @@ struct SportsDashboardView: View {
                   ) { name in
                     Button(name) { changeLeague(name) }
                   }
-                }.padding(.vertical, 12)
+                }.padding(.vertical, PigSpacing.s)
               }
               ForEach(
                 league.map { [$0] }
@@ -158,7 +158,7 @@ struct SportsDashboardView: View {
                 Button("Try again") { Task { await model.load(league: league, clear: true) } }
               }
             }
-          }.padding(.horizontal, SportMetrics.pagePadding).padding(.bottom, 60)
+          }.padding(.horizontal, SportMetrics.pagePadding).padding(.bottom, PigSpacing.empty)
         }
       }.pigPageBackdrop()
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
@@ -239,7 +239,7 @@ struct SportsDashboardView: View {
   }
   @ViewBuilder private func dashboardDetails(_ id: String) -> some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 24) {
+      VStack(alignment: .leading, spacing: PigSpacing.l) {
         Button("Done") { details = nil }
         if let response = model.dashboard, let game = response.games.first(where: { $0.id == id }) {
           SportsGameContent(
@@ -373,7 +373,7 @@ private struct SportsDashboardShelf: View {
     _marks = ObservedObject(wrappedValue: browse.marks)
   }
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: PigSpacing.s) {
       Text(league).font(SportMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
       if games.isEmpty && focused == nil {
         Text("No games or guide listings available.").foregroundStyle(.secondary)
@@ -386,11 +386,11 @@ private struct SportsDashboardShelf: View {
                 Button {
                   select(game)
                 } label: {
-                  VStack(alignment: .leading, spacing: 8) {
+                  VStack(alignment: .leading, spacing: PigSpacing.s) {
                     SportsGameContent(
                       game: game, hidden: hidden, timezone: timezone, client: browse.client,
                       showLeague: false)
-                    HStack(spacing: 8) {
+                    HStack(spacing: PigSpacing.s) {
                       if game.availability == "matched" && !game.terminal {
                         Label(game.availabilityLabel, systemImage: "tv")
                           .foregroundStyle(.secondary).lineLimit(1)
@@ -433,7 +433,7 @@ private struct SportsDashboardShelf: View {
               }.buttonStyle(PigCardButtonStyle()).focused($focused, equals: id)
             }
           }
-        }.padding(.vertical, 24)
+        }.padding(.vertical, PigSpacing.l)
       }.scrollClipDisabled().tvFocusSection()
     }
     .onAppear { reconcile() }
@@ -462,7 +462,7 @@ private struct SportsGameContent: View {
   let client: APIClient
   var showLeague = true
   var body: some View {
-    VStack(alignment: .leading, spacing: showLeague ? 12 : 8) {
+    VStack(alignment: .leading, spacing: showLeague ? PigSpacing.s : PigSpacing.s) {
       HStack {
         Text(showLeague ? "\(game.league.uppercased()) · \(game.statusLabel)" : game.statusLabel)
           .font(SportMetrics.league).foregroundStyle(Color.pigAccentText)
@@ -477,7 +477,7 @@ private struct SportsGameContent: View {
       }
       if game.competitors.count == 2 && game.family != .motorsport {
         ForEach(Array(game.competitors.enumerated()), id: \.element.id) { index, team in
-          HStack(spacing: 12) {
+          HStack(spacing: PigSpacing.s) {
             ChannelLogoTile(
               logo: team.cachedLogo, client: client, name: team.name,
               size: CGSize(width: SportMetrics.logo.height, height: SportMetrics.logo.height))
@@ -515,7 +515,7 @@ private struct SportsGameContent: View {
         Text(situation).font(SportMetrics.detail)
       }
       if !note.isEmpty {
-        HStack(spacing: 8) {
+        HStack(spacing: PigSpacing.s) {
           if hidden && game.family != .motorsport {
             Image(systemName: "eye.slash").accessibilityHidden(true)
           }
@@ -547,7 +547,7 @@ private struct SportsDashboardSettings: View {
   }
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 28) {
+      VStack(alignment: .leading, spacing: PigSpacing.xl) {
         Button("Done") { dismiss() }
         Text("Sports · Your account").font(SportMetrics.sectionTitle)
         Text("These settings sync to devices paired with this account.")
@@ -556,7 +556,7 @@ private struct SportsDashboardSettings: View {
             get: { prefs.avoidSpoilers },
             set: { value in save(prefs, spoilers: value, delay: prefs.scoreDelaySeconds) }))
           Text("Score delay: \(prefs.scoreDelaySeconds) seconds")
-          LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 16) {
+          LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: PigSpacing.m)], spacing: PigSpacing.m) {
             ForEach([0, 30, 60, 90, 120, 180, 300], id: \.self) { delay in
               Button("\(delay)s") { save(prefs, spoilers: prefs.avoidSpoilers, delay: delay) }
                 .focused($focused, equals: "delay-\(delay)")
@@ -565,7 +565,7 @@ private struct SportsDashboardSettings: View {
                 .accessibilityValue(prefs.scoreDelaySeconds == delay ? "Selected" : "")
             }
           }
-          VStack(alignment: .leading, spacing: 12) {
+          VStack(alignment: .leading, spacing: PigSpacing.s) {
             Button("− 10 seconds") { save(prefs, spoilers: prefs.avoidSpoilers, delay: max(0, prefs.scoreDelaySeconds - 10)) }
               .focused($focused, equals: "less")
             Button("+ 10 seconds") { save(prefs, spoilers: prefs.avoidSpoilers, delay: min(300, prefs.scoreDelaySeconds + 10)) }

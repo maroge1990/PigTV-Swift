@@ -83,7 +83,7 @@ struct OnboardingView: View {
             Text(SignInMetrics.welcome).font(SignInType.welcome).multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, PigSpacing.s)
     }
 
     // MARK: Step 1
@@ -105,14 +105,14 @@ struct OnboardingView: View {
                 .onSubmit(continueToMethod)
             Text("The server address only, with its port if needed. HTTP is fine on your home network.")
                 .font(SignInType.hint).foregroundStyle(Color("PigSecondary"))
-            HStack(spacing: 16) {
+            HStack(spacing: PigSpacing.m) {
                 Button("Continue", systemImage: "arrow.right", action: continueToMethod)
                     .pigPrimaryButton()
                     .disabled(model.authBusy || model.serverText.trimmingCharacters(in: .whitespaces).isEmpty)
                     .accessibilityIdentifier("signin.continue")
                 if model.authBusy { ProgressView("Checking…") }
             }
-            StepHeading(number: 2, title: "How to sign in", active: false).padding(.top, 8)
+            StepHeading(number: 2, title: "How to sign in", active: false).padding(.top, PigSpacing.s)
         }
         .padding(SignInMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,14 +125,14 @@ struct OnboardingView: View {
 
     /// Step 1 once done: the server (a check when this session reached it), with Change.
     private var serverChip: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: PigSpacing.m) {
             if model.checkedServer == model.serverText {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.pigSuccess)
                     .font(SignInType.chipIcon).accessibilityLabel("Reached")
             } else {
                 StepNumber(number: 1, active: false)
             }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text("SERVER").font(SignInType.eyebrow).tracking(1).foregroundStyle(Color("PigSecondary"))
                 Text(SignInStep.shortAddress(model.serverText)).font(SignInType.chipValue).fontDesign(.monospaced).lineLimit(1)
             }
@@ -148,7 +148,7 @@ struct OnboardingView: View {
         .padding(SignInMetrics.chipPadding)
         .background(Color.pigAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         .overlay(alignment: .leading) {
-            Capsule().fill(Color.pigAccent).frame(width: 4, height: 28).padding(.leading, 6).accessibilityHidden(true)
+            Capsule().fill(Color.pigAccent).frame(width: 4, height: 28).padding(.leading, PigSpacing.xs).accessibilityHidden(true)
         }
         #if os(tvOS)
         .focusSection()
@@ -218,7 +218,7 @@ struct OnboardingView: View {
                 .textContentType(.password)
                 .pigField()
                 .accessibilityIdentifier("signin.passwordField")
-            HStack(spacing: 16) {
+            HStack(spacing: PigSpacing.m) {
                 Button("Sign in", systemImage: "person.crop.circle") { Task { await model.login() } }
                     .pigPrimaryButton()
                     .disabled(model.authBusy || model.serverText.isEmpty || model.username.isEmpty || model.password.isEmpty)
@@ -264,7 +264,7 @@ private struct StepHeading: View {
     let title: String
     let active: Bool
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PigSpacing.s) {
             StepNumber(number: number, active: active)
             Text(title).font(SignInType.step).foregroundStyle(active ? Color("PigText") : Color("PigSecondary"))
         }
@@ -295,7 +295,7 @@ private struct SignInTile: View {
         VStack(alignment: .leading, spacing: SignInMetrics.tileInner) {
             if recommended {
                 Text("RECOMMENDED").font(SignInType.badge).tracking(1)
-                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                     .background(Color.pigCanvas.opacity(0.85), in: Capsule())
                     .foregroundStyle(Color.pigAccentText)
             }
@@ -322,7 +322,7 @@ private struct SignInTileStyle: ButtonStyle {
             .padding(SignInMetrics.tilePadding)
             .foregroundStyle(primary ? Color.pigOnAccent : Color("PigText"))
             .background(primary ? Color.pigAccent : lit ? Color.pigAccent.opacity(0.22) : Color.pigRaised, in: shape)
-            .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-6).allowsHitTesting(false) }
+            .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigSpacing.ringOutset).allowsHitTesting(false) }
             .scaleEffect(focused ? 1.03 : configuration.isPressed ? 0.98 : 1)
             .opacity(enabled ? 1 : 0.5)
             .animation(.easeOut(duration: 0.12), value: focused)
@@ -334,7 +334,7 @@ nonisolated enum SignInMetrics {
     static let width: CGFloat = 1480
     static let sidePadding: CGFloat = 40
     static let topPadding: CGFloat = 30
-    static let spacing: CGFloat = 34
+    static let spacing: CGFloat = PigSpacing.xl
     static let brandSpacing: CGFloat = 14
     static let pigInk: CGFloat = 130
     static let cardSpacing: CGFloat = 20
@@ -354,7 +354,7 @@ nonisolated enum SignInMetrics {
     static let width: CGFloat = 760
     static let sidePadding: CGFloat = 20
     static let topPadding: CGFloat = 40
-    static let spacing: CGFloat = 22
+    static let spacing: CGFloat = PigSpacing.xl
     static let brandSpacing: CGFloat = 10
     static let pigInk: CGFloat = 96
     static let cardSpacing: CGFloat = 14
@@ -377,18 +377,18 @@ nonisolated enum SignInMetrics {
 
 nonisolated enum SignInType {
     #if os(tvOS)
-    static let welcome: Font = .system(size: 40, weight: .bold)
-    static let step: Font = .system(size: 26, weight: .bold)
-    static let stepNumber: Font = .system(size: 18, weight: .heavy)
-    static let eyebrow: Font = .system(size: 15, weight: .bold)
-    static let chipValue: Font = .system(size: 21, weight: .semibold)
-    static let chipIcon: Font = .system(size: 30)
-    static let hint: Font = .system(size: 19)
-    static let body: Font = .system(size: 22)
-    static let badge: Font = .system(size: 16, weight: .heavy)
-    static let tileIcon: Font = .system(size: 48, weight: .regular)
-    static let tileTitle: Font = .system(size: 34, weight: .bold)
-    static let code: Font = .system(size: 72, weight: .bold)
+    static let welcome: Font = .system(size: PigType.display, weight: .bold)
+    static let step: Font = .system(size: PigType.cardTitle, weight: .bold)
+    static let stepNumber: Font = .system(size: PigType.caption, weight: .heavy)
+    static let eyebrow: Font = .system(size: PigType.caption, weight: .bold)
+    static let chipValue: Font = .system(size: PigType.secondary, weight: .semibold)
+    static let chipIcon: Font = .system(size: PigType.sectionTitle)
+    static let hint: Font = .system(size: PigType.secondary)
+    static let body: Font = .system(size: PigType.body)
+    static let badge: Font = .system(size: PigType.caption, weight: .heavy)
+    static let tileIcon: Font = .system(size: PigType.pageTitle, weight: .regular)
+    static let tileTitle: Font = .system(size: PigType.sectionTitle, weight: .bold)
+    static let code: Font = .system(size: PigType.jumbo, weight: .bold)
     #else
     static let welcome: Font = .title.bold()
     static let step: Font = .title3.bold()
@@ -401,6 +401,6 @@ nonisolated enum SignInType {
     static let badge: Font = .caption2.weight(.heavy)
     static let tileIcon: Font = .title
     static let tileTitle: Font = .title3.bold()
-    static let code: Font = .system(size: 56, weight: .bold)
+    static let code: Font = .system(size: PigType.jumbo, weight: .bold)
     #endif
 }

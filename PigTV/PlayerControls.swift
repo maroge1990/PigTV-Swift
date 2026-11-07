@@ -10,17 +10,17 @@ struct PlayerActionRow: View {
     let items: [(icon: String, label: String)]
     let selected: Int
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: PigSpacing.m) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 let isSelected = index == selected
-                VStack(spacing: 8) {
+                VStack(spacing: PigSpacing.xs) {
                     Image(systemName: item.icon)
-                        .font(.system(size: 30, weight: .semibold))
+                        .font(.system(size: PigType.sectionTitle, weight: .semibold))
                         .frame(width: 76, height: 76)
                         .background(isSelected ? Color.white : Color.white.opacity(0.18), in: Circle())
                         .foregroundStyle(isSelected ? Color.black : Color.white)
                         .scaleEffect(isSelected ? 1.1 : 1)
-                    Text(item.label).font(.system(size: 18, weight: .medium))
+                    Text(item.label).font(.system(size: PigType.caption, weight: .medium))
                         .opacity(isSelected ? 1 : 0)
                 }
             }

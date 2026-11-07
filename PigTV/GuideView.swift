@@ -148,14 +148,14 @@ struct GuideView: View {
                 #else
                 let compact = geometry.size.width < 700
                 #endif
-                VStack(alignment: .leading, spacing: slim ? 4 : 10) {
+                VStack(alignment: .leading, spacing: slim ? PigSpacing.xs : PigSpacing.s) {
                     Group {
                         if slim {
                             slimBar
                         } else {
                             header(compact: compact)
                             // D-44 (Apple 106): the slim focus strip, then the chips and the tools, above the grid.
-                            if !compact { focusStrip.padding(.horizontal, 24) }
+                            if !compact { focusStrip.padding(.horizontal, PigSpacing.l) }
                             filters(compact: compact)
                         }
                     }
@@ -173,7 +173,7 @@ struct GuideView: View {
                     }
                 }
                 // No top inset under the header: it sits at the same corner on every tab (PigPageHeader).
-                .padding(.top, slim ? 4 : 0).padding(.bottom, slim ? 4 : 12)
+                .padding(.top, slim ? PigSpacing.xs : 0).padding(.bottom, slim ? PigSpacing.xs : PigSpacing.s)
             }
             .overlay {
                 if let menu {
@@ -355,7 +355,7 @@ struct GuideView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, PigSpacing.l)
     }
 
     private var stripHint: String {
@@ -386,7 +386,7 @@ struct GuideView: View {
                     .font(GuideTypography.small).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
             }
             #if os(tvOS)
-            Text("Long press for options").font(.system(size: 18)).foregroundStyle(Color.pigSecondary).fixedSize()
+            Text("Long press for options").font(.system(size: PigType.caption)).foregroundStyle(Color.pigSecondary).fixedSize()
                 .accessibilityIdentifier("guide.strip.hint")
             #endif
             if let programme = focusedProgramme, let channel = focusedChannel {
@@ -448,7 +448,7 @@ struct GuideView: View {
     /// Landscape phone: title, date, the category menu and icon-only controls
     /// in a single row.
     private var slimBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: PigSpacing.s) {
             Text("TV Guide").font(.headline)
             Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
                 .font(.caption).foregroundStyle(.secondary)
@@ -472,13 +472,13 @@ struct GuideView: View {
             .buttonBorderShape(.capsule)
             .controlSize(.small)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, PigSpacing.l)
     }
 
     #if !os(tvOS)
     // Phone layout: icon-only controls so nothing wraps.
     private var phoneHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             // The shared header (16 Oct); the controls go icon-only so nothing wraps.
             PigPageHeader(title: "TV Guide",
                           subtitle: Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))) {
@@ -504,15 +504,15 @@ struct GuideView: View {
     @ViewBuilder
     private func filters(compact: Bool) -> some View {
         if compact {
-            filterMenu.padding(.horizontal, 24)
+            filterMenu.padding(.horizontal, PigSpacing.l)
         } else {
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.s) {
             ScrollView(.horizontal) {
-                HStack(spacing: 12) {
+                HStack(spacing: PigSpacing.s) {
                     ForEach(GuideChips.make(categories: app.categories)) { chip in
                         filterButton(chip)
                     }
-                }.padding(.horizontal, 12).padding(.vertical, 10)
+                }.padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.s)
             }
             .scrollIndicators(.hidden)
             .clipped()
@@ -525,15 +525,15 @@ struct GuideView: View {
                 filterStripMetrics = metrics
             }
             if usesGridView {
-                HStack(spacing: 10) { tools }
+                HStack(spacing: PigSpacing.s) { tools }
                     .buttonStyle(GuideFilterStyle())
                     #if os(tvOS)
                     .focusSection()
                     #endif
             }
             }
-            .padding(.horizontal, 12)
-            .padding(.trailing, 12)
+            .padding(.horizontal, PigSpacing.s)
+            .padding(.trailing, PigSpacing.s)
         }
     }
 
@@ -820,9 +820,9 @@ private struct CategoryContentFade: ViewModifier {
                     .frame(width: width)
                     // The focus ring extends 4 pt outside the chip. Fade only
                     // horizontally; keep its top/bottom inside the mask.
-                    .padding(.vertical, -6)
+                    .padding(.vertical, -PigSpacing.ringOutset)
                     .offset(x: -origin)
-                } else { Color.pigMediaCanvas.padding(.vertical, -6) }
+                } else { Color.pigMediaCanvas.padding(.vertical, -PigSpacing.ringOutset) }
             }
     }
 }

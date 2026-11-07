@@ -14,21 +14,21 @@ import SwiftUI
 
 private enum CricketMetrics {
     #if os(tvOS)
-    static let title: Font = .system(size: 46, weight: .heavy)
-    static let matchTitle: Font = .system(size: 46, weight: .heavy)
-    static let kicker: Font = .system(size: 19, weight: .bold)
-    static let cardTitle: Font = .system(size: 26, weight: .bold)
-    static let team: Font = .system(size: 26, weight: .semibold)
-    static let score: Font = .system(size: 30, weight: .heavy)
-    static let detail: Font = .system(size: 20)
-    static let meta: Font = .system(size: 22)
-    static let chip: Font = .system(size: 22, weight: .medium)
-    static let dayLabel: Font = .system(size: 18, weight: .bold)
-    static let daySub: Font = .system(size: 16)
-    static let otherTeam: Font = .system(size: 20, weight: .semibold)
-    static let otherScore: Font = .system(size: 20, weight: .heavy)
-    static let otherDetail: Font = .system(size: 17)
-    static let spacing: CGFloat = 26
+    static let title: Font = .system(size: PigType.pageTitle, weight: .heavy)
+    static let matchTitle: Font = .system(size: PigType.pageTitle, weight: .heavy)
+    static let kicker: Font = .system(size: PigType.secondary, weight: .bold)
+    static let cardTitle: Font = .system(size: PigType.cardTitle, weight: .bold)
+    static let team: Font = .system(size: PigType.cardTitle, weight: .semibold)
+    static let score: Font = .system(size: PigType.sectionTitle, weight: .heavy)
+    static let detail: Font = .system(size: PigType.secondary)
+    static let meta: Font = .system(size: PigType.body)
+    static let chip: Font = .system(size: PigType.body, weight: .medium)
+    static let dayLabel: Font = .system(size: PigType.caption, weight: .bold)
+    static let daySub: Font = .system(size: PigType.caption)
+    static let otherTeam: Font = .system(size: PigType.secondary, weight: .semibold)
+    static let otherScore: Font = .system(size: PigType.secondary, weight: .heavy)
+    static let otherDetail: Font = .system(size: PigType.caption)
+    static let spacing: CGFloat = PigSpacing.l
     static let columnGap: CGFloat = 44
     static let sideWidth: CGFloat = 560
     static let otherWidth: CGFloat = 380
@@ -51,7 +51,7 @@ private enum CricketMetrics {
     static let otherTeam: Font = .callout.weight(.semibold)
     static let otherScore: Font = .callout.weight(.heavy)
     static let otherDetail: Font = .footnote
-    static let spacing: CGFloat = 18
+    static let spacing: CGFloat = PigSpacing.l
     static let columnGap: CGFloat = 24
     static let sideWidth: CGFloat = 400
     static let otherWidth: CGFloat = 300
@@ -163,7 +163,7 @@ struct CricketPageView: View {
                 }
                 if !page.others.isEmpty { others(page.others, now: now) }
             } else if !model.loaded || model.page?.available == false {
-                ProgressView("Loading cricket…").frame(maxWidth: .infinity).padding(.top, 80)
+                ProgressView("Loading cricket…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
             } else if model.page != nil {
                 nothingOn
             } else {
@@ -174,7 +174,7 @@ struct CricketPageView: View {
             }
         }
         #if os(iOS)
-        .padding(wide ? 32 : 16)
+        .padding(wide ? PigSpacing.section : PigSpacing.l)
         #endif
     }
 
@@ -187,9 +187,9 @@ struct CricketPageView: View {
         let label = SportLabels.label(scope.league, in: scope.labels)
         if let lead = page.lead {
             SportColumns.layout(narrow: !wide, spacing: CricketMetrics.columnGap).callAsFunction {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: PigSpacing.s) {
                     // #211: the whole line (it wraps to a second line rather than cutting the series words).
-                    HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    HStack(alignment: .firstTextBaseline, spacing: PigSpacing.m) {
                         Text([lead.label ?? lead.competition ?? label, lead.venue, spoilerFree ? nil : lead.seriesLine]
                             .compactMap { $0 }.joined(separator: " · "))
                             .font(CricketMetrics.cardTitle).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -216,9 +216,9 @@ struct CricketPageView: View {
     }
 
     private func matches(_ title: String, _ list: [CricketOther], now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
             Text(title).font(CricketMetrics.cardTitle).accessibilityAddTraits(.isHeader)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: CricketMetrics.otherWidth), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: CricketMetrics.otherWidth), spacing: PigSpacing.m, alignment: .top)], alignment: .leading, spacing: PigSpacing.m) {
                 ForEach(list) { other in otherCard(other, now: now) }
             }
             .tvFocusSection()
@@ -228,7 +228,7 @@ struct CricketPageView: View {
     /// The lead's teams with their innings in columns and the open innings' overs (V2-Cricket-1); spoiler-free: the teams.
     private func scoreboard(_ lead: CricketLead, spoilerFree: Bool) -> some View {
         let board = CricketPageText.scoreboard(lead)
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: PigSpacing.s) {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
                 ForEach(Array(board.headers.enumerated()), id: \.offset) { _, header in
@@ -239,7 +239,7 @@ struct CricketPageView: View {
             ForEach(Array(lead.teams.enumerated()), id: \.offset) { index, team in
                 let list = index < lead.innings.count ? lead.innings[index] : []
                 let batting = !spoilerFree && list.contains(where: \.current) && lead.status == .live
-                HStack(spacing: compact ? 8 : 16) {
+                HStack(spacing: compact ? PigSpacing.s : PigSpacing.m) {
                     SportBadge(name: team.name, logo: team.logo, league: "Cricket", client: browse.client,
                                size: compact ? 28 : CricketMetrics.badge)
                     if isFollowed(team.name) {
@@ -259,7 +259,7 @@ struct CricketPageView: View {
                         .accessibilityIdentifier("cricket.lead.score.\(index)")
                     }
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, PigSpacing.s)
                 .frame(minHeight: CricketMetrics.badge + 6)
                 .background(isFollowed(team.name) ? Color.pigAccent.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityElement(children: .contain)
@@ -294,7 +294,7 @@ struct CricketPageView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: PigSpacing.m) {
             #if os(tvOS)
             Text("Cricket").font(CricketMetrics.title).accessibilityAddTraits(.isHeader)
             #else
@@ -303,7 +303,7 @@ struct CricketPageView: View {
             Spacer(minLength: 0)
             if let team = preferences.preferences.teams["Cricket"]?.first {
                 Label("Following \(team)", systemImage: "star.fill").font(CricketMetrics.chip).lineLimit(1)
-                    .padding(.horizontal, 18).padding(.vertical, 8)
+                    .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                     .background(Color.pigRaised, in: Capsule())
                     .accessibilityIdentifier("cricket.following")
             }
@@ -326,8 +326,8 @@ struct CricketPageView: View {
     @ViewBuilder
     private func leadBlock(_ page: CricketPage, now: Date, spoilerFree: Bool) -> some View {
         if let lead = page.lead {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                HStack(spacing: PigSpacing.m) {
                     Text(CricketPageText.kicker(lead)).font(CricketMetrics.kicker).tracking(2).foregroundStyle(.secondary)
                     pill(lead, now: now)
                 }
@@ -335,12 +335,12 @@ struct CricketPageView: View {
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("cricket.lead.title")
                 Text(CricketPageText.venueLine(lead)).font(CricketMetrics.meta).foregroundStyle(.secondary)
-                scores(lead, spoilerFree: spoilerFree).padding(.top, 10)
-                days(lead, now: now).padding(.top, 6)
-                actions(lead, now: now).padding(.top, 8)
+                scores(lead, spoilerFree: spoilerFree).padding(.top, PigSpacing.s)
+                days(lead, now: now).padding(.top, PigSpacing.xs)
+                actions(lead, now: now).padding(.top, PigSpacing.s)
             }
         } else {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Text("No match to lead with").font(CricketMetrics.cardTitle)
                 Text("Nothing is live or coming up for the teams you follow.").font(CricketMetrics.meta).foregroundStyle(.secondary)
             }
@@ -351,7 +351,7 @@ struct CricketPageView: View {
         let text = CricketPageText.pill(lead, now: now)
         let live = lead.status == .live
         return Text(text).font(CricketMetrics.kicker).tracking(1)
-            .padding(.horizontal, 14).padding(.vertical, 5)
+            .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.xs)
             .foregroundStyle(live ? Color.pigOnStatus : lead.status == .done ? Color.secondary : Color.pigAccentText)
             .background {
                 if live { Capsule().fill(Color.pigDanger) }
@@ -362,11 +362,11 @@ struct CricketPageView: View {
     }
 
     private func scores(_ lead: CricketLead, spoilerFree: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
             ForEach(Array(lead.teams.enumerated()), id: \.offset) { index, team in
                 let list = index < lead.innings.count ? lead.innings[index] : []
                 let batting = list.contains(where: \.current)
-                HStack(spacing: compact ? 8 : 16) {
+                HStack(spacing: compact ? PigSpacing.s : PigSpacing.m) {
                     SportBadge(name: team.name, logo: team.logo, league: "Cricket", client: browse.client,
                                size: compact ? 28 : CricketMetrics.badge)
                     Text(team.name).font(CricketMetrics.team.weight(batting && !spoilerFree ? .heavy : .semibold)).lineLimit(1)
@@ -408,15 +408,15 @@ struct CricketPageView: View {
     private func days(_ lead: CricketLead, now: Date) -> some View {
         if lead.days.count > 1 {
             ScrollView(.horizontal) {
-                HStack(spacing: 10) {
+                HStack(spacing: PigSpacing.s) {
                     ForEach(lead.days) { day in
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                             Text("Day \(day.number)").font(CricketMetrics.dayLabel)
                             Text(CricketPageText.daySub(day, lead: lead, now: now)).font(CricketMetrics.daySub)
                                 .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color.secondary).lineLimit(1)
                         }
                         .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color("PigText"))
-                        .padding(.horizontal, 18).padding(.vertical, 10)
+                        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                         .frame(minWidth: CricketMetrics.dayWidth, alignment: .leading)
                         .background { dayBackground(day.state) }
                         .accessibilityElement(children: .combine)
@@ -447,13 +447,13 @@ struct CricketPageView: View {
         let offered = CricketPageText.actions(lead, now: now, pendingEventID: appState.pendingWatch?.eventID)
             .filter { $0 != .otherChannels || presenter != nil }
         // iPhone: one under the other (the labels would not fit side by side).
-        let layout = !compact ? AnyLayout(HStackLayout(spacing: 14)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+        let layout = !compact ? AnyLayout(HStackLayout(spacing: PigSpacing.m)) : AnyLayout(VStackLayout(alignment: .leading, spacing: PigSpacing.s))
         layout {
             ForEach(Array(offered.enumerated()), id: \.offset) { index, action in
                 actionButton(action, lead: lead, event: event, primary: index == 0)
             }
             Text(CricketPageText.channelLine(lead, now: now)).font(CricketMetrics.detail).foregroundStyle(.secondary)
-                .lineLimit(1).padding(.leading, compact ? 0 : 8)
+                .lineLimit(1).padding(.leading, compact ? 0 : PigSpacing.s)
         }
         .tvFocusSection()
     }
@@ -508,7 +508,7 @@ struct CricketPageView: View {
     // MARK: The series
 
     private func seriesPanel(_ series: CricketSeries, lead: CricketLead?, now: Date, spoilerFree: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             HStack(alignment: .firstTextBaseline) {
                 Text(series.name ?? "Series").font(CricketMetrics.cardTitle).lineLimit(1)
                 Spacer(minLength: 8)
@@ -518,8 +518,8 @@ struct CricketPageView: View {
             }
             ForEach(series.matches) { match in
                 let text = CricketPageText.seriesResult(match, lead: lead, spoilerFree: spoilerFree, now: now)
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: PigSpacing.m) {
+                    VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                         Text(match.label ?? "Match").font(CricketMetrics.detail.weight(.bold)).lineLimit(1)
                         if let when = CricketPageText.span(start: match.start, end: match.end) {
                             Text(when).font(CricketMetrics.otherDetail).foregroundStyle(.secondary)
@@ -528,7 +528,7 @@ struct CricketPageView: View {
                     Spacer(minLength: 8)
                     if match.current {
                         Text(text).font(CricketMetrics.otherDetail.weight(.heavy))
-                            .padding(.horizontal, 12).padding(.vertical, 4)
+                            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                             .foregroundStyle(lead?.status == .live ? Color.pigOnStatus : Color.pigAccentText)
                             .background {
                                 if lead?.status == .live { Capsule().fill(Color.pigDanger) }
@@ -539,7 +539,7 @@ struct CricketPageView: View {
                             .multilineTextAlignment(.trailing).lineLimit(2)
                     }
                 }
-                .padding(.vertical, 8).padding(.horizontal, 4)
+                .padding(.vertical, PigSpacing.s).padding(.horizontal, PigSpacing.xs)
                 .background(match.current ? Color.pigDanger.opacity(0.08) : .clear)
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.pigBorder).frame(height: 1) }
                 .accessibilityElement(children: .combine)
@@ -554,7 +554,7 @@ struct CricketPageView: View {
     // MARK: Other competitions
 
     private func others(_ list: [CricketOther], now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Your other competitions · today and next").font(CricketMetrics.cardTitle).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
@@ -562,7 +562,7 @@ struct CricketPageView: View {
                     Text(competitions(list)).font(CricketMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: CricketMetrics.otherWidth), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: CricketMetrics.otherWidth), spacing: PigSpacing.m, alignment: .top)], alignment: .leading, spacing: PigSpacing.m) {
                 ForEach(list) { other in otherCard(other, now: now) }
             }
             .tvFocusSection()
@@ -579,11 +579,11 @@ struct CricketPageView: View {
         let event = CricketPageText.event(other)
         let live = other.status == .live
         return Button { select(other) } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text((other.competition ?? "Cricket").uppercased()).font(CricketMetrics.otherDetail.weight(.bold)).tracking(1.2)
                     .foregroundStyle(.secondary).lineLimit(1)
                 ForEach(Array(other.teams.enumerated()), id: \.offset) { index, team in
-                    HStack(spacing: 10) {
+                    HStack(spacing: PigSpacing.s) {
                         Text(team.name).font(CricketMetrics.otherTeam).lineLimit(1)
                         Spacer(minLength: 6)
                         if index < other.scores.count, let score = other.scores[index] {
@@ -594,7 +594,7 @@ struct CricketPageView: View {
                 if let line = other.line {
                     Text(line).font(CricketMetrics.otherDetail).lineLimit(1)
                 }
-                HStack(spacing: 10) {
+                HStack(spacing: PigSpacing.s) {
                     Text(CricketPageText.otherStatus(other, now: now)).font(CricketMetrics.otherDetail.weight(live ? .heavy : .semibold))
                         .foregroundStyle(live ? Color.pigDanger : other.status == .scheduled ? Color.pigAccentText : Color.secondary)
                     Spacer(minLength: 6)
@@ -624,23 +624,23 @@ struct CricketPageView: View {
     // MARK: States
 
     private var nothingOn: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "figure.cricket").font(.system(size: 56, weight: .semibold)).foregroundStyle(Color.pigAccentText)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: "figure.cricket").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text("No cricket today or tomorrow").font(DetailType.title).multilineTextAlignment(.center)
         }
-        .padding(.vertical, 70).frame(maxWidth: .infinity)
+        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
     }
 
     private var unavailable: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "figure.cricket").font(.system(size: 56, weight: .semibold)).foregroundStyle(Color.pigAccentText)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: "figure.cricket").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text("Cricket is unavailable right now").font(DetailType.title).multilineTextAlignment(.center)
             Text(model.error ?? "The match data could not be reached. The guide and playback are not affected.")
                 .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
         }
-        .padding(.vertical, 70).frame(maxWidth: .infinity)
+        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
     }
 }

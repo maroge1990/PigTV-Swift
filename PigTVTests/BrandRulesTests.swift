@@ -153,6 +153,71 @@ final class BrandRulesTests: XCTestCase {
         report(lines.filter { $0.text.contains("Image(\"BrandWordmark\")") }, "the wordmark drawn on its own (use the kit's lockup)")
     }
 
+    // #243: paddings and stack spacings come from PigSpacing. A bare number in a `.padding(...)` or after `spacing:` is a
+    // new value outside the scale (0 is not a distance; a number after `*` or `/` is a multiple of a token, not a size).
+    func testSpacingComesFromTheScale() throws {
+        let files: Set<String> = [Self.rolesFile, "BrandLayout.swift"]
+        let lines = try sourceLines().filter { !files.contains($0.file) }
+        report(lines.filter { !Self.spacingLiterals(in: $0.text).isEmpty },
+               "a literal padding or spacing (use PigSpacing.xxs/xs/s/m/l/xl, section, empty, or a named metric)")
+    }
+
+    // #243: font sizes come from PigType's roles; the weight and design stay at the call site.
+    func testFontSizesComeFromTheTypeScale() throws {
+        let lines = try sourceLines().filter { $0.file != Self.rolesFile }
+        report(lines.filter { matches(#"\.system\(size:\s*[0-9(]"#, $0.text) || matches(#"\.system\(size:[^,)]*\?\s*[0-9]"#, $0.text) },
+               "a literal font size (use PigType.caption/kicker/secondary/body/cardTitle/sectionTitle/display/pageTitle/hero)")
+    }
+
+    /// The bare, non-zero numbers in a line's `.padding(...)` arguments and `spacing:` expressions.
+    static func spacingLiterals(in text: String) -> [String] {
+        var found: [String] = []
+        let number = try! NSRegularExpression(pattern: #"(?<![A-Za-z_0-9.])-?[0-9]+(\.[0-9]+)?(?![A-Za-z_0-9.])"#)
+        func scan(_ inside: String) {
+            for m in number.matches(in: inside, range: NSRange(inside.startIndex..., in: inside)) {
+                guard let r = Range(m.range, in: inside) else { continue }
+                let before = inside[..<r.lowerBound].trimmingCharacters(in: .whitespaces)
+                if before.hasSuffix("*") || before.hasSuffix("/") { continue }
+                if Double(inside[r]) == 0 { continue }
+                found.append(String(inside[r]))
+            }
+        }
+        // .padding(...): everything up to its closing parenthesis
+        var search = text.startIndex..<text.endIndex
+        while let hit = text.range(of: ".padding(", range: search) {
+            var depth = 1, end = hit.upperBound
+            while end < text.endIndex, depth > 0 {
+                if text[end] == "(" { depth += 1 } else if text[end] == ")" { depth -= 1 }
+                end = text.index(after: end)
+            }
+            scan(String(text[hit.upperBound..<(depth == 0 ? text.index(before: end) : end)]))
+            search = end..<text.endIndex
+        }
+        // spacing: up to the next top-level comma or closing parenthesis
+        search = text.startIndex..<text.endIndex
+        while let hit = text.range(of: #"\bspacing:"#, options: .regularExpression, range: search) {
+            var depth = 0, end = hit.upperBound
+            while end < text.endIndex {
+                let c = text[end]
+                if c == "(" || c == "[" { depth += 1 } else if c == ")" || c == "]" { if depth == 0 { break }; depth -= 1 } else if c == ",", depth == 0 { break }
+                end = text.index(after: end)
+            }
+            scan(String(text[hit.upperBound..<end]))
+            search = end..<text.endIndex
+        }
+        return found
+    }
+
+    func testSpacingParser() {
+        XCTAssertEqual(Self.spacingLiterals(in: "VStack(spacing: 12) {"), ["12"])
+        XCTAssertEqual(Self.spacingLiterals(in: ".padding(.horizontal, wide ? 24 : PigSpacing.m)"), ["24"])
+        XCTAssertEqual(Self.spacingLiterals(in: ".padding(-6)"), ["-6"])
+        XCTAssertEqual(Self.spacingLiterals(in: "HStack(spacing: 0) { }.padding(PigSpacing.l * 2)"), [])
+        XCTAssertEqual(Self.spacingLiterals(in: ".padding(EdgeInsets(top: 26, leading: PigSpacing.m, bottom: 0, trailing: 0))"), ["26"])
+        XCTAssertEqual(Self.spacingLiterals(in: "GridItem(.flexible(minimum: 0), spacing: PigSpacing.xl, alignment: .top)"), [])
+        XCTAssertEqual(Self.spacingLiterals(in: "Text(\"x\").lineSpacing(4).padding(.top, PigSpacing.empty)"), [])
+    }
+
     /// Every decimal literal inside the parentheses that follow `prefix` ("0.45" and both sides of "x ? 0.9 : 0.7").
     static func opacities(after prefix: String, in text: String) -> [Double] {
         var values: [Double] = []

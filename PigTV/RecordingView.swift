@@ -12,11 +12,11 @@ private enum ViewMetrics {
     static let badge: CGFloat = 300
     static let padding = EdgeInsets(top: 36, leading: 96, bottom: 48, trailing: 96)
     static let factsWidth: CGFloat = 560
-    static let eyebrow: Font = .system(size: 18, weight: .bold)
-    static let title: Font = .system(size: 56, weight: .heavy)
-    static let detail: Font = .system(size: 20)
-    static let fact: Font = .system(size: 21)
-    static let pill: Font = .system(size: 20, weight: .bold)
+    static let eyebrow: Font = .system(size: PigType.caption, weight: .bold)
+    static let title: Font = .system(size: PigType.hero, weight: .heavy)
+    static let detail: Font = .system(size: PigType.secondary)
+    static let fact: Font = .system(size: PigType.secondary)
+    static let pill: Font = .system(size: PigType.secondary, weight: .bold)
     static let barWidth: CGFloat = 640
     static let pillTop: CGFloat = 40
     #else
@@ -148,8 +148,8 @@ struct RecordingView: View {
                 art(badge: ViewMetrics.badge)
                     .frame(height: geometry.size.height * ViewMetrics.artShare)
                     .overlay(alignment: .topTrailing) { statePill.padding(.top, ViewMetrics.pillTop).padding(.trailing, ViewMetrics.padding.trailing) }
-                HStack(alignment: .center, spacing: 60) {
-                    VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: PigSpacing.empty) {
+                    VStack(alignment: .leading, spacing: PigSpacing.s) {
                         header
                         actionRow
                         messages
@@ -172,20 +172,20 @@ struct RecordingView: View {
     /// iPhone: the art, then one column.
     private var phone: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 art(badge: ViewMetrics.phoneBadge)
                     .frame(height: ViewMetrics.phoneArtHeight)
-                    .overlay(alignment: .bottomTrailing) { statePill.padding(12) }
-                VStack(alignment: .leading, spacing: 12) {
+                    .overlay(alignment: .bottomTrailing) { statePill.padding(PigSpacing.s) }
+                VStack(alignment: .leading, spacing: PigSpacing.s) {
                     header
                     primary.frame(maxWidth: .infinity)
-                    HStack(spacing: 8) { secondary }
+                    HStack(spacing: PigSpacing.s) { secondary }
                     messages
-                    facts.padding(.top, 6)
+                    facts.padding(.top, PigSpacing.xs)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, PigSpacing.m)
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, PigSpacing.l)
         }
         .ignoresSafeArea(edges: .top)
     }
@@ -201,7 +201,7 @@ struct RecordingView: View {
     private var statePill: some View {
         Text(RecordingFacts.state(item)).font(ViewMetrics.pill)
             .foregroundStyle(item.status == "recording" ? Color.pigDanger : Color.pigSecondary)
-            .padding(.horizontal, 16).padding(.vertical, 8)
+            .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             .background(Color.pigCanvas.opacity(0.85), in: Capsule())
             .accessibilityIdentifier("recording.state")
     }
@@ -216,7 +216,7 @@ struct RecordingView: View {
         Text(item.title).font(ViewMetrics.title).lineLimit(2).minimumScaleFactor(0.7)
             .accessibilityAddTraits(.isHeader)
         if let fraction = progress.fraction {
-            HStack(spacing: 16) {
+            HStack(spacing: PigSpacing.m) {
                 PigProgressBar(fraction: fraction, height: 8).frame(maxWidth: ViewMetrics.barWidth)
                 if let position = RecordingFacts.position(item, progress: progress) {
                     Text(compact ? "\(DetailText.duration((item.duration_sec ?? 0) * (1 - fraction))) left" : position)
@@ -236,11 +236,11 @@ struct RecordingView: View {
     }
 
     private var actionRow: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: PigSpacing.m) {
             primary
             secondary
         }
-        .padding(.top, 14)
+        .padding(.top, PigSpacing.m)
         .defaultFocus($playFocused, true)
         .tvFocusSection()
     }

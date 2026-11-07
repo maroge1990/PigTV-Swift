@@ -472,14 +472,14 @@ struct RecordingPlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let error = model.error {
-                VStack(spacing: 20) {
+                VStack(spacing: PigSpacing.l) {
                     Text("Unable to play \(model.recording.title)").font(.title2)
                     Text(error)
                     if model.canRetry { Button("Retry") { model.retry() }.pigPrimaryButton() }
                     Button("Back") { dismiss() }
-                }.padding(48).foregroundStyle(.white)
+                }.padding(PigSpacing.section).foregroundStyle(.white)
             } else if let position = model.resumePrompt {
-                VStack(spacing: 24) {
+                VStack(spacing: PigSpacing.l) {
                     Text(model.recording.title).font(.title2.bold()).multilineTextAlignment(.center)
                     Button("Resume from \(RecordingResume.clock(position))", systemImage: "play.fill") { model.chooseResume(true) }
                         .pigPrimaryButton()
@@ -487,7 +487,7 @@ struct RecordingPlayerScreen: View {
                     Button("Start over", systemImage: "arrow.counterclockwise") { model.chooseResume(false) }
                     Button("Cancel") { dismiss() }
                 }
-                .padding(48).foregroundStyle(.white)
+                .padding(PigSpacing.section).foregroundStyle(.white)
                 .tvFocusSection()
                 .defaultFocus($resumeFocused, true)
                 .onAppear { resumeFocused = true }
@@ -498,7 +498,7 @@ struct RecordingPlayerScreen: View {
                 RecordingTouchPlayer(model: model, close: { dismiss() })
                 #endif
             } else {
-                VStack(spacing: 24) {
+                VStack(spacing: PigSpacing.l) {
                     ProgressView(model.preparing ? "Preparing recording…" : "Loading recording…")
                     Button("Cancel") { dismiss() }
                 }.foregroundStyle(.white)

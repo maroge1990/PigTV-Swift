@@ -143,30 +143,30 @@ struct ProgrammeMenuCard: View {
     @FocusState private var focus: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text(subject.title).font(Self.titleFont).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 Text(subject.subtitle).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary)
                     .monospacedDigit().lineLimit(1)
             }
-            .padding(.horizontal, 10).padding(.bottom, 12)
+            .padding(.horizontal, PigSpacing.s).padding(.bottom, PigSpacing.s)
             .accessibilityElement(children: .combine)
             let record = items.filter(\.isRecordSection)
             if !record.isEmpty {
                 Text("RECORD").font(Self.sectionFont).tracking(1.4).foregroundStyle(Color.pigSecondary)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                     .accessibilityAddTraits(.isHeader)
                 ForEach(record) { item in row(item) }
-                Rectangle().fill(Color.pigBorder).frame(height: 1).padding(.horizontal, 10).padding(.vertical, 8)
+                Rectangle().fill(Color.pigBorder).frame(height: 1).padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.s)
                     .accessibilityHidden(true)
             }
             ForEach(items.filter { !$0.isRecordSection }) { item in row(item) }
             if let error {
                 Text(error).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 10).padding(.top, 6)
+                    .fixedSize(horizontal: false, vertical: true).padding(.horizontal, PigSpacing.s).padding(.top, PigSpacing.xs)
             }
         }
-        .padding(EdgeInsets(top: 26, leading: 18, bottom: 18, trailing: 18))
+        .padding(EdgeInsets(top: PigSpacing.l, leading: PigSpacing.m, bottom: PigSpacing.m, trailing: PigSpacing.m))
         .frame(width: Self.width, alignment: .leading)
         .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         .shadow(color: Color.pigShadow.opacity(0.7), radius: 50, y: 40)
@@ -180,12 +180,12 @@ struct ProgrammeMenuCard: View {
 
     private func row(_ item: ProgrammeMenuItem) -> some View {
         Button { choose(item) } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: PigSpacing.m) {
                 if item.isRecordSection {
                     Circle().fill(item.id == "recordThis" ? Color.pigDanger : Color.clear)
                         .frame(width: Self.dot, height: Self.dot).accessibilityHidden(true)
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(item.title).font(item.isRecordSection ? Self.itemFont : Self.moreFont)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     if let detail = item.detail {
@@ -196,7 +196,7 @@ struct ProgrammeMenuCard: View {
                 Spacer(minLength: 0)
                 if busy == item { ProgressView() }
             }
-            .padding(.horizontal, 16).padding(.vertical, item.isRecordSection ? 14 : 12)
+            .padding(.horizontal, PigSpacing.m).padding(.vertical, item.isRecordSection ? PigSpacing.m : PigSpacing.s)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -209,11 +209,11 @@ struct ProgrammeMenuCard: View {
     #if os(tvOS)
     static let width: CGFloat = 520
     static let dot: CGFloat = 14
-    static let titleFont: Font = .system(size: 28, weight: .heavy)
-    static let subtitleFont: Font = .system(size: 18)
-    static let sectionFont: Font = .system(size: 15, weight: .bold)
-    static let itemFont: Font = .system(size: 22, weight: .bold)
-    static let moreFont: Font = .system(size: 21, weight: .semibold)
+    static let titleFont: Font = .system(size: PigType.cardTitle, weight: .heavy)
+    static let subtitleFont: Font = .system(size: PigType.caption)
+    static let sectionFont: Font = .system(size: PigType.caption, weight: .bold)
+    static let itemFont: Font = .system(size: PigType.body, weight: .bold)
+    static let moreFont: Font = .system(size: PigType.secondary, weight: .semibold)
     #else
     static let width: CGFloat = 360
     static let dot: CGFloat = 10

@@ -154,7 +154,7 @@ struct TopShelfCardView: View {
             VStack(spacing: 0) {
                 logoArea.frame(maxWidth: .infinity).frame(height: 268)
                 Spacer(minLength: 0)
-                text.padding(.horizontal, 44).padding(.bottom, 34)
+                text.padding(.horizontal, PigSpacing.section).padding(.bottom, PigSpacing.xl)
             }
         }
         .frame(width: TopShelfCardLayout.size.width, height: TopShelfCardLayout.size.height)
@@ -171,47 +171,47 @@ struct TopShelfCardView: View {
                 .interpolation(.high)
                 .frame(width: size.width, height: size.height)
                 .clipShape(RoundedRectangle(cornerRadius: PigRadius.inner, style: .continuous))
-                .padding(look?.needsPlate == true ? 18 : 0)
+                .padding(look?.needsPlate == true ? PigSpacing.m : 0)
                 .background {
                     if look?.needsPlate == true {
                         RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).fill(Color.pigMediaText.opacity(0.92))
                     }
                 }
                 .shadow(color: Color.pigShadow.opacity(0.35), radius: 18, y: 8)
-                .padding(.top, 30)
+                .padding(.top, PigSpacing.xl)
         } else {
             // No logo: the pig, small and quiet, and the channel's name.
-            VStack(spacing: 14) {
+            VStack(spacing: PigSpacing.m) {
                 PigBrandMark(width: 84, height: 68).opacity(0.85)
                 if content.title != nil {
-                    Text(content.channel).font(.system(size: 30, weight: .semibold)).foregroundStyle(Color.pigMediaText.opacity(0.8))
+                    Text(content.channel).font(.system(size: PigType.sectionTitle, weight: .semibold)).foregroundStyle(Color.pigMediaText.opacity(0.8))
                         .lineLimit(1)
                 }
             }
-            .padding(.top, 30)
+            .padding(.top, PigSpacing.xl)
         }
     }
 
     private var text: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text(content.title ?? content.channel)
-                .font(.system(size: 44, weight: .bold))
+                .font(.system(size: PigType.pageTitle, weight: .bold))
                 .foregroundStyle(Color.pigMediaText)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.s) {
                 if content.live {
                     Text("LIVE")
-                        .font(.system(size: 19, weight: .heavy))
+                        .font(.system(size: PigType.secondary, weight: .heavy))
                         .tracking(1)
                         .foregroundStyle(Color.pigMediaText)
-                        .padding(.horizontal, 10).padding(.vertical, 3)
+                        .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
                         .background(Color.pigMediaText.opacity(0.18), in: Capsule())
                 }
                 if !content.line.isEmpty {
                     Text(content.line)
-                        .font(.system(size: 24, weight: .medium))
+                        .font(.system(size: PigType.body, weight: .medium))
                         .foregroundStyle(Color.pigMediaText.opacity(0.72))
                         .lineLimit(1)
                 }

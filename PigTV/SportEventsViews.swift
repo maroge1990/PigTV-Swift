@@ -90,10 +90,10 @@ struct SportEventsContent: View {
                 }
             }
         } else if !model.loaded.contains(league) || model.pages[league]?.available == false {
-            ProgressView("Loading \(label)…").frame(maxWidth: .infinity).padding(.top, 60)
+            ProgressView("Loading \(label)…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
         } else {
             Text("\(label) is unavailable right now.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, 60)
+                .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
         }
     }
 
@@ -101,12 +101,12 @@ struct SportEventsContent: View {
 
     @ViewBuilder
     private func eventHeader(_ event: SportEventsEvent, now: Date, hidden: Bool, detail: String? = nil) -> some View {
-        HStack(alignment: .center, spacing: 18) {
+        HStack(alignment: .center, spacing: PigSpacing.m) {
             if let card = front.game(event.id) {
                 SportGameCard(game: card, front: front, hidden: hidden, now: now, client: browse.client,
                               onSelect: { SportGamePress.select(card, app: app, presenter: presenter) }, flow: flow)
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text(event.name).font(SportPageMetrics.cardTitle).lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 Text([detail, [event.venue?.name, event.venue?.city].compactMap { $0 }.first,
@@ -121,7 +121,7 @@ struct SportEventsContent: View {
     /// Several events (a tennis week's tournaments): their C-R cards in one row, each with its place.
     private func eventCards(_ events: [SportEventsEvent], now: Date, hidden: Bool) -> some View {
         ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 14) {
+            LazyHStack(alignment: .top, spacing: PigSpacing.m) {
                 ForEach(events) { event in
                     if let card = front.game(event.id) {
                         SportGameCard(game: card, front: front, hidden: hidden, now: now, client: browse.client,
@@ -129,7 +129,7 @@ struct SportEventsContent: View {
                     }
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, PigSpacing.xs)
         }
         .scrollIndicators(.hidden)
         .scrollClipDisabled()
@@ -163,16 +163,16 @@ struct SportEventsContent: View {
             if bouts.isEmpty {
                 Text("No bouts listed.").font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 ForEach(bouts) { bout in
                     let winner = SportEventsText.winner(bout, spoilerFree: hidden)
                     let followed = bout.fighters.contains { SportEventsText.followed($0.name, in: event) }
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: PigSpacing.s) {
+                        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                             if let weight = bout.weightClass {
                                 Text(weight.uppercased()).font(SportPageMetrics.kicker).tracking(1.2).foregroundStyle(.secondary)
                             }
-                            HStack(spacing: 6) {
+                            HStack(spacing: PigSpacing.xs) {
                                 ForEach(Array(bout.fighters.enumerated()), id: \.offset) { index, fighter in
                                     if index > 0 { Text("v").font(SportPageMetrics.rowDetail).foregroundStyle(.secondary) }
                                     SportFollowStar(followed: SportEventsText.followed(fighter.name, in: event))
@@ -221,8 +221,8 @@ struct SportEventsContent: View {
 
     private func matchRail(_ title: String, _ matches: [TennisMatch], events: [SportEventsEvent], now: Date, hidden: Bool,
                            id: String, note: String? = nil, empty: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                 Text(title).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
                 if let note { Text(note).font(SportPageMetrics.note).foregroundStyle(.secondary) }
             }
@@ -230,12 +230,12 @@ struct SportEventsContent: View {
                 Text(empty).font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal) {
-                    LazyHStack(alignment: .top, spacing: 14) {
+                    LazyHStack(alignment: .top, spacing: PigSpacing.m) {
                         ForEach(matches) { match in
                             matchCard(match, event: events.first { $0.matches.contains(match) }, now: now, hidden: hidden)
                         }
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, PigSpacing.xs)
                 }
                 .scrollIndicators(.hidden)
                 .scrollClipDisabled()
@@ -253,7 +253,7 @@ struct SportEventsContent: View {
         return Button {
             if let card { SportGamePress.select(card, app: app, presenter: presenter) }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 HStack {
                     Text(SportEventsText.kicker(match)).font(SportPageMetrics.kicker).tracking(1.2).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 6)
@@ -261,7 +261,7 @@ struct SportEventsContent: View {
                         .foregroundStyle(live ? Color.pigDanger : Color.secondary)
                 }
                 ForEach(Array(match.players.enumerated()), id: \.offset) { index, player in
-                    HStack(spacing: 8) {
+                    HStack(spacing: PigSpacing.s) {
                         SportFollowStar(followed: event.map { SportEventsText.followed(player.name, in: $0) } ?? false)
                         Text(SportEventsText.playerName(player))
                             .font(SportPageMetrics.rowName.weight(!hidden && player.winner == true ? .heavy : .semibold)).lineLimit(1)
@@ -288,17 +288,17 @@ struct SportEventsContent: View {
     private func draws(_ events: [SportEventsEvent], now: Date, hidden: Bool) -> some View {
         let draws = events.flatMap { event in event.draws.map { (event, $0) } }
         if !draws.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Text("Draws").font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
                 ForEach(Array(draws.enumerated()), id: \.offset) { _, pair in
                     let (event, draw) = pair
                     Text("\(event.name) · \(draw.name)".uppercased()).font(SportPageMetrics.kicker).tracking(1.2)
                         .foregroundStyle(.secondary)
                     ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: 14) {
+                        LazyHStack(alignment: .top, spacing: PigSpacing.m) {
                             ForEach(Array(draw.rounds.enumerated()), id: \.offset) { _, round in
                                 SportListCard(title: round.name, identifier: "sport.tennis.draw.\(draw.name).\(round.name)") {
-                                    VStack(alignment: .leading, spacing: 4) {
+                                    VStack(alignment: .leading, spacing: PigSpacing.xs) {
                                         ForEach(round.matchIds, id: \.self) { id in
                                             if let match = event.matches.first(where: { $0.id == id }) {
                                                 drawLine(match, event: event, hidden: hidden)
@@ -309,7 +309,7 @@ struct SportEventsContent: View {
                                 .frame(width: SportEventsMetrics.matchWidth)
                             }
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, PigSpacing.xs)
                     }
                     .scrollIndicators(.hidden)
                     .scrollClipDisabled()
@@ -323,7 +323,7 @@ struct SportEventsContent: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(match.players.enumerated()), id: \.offset) { index, player in
                 let followed = SportEventsText.followed(player.name, in: event)
-                HStack(spacing: 6) {
+                HStack(spacing: PigSpacing.xs) {
                     SportFollowStar(followed: followed)
                     Text(SportEventsText.playerName(player))
                         .font(SportPageMetrics.rowDetail.weight(!hidden && player.winner == true ? .heavy : .regular)).lineLimit(1)
@@ -334,7 +334,7 @@ struct SportEventsContent: View {
                 .sportFollowedRow(followed)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, PigSpacing.xs)
     }
 
     // MARK: Golf
@@ -350,7 +350,7 @@ struct SportEventsContent: View {
                 leaderboard(layout, event: event, hidden: hidden).frame(maxWidth: .infinity)
                 VStack(alignment: .leading, spacing: SportPageMetrics.gap) {
                     if !layout.yourPlayers.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: PigSpacing.s) {
                             Text("Your players").font(SportPageMetrics.cardTitle).accessibilityAddTraits(.isHeader)
                             ForEach(layout.yourPlayers, id: \.name) { player in playerCard(player, event: event, hidden: hidden) }
                         }
@@ -373,8 +373,8 @@ struct SportEventsContent: View {
                 SportHiddenNote(title: "Leaderboard hidden",
                                 text: "Spoiler-free is on. Positions and scores reveal the result; the field and its round stay visible.")
             } else {
-                VStack(spacing: 2) {
-                    HStack(spacing: 10) {
+                VStack(spacing: PigSpacing.xxs) {
+                    HStack(spacing: PigSpacing.s) {
                         Text("POS").frame(width: 50, alignment: .leading)
                         Text("PLAYER")
                         Spacer(minLength: 6)
@@ -385,7 +385,7 @@ struct SportEventsContent: View {
                     .font(SportPageMetrics.kicker).tracking(1).foregroundStyle(.secondary)
                     ForEach(Array(layout.leaderboard.enumerated()), id: \.offset) { _, row in
                         let followed = SportEventsText.followed(row.name, in: event)
-                        HStack(spacing: 10) {
+                        HStack(spacing: PigSpacing.s) {
                             Text(row.pos ?? row.status?.uppercased() ?? "–").font(SportPageMetrics.rowPos).foregroundStyle(.secondary)
                                 .frame(width: 50, alignment: .leading)
                             SportFollowStar(followed: followed)
@@ -410,8 +410,8 @@ struct SportEventsContent: View {
 
     private func playerCard(_ player: SportEventsText.GolfCard, event: SportEventsEvent, hidden: Bool) -> some View {
         Button {} label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                HStack(spacing: PigSpacing.s) {
                     SportFollowStar(followed: true)
                     Text(player.name).font(SportPageMetrics.tileTitle).lineLimit(1)
                     Spacer(minLength: 6)
@@ -422,7 +422,7 @@ struct SportEventsContent: View {
                     Text(["In the field", event.round.map { "round \($0) in play" }].compactMap { $0 }.joined(separator: " · "))
                         .font(SportPageMetrics.note).foregroundStyle(.secondary)
                 } else {
-                    HStack(spacing: 16) {
+                    HStack(spacing: PigSpacing.m) {
                         ForEach(Array(player.rounds.enumerated()), id: \.offset) { index, strokes in
                             Text("R\(index + 1) \(strokes.map(String.init) ?? "–")").font(SportPageMetrics.note).monospacedDigit()
                         }
@@ -447,7 +447,7 @@ struct SportEventsContent: View {
     // MARK: Also this week
 
     private func alsoThisWeek(_ events: [SportEventsEvent], now: Date, hidden: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text("Also this week").font(SportPageMetrics.cardTitle).accessibilityAddTraits(.isHeader)
             if events.isEmpty {
                 Text("Nothing else this week.").font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
@@ -455,7 +455,7 @@ struct SportEventsContent: View {
             ForEach(events) { event in
                 let card = front.game(event.id)
                 Button { if let card { SportGamePress.select(card, app: app, presenter: presenter) } } label: {
-                    HStack(spacing: 12) {
+                    HStack(spacing: PigSpacing.s) {
                         Text(event.name).font(SportPageMetrics.rowName).lineLimit(1)
                         if let league = card?.league {
                             Text(SportLabels.label(league, in: labels).uppercased()).font(SportPageMetrics.kicker).tracking(1)
@@ -465,7 +465,7 @@ struct SportEventsContent: View {
                         Text(SportEventsText.alsoLine(event, now: now, spoilerFree: hidden)).font(SportPageMetrics.rowDetail.weight(.semibold))
                             .foregroundStyle(.secondary).lineLimit(1)
                     }
-                    .padding(.horizontal, 16).frame(minHeight: SportPageMetrics.row + 14)
+                    .padding(.horizontal, PigSpacing.m).frame(minHeight: SportPageMetrics.row + 14)
                     .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: 14))
@@ -478,6 +478,6 @@ struct SportEventsContent: View {
 
     private var emptyWeek: some View {
         Text("Nothing in \(label) this week.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity).padding(.vertical, 60)
+            .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
     }
 }

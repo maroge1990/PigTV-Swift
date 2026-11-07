@@ -443,14 +443,14 @@ private struct TopShelfCardsTestScreen: View {
     var body: some View {
         ZStack {
             Color(white: 0.2).ignoresSafeArea()
-            VStack(spacing: 16) {
-                LazyVGrid(columns: [GridItem(.fixed(852), spacing: 24), GridItem(.fixed(852), spacing: 24)], spacing: 24) {
+            VStack(spacing: PigSpacing.m) {
+                LazyVGrid(columns: [GridItem(.fixed(852), spacing: PigSpacing.l), GridItem(.fixed(852), spacing: PigSpacing.l)], spacing: PigSpacing.l) {
                     ForEach(cards, id: \.0) { card in
                         Image(uiImage: card.1).resizable().frame(width: 852, height: 480)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
-                Text(summary).font(.system(size: 22)).foregroundStyle(.white.opacity(0.8))
+                Text(summary).font(.system(size: PigType.body)).foregroundStyle(.white.opacity(0.8))
                     .accessibilityIdentifier("topshelf.cards")
             }
         }

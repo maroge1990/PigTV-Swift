@@ -10,16 +10,16 @@ import SwiftUI
 /// Type scale for detail screens (tvOS sizes; iOS uses text styles).
 enum DetailType {
     #if os(tvOS)
-    static let title: Font = .system(size: 52, weight: .bold)
-    static let pageTitle: Font = .system(size: 34, weight: .bold)
-    static let channel: Font = .system(size: 26, weight: .semibold)
-    static let meta: Font = .system(size: 24, weight: .medium)
-    static let body: Font = .system(size: 25)
-    static let rowTitle: Font = .system(size: 26, weight: .semibold)
-    static let rowDetail: Font = .system(size: 21)
-    static let eyebrow: Font = .system(size: 20, weight: .bold)
-    static let section: Font = .system(size: 24, weight: .semibold)
-    static let button: Font = .system(size: 24, weight: .medium)
+    static let title: Font = .system(size: PigType.hero, weight: .bold)
+    static let pageTitle: Font = .system(size: PigType.sectionTitle, weight: .bold)
+    static let channel: Font = .system(size: PigType.cardTitle, weight: .semibold)
+    static let meta: Font = .system(size: PigType.body, weight: .medium)
+    static let body: Font = .system(size: PigType.cardTitle)
+    static let rowTitle: Font = .system(size: PigType.cardTitle, weight: .semibold)
+    static let rowDetail: Font = .system(size: PigType.secondary)
+    static let eyebrow: Font = .system(size: PigType.secondary, weight: .bold)
+    static let section: Font = .system(size: PigType.body, weight: .semibold)
+    static let button: Font = .system(size: PigType.body, weight: .medium)
     #else
     static let title: Font = .title.bold()
     static let pageTitle: Font = .title2.bold()
@@ -42,7 +42,7 @@ enum DetailMetrics {
     static let logo = CGSize(width: 208, height: 117)
     static let smallLogo = CGSize(width: 104, height: 58)
     static let timeColumn: CGFloat = 170
-    static let spacing: CGFloat = 30
+    static let spacing: CGFloat = PigSpacing.xl
     static let radius = PigRadius.hero
     #else
     static let pageWidth: CGFloat = 820
@@ -51,7 +51,7 @@ enum DetailMetrics {
     static let logo = CGSize(width: 112, height: 63)
     static let smallLogo = CGSize(width: 72, height: 40)
     static let timeColumn: CGFloat = 84
-    static let spacing: CGFloat = 20
+    static let spacing: CGFloat = PigSpacing.xl
     static let radius = PigRadius.hero
     #endif
 }
@@ -95,7 +95,7 @@ struct DetailPage<Content: View>: View {
                     }
                     #endif
                     if let title {
-                        HStack(spacing: 14) {
+                        HStack(spacing: PigSpacing.m) {
                             PigBrandMark(width: 58, height: 48)
                                 .accessibilityHidden(true)
                             Text(title).font(DetailType.pageTitle)
@@ -104,9 +104,9 @@ struct DetailPage<Content: View>: View {
                     content
                 }
                 #if os(tvOS)
-                .padding(.vertical, 24)
+                .padding(.vertical, PigSpacing.l)
                 #else
-                .padding(20)
+                .padding(PigSpacing.xl)
                 #endif
                 .frame(maxWidth: DetailMetrics.pageWidth, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,7 +123,7 @@ struct DetailPage<Content: View>: View {
 struct PigHeroCard<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) { content }
+        VStack(alignment: .leading, spacing: PigSpacing.s) { content }
             .padding(DetailMetrics.heroPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
@@ -135,13 +135,13 @@ struct StatusPill: View {
     let text: String
     var colour: Color = .pigDanger
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: PigSpacing.s) {
             Circle().fill(colour).frame(width: 11, height: 11).accessibilityHidden(true)
             Text(text)
         }
         .font(DetailType.eyebrow)
         .foregroundStyle(colour)
-        .padding(.horizontal, 16).padding(.vertical, 8)
+        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
         .background(colour.opacity(0.14), in: Capsule())
     }
 }
@@ -190,7 +190,7 @@ struct DetailHero<Content: View>: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) { content }
+        VStack(alignment: .leading, spacing: PigSpacing.m) { content }
             .padding(DetailMetrics.heroPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background { LogoWash(logo: logo, client: client) }
@@ -219,7 +219,7 @@ struct ChannelLogoTile: View {
                     .padding(.horizontal, size.width * 0.1).padding(.vertical, size.height * 0.12)
             } else {
                 Text(name).font(DetailType.rowDetail.weight(.semibold)).multilineTextAlignment(.center)
-                    .lineLimit(3).minimumScaleFactor(0.6).padding(10)
+                    .lineLimit(3).minimumScaleFactor(0.6).padding(PigSpacing.s)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -236,10 +236,10 @@ struct ChannelLine: View {
     var detail: String? = nil
 
     var body: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: PigSpacing.l) {
             ChannelLogoTile(logo: logo, client: client, name: name)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                     Text(name).lineLimit(1).font(DetailType.channel)
                     if let number { ChannelNumberText(number: String(number), font: DetailType.meta) }
                 }
@@ -282,12 +282,12 @@ struct StatusBadge: View {
     var systemImage: String? = nil
     var colour: Color = .pigAccent
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PigSpacing.s) {
             if let systemImage { Image(systemName: systemImage) }
             Text(text)
         }
         .font(DetailType.eyebrow)
-        .padding(.horizontal, 14).padding(.vertical, 6)
+        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.xs)
         .background(colour, in: Capsule())
         .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.pigOnStatus)
     }
@@ -315,7 +315,7 @@ struct PigSectionHeader: View {
     let title: String
     var body: some View {
         Text(title).font(DetailType.section).foregroundStyle(.secondary)
-            .padding(.top, 8)
+            .padding(.top, PigSpacing.s)
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -326,13 +326,13 @@ struct DetailActions<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         #if os(tvOS)
-        HStack(spacing: 24) { content }
+        HStack(spacing: PigSpacing.l) { content }
             .font(DetailType.button)
             .focusSection()
         #else
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { content }
-            VStack(alignment: .leading, spacing: 12) { content }
+            HStack(spacing: PigSpacing.m) { content }
+            VStack(alignment: .leading, spacing: PigSpacing.m) { content }
         }
         .buttonStyle(.bordered)
         #endif
@@ -378,7 +378,7 @@ extension View {
     func pigField() -> some View {
         #if os(tvOS)
         // Preserve the existing footprint without a second shape behind the native capsule.
-        self.padding(.horizontal, 8).padding(.vertical, 4)
+        self.padding(.horizontal, PigSpacing.xs).padding(.vertical, PigSpacing.xxs)
         #else
         self.textFieldStyle(.roundedBorder)
         #endif

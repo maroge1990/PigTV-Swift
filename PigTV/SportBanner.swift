@@ -11,6 +11,9 @@ import ImageIO
 // is the caller's: spoiler-free is applied before the hero's words reach it.
 
 enum SportBannerMetrics {
+    /// The backdrop's distance from the banner's edge: on the right when full width, past the list when split.
+    static let artworkInsetFull: CGFloat = 80, artworkInsetSplit: CGFloat = 820
+    static let mapInsetFull: CGFloat = 60, mapInsetSplit: CGFloat = 720
     #if os(tvOS)
     static let height: CGFloat = 250
     static let radius = PigRadius.hero
@@ -22,13 +25,13 @@ enum SportBannerMetrics {
     static let rowGap: CGFloat = 6
     static let rowBadge: CGFloat = 24
     static let back: CGFloat = 56
-    static let kicker: Font = .system(size: 17, weight: .bold)
-    static let title: Font = .system(size: 44, weight: .heavy)
-    static let wideTitle: Font = .system(size: 48, weight: .heavy)
-    static let line: Font = .system(size: 21)
-    static let listTitle: Font = .system(size: 15, weight: .bold)
-    static let rowTitle: Font = .system(size: 18, weight: .bold)
-    static let rowTrailing: Font = .system(size: 15, weight: .semibold)
+    static let kicker: Font = .system(size: PigType.kicker, weight: .bold)
+    static let title: Font = .system(size: PigType.pageTitle, weight: .heavy)
+    static let wideTitle: Font = .system(size: PigType.pageTitle, weight: .heavy)
+    static let line: Font = .system(size: PigType.secondary)
+    static let listTitle: Font = .system(size: PigType.caption, weight: .bold)
+    static let rowTitle: Font = .system(size: PigType.caption, weight: .bold)
+    static let rowTrailing: Font = .system(size: PigType.caption, weight: .semibold)
     static let badgeSize: CGFloat = 300
     static let wideBadgeSize: CGFloat = 310
     static let map = CGSize(width: 420, height: 220)
@@ -101,18 +104,18 @@ struct SportBanner<Actions: View>: View {
     // MARK: The hero
 
     private var heroColumn: some View {
-        HStack(alignment: .center, spacing: 26) {
+        HStack(alignment: .center, spacing: PigSpacing.xl) {
             if showsBack {
                 Button { dismiss() } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 24, weight: .bold))
+                    Image(systemName: "chevron.left").font(.system(size: PigType.body, weight: .bold))
                         .frame(width: SportBannerMetrics.back, height: SportBannerMetrics.back)
                 }
                 .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
                 .accessibilityLabel("Back to Sport")
                 .accessibilityIdentifier("sport.banner.back")
             }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                HStack(spacing: PigSpacing.s) {
                     if hero.live {
                         Circle().fill(Color.pigDanger).frame(width: 12, height: 12).accessibilityHidden(true)
                     }
@@ -128,8 +131,8 @@ struct SportBanner<Actions: View>: View {
                     Text(hero.line).font(SportBannerMetrics.line).foregroundStyle(.secondary).lineLimit(1)
                         .accessibilityIdentifier("sport.banner.hero.line")
                 }
-                HStack(spacing: 10) { actions() }
-                    .padding(.top, 8)
+                HStack(spacing: PigSpacing.s) { actions() }
+                    .padding(.top, PigSpacing.s)
                     .tvFocusSection()
             }
         }
@@ -147,13 +150,13 @@ struct SportBanner<Actions: View>: View {
                     .frame(width: side, height: side)
                     .opacity(fullWidth ? 0.22 : 0.16)
                     // Split: beside the list, in the hero's half; full width: on the right.
-                    .padding(fullWidth ? .trailing : .leading, fullWidth ? 80 : 820)
+                    .padding(fullWidth ? .trailing : .leading, fullWidth ? SportBannerMetrics.artworkInsetFull : SportBannerMetrics.artworkInsetSplit)
                     .accessibilityHidden(true)
             case .map:
                 SportBannerMap(path: backdrop.path(dark: scheme == .dark), client: client)
                     .frame(width: SportBannerMetrics.map.width, height: SportBannerMetrics.map.height)
                     .opacity(fullWidth ? 0.45 : 0.22)
-                    .padding(fullWidth ? .trailing : .leading, fullWidth ? 60 : 720)
+                    .padding(fullWidth ? .trailing : .leading, fullWidth ? SportBannerMetrics.mapInsetFull : SportBannerMetrics.mapInsetSplit)
                     .accessibilityHidden(true)
             }
         }
@@ -201,7 +204,7 @@ struct SportBanner<Actions: View>: View {
         let item = items[index]
         let isSelected = selected == index
         return Button { onSelect(index) } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: PigSpacing.s) {
                 if let badge = item.badge {
                     SportBadge(name: badge.name, logo: badge.logo, league: badge.league, client: client,
                                size: SportBannerMetrics.rowBadge)
@@ -212,12 +215,12 @@ struct SportBanner<Actions: View>: View {
                 Text(item.trailing).font(SportBannerMetrics.rowTrailing).lineLimit(1)
                     .foregroundStyle(item.live ? Color.pigDanger : Color.secondary)
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, PigSpacing.m)
             .frame(height: SportBannerMetrics.row)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .leading) {
                 if isSelected {
-                    Capsule().fill(Color.pigAccent).frame(width: 4).padding(.vertical, 7).padding(.leading, 3)
+                    Capsule().fill(Color.pigAccent).frame(width: 4).padding(.vertical, PigSpacing.xs).padding(.leading, PigSpacing.xxs)
                         .accessibilityHidden(true)
                 }
             }

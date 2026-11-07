@@ -148,36 +148,36 @@ struct RecordingPlayerView: View {
     /// Like the system's Skip Intro: Select skips while it is shown.
     private var skipBreakPill: some View {
         Label("Skip break", systemImage: "forward.end.fill")
-            .font(.system(size: 26, weight: .semibold))
-            .padding(.horizontal, 28).padding(.vertical, 16)
+            .font(.system(size: PigType.cardTitle, weight: .semibold))
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             .background(Color.white, in: Capsule())
             .foregroundStyle(.black)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            .padding(.trailing, 90).padding(.bottom, 80)
+            .padding(.trailing, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.empty)
             .transition(.opacity)
     }
 
     private func overlay(timeline: RecordingTimeline?) -> some View {
         let recording = model.recording
-        return VStack(alignment: .leading, spacing: 18) {
+        return VStack(alignment: .leading, spacing: PigSpacing.m) {
             Spacer()
             HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: PigSpacing.s) {
+                    HStack(spacing: PigSpacing.s) {
                         Text(recording.channel_name ?? "Recording")
                         if let date = recording.started {
                             Text(date.formatted(date: .abbreviated, time: .shortened))
                         }
                     }
-                    .font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
-                    Text(recording.title).font(.system(size: chrome == .info ? 56 : 34, weight: .bold)).lineLimit(2)
+                    .font(.system(size: PigType.cardTitle, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                    Text(recording.title).font(.system(size: chrome == .info ? PigType.hero : PigType.sectionTitle, weight: .bold)).lineLimit(2)
                 }
                 Spacer()
                 if chrome == .info {
                     PlayerActionRow(items: actions.map { (icon($0), label($0)) }, selected: action)
                 } else {
                     Image(systemName: seekForward ? "goforward.15" : "gobackward.15")
-                        .font(.system(size: 40, weight: .semibold))
+                        .font(.system(size: PigType.display, weight: .semibold))
                 }
             }
             PlayerScrubTrack(fraction: timeline?.fraction ?? 0)
@@ -188,11 +188,11 @@ struct RecordingPlayerView: View {
                     Text("−\(RecordingTimeline.clock(timeline.remaining))")
                 }
             }
-            .font(.system(size: 24, weight: .semibold).monospacedDigit())
+            .font(.system(size: PigType.body, weight: .semibold).monospacedDigit())
             .fontDesign(.rounded)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 90).padding(.bottom, 50)
+        .padding(.horizontal, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.section)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .playerBottomShade(height: chrome == .info ? 520 : 300, opacity: 0.82)
         .transition(.opacity)

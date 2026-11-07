@@ -85,14 +85,14 @@ private struct OnNowMenuPreview: View {
     let subject: ProgrammeMenuSubject
     let clock: Date
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text(eyebrow).font(.caption.weight(.bold)).tracking(1).foregroundStyle(Color.pigAccentText)
             Text(subject.title).font(.title3.weight(.heavy)).lineLimit(3)
             if let programme = subject.programme {
                 Text(programme.timeRange).font(.subheadline).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
             }
         }
-        .padding(20)
+        .padding(PigSpacing.xl)
         .frame(width: 320, alignment: .leading)
         .background(Color.pigSurface)
     }
@@ -126,13 +126,13 @@ private struct OnNowRowView: View {
     var body: some View {
         let row = OnNowRow.make(programmes: channel.programmes, now: clock)
         let number = model.number(for: channel).map { String($0) }
-        HStack(spacing: 12) {
+        HStack(spacing: PigSpacing.m) {
             Button(action: play) {
-                HStack(spacing: 12) {
+                HStack(spacing: PigSpacing.m) {
                     ChannelTile(name: channel.name, logo: model.logo(for: channel), client: model.client)
                         .frame(width: 76, height: 48)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                        HStack(spacing: PigSpacing.s) {
                             Text(channel.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             if let number { ChannelNumberText(number: number, font: .caption2) }
                             if model.isFlaky(channel) {

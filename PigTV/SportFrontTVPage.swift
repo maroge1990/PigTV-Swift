@@ -49,7 +49,7 @@ struct SportFrontTVPage: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: PigSpacing.l) {
                 if let front = model.front {
                     if model.stale, let updated = model.updatedAt {
                         Text("Couldn't refresh. Last updated \(updated.formatted(date: .omitted, time: .shortened)).")
@@ -65,14 +65,14 @@ struct SportFrontTVPage: View {
                         also(front, now: now)
                     }
                 } else if !model.loaded {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, 80)
+                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                 } else {
                     unavailable
                 }
             }
-            .padding(.bottom, 60)
+            .padding(.bottom, PigSpacing.empty)
             #if os(iOS)
-            .padding(.horizontal, 24)
+            .padding(.horizontal, PigSpacing.xl)
             #endif
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
@@ -118,18 +118,18 @@ struct SportFrontTVPage: View {
     // MARK: A sport's rails
 
     private func sectionView(_ section: SportFrontLayout.Section, front: SportFront, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Button { open(section.sport) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                     Text(section.sport).font(SportSectionMetrics.sectionTitle)
                     Text("›").font(SportSectionMetrics.sectionTitle).foregroundStyle(.secondary)
                     Text(SportFrontLayout.headerLine(section, in: front, now: now, labels: model.labels)).font(SportSectionMetrics.sectionLine)
                         .foregroundStyle(.secondary).lineLimit(1)
                 }
-                .padding(.horizontal, 14).padding(.vertical, 4)
+                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.xs)
             }
             .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: 12))
-            .padding(.leading, -14)
+            .padding(.leading, -PigSpacing.m) // the header's own inset, so its text lines up with the cards
             .accessibilityLabel("\(section.sport), open its page")
             .accessibilityIdentifier("sport.rail.header.\(section.sport)")
             ForEach(section.rails, id: \.league) { rail in
@@ -146,7 +146,7 @@ struct SportFrontTVPage: View {
                         }
                     }
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, PigSpacing.xs)
                 }
                 .scrollIndicators(.hidden)
                 .scrollClipDisabled()
@@ -163,11 +163,11 @@ struct SportFrontTVPage: View {
     private func also(_ front: SportFront, now: Date) -> some View {
         let sports = SportFrontLayout.alsoInYourSports(front)
         if !sports.isEmpty {
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.s) {
                 Text("Also in your sports").font(SportSectionMetrics.sectionLine).foregroundStyle(.secondary)
                 ForEach(sports, id: \.self) { sport in
                     Button { open(sport) } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: PigSpacing.s) {
                             Text(sport).font(SportSectionMetrics.sectionLine.weight(.bold))
                             if let line = SportFrontLayout.alsoLine(sport, in: front, now: now) {
                                 Text(line).font(SportSectionMetrics.sectionLine.weight(.semibold)).foregroundStyle(.secondary)
@@ -193,27 +193,27 @@ struct SportFrontTVPage: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "sportscourt").font(.system(size: 56, weight: .semibold)).foregroundStyle(Color.pigAccentText)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: "sportscourt").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text("Follow a sport to start").font(DetailType.title).multilineTextAlignment(.center)
             Text(SportFrontText.followHelp(settings: browse.sportFollowsEnabled))
                 .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 900)
         }
-        .padding(.vertical, 60).frame(maxWidth: .infinity)
+        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("sport.front.empty")
     }
 
     private var unavailable: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "sportscourt").font(.system(size: 56, weight: .semibold)).foregroundStyle(Color.pigAccentText)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: "sportscourt").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text("Sport is unavailable right now").font(DetailType.title).multilineTextAlignment(.center)
             Text(model.error ?? "The sport data could not be reached. The guide and playback are not affected.")
                 .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
         }
-        .padding(.vertical, 70).frame(maxWidth: .infinity)
+        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
     }
 }

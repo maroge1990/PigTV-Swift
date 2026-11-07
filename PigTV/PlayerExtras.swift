@@ -29,7 +29,7 @@ struct PlayerChannelPanel: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: PigSpacing.s) {
                         ForEach(app.playerChannels) { channel in
                             let playing = channel.id == current
                             Button {
@@ -44,7 +44,7 @@ struct PlayerChannelPanel: View {
                             .id(channel.id)
                         }
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
                 }
                 .scrollIndicators(.hidden)
                 .onAppear {
@@ -76,7 +76,7 @@ struct PlayerSidePanel: View {
                     Button(action: close) { Image(systemName: "xmark.circle.fill").font(.title2) }
                         .accessibilityLabel("Close channels")
                 }
-                .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
+                .padding(.horizontal, PigSpacing.xl).padding(.top, PigSpacing.l).padding(.bottom, PigSpacing.xs)
                 PlayerChannelPanel(app: app, close: close)
             }
             .foregroundStyle(.white)
@@ -160,9 +160,9 @@ struct TouchPlayerChrome: View {
                 Spacer(minLength: 8)
                 bottomPanel(now: context.date, window: window)
             }
-            .padding(.horizontal, regular ? 28 : 16)
-            .padding(.top, regular ? 16 : 8)
-            .padding(.bottom, regular ? 20 : 8)
+            .padding(.horizontal, regular ? PigSpacing.section : PigSpacing.l)
+            .padding(.top, regular ? PigSpacing.l : PigSpacing.s)
+            .padding(.bottom, regular ? PigSpacing.xl : PigSpacing.s)
         }
         .foregroundStyle(.white)
         .background { shades.allowsHitTesting(false) }
@@ -177,8 +177,8 @@ struct TouchPlayerChrome: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            HStack(spacing: PigSpacing.m) {
                 PlayerCircleButton(icon: "xmark", label: "Close player", size: 44, action: close)
                 if regular || short { channelTitle }
                 Spacer(minLength: 8)
@@ -192,12 +192,12 @@ struct TouchPlayerChrome: View {
                 .accessibilityIdentifier("player.channels")
             }
             // iPhone upright: the channel gets its own line under the buttons.
-            if !regular && !short { channelTitle.padding(.leading, 4) }
+            if !regular && !short { channelTitle.padding(.leading, PigSpacing.xs) }
         }
     }
 
     private var channelTitle: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
             Text(playback.channel.name).font(regular ? .title3.weight(.semibold) : .headline).lineLimit(1)
             if let number = playback.channel.numberText {
                 ChannelNumberText(number: number, font: regular ? .subheadline : .caption, onDark: true)
@@ -209,7 +209,7 @@ struct TouchPlayerChrome: View {
     // MARK: Centre transport
 
     private func transport(window: PlayerSeekWindow?, paused: Bool) -> some View {
-        HStack(spacing: regular ? 56 : 36) {
+        HStack(spacing: regular ? PigSpacing.empty : PigSpacing.section) {
             if window != nil {
                 PlayerCircleButton(icon: "gobackward.15", label: "Back 15 seconds", size: regular ? 68 : 56) {
                     touch(); playback.skip(-15)
@@ -234,16 +234,16 @@ struct TouchPlayerChrome: View {
     private func bottomPanel(now: Date, window: PlayerSeekWindow?) -> some View {
         let programme = playback.programme(at: now)
         let next = playback.nextProgramme(after: now)
-        return VStack(alignment: .leading, spacing: regular ? 12 : 8) {
+        return VStack(alignment: .leading, spacing: regular ? PigSpacing.m : PigSpacing.s) {
             // iPad landscape: the actions beside the programme; otherwise
             // (iPad upright, iPhone) on their own row below it.
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 14) {
+                HStack(alignment: .center, spacing: PigSpacing.l) {
                     programmeInfo(programme: programme, next: next, watching: now)
                     Spacer(minLength: 12)
                     if regular { actions }
                 }
-                VStack(alignment: .leading, spacing: regular ? 12 : 8) {
+                VStack(alignment: .leading, spacing: regular ? PigSpacing.m : PigSpacing.s) {
                     programmeInfo(programme: programme, next: next, watching: now)
                     if regular { ScrollView(.horizontal) { actions }.scrollIndicators(.hidden) }
                 }
@@ -257,17 +257,17 @@ struct TouchPlayerChrome: View {
                     .transition(.opacity)
             }
         }
-        .padding(regular ? 20 : 12)
+        .padding(regular ? PigSpacing.xl : PigSpacing.m)
         .background(reduceTransparency ? AnyShapeStyle(Color.pigMediaSolidPanel) : AnyShapeStyle(Color.pigMediaPanel),
                     in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
     }
 
     private func programmeInfo(programme: GuideProgramme?, next: GuideProgramme?, watching: Date) -> some View {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: PigSpacing.l) {
                 LogoTile(logo: browse.logo(for: playback.channel) ?? playback.channel.logo, client: browse.client,
                          name: playback.channel.name)
                     .frame(width: regular ? 112 : 72, height: regular ? 63 : 40)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     Text(programme?.title ?? "No programme information")
                         .font(regular ? .title2.bold() : .headline).lineLimit(1)
                     if let programme {
@@ -284,7 +284,7 @@ struct TouchPlayerChrome: View {
 
     @ViewBuilder
     private func scrubRow(now: Date, window: PlayerSeekWindow?, programme: GuideProgramme?, watching: Date) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PigSpacing.m) {
             if let window {
                 let fraction = dragFraction ?? window.fraction
                 let live = window.isLive(at: fraction)
@@ -322,11 +322,11 @@ struct TouchPlayerChrome: View {
     @ViewBuilder
     private func liveControl(live: Bool) -> some View {
         if live {
-            HStack(spacing: 6) {
+            HStack(spacing: PigSpacing.s) {
                 Circle().fill(Color.pigMediaAccent).frame(width: 9, height: 9)
                 Text("LIVE").font(.footnote.bold())
             }
-            .padding(.horizontal, 12).frame(minHeight: 44)
+            .padding(.horizontal, PigSpacing.m).frame(minHeight: 44)
             .accessibilityElement(children: .combine)
         } else {
             PlayerPillButton(title: "Go to live", icon: "forward.end.fill", compactLabel: true) {
@@ -338,7 +338,7 @@ struct TouchPlayerChrome: View {
 
     private var actions: some View {
         let favourite = browse.isFavourite(playback.channel)
-        return HStack(spacing: 10) {
+        return HStack(spacing: PigSpacing.m) {
             PlayerPillButton(title: favourite ? "In favourites" : "Favourite", icon: favourite ? "heart.fill" : "heart",
                              iconOnly: !regular, accessibility: favourite ? "Remove from favourites" : "Add to favourites") {
                 touch(); busy = true
@@ -426,7 +426,7 @@ struct PlayerPillButton: View {
                         .labelStyle(compactLabel && sizeClass != .regular ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleAndIcon))
                         .lineLimit(1)
                         .fixedSize()
-                        .padding(.horizontal, prominent ? 18 : 14)
+                        .padding(.horizontal, prominent ? PigSpacing.l : PigSpacing.l)
                         .frame(minWidth: 44, minHeight: 44)
                 }
             }

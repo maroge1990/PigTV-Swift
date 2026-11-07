@@ -30,7 +30,7 @@ struct SportPhoneCarousel: View {
     var body: some View {
         if !cards.isEmpty {
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 12) {
+                LazyHStack(spacing: PigSpacing.m) {
                     ForEach(cards) { card in
                         followCard(card)
                             .opacity(card.id == (shown ?? cards[0].id) ? 1 : 0.6)
@@ -45,13 +45,13 @@ struct SportPhoneCarousel: View {
             .frame(height: SportPhoneMetrics.cardHeight)
             .accessibilityIdentifier("\(identifier).carousel")
             let index = cards.firstIndex { $0.id == shown } ?? 0
-            HStack(spacing: 6) {
+            HStack(spacing: PigSpacing.s) {
                 ForEach(Array(cards.prefix(12).enumerated()), id: \.offset) { offset, _ in
                     Capsule().fill(offset == index ? Color.pigAccent : Color.secondary.opacity(0.6))
                         .frame(width: offset == index ? 18 : 6, height: 6)
                 }
                 Text(position(index, cards.count)).font(.caption).foregroundStyle(.secondary)
-                    .padding(.leading, 6)
+                    .padding(.leading, PigSpacing.s)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(position(index, cards.count))
@@ -62,8 +62,8 @@ struct SportPhoneCarousel: View {
     private func followCard(_ card: SportPhoneCard) -> some View {
         let game = front.game(card.gameId)
         let league = game?.league ?? (front.follows.indices.contains(card.index) ? front.follows[card.index].league : "")
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
+        return VStack(alignment: .leading, spacing: PigSpacing.s) {
+            HStack(spacing: PigSpacing.s) {
                 if card.live { Circle().fill(Color.pigDanger).frame(width: 8, height: 8).accessibilityHidden(true) }
                 Text(card.kicker).font(.caption2.weight(.bold)).tracking(1).lineLimit(1)
                     .foregroundStyle(card.live ? Color.pigDanger : Color.secondary)
@@ -71,7 +71,7 @@ struct SportPhoneCarousel: View {
             Button {
                 if let game { SportGamePress.select(game, app: app, presenter: presenter) } else { open(card) }
             } label: {
-                VStack(spacing: 6) {
+                VStack(spacing: PigSpacing.s) {
                     if card.sides.count == 2 {
                         HStack(alignment: .center) {
                             side(card.sides[0], league: league)
@@ -80,12 +80,12 @@ struct SportPhoneCarousel: View {
                             side(card.sides[1], league: league)
                         }
                     } else {
-                        HStack(spacing: 12) {
+                        HStack(spacing: PigSpacing.m) {
                             if let badge = card.sides.first {
                                 SportBadge(name: badge.name, logo: badge.logo, league: league, client: browse.client,
                                            size: SportPhoneMetrics.heroBadge)
                             }
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                                 Text(card.title ?? "").font(.headline).lineLimit(2)
                                 if let session = card.session { Text(session).font(.subheadline).foregroundStyle(.secondary) }
                             }
@@ -103,7 +103,7 @@ struct SportPhoneCarousel: View {
             Spacer(minLength: 0)
             if let game { actions(game, team: card.team.isEmpty ? nil : card.team, now: now) }
         }
-        .padding(.horizontal, 16).padding(.vertical, 14)
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.l)
         .frame(width: SportPhoneMetrics.cardWidth, height: SportPhoneMetrics.cardHeight, alignment: .topLeading)
         .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .accessibilityElement(children: .contain)
@@ -111,9 +111,9 @@ struct SportPhoneCarousel: View {
     }
 
     private func side(_ side: SportFixtureRowModel.Side, league: String) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: PigSpacing.xs) {
             SportBadge(name: side.name, logo: side.logo, league: league, client: browse.client, size: SportPhoneMetrics.heroBadge)
-            HStack(spacing: 4) {
+            HStack(spacing: PigSpacing.xs) {
                 if side.followed { Text("★").foregroundStyle(Color.pigAccentText).accessibilityHidden(true) }
                 Text(side.name).lineLimit(1).minimumScaleFactor(0.8)
             }
@@ -127,7 +127,7 @@ struct SportPhoneCarousel: View {
     @ViewBuilder
     private func actions(_ game: SportsGame, team: String?, now: Date) -> some View {
         if !game.terminal, let event = SportFrontText.event(game) {
-            HStack(spacing: 8) {
+            HStack(spacing: PigSpacing.s) {
                 switch SportFrontText.action(game, now: now) {
                 case .watch:
                     Button { SportGamePress.watch(game, event: event, app: app, presenter: presenter) } label: {
@@ -201,21 +201,21 @@ struct SportPhonePageHeader: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
             Button { dismiss() } label: {
                 Text("‹ \(back)").font(.subheadline.weight(.semibold)).foregroundStyle(Color.pigAccentText)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Back to \(back)")
             .accessibilityIdentifier("sport.page.back")
-            HStack(spacing: 10) {
+            HStack(spacing: PigSpacing.m) {
                 // #226: the tabs' title style (PigPageHeaderMetrics), under the back line
                 Text(title).font(PigPageHeaderMetrics.title).lineLimit(1).minimumScaleFactor(0.7)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("page.header.title")
                 Spacer(minLength: 8)
                 Text(SportPhoneLayout.scoresChip(hidden: hidden)).font(.footnote).foregroundStyle(.secondary)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                     .background(Color.pigRaised, in: Capsule())
                     .accessibilityIdentifier("sport.page.scores")
             }
@@ -264,7 +264,7 @@ struct SportPhonePage: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
                 SportPhonePageHeader(back: "Sport", title: sport, hidden: hidden)
                 if let front = model.front {
                     if let league = SportPhonePageLayout.league(sport, chosen: chosen, in: front) {
@@ -275,10 +275,10 @@ struct SportPhonePage: View {
                                         text: SportFrontText.followHelp(settings: browse.sportFollowsEnabled))
                     }
                 } else {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, 80)
+                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                 }
             }
-            .padding(.bottom, 40)
+            .padding(.bottom, PigSpacing.section)
         }
     }
 
@@ -287,16 +287,16 @@ struct SportPhonePage: View {
         let leagues = SportPhonePageLayout.chips(sport, in: front)
         if !leagues.isEmpty {
             ScrollView(.horizontal) {
-                HStack(spacing: 8) {
+                HStack(spacing: PigSpacing.s) {
                     ForEach(leagues, id: \.self) { league in
                         let on = league == selected
                         Button { chosen = league } label: {
                             Text(SportLabels.label(league, in: model.labels)).font(.subheadline.weight(.bold))
                                 .foregroundStyle(on ? Color.pigAccentText : Color.secondary)
-                                .padding(.horizontal, 14).frame(height: 34)
+                                .padding(.horizontal, PigSpacing.l).frame(height: 34)
                                 .background(on ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
                                 .overlay(alignment: .bottom) {
-                                    if on { Capsule().fill(Color.pigAccent).frame(width: 18, height: 2).padding(.bottom, 3) }
+                                    if on { Capsule().fill(Color.pigAccent).frame(width: 18, height: 2).padding(.bottom, PigSpacing.xs) }
                                 }
                         }
                         .buttonStyle(.plain)
@@ -319,11 +319,11 @@ struct SportPhonePage: View {
             .id(league)
         if groups.isEmpty && cards.isEmpty {
             Text("Nothing in the next three days").font(.subheadline).foregroundStyle(.secondary)
-                .padding(.horizontal, SportPhoneMetrics.edge).padding(.vertical, 8)
+                .padding(.horizontal, SportPhoneMetrics.edge).padding(.vertical, PigSpacing.s)
         }
         ForEach(groups) { group in
-            VStack(alignment: .leading, spacing: 6) {
-                Text(group.title).font(.title3.weight(.heavy)).padding(.horizontal, 4).accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                Text(group.title).font(.title3.weight(.heavy)).padding(.horizontal, PigSpacing.xs).accessibilityAddTraits(.isHeader)
                 SportPhoneRowsCard(app: app, browse: browse, flow: flow, front: front, rows: group.rows,
                                    identifier: "sport.page.game")
             }
@@ -336,13 +336,13 @@ struct SportPhonePage: View {
                                              leagues: browse.leaguePageLeagues, events: browse.eventPagesEnabled)
         if let title = SportPhonePageLayout.moreTitle(content, sport: sport) {
             Button { more(league) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                     Text(title).font(.title3.weight(.heavy))
                     Text("›").font(.title3.weight(.heavy)).foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     Text(SportLabels.label(league, in: model.labels)).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .padding(.horizontal, 4).padding(.vertical, 6)
+                .padding(.horizontal, PigSpacing.xs).padding(.vertical, PigSpacing.s)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -377,7 +377,7 @@ struct SportPhoneLeaguePage: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: PigSpacing.m) {
                     SportPhonePageHeader(back: sport, title: SportLabels.label(league, in: model.labels), hidden: hidden)
                     if let front = model.front {
                         SportLeagueContent(app: app, browse: browse, sport: sport, league: league, front: front,
@@ -386,7 +386,7 @@ struct SportPhoneLeaguePage: View {
                             .padding(.horizontal, SportPhoneMetrics.edge)
                     }
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, PigSpacing.section)
             }
         }
         .pigPageBackdrop()

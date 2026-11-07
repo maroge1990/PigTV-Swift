@@ -30,7 +30,7 @@ struct TVActionStyle: ButtonStyle {
     @Environment(\.colorScheme) private var scheme
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.horizontal, 20).padding(.vertical, 12)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
             .modifier(PigFocusSurface(focused: focused, scheme: scheme, shape: AnyShape(Capsule())))
     }
 }
@@ -74,15 +74,15 @@ struct PigPrimaryButtonStyle: ButtonStyle {
             #if os(tvOS)
             // One size with the capsules beside it (build 28); .headline
             // was 38 pt on tvOS and dwarfed its neighbours.
-            .font(.system(size: 26, weight: .semibold))
-            .padding(.horizontal, 30).padding(.vertical, 14)
+            .font(.system(size: PigType.cardTitle, weight: .semibold))
+            .padding(.horizontal, PigSpacing.xl).padding(.vertical, PigSpacing.s)
             #else
             .font(.headline)
-            .padding(.horizontal, 26).padding(.vertical, 14)
+            .padding(.horizontal, PigSpacing.xl).padding(.vertical, PigSpacing.l)
             #endif
             .foregroundStyle(Color.pigOnAccent)
             .background(Color.pigAccent, in: Capsule())
-            .overlay { Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-5).allowsHitTesting(false) }
+            .overlay { Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigSpacing.ringOutset).allowsHitTesting(false) }
             .scaleEffect(focused ? 1.04 : 1)
             .animation(.easeOut(duration: 0.12), value: focused)
     }
@@ -107,16 +107,16 @@ struct GuideFilterStyle: ButtonStyle {
         configuration.label
             .font(GuideTypography.body)
             .foregroundStyle(selected ? Color.pigAccentText : Color("PigText"))
-            .padding(.horizontal, 18).padding(.vertical, 10)
+            .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             .background(selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
             .overlay(alignment: .bottom) {
                 if selected {
                     Capsule().fill(Color.pigAccent).frame(width: 26, height: 3)
-                        .padding(.bottom, 4).allowsHitTesting(false).accessibilityHidden(true)
+                        .padding(.bottom, PigSpacing.xs).allowsHitTesting(false).accessibilityHidden(true)
                 }
             }
             .overlay {
-                Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-4)
+                Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigSpacing.ringOutset)
                     .allowsHitTesting(false)
             }
             .accessibilityAddTraits(selected ? .isSelected : [])
@@ -212,10 +212,10 @@ nonisolated enum PigPageHeaderMetrics {
     static let markHeight: CGFloat = 48
     /// The row is the pig's height on every tab, whatever the trailing controls need.
     static let rowHeight: CGFloat = markHeight
-    static let spacing: CGFloat = 14
+    static let spacing: CGFloat = PigSpacing.s
     /// From the safe area's leading edge (where Home and Sport already drew it).
     static let edge: CGFloat = 0
-    static var title: Font { .system(size: 34, weight: .bold) }
+    static var title: Font { .system(size: PigType.sectionTitle, weight: .bold) }
     #else
     // #226 (Mark, 4 Nov 2026): every iPhone and iPad tab takes the Sport page's pig (34 x 28 at a 16 pt edge), and the
     // title is smaller and lighter than the Sport page's 34 pt heavy: 22 pt semibold (title2), level with the pig. Before
@@ -224,7 +224,7 @@ nonisolated enum PigPageHeaderMetrics {
     static let markHeight: CGFloat = 28
     /// One touch row on every tab, whatever the trailing controls need.
     static let rowHeight: CGFloat = 44
-    static let spacing: CGFloat = 10
+    static let spacing: CGFloat = PigSpacing.m
     static let edge: CGFloat = 16
     static var title: Font { .title2.weight(.semibold) }
     #endif

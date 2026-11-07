@@ -11,20 +11,20 @@ enum SportCardMetrics {
     #if os(tvOS)
     static let width: CGFloat = 334
     static let height: CGFloat = 132
-    static let spacing: CGFloat = 14
+    static let spacing: CGFloat = PigSpacing.s
     static let radius = PigRadius.card
     static let padding = EdgeInsets(top: 14, leading: 18, bottom: 14, trailing: 18)
     static let badge: CGFloat = 32
-    static let team: Font = .system(size: 21, weight: .bold)
-    static let score: Font = .system(size: 24, weight: .heavy)
-    static let detail: Font = .system(size: 17)
-    static let kicker: Font = .system(size: 15, weight: .bold)
-    static let title: Font = .system(size: 20, weight: .bold)
-    static let small: Font = .system(size: 16)
+    static let team: Font = .system(size: PigType.secondary, weight: .bold)
+    static let score: Font = .system(size: PigType.body, weight: .heavy)
+    static let detail: Font = .system(size: PigType.caption)
+    static let kicker: Font = .system(size: PigType.kicker, weight: .bold)
+    static let title: Font = .system(size: PigType.secondary, weight: .bold)
+    static let small: Font = .system(size: PigType.caption)
     #else
     static let width: CGFloat = 260
     static let height: CGFloat = 112
-    static let spacing: CGFloat = 12
+    static let spacing: CGFloat = PigSpacing.m
     static let radius = PigRadius.card
     static let padding = EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
     static let badge: CGFloat = 26
@@ -40,8 +40,8 @@ enum SportCardMetrics {
 /// Type shared by the front page and the sport pages.
 enum SportSectionMetrics {
     #if os(tvOS)
-    static let sectionTitle: Font = .system(size: 25, weight: .heavy)
-    static let sectionLine: Font = .system(size: 18)
+    static let sectionTitle: Font = .system(size: PigType.cardTitle, weight: .heavy)
+    static let sectionLine: Font = .system(size: PigType.caption)
     #else
     static let sectionTitle: Font = .title3.bold()
     static let sectionLine: Font = .subheadline
@@ -223,7 +223,7 @@ struct SportFutureMark: View {
     }
 
     static func mark(_ game: SportsGame) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PigSpacing.s) {
             Circle().strokeBorder(Color.pigDanger, style: StrokeStyle(lineWidth: 2, dash: [3, 2]))
                 .frame(width: 12, height: 12).accessibilityHidden(true)
             Text(SportFutureRecord.waitingLabel).font(SportCardMetrics.small.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
@@ -252,7 +252,7 @@ struct SportGameCard: View {
         let followed = game.followed == true
         let live = SportFrontHero.ongoing.contains(game.status)
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 if game.competitors.count == 2 { teams(drawn) } else { session(drawn) }
                 Spacer(minLength: 0)
                 if let mark = game.recordingMark { recordingMark(mark) }
@@ -285,7 +285,7 @@ struct SportGameCard: View {
     private func teams(_ drawn: SportFrontText.Drawn) -> some View {
         let star = SportFrontLayout.followedSide(game, names: front.follows.map(\.name))
         return ForEach(Array(game.competitors.prefix(2).enumerated()), id: \.offset) { index, team in
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.s) {
                 SportBadge(name: team.name, logo: team.cachedLogo, league: game.league, client: client,
                            size: SportCardMetrics.badge)
                 if game.followed == true && star == index {
@@ -303,10 +303,10 @@ struct SportGameCard: View {
     }
 
     private func session(_ drawn: SportFrontText.Drawn) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
             Text((game.session ?? drawn.kicker).uppercased()).font(SportCardMetrics.kicker).tracking(1.4)
                 .foregroundStyle(.secondary).lineLimit(1)
-            HStack(spacing: 6) {
+            HStack(spacing: PigSpacing.xs) {
                 if game.followed == true {
                     Image(systemName: "star.fill").font(SportCardMetrics.small).foregroundStyle(Color.pigAccentText)
                         .accessibilityLabel("Your team")
@@ -323,7 +323,7 @@ struct SportGameCard: View {
     /// the action on the right.
     @ViewBuilder
     private func bottom(_ drawn: SportFrontText.Drawn, live: Bool) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PigSpacing.s) {
             if live {
                 // #211: the card's clock is short ("Q4 0:17", "OT1 10:00"); the situation is the banner's.
                 Circle().fill(Color.pigDanger).frame(width: 10, height: 10).accessibilityHidden(true)
@@ -349,8 +349,8 @@ struct SportGameCard: View {
     /// "Recording" (a red dot) or "Set to record" (a red ring), and "Clashes with …" when it loses its clash (C-R since
     /// 0415, #198): not a score, so shown with spoilers hidden too.
     private func recordingMark(_ mark: SportsGame.RecordingMark) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+            HStack(spacing: PigSpacing.s) {
                 Circle().fill(mark.isRecording ? Color.pigDanger : Color.clear)
                     .overlay { Circle().strokeBorder(Color.pigDanger, lineWidth: 2) }
                     .frame(width: 12, height: 12)

@@ -14,22 +14,22 @@ import ImageIO
 
 private enum F1Metrics {
     #if os(tvOS)
-    static let title: Font = .system(size: 46, weight: .heavy)
-    static let eyebrow: Font = .system(size: 19, weight: .bold)
-    static let heroName: Font = .system(size: 46, weight: .heavy)
-    static let heroPlace: Font = .system(size: 22)
-    static let headline: Font = .system(size: 27, weight: .bold)
-    static let rowTitle: Font = .system(size: 24, weight: .bold)
-    static let rowDetail: Font = .system(size: 18)
-    static let pill: Font = .system(size: 19, weight: .bold)
-    static let cardTitle: Font = .system(size: 26, weight: .bold)
-    static let tableName: Font = .system(size: 22, weight: .semibold)
-    static let tablePos: Font = .system(size: 21, weight: .bold)
-    static let tableDetail: Font = .system(size: 19)
-    static let statLabel: Font = .system(size: 16, weight: .semibold)
-    static let statValue: Font = .system(size: 21, weight: .bold)
-    static let chip: Font = .system(size: 22, weight: .medium)
-    static let spacing: CGFloat = 26
+    static let title: Font = .system(size: PigType.pageTitle, weight: .heavy)
+    static let eyebrow: Font = .system(size: PigType.secondary, weight: .bold)
+    static let heroName: Font = .system(size: PigType.pageTitle, weight: .heavy)
+    static let heroPlace: Font = .system(size: PigType.body)
+    static let headline: Font = .system(size: PigType.cardTitle, weight: .bold)
+    static let rowTitle: Font = .system(size: PigType.body, weight: .bold)
+    static let rowDetail: Font = .system(size: PigType.caption)
+    static let pill: Font = .system(size: PigType.secondary, weight: .bold)
+    static let cardTitle: Font = .system(size: PigType.cardTitle, weight: .bold)
+    static let tableName: Font = .system(size: PigType.body, weight: .semibold)
+    static let tablePos: Font = .system(size: PigType.secondary, weight: .bold)
+    static let tableDetail: Font = .system(size: PigType.secondary)
+    static let statLabel: Font = .system(size: PigType.caption, weight: .semibold)
+    static let statValue: Font = .system(size: PigType.secondary, weight: .bold)
+    static let chip: Font = .system(size: PigType.body, weight: .medium)
+    static let spacing: CGFloat = PigSpacing.l
     static let columnGap: CGFloat = 44
     static let heroWidth: CGFloat = 640
     static let circuitWidth: CGFloat = 440
@@ -56,7 +56,7 @@ private enum F1Metrics {
     static let statLabel: Font = .caption.weight(.semibold)
     static let statValue: Font = .headline
     static let chip: Font = .subheadline
-    static let spacing: CGFloat = 20
+    static let spacing: CGFloat = PigSpacing.xl
     static let columnGap: CGFloat = 24
     static let heroWidth: CGFloat = 0
     static let circuitWidth: CGFloat = 330
@@ -155,7 +155,7 @@ struct F1PageView: View {
                     }
                     .frame(minHeight: F1Metrics.topHeight, alignment: .top)
                     // Side by side and the same height (DESIGN.md › Sport pages: symmetric lists).
-                    HStack(alignment: .top, spacing: F1Metrics.columnGap + 4) {
+                    HStack(alignment: .top, spacing: F1Metrics.columnGap + PigSpacing.xs) {
                         results(page, spoilerFree: spoilerFree).frame(maxWidth: .infinity, maxHeight: .infinity)
                         standings(page, spoilerFree: spoilerFree).frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -168,7 +168,7 @@ struct F1PageView: View {
                     standings(page, spoilerFree: spoilerFree)
                 }
             } else if !model.loaded || model.page?.available == false {
-                ProgressView("Loading Formula 1…").frame(maxWidth: .infinity).padding(.top, 80)
+                ProgressView("Loading Formula 1…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
             } else {
                 unavailable
             }
@@ -177,14 +177,14 @@ struct F1PageView: View {
             }
         }
         #if os(iOS)
-        .padding(wide ? 32 : 16)
+        .padding(wide ? PigSpacing.section : PigSpacing.l)
         #endif
     }
 
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: PigSpacing.m) {
             #if os(tvOS)
             Text("Formula 1").font(F1Metrics.title).accessibilityAddTraits(.isHeader)
             #else
@@ -217,21 +217,21 @@ struct F1PageView: View {
     @ViewBuilder
     private func hero(_ weekend: F1Weekend, now: Date) -> some View {
         let focus = F1PageText.focusSession(weekend, now: now)
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             if let round = F1PageText.roundLine(weekend) {
                 Text(round).font(F1Metrics.eyebrow).tracking(2).foregroundStyle(.secondary)
             }
             Text(weekend.name).font(F1Metrics.heroName).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("f1.weekend")
             Text(F1PageText.placeLine(weekend)).font(F1Metrics.heroPlace).foregroundStyle(.secondary).lineLimit(2)
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.s) {
                 if let focus, F1PageText.live(focus, now: now) {
                     Circle().fill(Color.pigDanger).frame(width: 14, height: 14).accessibilityHidden(true)
                 }
                 Text(F1PageText.headline(weekend, now: now)).font(F1Metrics.headline)
                     .monospacedDigit()
             }
-            .padding(.top, 14)
+            .padding(.top, PigSpacing.m)
             if let focus { actions(F1PageText.event(focus, in: weekend), live: F1PageText.live(focus, now: now), now: now) }
         }
     }
@@ -241,7 +241,7 @@ struct F1PageView: View {
         if let best = event.best {
             let pending = appState.pendingWatch?.eventID == event.id
             let scheduled = browse.isScheduled(event, on: best)
-            HStack(spacing: 14) {
+            HStack(spacing: PigSpacing.m) {
                 if F1PageText.watchesNow(event, now: now) {
                     Button(live ? "Watch live" : "Watch", systemImage: "play.fill") {
                         if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
@@ -271,26 +271,26 @@ struct F1PageView: View {
             }
             .lineLimit(1)
             .fixedSize()
-            .padding(.top, 16)
+            .padding(.top, PigSpacing.m)
             .tvFocusSection()
             Text("on \(best.name)" + (event.channels.count > 1 ? " · \(event.channels.count - 1) more" : ""))
                 .font(F1Metrics.rowDetail).foregroundStyle(.secondary).lineLimit(1)
         } else {
             Text("Its channel appears here once the guide carries it, a day or two before.")
                 .font(F1Metrics.rowDetail).foregroundStyle(.secondary)
-                .padding(.top, 8)
+                .padding(.top, PigSpacing.s)
         }
     }
 
     private func circuit(_ weekend: F1Weekend) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: PigSpacing.m) {
             CircuitMap(path: weekend.info?.map, client: browse.client)
                 .frame(width: F1Metrics.map.width, height: F1Metrics.map.height)
                 .accessibilityLabel("\(weekend.circuit ?? weekend.name) circuit map")
             HStack(alignment: .top, spacing: 0) {
                 ForEach(Array(F1PageText.stats(weekend.info).enumerated()), id: \.offset) { index, stat in
                     if index > 0 { Spacer(minLength: 14) }
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: PigSpacing.xs) {
                         Text(stat.label).font(F1Metrics.statLabel).foregroundStyle(.secondary).lineLimit(1).fixedSize()
                         Text(stat.value).font(F1Metrics.statValue).lineLimit(1).fixedSize()
                     }
@@ -298,14 +298,14 @@ struct F1PageView: View {
                 }
             }
         }
-        .padding(22)
+        .padding(PigSpacing.l)
         .frame(maxWidth: .infinity)
         .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: F1Metrics.radius, style: .continuous))
     }
 
     private func sessions(_ weekend: F1Weekend, now: Date, spoilerFree: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !wide { Text("Sessions").font(F1Metrics.cardTitle).padding(.bottom, 6) }
+            if !wide { Text("Sessions").font(F1Metrics.cardTitle).padding(.bottom, PigSpacing.xs) }
             ForEach(weekend.sessions) { session in
                 sessionRow(session, weekend: weekend, now: now, spoilerFree: spoilerFree)
                 Divider()
@@ -319,12 +319,12 @@ struct F1PageView: View {
         let pill = F1PageText.pill(session, in: weekend, now: now, spoilerFree: spoilerFree)
         let pending = appState.pendingWatch?.eventID == event.id
         let canWait = event.best != nil && session.start > now && !pending
-        return HStack(spacing: 16) {
+        return HStack(spacing: PigSpacing.m) {
             Button {
                 if event.best != nil { presenter?.open(event, .details) }
             } label: {
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: PigSpacing.m) {
+                    VStack(alignment: .leading, spacing: PigSpacing.xs) {
                         Text(session.name).font(F1Metrics.rowTitle)
                         Text(event.best.map { "\(F1PageText.when(session.start)) · \($0.name)" } ?? F1PageText.when(session.start))
                             .font(F1Metrics.rowDetail).foregroundStyle(.secondary).lineLimit(1)
@@ -332,7 +332,7 @@ struct F1PageView: View {
                     Spacer(minLength: 8)
                     pillView(pill)
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, PigSpacing.xs)
                 .frame(minHeight: F1Metrics.sessionRow)
                 .contentShape(Rectangle())
             }
@@ -360,14 +360,14 @@ struct F1PageView: View {
         switch pill {
         case .live:
             Text("LIVE").font(F1Metrics.pill).foregroundStyle(Color.pigOnStatus)
-                .padding(.horizontal, 16).padding(.vertical, 8).background(Color.pigDanger, in: Capsule())
+                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s).background(Color.pigDanger, in: Capsule())
         case .next:
             Text("Next").font(F1Metrics.pill).foregroundStyle(Color.pigAccentText)
-                .padding(.horizontal, 16).padding(.vertical, 8)
+                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                 .overlay(Capsule().strokeBorder(Color.pigAccent, lineWidth: 2))
         case .done(let text):
             Text(text).font(F1Metrics.pill).lineLimit(1)
-                .padding(.horizontal, 16).padding(.vertical, 8).background(Color.pigRaised, in: Capsule())
+                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s).background(Color.pigRaised, in: Capsule())
         case .none:
             EmptyView()
         }
@@ -397,9 +397,9 @@ struct F1PageView: View {
             if spoilerFree {
                 hidden("Standings hidden", "Points reveal results, so the championship is hidden too while spoiler-free is on.")
             } else if let standings = page.standings {
-                let columns = wide ? [GridItem(.flexible(minimum: 0), spacing: 36, alignment: .top), GridItem(.flexible(minimum: 0), alignment: .top)]
+                let columns = wide ? [GridItem(.flexible(minimum: 0), spacing: PigSpacing.xl, alignment: .top), GridItem(.flexible(minimum: 0), alignment: .top)]
                     : [GridItem(.flexible(minimum: 0), alignment: .top)]
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: PigSpacing.m) {
                     table("DRIVERS", standings.drivers)
                     table("CONSTRUCTORS", standings.constructors)
                 }
@@ -412,7 +412,7 @@ struct F1PageView: View {
 
     private func table(_ title: String, _ rows: [F1StandingRow]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(F1Metrics.statLabel).tracking(1.5).foregroundStyle(.secondary).padding(.bottom, 6)
+            Text(title).font(F1Metrics.statLabel).tracking(1.5).foregroundStyle(.secondary).padding(.bottom, PigSpacing.xs)
             ForEach(rows, id: \.pos) { row in
                 tableRow(pos: row.pos, colour: row.teamColor, name: row.name, detail: nil, trailing: F1PageText.points(row.points))
             }
@@ -421,7 +421,7 @@ struct F1PageView: View {
 
     private func tableRow(pos: Int, colour: String?, name: String, detail: String?, trailing: String?) -> some View {
         let followed = name == model.preferences.f1Following
-        return HStack(spacing: 14) {
+        return HStack(spacing: PigSpacing.m) {
             Text(String(pos)).font(F1Metrics.tablePos).foregroundStyle(.secondary).monospacedDigit()
                 .frame(minWidth: 30, alignment: .trailing)
             RoundedRectangle(cornerRadius: 3).fill(Color(teamHex: colour) ?? .secondary).frame(width: 6, height: 24)
@@ -432,14 +432,14 @@ struct F1PageView: View {
             if let trailing, !trailing.isEmpty { Text(trailing).font(F1Metrics.tablePos).monospacedDigit() }
         }
         .frame(height: F1Metrics.rowHeight)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, PigSpacing.s)
         .background(followed ? Color.pigAccent.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .combine)
         .accessibilityValue(followed ? "Following" : "")
     }
 
     private func card<Content: View>(title: String, note: String?, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(F1Metrics.cardTitle).lineLimit(1)
                 Spacer(minLength: 8)
@@ -453,8 +453,8 @@ struct F1PageView: View {
     }
 
     private func hidden(_ title: String, _ text: String) -> some View {
-        VStack(spacing: 14) {
-            Image(systemName: "lock").font(.system(size: wide ? 40 : 30, weight: .semibold)).accessibilityHidden(true)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: "lock").font(.system(size: wide ? PigType.display : PigType.sectionTitle, weight: .semibold)).accessibilityHidden(true)
             Text(title).font(F1Metrics.cardTitle)
             Text(text).font(F1Metrics.rowDetail).multilineTextAlignment(.center).frame(maxWidth: 520)
         }
@@ -464,15 +464,15 @@ struct F1PageView: View {
     }
 
     private var unavailable: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "flag.checkered").font(.system(size: 56, weight: .semibold)).foregroundStyle(Color.pigAccentText)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: "flag.checkered").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text("Formula 1 is unavailable right now").font(DetailType.title).multilineTextAlignment(.center)
             Text(model.error ?? "The race data could not be reached. The guide and playback are not affected.")
                 .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
         }
-        .padding(.vertical, 70).frame(maxWidth: .infinity)
+        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
     }
 }
 
@@ -485,7 +485,7 @@ struct CircuitMap: View {
     var body: some View {
         ZStack {
             if let image { Image(uiImage: image).resizable().scaledToFit() }
-            else { Image(systemName: "flag.checkered").font(.system(size: 44)).foregroundStyle(.tertiary) }
+            else { Image(systemName: "flag.checkered").font(.system(size: PigType.hero)).foregroundStyle(.tertiary) }
         }
         .task(id: path) {
             guard let path, let data = try? await client.artworkData(path) else { image = nil; return }
@@ -516,16 +516,16 @@ struct SportPageLinks: View {
     let browse: BrowseModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
             Text("Sport pages").font(SportMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             HStack(spacing: SportMetrics.cardSpacing) {
                 NavigationLink {
                     F1PageView(app: app, browse: browse, model: browse.f1Page)
                 } label: {
-                    HStack(spacing: 16) {
-                        Image(systemName: "flag.checkered").font(.system(size: 30, weight: .semibold))
+                    HStack(spacing: PigSpacing.m) {
+                        Image(systemName: "flag.checkered").font(.system(size: PigType.sectionTitle, weight: .semibold))
                             .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: PigSpacing.xs) {
                             Text("Formula 1").font(SportMetrics.title)
                             Text("Race weekend, results, championship").font(SportMetrics.detail).foregroundStyle(.secondary)
                         }
@@ -540,10 +540,10 @@ struct SportPageLinks: View {
                     NavigationLink {
                         NFLPageView(app: app, browse: browse)
                     } label: {
-                        HStack(spacing: 16) {
-                            Image(systemName: "football").font(.system(size: 30, weight: .semibold))
+                        HStack(spacing: PigSpacing.m) {
+                            Image(systemName: "football").font(.system(size: PigType.sectionTitle, weight: .semibold))
                                 .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                                 Text("NFL").font(SportMetrics.title)
                                 Text("This week's games, standings").font(SportMetrics.detail).foregroundStyle(.secondary)
                             }
@@ -559,10 +559,10 @@ struct SportPageLinks: View {
                     NavigationLink {
                         CricketPageView(app: app, browse: browse)
                     } label: {
-                        HStack(spacing: 16) {
-                            Image(systemName: "figure.cricket").font(.system(size: 30, weight: .semibold))
+                        HStack(spacing: PigSpacing.m) {
+                            Image(systemName: "figure.cricket").font(.system(size: PigType.sectionTitle, weight: .semibold))
                                 .foregroundStyle(Color.pigAccentText).accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                                 Text("Cricket").font(SportMetrics.title)
                                 Text("The match, its series, other games").font(SportMetrics.detail).foregroundStyle(.secondary)
                             }
@@ -574,7 +574,7 @@ struct SportPageLinks: View {
                     .accessibilityIdentifier("sport.page.cricket")
                 }
             }
-            .padding(.vertical, 24)
+            .padding(.vertical, PigSpacing.l)
         }
         .tvFocusSection()
     }

@@ -6,16 +6,16 @@ import SwiftUI
 
 enum SportPageMetrics {
     #if os(tvOS)
-    static let cardTitle: Font = .system(size: 25, weight: .heavy)
-    static let note: Font = .system(size: 17)
-    static let kicker: Font = .system(size: 15, weight: .bold)
-    static let rowName: Font = .system(size: 20, weight: .semibold)
-    static let rowPos: Font = .system(size: 19, weight: .bold)
-    static let rowDetail: Font = .system(size: 17)
-    static let tileTitle: Font = .system(size: 22, weight: .bold)
-    static let tileDetail: Font = .system(size: 17)
-    static let score: Font = .system(size: 22, weight: .heavy)
-    static let spacing: CGFloat = 24
+    static let cardTitle: Font = .system(size: PigType.cardTitle, weight: .heavy)
+    static let note: Font = .system(size: PigType.caption)
+    static let kicker: Font = .system(size: PigType.kicker, weight: .bold)
+    static let rowName: Font = .system(size: PigType.secondary, weight: .semibold)
+    static let rowPos: Font = .system(size: PigType.secondary, weight: .bold)
+    static let rowDetail: Font = .system(size: PigType.caption)
+    static let tileTitle: Font = .system(size: PigType.body, weight: .bold)
+    static let tileDetail: Font = .system(size: PigType.caption)
+    static let score: Font = .system(size: PigType.body, weight: .heavy)
+    static let spacing: CGFloat = PigSpacing.l
     static let gap: CGFloat = 24
     static let radius: CGFloat = 20
     static let row: CGFloat = 34
@@ -32,7 +32,7 @@ enum SportPageMetrics {
     static let tileTitle: Font = .subheadline.weight(.bold)
     static let tileDetail: Font = .caption
     static let score: Font = .headline.weight(.heavy)
-    static let spacing: CGFloat = 18
+    static let spacing: CGFloat = PigSpacing.l
     static let gap: CGFloat = 16
     static let radius: CGFloat = 16
     static let row: CGFloat = 30
@@ -53,8 +53,8 @@ struct SportListCard<Content: View>: View {
 
     var body: some View {
         Button { action?() } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                     Text(title).font(SportPageMetrics.cardTitle).lineLimit(1)
                     Spacer(minLength: 8)
                     if let note { Text(note).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1) }
@@ -78,8 +78,8 @@ struct SportHiddenNote: View {
     var minHeight: CGFloat = 200
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "eye.slash").font(.system(size: 34, weight: .semibold)).accessibilityHidden(true)
+        VStack(spacing: PigSpacing.s) {
+            Image(systemName: "eye.slash").font(.system(size: PigType.sectionTitle, weight: .semibold)).accessibilityHidden(true)
             Text(title).font(SportPageMetrics.cardTitle)
             Text(text).font(SportPageMetrics.note).multilineTextAlignment(.center).frame(maxWidth: 480)
         }

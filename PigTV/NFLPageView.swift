@@ -14,15 +14,15 @@ import SwiftUI
 
 private enum NFLMetrics {
     #if os(tvOS)
-    static let title: Font = .system(size: 46, weight: .heavy)
-    static let cardTitle: Font = .system(size: 26, weight: .bold)
-    static let team: Font = .system(size: 23, weight: .semibold)
-    static let score: Font = .system(size: 26, weight: .heavy)
-    static let detail: Font = .system(size: 18)
-    static let chip: Font = .system(size: 22, weight: .medium)
-    static let tableName: Font = .system(size: 20, weight: .semibold)
-    static let tableDetail: Font = .system(size: 18)
-    static let spacing: CGFloat = 24
+    static let title: Font = .system(size: PigType.pageTitle, weight: .heavy)
+    static let cardTitle: Font = .system(size: PigType.cardTitle, weight: .bold)
+    static let team: Font = .system(size: PigType.body, weight: .semibold)
+    static let score: Font = .system(size: PigType.cardTitle, weight: .heavy)
+    static let detail: Font = .system(size: PigType.caption)
+    static let chip: Font = .system(size: PigType.body, weight: .medium)
+    static let tableName: Font = .system(size: PigType.secondary, weight: .semibold)
+    static let tableDetail: Font = .system(size: PigType.caption)
+    static let spacing: CGFloat = PigSpacing.l
     static let columnGap: CGFloat = 40
     static let sideWidth: CGFloat = 640
     static let gameWidth: CGFloat = 520
@@ -40,7 +40,7 @@ private enum NFLMetrics {
     static let chip: Font = .subheadline
     static let tableName: Font = .callout.weight(.semibold)
     static let tableDetail: Font = .footnote
-    static let spacing: CGFloat = 18
+    static let spacing: CGFloat = PigSpacing.l
     static let columnGap: CGFloat = 24
     static let sideWidth: CGFloat = 420
     static let gameWidth: CGFloat = 340
@@ -148,7 +148,7 @@ struct NFLPageView: View {
                     standings(page, spoilerFree: spoilerFree)
                 }
             } else if !model.loaded || model.page?.available == false {
-                ProgressView("Loading the NFL…").frame(maxWidth: .infinity).padding(.top, 80)
+                ProgressView("Loading the NFL…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
             } else {
                 unavailable
             }
@@ -157,14 +157,14 @@ struct NFLPageView: View {
             }
         }
         #if os(iOS)
-        .padding(wide ? 32 : 16)
+        .padding(wide ? PigSpacing.section : PigSpacing.l)
         #endif
     }
 
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: PigSpacing.m) {
             #if os(tvOS)
             Text("NFL").font(NFLMetrics.title).accessibilityAddTraits(.isHeader)
             #else
@@ -201,8 +201,8 @@ struct NFLPageView: View {
 
     @ViewBuilder
     private func weekColumn(_ page: NFLPage, shown: NFLWeek, now: Date, spoilerFree: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
+            HStack(spacing: PigSpacing.s) {
                 ForEach(page.weeks) { w in
                     Button { week = w.number } label: { Text(w.label).font(NFLMetrics.chip) }
                         .buttonStyle(GuideFilterStyle(selected: w.number == shown.number))
@@ -214,7 +214,7 @@ struct NFLPageView: View {
             if spoilerFree && shown.games.allSatisfy({ $0.status == .done }) {
                 hidden("\(shown.label) results hidden", "Spoiler-free is on. Recordings of these games are still in your library.")
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: NFLMetrics.gameWidth), spacing: 18, alignment: .top)], alignment: .leading, spacing: 18) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: NFLMetrics.gameWidth), spacing: PigSpacing.m, alignment: .top)], alignment: .leading, spacing: PigSpacing.m) {
                     ForEach(shown.games) { game in gameCard(game, page: page, now: now, spoilerFree: spoilerFree) }
                 }
                 .tvFocusSection()
@@ -230,12 +230,12 @@ struct NFLPageView: View {
         let mine = preferences.preferences.nflFollowing.map { $0 == game.home.abbr || $0 == game.away.abbr } ?? false
         let event = NFLPageText.event(game, in: page)
         return Button { if !NFLPageText.actions(game, in: page, now: now, pendingEventID: nil).isEmpty { chosen = game } } label: {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 teamLine(game.away, game: game, page: page, spoilerFree: spoilerFree)
                 teamLine(game.home, game: game, page: page, spoilerFree: spoilerFree)
-                HStack(spacing: 10) {
+                HStack(spacing: PigSpacing.s) {
                     if game.status == .live {
-                        Text("LIVE").font(NFLMetrics.detail.weight(.heavy)).padding(.horizontal, 8).padding(.vertical, 2)
+                        Text("LIVE").font(NFLMetrics.detail.weight(.heavy)).padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
                             .background(Color.pigDanger, in: Capsule()).foregroundStyle(Color.pigOnStatus)
                     }
                     Text(NFLPageText.status(game, spoilerFree: spoilerFree)).font(NFLMetrics.detail).monospacedDigit()
@@ -259,7 +259,7 @@ struct NFLPageView: View {
     }
 
     private func teamLine(_ side: NFLGame.Side, game: NFLGame, page: NFLPage, spoilerFree: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PigSpacing.s) {
             badge(side.abbr, page: page, size: NFLMetrics.badge)
             Text(NFLPageText.name(side.abbr, in: page)).font(NFLMetrics.team).lineLimit(1)
             if !spoilerFree, let record = side.record {
@@ -328,7 +328,7 @@ struct NFLPageView: View {
                     Text("LAST · \(title(last)) · \(last.away.score.map(String.init) ?? "–")–\(last.home.score.map(String.init) ?? "–")")
                         .font(NFLMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
                 }
-                HStack(spacing: 14) {
+                HStack(spacing: PigSpacing.m) {
                     if let next, let watch = NFLPageText.teamCardWatch(next, in: page, now: now,
                                                                       pendingEventID: appState.pendingWatch?.eventID) {
                         Button(NFLPageText.label(watch), systemImage: NFLPageText.symbol(watch)) { chosen = next }
@@ -349,7 +349,7 @@ struct NFLPageView: View {
 
     private func standings(_ page: NFLPage, spoilerFree: Bool) -> some View {
         card(title: "Standings", note: nil) {
-            HStack(spacing: 10) {
+            HStack(spacing: PigSpacing.s) {
                 ForEach(NFLPageText.StandingsView.allCases, id: \.self) { v in
                     Button { view = v } label: { Text(v.rawValue).font(NFLMetrics.chip) }
                         .buttonStyle(GuideFilterStyle(selected: v == view))
@@ -361,9 +361,9 @@ struct NFLPageView: View {
                 hidden("Standings hidden", "Records, seeds and streaks reveal results while spoiler-free is on.")
             } else {
                 ForEach(NFLPageText.standings(page, view: view, following: preferences.preferences.nflFollowing), id: \.title) { group in
-                    Text(group.title.uppercased()).font(NFLMetrics.detail.weight(.bold)).tracking(1.5).foregroundStyle(.secondary).padding(.top, 6)
+                    Text(group.title.uppercased()).font(NFLMetrics.detail.weight(.bold)).tracking(1.5).foregroundStyle(.secondary).padding(.top, PigSpacing.xs)
                     ForEach(group.rows, id: \.row.abbr) { item in
-                        HStack(spacing: 10) {
+                        HStack(spacing: PigSpacing.s) {
                             Text("\(item.rank)").font(NFLMetrics.tableDetail.weight(.bold)).frame(width: 30, alignment: .trailing).monospacedDigit()
                             badge(item.row.abbr, page: page, size: NFLMetrics.badge)
                             Text((item.row.abbr == preferences.preferences.nflFollowing ? "★ " : "") + NFLPageText.name(item.row.abbr, in: page))
@@ -384,8 +384,8 @@ struct NFLPageView: View {
     @ViewBuilder
     private func card<Content: View>(title: String, note: String?, badge abbr: String? = nil, page: NFLPage? = nil,
                                      @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: abbr == nil ? .firstTextBaseline : .center, spacing: 16) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            HStack(alignment: abbr == nil ? .firstTextBaseline : .center, spacing: PigSpacing.m) {
                 if let abbr, let page { badge(abbr, page: page, size: NFLMetrics.teamBadge) }
                 Text(title).font(NFLMetrics.cardTitle).lineLimit(1)
                 Spacer(minLength: 8)
@@ -399,8 +399,8 @@ struct NFLPageView: View {
     }
 
     private func hidden(_ title: String, _ text: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "lock").font(.system(size: wide ? 36 : 28, weight: .semibold)).accessibilityHidden(true)
+        VStack(spacing: PigSpacing.s) {
+            Image(systemName: "lock").font(.system(size: wide ? PigType.sectionTitle : PigType.cardTitle, weight: .semibold)).accessibilityHidden(true)
             Text(title).font(NFLMetrics.cardTitle)
             Text(text).font(NFLMetrics.detail).multilineTextAlignment(.center).frame(maxWidth: 520)
         }
@@ -410,14 +410,14 @@ struct NFLPageView: View {
     }
 
     private var unavailable: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "football").font(.system(size: 56, weight: .semibold)).foregroundStyle(Color.pigAccentText)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: "football").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text("The NFL is unavailable right now").font(DetailType.title).multilineTextAlignment(.center)
             Text(model.error ?? "The game data could not be reached. The guide and playback are not affected.")
                 .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
         }
-        .padding(.vertical, 70).frame(maxWidth: .infinity)
+        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
     }
 }

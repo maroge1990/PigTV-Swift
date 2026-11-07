@@ -111,7 +111,7 @@ struct ProviderReminderBanner: View {
 
     var body: some View {
         if let message = reminders.message {
-            HStack(alignment: .center, spacing: 20) {
+            HStack(alignment: .center, spacing: PigSpacing.l) {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .font(.system(size: bannerIcon)).accessibilityHidden(true)
                 Text(message).font(.system(size: bannerText, weight: .medium))
@@ -123,10 +123,10 @@ struct ProviderReminderBanner: View {
                     .accessibilityIdentifier("providerReminder.dismiss")
                 #endif
             }
-            .padding(.horizontal, 28).padding(.vertical, 18)
+            .padding(.horizontal, PigSpacing.xl).padding(.vertical, PigSpacing.m)
             .frame(maxWidth: 1100)
             .reminderBackground()
-            .padding(.top, bannerTop).padding(.horizontal, 16)
+            .padding(.top, bannerTop).padding(.horizontal, PigSpacing.m)
             .transition(.move(edge: .top).combined(with: .opacity))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("providerReminder")
@@ -213,7 +213,7 @@ struct UnreachableView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Text(model.serverText).font(OfflineType.address).fontDesign(.monospaced).foregroundStyle(Color("PigSecondary"))
                         .lineLimit(1)
-                        .padding(.horizontal, 18).padding(.vertical, 8)
+                        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                         .background(Color.pigRaised, in: Capsule())
                     actions.padding(.top, OfflineMetrics.actionsGap)
                 }
@@ -240,12 +240,12 @@ struct UnreachableView: View {
         .accessibilityIdentifier("offline.otherServer")
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .phone {
-            VStack(spacing: 10) {
+            VStack(spacing: PigSpacing.m) {
                 tryNow.frame(maxWidth: .infinity)
                 other.buttonStyle(.bordered).tint(Color("PigText")).frame(maxWidth: .infinity)
             }
         } else {
-            HStack(spacing: 12) { tryNow; other.buttonStyle(.bordered).tint(Color("PigText")) }
+            HStack(spacing: PigSpacing.m) { tryNow; other.buttonStyle(.bordered).tint(Color("PigText")) }
         }
         #else
         DetailActions { tryNow; other }
@@ -282,7 +282,7 @@ nonisolated enum OfflineMetrics {
     static let ring: CGFloat = 300
     static let ringWidth: CGFloat = 10
     static let mark: CGFloat = 180
-    static let spacing: CGFloat = 26
+    static let spacing: CGFloat = PigSpacing.l
     static let messageWidth: CGFloat = 1100
     static let actionsGap: CGFloat = 16
     static let padding: CGFloat = 96
@@ -290,7 +290,7 @@ nonisolated enum OfflineMetrics {
     static var ring: CGFloat { UIDevice.current.userInterfaceIdiom == .phone ? 180 : 220 }
     static var ringWidth: CGFloat { UIDevice.current.userInterfaceIdiom == .phone ? 7 : 8 }
     static var mark: CGFloat { UIDevice.current.userInterfaceIdiom == .phone ? 96 : 120 }
-    static let spacing: CGFloat = 16
+    static let spacing: CGFloat = PigSpacing.l
     static let messageWidth: CGFloat = 560
     static let actionsGap: CGFloat = 8
     static let padding: CGFloat = 24
@@ -299,10 +299,10 @@ nonisolated enum OfflineMetrics {
 
 nonisolated enum OfflineType {
     #if os(tvOS)
-    static let title: Font = .system(size: 52, weight: .heavy)
-    static let countdown: Font = .system(size: 26, weight: .semibold)
-    static let message: Font = .system(size: 22)
-    static let address: Font = .system(size: 20)
+    static let title: Font = .system(size: PigType.hero, weight: .heavy)
+    static let countdown: Font = .system(size: PigType.cardTitle, weight: .semibold)
+    static let message: Font = .system(size: PigType.body)
+    static let address: Font = .system(size: PigType.secondary)
     #else
     static let title: Font = .title.weight(.heavy)
     static let countdown: Font = .headline
@@ -368,22 +368,22 @@ struct PlayerScreen: View {
                 // Keep the exit background instead of returning to tuning.
                 Color.clear
             } else if let message = playback.viewerConflict {
-                VStack(spacing: 24) {
+                VStack(spacing: PigSpacing.l) {
                     Text("Another device is watching").font(.title2.bold())
                     Text(message).multilineTextAlignment(.center)
                     Button("Keep watching there") { dismiss() }.pigPrimaryButton().playerStateFocus($stateFocus)
                     Button("Stop the other stream and watch here", role: .destructive) { playback.confirmViewerStop() }
-                }.padding(48).foregroundStyle(Color.pigMediaText)
+                }.padding(PigSpacing.section).foregroundStyle(Color.pigMediaText)
             } else if let conflict = playback.recordingConflict {
-                VStack(spacing: 24) {
+                VStack(spacing: PigSpacing.l) {
                     Text("A recording is in progress").font(.title2.bold())
                     Text("\(conflict.title) on \(conflict.channelName)")
                     Text("Watching live TV will stop the recording. What has already been recorded will be kept.")
                     Button("Keep recording") { dismiss() }.pigPrimaryButton().playerStateFocus($stateFocus)
                     Button("Stop recording and watch", role: .destructive) { playback.confirmRecordingStop() }
-                }.padding(48).foregroundStyle(Color.pigMediaText)
+                }.padding(PigSpacing.section).foregroundStyle(Color.pigMediaText)
             } else if let error = playback.error {
-                VStack(spacing: 24) {
+                VStack(spacing: PigSpacing.l) {
                     Text("Unable to play \(playback.channel.name)").font(.title2)
                     Text(error)
                     if playback.canRetry {
@@ -392,10 +392,10 @@ struct PlayerScreen: View {
                     } else {
                         Button("Back to channels") { dismiss() }.playerStateFocus($stateFocus)
                     }
-                }.padding(48).foregroundStyle(Color.pigMediaText)
+                }.padding(PigSpacing.section).foregroundStyle(Color.pigMediaText)
             } else if playback.reconnecting {
                 // Build 29: the tuning card on iOS too.
-                VStack(spacing: 24) {
+                VStack(spacing: PigSpacing.l) {
                     TuningCard(playback: playback, browse: app.browse, message: "Reconnecting…")
                     Button("Back to guide") { dismiss() }.playerStateFocus($stateFocus)
                 }
@@ -420,7 +420,7 @@ struct PlayerScreen: View {
                     if !playback.hasPlayed {
                         ZStack {
                             Color.pigMediaCanvas.ignoresSafeArea()
-                            VStack(spacing: 24) {
+                            VStack(spacing: PigSpacing.l) {
                                 TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
                                 Button("Cancel") { dismiss() }.playerStateFocus($stateFocus)
                             }
@@ -434,7 +434,7 @@ struct PlayerScreen: View {
                     if playback.hasPlayed, playback.buffering { BufferingPill().allowsHitTesting(false) }
                 }
             } else {
-                VStack(spacing: 24) {
+                VStack(spacing: PigSpacing.l) {
                     TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
                     Button("Cancel") { dismiss() }.playerStateFocus($stateFocus)
                 }

@@ -108,13 +108,13 @@ struct GuideSearchPage: View {
     var body: some View {
         DetailPage(pushedFrom: pushedFrom) {
             #if os(tvOS)
-            HStack(alignment: .top, spacing: 48) {
+            HStack(alignment: .top, spacing: PigSpacing.section) {
                 searchColumn.frame(maxWidth: .infinity, alignment: .leading)
                 if canJump { jumpPanel.frame(width: 640) }
             }
             #else
             if sizeClass == .regular {
-                HStack(alignment: .top, spacing: 32) {
+                HStack(alignment: .top, spacing: PigSpacing.section) {
                     searchColumn.frame(maxWidth: .infinity, alignment: .leading)
                     if canJump { jumpPanel.frame(width: 340) }
                 }
@@ -137,7 +137,7 @@ struct GuideSearchPage: View {
     // MARK: Search
 
     private var searchColumn: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
             Text("Search").font(DetailType.pageTitle).accessibilityAddTraits(.isHeader)
             TextField("Channel or programme", text: $query)
                 .autocorrectionDisabled()
@@ -151,10 +151,10 @@ struct GuideSearchPage: View {
                 if !results.channels.isEmpty {
                     sectionTitle("Channels · \(results.channels.count)")
                     ScrollView(.horizontal) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: PigSpacing.s) {
                             ForEach(results.channels) { channel in channelButton(channel) }
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, PigSpacing.s)
                     }
                     .scrollClipDisabled()
                     .scrollIndicators(.hidden)
@@ -166,7 +166,7 @@ struct GuideSearchPage: View {
                 if results.programmes.isEmpty {
                     Text("No programmes in the next 24 hours match.").font(DetailType.meta).foregroundStyle(Color.pigSecondary)
                 }
-                LazyVStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: PigSpacing.s) {
                     ForEach(results.programmes) { hit in
                         SearchResultRow(model: model, channel: hit.channel, programme: hit.programme) {
                             openProgramme(hit.channel, hit.programme)
@@ -182,22 +182,22 @@ struct GuideSearchPage: View {
 
     private func sectionTitle(_ text: String) -> some View {
         Text(text).font(DetailType.rowDetail.weight(.bold)).foregroundStyle(Color.pigSecondary).monospacedDigit()
-            .padding(.top, 4)
+            .padding(.top, PigSpacing.xs)
             .accessibilityAddTraits(.isHeader)
     }
 
     private func channelButton(_ channel: GuideChannel) -> some View {
         let now = OnNowRow.make(programmes: channel.programmes, now: Date()).current
         return Button { openChannel(channel) } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: PigSpacing.m) {
                 ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
                                 size: DetailMetrics.smallLogo)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(channel.name).font(DetailType.rowTitle).lineLimit(1)
                     if let now { Text(now.title).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).lineLimit(1) }
                 }
             }
-            .padding(.vertical, 12).padding(.leading, 12).padding(.trailing, 20)
+            .padding(.vertical, PigSpacing.s).padding(.leading, PigSpacing.s).padding(.trailing, PigSpacing.l)
             .contentShape(Rectangle())
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
@@ -224,10 +224,10 @@ struct GuideSearchPage: View {
     }
 
     private var jumpPanel: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
             Text("Jump to").font(DetailType.pageTitle).accessibilityAddTraits(.isHeader)
             sectionTitle("Day")
-            FlowChips(spacing: 10) {
+            FlowChips(spacing: PigSpacing.s) {
                 ForEach(Array(GuideJump.days(now: Date()).enumerated()), id: \.offset) { index, day in
                     Button(day.title) { date = GuideJump.moving(date, toDay: day.date) }
                         .buttonStyle(GuideFilterStyle(selected: Calendar.current.isDate(day.date, inSameDayAs: date)))
@@ -238,7 +238,7 @@ struct GuideSearchPage: View {
             .focusSection()
             #endif
             sectionTitle("Time")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: hourColumns), spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: PigSpacing.s), count: hourColumns), spacing: PigSpacing.s) {
                 ForEach(0..<24, id: \.self) { hour in
                     Button { date = GuideJump.moving(date, toHour: hour) } label: {
                         Text(GuideJump.moving(Date(), toHour: hour).formatted(.dateTime.hour()))
@@ -270,7 +270,7 @@ struct GuideSearchPage: View {
 
 /// Chips that wrap onto more lines when the row is full.
 private struct FlowChips: Layout {
-    var spacing: CGFloat = 10
+    var spacing: CGFloat = PigSpacing.s
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0, widest: CGFloat = 0
@@ -314,7 +314,7 @@ private struct SearchResultRow: View {
         let now = Date()
         let live = programme.isLive(at: now)
         Button(action: action) {
-            HStack(spacing: 20) {
+            HStack(spacing: PigSpacing.l) {
                 #if os(tvOS)
                 ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
                                 size: CGSize(width: 136, height: 76))
@@ -322,8 +322,8 @@ private struct SearchResultRow: View {
                 ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
                                 size: CGSize(width: 72, height: 40))
                 #endif
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                    HStack(spacing: PigSpacing.s) {
                         Text(programme.title).font(DetailType.rowTitle).lineLimit(1)
                         if live { StatusPill(text: "On now", colour: .pigAccent) }
                     }
@@ -335,9 +335,9 @@ private struct SearchResultRow: View {
                     .accessibilityHidden(true)
             }
             #if os(tvOS)
-            .padding(.horizontal, 22).padding(.vertical, 10)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
             #else
-            .padding(10)
+            .padding(PigSpacing.m)
             #endif
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

@@ -57,7 +57,7 @@ struct SportEventCard: View {
         let timing = SportRows.timing(event, now: clock)
         let replay = event.isReplay
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 HStack(alignment: .center) {
                     Text(event.league.uppercased()).font(SportMetrics.league).tracking(2)
                         .foregroundStyle(Color.pigAccentText).lineLimit(1)
@@ -82,15 +82,15 @@ struct SportEventCard: View {
                 PigProgressBar(fraction: SportRows.progress(event, now: clock))
                     .opacity(live ? 1 : 0)
                 if let best = event.best {
-                    HStack(spacing: 14) {
+                    HStack(spacing: PigSpacing.m) {
                         ChannelLogoTile(logo: logo, client: client, name: best.name, size: SportMetrics.logo)
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: PigSpacing.xs) {
                             Text(best.name).font(SportMetrics.detail.weight(.semibold)).lineLimit(1)
                             Text(SportRows.moreChannels(event) ?? " ")
                                 .font(SportMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
-                    .padding(.top, 4)
+                    .padding(.top, PigSpacing.xs)
                 }
             }
             .padding(SportMetrics.cardPadding)
@@ -111,8 +111,8 @@ struct SportSeeAllCard: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 14) {
-                Image(systemName: "sportscourt.fill").font(.system(size: 44, weight: .semibold))
+            VStack(spacing: PigSpacing.m) {
+                Image(systemName: "sportscourt.fill").font(.system(size: PigType.hero, weight: .semibold))
                     .foregroundStyle(Color.pigAccentText)
                 Text("See all sport").font(SportMetrics.title)
                 Text("Every event, by league").font(SportMetrics.detail).foregroundStyle(.secondary)
@@ -133,7 +133,7 @@ struct QualityBadge: View {
     var body: some View {
         Text(quality.rawValue)
             .font(SportMetrics.detail.weight(.bold)).monospaced()
-            .padding(.horizontal, 10).padding(.vertical, 3)
+            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
             .foregroundStyle(quality == .uhd ? Color.pigOnAccent : Color.secondary)
             .background(quality == .uhd ? Color.pigAccent : Color.clear, in: Capsule())
             .overlay { Capsule().strokeBorder(quality == .uhd ? Color.clear : Color.secondary.opacity(0.6), lineWidth: 1.5) }

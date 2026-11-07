@@ -20,10 +20,10 @@ enum SportMetrics {
     static let radius = PigRadius.card
     static let logo = CGSize(width: 112, height: 63)
     static let rowLogo = CGSize(width: 136, height: 76)
-    static let league: Font = .system(size: 18, weight: .bold)
-    static let title: Font = .system(size: 24, weight: .semibold)
-    static let detail: Font = .system(size: 19)
-    static let sectionTitle: Font = .system(size: 26, weight: .bold)
+    static let league: Font = .system(size: PigType.caption, weight: .bold)
+    static let title: Font = .system(size: PigType.body, weight: .semibold)
+    static let detail: Font = .system(size: PigType.secondary)
+    static let sectionTitle: Font = .system(size: PigType.cardTitle, weight: .bold)
     #else
     static let cardWidth: CGFloat = 264
     static let cardPadding: CGFloat = 14
@@ -95,13 +95,13 @@ struct SportView: View {
                     // be its own section").
                     shelf("Replays", shown.replays)
                     if !sport.loaded {
-                        ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, 60)
+                        ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                     } else if buckets.isEmpty {
                         SportEmptyState(error: sport.error) { Task { await sport.load() } }
                     }
                 }
                 .padding(.horizontal, SportMetrics.pagePadding)
-                .padding(.bottom, 60)
+                .padding(.bottom, PigSpacing.empty)
                 }
             }
             .scrollClipDisabled()
@@ -145,7 +145,7 @@ struct SportView: View {
     /// All + one chip per league (most events first), the guide's chips.
     private func chips(_ leagues: [String], chosen: String?) -> some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.s) {
                 let allCount = sport.leagueCounts.values.reduce(0, +)
                 chip("All", count: allCount, selected: chosen == nil) { league = nil }
                     .focused($chipFocus, equals: "All")
@@ -155,7 +155,7 @@ struct SportView: View {
                         .focused($chipFocus, equals: name)
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.s)
         }
         .scrollIndicators(.hidden)
         .scrollClipDisabled()
@@ -167,7 +167,7 @@ struct SportView: View {
 
     private func chip(_ title: String, count: Int, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: PigSpacing.s) {
                 Text(title)
                 Text(verbatim: String(count)).foregroundStyle(.secondary).monospacedDigit().fontDesign(.rounded)
             }
@@ -182,7 +182,7 @@ struct SportView: View {
     @ViewBuilder
     private func shelf(_ title: String, _ events: [SportEvent]) -> some View {
         if !events.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text(title).font(SportMetrics.sectionTitle)
                     .accessibilityAddTraits(.isHeader)
                 SportShelf(events: events, browse: browse, clock: sport.clock)
@@ -237,7 +237,7 @@ struct SportShelf: View {
             // Every card as tall as the tallest (the See all card stretches).
             .fixedSize(horizontal: false, vertical: true)
             // Room for the focus lift and its shadow.
-            .padding(.vertical, 24)
+            .padding(.vertical, PigSpacing.l)
         }
         .scrollIndicators(.hidden)
         .scrollClipDisabled()
@@ -283,7 +283,7 @@ struct PendingWatchBanner: View {
     let cancel: () -> Void
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: PigSpacing.l) {
             Image(systemName: "alarm.fill").foregroundStyle(Color.pigAccentText)
             Text("Watching \(pending.channelName) at \(pending.at.formatted(date: .omitted, time: .shortened)): \(pending.title)")
                 .font(GuideTypography.body).lineLimit(1)
@@ -295,7 +295,7 @@ struct PendingWatchBanner: View {
                 .buttonStyle(.bordered)
                 #endif
         }
-        .padding(.horizontal, 24).padding(.vertical, 12)
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
         .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: SportMetrics.radius, style: .continuous))
         .tvFocusSection()
     }
@@ -307,8 +307,8 @@ private struct SportEmptyState: View {
     let retry: () -> Void
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        VStack(spacing: 22) {
-            Image(systemName: "sportscourt").font(.system(size: 64, weight: .semibold))
+        VStack(spacing: PigSpacing.l) {
+            Image(systemName: "sportscourt").font(.system(size: PigType.hero, weight: .semibold))
                 .foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text(error == nil ? "No sport in the next three days" : "Sport is unavailable right now")
@@ -321,7 +321,7 @@ private struct SportEmptyState: View {
                     .pigPrimaryButton()
             }
         }
-        .padding(.vertical, 70).padding(.horizontal, 40)
+        .padding(.vertical, PigSpacing.empty).padding(.horizontal, PigSpacing.section)
         .frame(maxWidth: .infinity)
         .tvFocusSection()
         .background(Color.guideCell(scheme).opacity(0.7), in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))

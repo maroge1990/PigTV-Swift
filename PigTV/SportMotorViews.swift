@@ -50,7 +50,7 @@ struct SportF1Content: View {
         let spoilerFree = model.hidesSpoilers || pageHidesSpoilers
         if let page = model.page, page.available, let weekend = page.weekend {
             VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
-                let tiles = HStack(alignment: .top, spacing: 14) {
+                let tiles = HStack(alignment: .top, spacing: PigSpacing.m) {
                     ForEach(SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree)) { tile in
                         sessionTile(tile, weekend: weekend, now: now)
                     }
@@ -66,10 +66,10 @@ struct SportF1Content: View {
                 lists(page, spoilerFree: spoilerFree)
             }
         } else if !model.loaded || model.page?.available == false {
-            ProgressView("Loading Formula 1…").frame(maxWidth: .infinity).padding(.top, 60)
+            ProgressView("Loading Formula 1…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
         } else {
             Text("Formula 1 is unavailable right now.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, 60)
+                .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
         }
     }
 
@@ -84,16 +84,16 @@ struct SportF1Content: View {
                 presenter?.open(event, .details)
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(spacing: PigSpacing.s) {
                     Text(tile.title).font(SportPageMetrics.tileTitle).lineLimit(1)
                     Spacer(minLength: 4)
                     if tile.state == .live {
                         Text("LIVE").font(SportPageMetrics.kicker).foregroundStyle(Color.pigOnAccent)
-                            .padding(.horizontal, 10).padding(.vertical, 4).background(Color.pigDanger, in: Capsule())
+                            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs).background(Color.pigDanger, in: Capsule())
                     } else if tile.state == .next {
                         Text("NEXT").font(SportPageMetrics.kicker).foregroundStyle(Color.pigAccentText)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                             .overlay(Capsule().strokeBorder(Color.pigAccent, lineWidth: 2))
                     }
                 }
@@ -123,10 +123,10 @@ struct SportF1Content: View {
 
     private func circuit(_ weekend: F1Weekend) -> some View {
         let path = scheme == .dark ? (weekend.info?.mapDark ?? weekend.info?.map) : weekend.info?.map
-        return HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
+        return HStack(alignment: .top, spacing: PigSpacing.m) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 ForEach(Array(F1PageText.stats(weekend.info).enumerated()), id: \.offset) { _, stat in
-                    HStack(spacing: 10) {
+                    HStack(spacing: PigSpacing.s) {
                         Text(stat.label).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: 6)
                         Text(stat.value).font(SportPageMetrics.rowDetail.weight(.bold)).lineLimit(1)
@@ -170,9 +170,9 @@ struct SportF1Content: View {
     }
 
     private func rows(_ rows: [SportMotorText.ListRow]) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: PigSpacing.xxs) {
             ForEach(rows, id: \.pos) { row in
-                HStack(spacing: 12) {
+                HStack(spacing: PigSpacing.s) {
                     Text(String(row.pos)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).monospacedDigit()
                         .frame(minWidth: 28, alignment: .trailing)
                     RoundedRectangle(cornerRadius: 3).fill(Color(teamHex: row.teamColor) ?? Color.pigBorder).frame(width: 6, height: 22)
@@ -214,10 +214,10 @@ struct SportMotorCardsContent: View {
 
     var body: some View {
         let games = SportMotorText.cardTiles(SportPageRules.games(league: league, in: front))
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text(label).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             if games.isEmpty {
-                Text("Nothing in the next three days").font(SportCardMetrics.detail).foregroundStyle(.secondary).padding(.vertical, 12)
+                Text("Nothing in the next three days").font(SportCardMetrics.detail).foregroundStyle(.secondary).padding(.vertical, PigSpacing.s)
             } else {
                 HStack(alignment: .top, spacing: SportCardMetrics.spacing) {
                     ForEach(games) { game in
@@ -253,10 +253,10 @@ struct SportRaceContent: View {
                 if race.entries.isEmpty {
                     Text("The entry list appears once the feed has it.").font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
                 } else {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .leading), count: narrow ? 2 : 3),
-                              alignment: .leading, spacing: 4) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: PigSpacing.s, alignment: .leading), count: narrow ? 2 : 3),
+                              alignment: .leading, spacing: PigSpacing.xs) {
                         ForEach(race.entries, id: \.self) { name in
-                            HStack(spacing: 8) {
+                            HStack(spacing: PigSpacing.s) {
                                 SportFollowStar(followed: followed.contains(name))
                                 Text(name).font(SportPageMetrics.rowName).lineLimit(1)
                             }

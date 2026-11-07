@@ -15,14 +15,14 @@ enum RecordingsMetrics {
     static let featuredBadge: CGFloat = 170
     static let cardWidth: CGFloat = 330
     static let cardBadge: CGFloat = 70
-    static let spacing: CGFloat = 22
-    static let kicker: Font = .system(size: 19, weight: .bold)
-    static let featuredTitle: Font = .system(size: 56, weight: .heavy)
-    static let featuredMeta: Font = .system(size: 23)
-    static let title: Font = .system(size: 22, weight: .semibold)
-    static let detail: Font = .system(size: 18)
-    static let strip: Font = .system(size: 18)
-    static let stripLabel: Font = .system(size: 16, weight: .heavy)
+    static let spacing: CGFloat = PigSpacing.l
+    static let kicker: Font = .system(size: PigType.secondary, weight: .bold)
+    static let featuredTitle: Font = .system(size: PigType.hero, weight: .heavy)
+    static let featuredMeta: Font = .system(size: PigType.body)
+    static let title: Font = .system(size: PigType.body, weight: .semibold)
+    static let detail: Font = .system(size: PigType.caption)
+    static let strip: Font = .system(size: PigType.caption)
+    static let stripLabel: Font = .system(size: PigType.caption, weight: .heavy)
     #else
     static let pagePadding: CGFloat = 20
     static let gap: CGFloat = 18
@@ -31,7 +31,7 @@ enum RecordingsMetrics {
     static let featuredBadge: CGFloat = 120
     static let cardWidth: CGFloat = 250
     static let cardBadge: CGFloat = 46
-    static let spacing: CGFloat = 14
+    static let spacing: CGFloat = PigSpacing.l
     static let kicker: Font = .caption.weight(.bold)
     static let featuredTitle: Font = .largeTitle.weight(.heavy)
     static let featuredMeta: Font = .callout
@@ -172,7 +172,7 @@ struct RecordingsView: View {
     // MARK: Apple TV and iPad
 
     private var wide: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             PigPageHeader(title: "Recordings")
             status
             ScrollView {
@@ -190,7 +190,7 @@ struct RecordingsView: View {
                         RecordingsEmpty()
                     }
                     if !cards.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: PigSpacing.s) {
                             PigSectionHeader(title: "Ready to watch")
                             ScrollView(.horizontal, showsIndicators: false) {
                                 LazyHStack(alignment: .top, spacing: RecordingsMetrics.spacing) {
@@ -201,7 +201,7 @@ struct RecordingsView: View {
                                             .frame(width: RecordingsMetrics.cardWidth)
                                     }
                                 }
-                                .padding(.vertical, 12).padding(.horizontal, 4)
+                                .padding(.vertical, PigSpacing.s).padding(.horizontal, PigSpacing.xs)
                             }
                             .scrollClipDisabled()
                         }
@@ -214,7 +214,7 @@ struct RecordingsView: View {
                     if model.recordingsBusy { ProgressView("Refreshing recordings…") }
                 }
                 .padding(.horizontal, RecordingsMetrics.pagePadding)
-                .padding(.bottom, 24)
+                .padding(.bottom, PigSpacing.l)
             }
             #if !os(tvOS)
             .refreshable { await model.loadRecordings() }
@@ -223,7 +223,7 @@ struct RecordingsView: View {
         #if !os(tvOS)
         .safeAreaInset(edge: .bottom) {
             ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
-                .padding(.horizontal, RecordingsMetrics.pagePadding).padding(.bottom, 8)
+                .padding(.horizontal, RecordingsMetrics.pagePadding).padding(.bottom, PigSpacing.s)
         }
         #endif
     }
@@ -239,7 +239,7 @@ struct RecordingsView: View {
     @ViewBuilder
     private var stack: some View {
         #if os(iOS)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             PigPageHeader(title: "Recordings") {
                 if all.count > 1 {
                     Text("\((all.firstIndex { $0.id == page } ?? 0) + 1) of \(all.count)")
@@ -270,7 +270,7 @@ struct RecordingsView: View {
                                            canWatchFromStart: canWatchFromStart(item),
                                            play: { playing = RecordingPlay(recording: item, fromStart: $0) },
                                            details: { open(item) })
-                            .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, 40)
+                            .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, PigSpacing.section)
                             .tag(Optional(item.id))
                     }
                 }
@@ -295,13 +295,13 @@ private struct RecordingsEmpty: View {
     /// #229: the iPhone draws it as a card the width of the recording and Coming up cards.
     var card = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text("No recordings yet").font(RecordingsMetrics.title)
             Text("Choose a programme in the TV Guide, or a game in Sport, and record it. It shows here once it starts.")
                 .font(RecordingsMetrics.detail).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 24)
-        .padding(.horizontal, card ? 16 : 0)
+        .padding(.vertical, PigSpacing.l)
+        .padding(.horizontal, card ? PigSpacing.m : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(card ? Color.pigSurface : .clear, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .accessibilityElement(children: .combine)
@@ -335,7 +335,7 @@ struct RecordingArt: View {
                 ChannelArtwork(logo: item.channel_logo, client: client).padding(.horizontal, badge * 0.5).padding(.vertical, badge * 0.3)
             } else {
                 Text(item.channel_name ?? item.title).font(.system(size: badge * 0.4, weight: .heavy))
-                    .foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center).padding(12)
+                    .foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center).padding(PigSpacing.s)
             }
         }
         .accessibilityHidden(true)
@@ -345,20 +345,20 @@ struct RecordingArt: View {
 /// "REC · NOW" on a recording being made.
 private struct RecNowBadge: View {
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: PigSpacing.xs) {
             Circle().fill(Color.pigDanger).frame(width: 9, height: 9)
             Text("REC · NOW")
         }
         .font(CardBadgeFont.font)
         .foregroundStyle(Color.pigDanger)
-        .padding(.horizontal, 10).padding(.vertical, 5)
+        .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
         .background(Color.pigCanvas, in: RoundedRectangle(cornerRadius: PigRadius.inner))
     }
 }
 
 private enum CardBadgeFont {
     #if os(tvOS)
-    static let font: Font = .system(size: 15, weight: .heavy)
+    static let font: Font = .system(size: PigType.caption, weight: .heavy)
     #else
     static let font: Font = .caption2.weight(.heavy)
     #endif
@@ -401,11 +401,11 @@ private struct FeaturedRecording: View {
                 .clipShape(RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
                 .overlay(alignment: .bottom) {
                     if let fraction = progress.fraction {
-                        PigProgressBar(fraction: fraction, height: 8).padding(24)
+                        PigProgressBar(fraction: fraction, height: 8).padding(PigSpacing.l)
                     }
                 }
-                .overlay(alignment: .topLeading) { if item.status == "recording" { RecNowBadge().padding(16) } }
-            VStack(alignment: .leading, spacing: 12) {
+                .overlay(alignment: .topLeading) { if item.status == "recording" { RecNowBadge().padding(PigSpacing.m) } }
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Text(RecordingsHome.kicker(item, progress: progress, now: Date()))
                     .font(RecordingsMetrics.kicker).tracking(1).foregroundStyle(Color.pigAccentText)
                 Text(item.title).font(RecordingsMetrics.featuredTitle).lineLimit(2).minimumScaleFactor(0.7)
@@ -414,7 +414,7 @@ private struct FeaturedRecording: View {
                 if item.isPreparingForPlayback {
                     Text("Preparing for playback…").font(RecordingsMetrics.featuredMeta).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 16) {
+                HStack(spacing: PigSpacing.m) {
                     if let label = item.playLabel {
                         Button(progress.fraction == nil ? "Play" : "Resume", systemImage: "play.fill") { play(false) }
                             .pigPrimaryButton()
@@ -436,7 +436,7 @@ private struct FeaturedRecording: View {
                         .accessibilityLabel("Delete \(item.title)")
                         .accessibilityIdentifier("recordings.featured.delete")
                 }
-                .padding(.top, 14)
+                .padding(.top, PigSpacing.m)
                 .defaultFocus($primaryFocused, true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -459,20 +459,20 @@ private struct RecordingCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 RecordingArt(item: item, teams: teams, client: client)
                     .aspectRatio(RecordingsMetrics.artRatio, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
-                    .overlay(alignment: .topLeading) { if item.status == "recording" { RecNowBadge().padding(8) } }
+                    .overlay(alignment: .topLeading) { if item.status == "recording" { RecNowBadge().padding(PigSpacing.s) } }
                     .overlay(alignment: .topTrailing) {
                         if progress.watched {
                             Text("Watched").font(CardBadgeFont.font).foregroundStyle(.secondary)
-                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                                 .background(Color.pigCanvas, in: RoundedRectangle(cornerRadius: PigRadius.inner))
-                                .padding(8)
+                                .padding(PigSpacing.s)
                         }
                     }
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     Text(item.title).font(RecordingsMetrics.title).lineLimit(1)
                     if item.isPreparingForPlayback {
                         Text("Preparing for playback…").font(RecordingsMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
@@ -484,9 +484,9 @@ private struct RecordingCard: View {
                     PigProgressBar(fraction: progress.fraction ?? 0, height: 5)
                         .opacity(progress.fraction == nil ? 0 : 1)
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, PigSpacing.xxs)
             }
-            .padding(10)
+            .padding(PigSpacing.s)
             .opacity(progress.watched ? 0.55 : 1)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -511,7 +511,7 @@ private struct ComingUpStrip: View {
     #endif
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: PigSpacing.s) {
             Text("COMING UP").font(RecordingsMetrics.stripLabel).tracking(1.2).foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
             if items.isEmpty {
@@ -520,14 +520,14 @@ private struct ComingUpStrip: View {
             ForEach(items.prefix(shown)) { item in
                 let clash = RecordingsHome.clashes(item)
                 Button(action: open) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: PigSpacing.s) {
                         Text(RecordingsHome.chip(item, now: now))
                             .monospacedDigit().fontDesign(.rounded)
                             .foregroundStyle(clash ? Color.pigWarning : Color.pigSecondary)
                         Text(item.title).fontWeight(.bold).lineLimit(1)
                     }
                     .font(RecordingsMetrics.strip)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                     .overlay {
                         if clash { RoundedRectangle(cornerRadius: PigRadius.compact).strokeBorder(Color.pigWarning, lineWidth: 2) }
                     }
@@ -540,13 +540,13 @@ private struct ComingUpStrip: View {
             Button(action: open) {
                 Text(items.isEmpty ? "All ›" : "All \(items.count) ›").font(RecordingsMetrics.strip.weight(.bold))
                     .foregroundStyle(Color.pigAccentText)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             }
             .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: PigRadius.compact))
             .accessibilityLabel("All scheduled recordings")
             .accessibilityIdentifier("recordings.comingUp.all")
         }
-        .padding(.leading, 22).padding(.trailing, 10).padding(.vertical, 10)
+        .padding(.leading, PigSpacing.l).padding(.trailing, PigSpacing.s).padding(.vertical, PigSpacing.s)
         .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("recordings.comingUp")
@@ -564,7 +564,7 @@ private struct ComingUpCard: View {
 
     var body: some View {
         Button(action: open) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(items.isEmpty ? "Coming up" : "Coming up · \(items.count)").font(.headline.weight(.heavy))
                     Spacer()
@@ -575,7 +575,7 @@ private struct ComingUpCard: View {
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                 }
                 if let next = items.first {
-                    HStack(spacing: 10) {
+                    HStack(spacing: PigSpacing.m) {
                         Text(RecordingsHome.when(next.start, now: now)).font(.subheadline.monospacedDigit()).fontDesign(.rounded)
                             .foregroundStyle(.secondary)
                         Text(next.title).font(.subheadline.weight(.bold)).lineLimit(1)
@@ -585,13 +585,13 @@ private struct ComingUpCard: View {
                 }
             }
             .foregroundStyle(Color("PigText"))
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
             .shadow(color: Color.pigShadow.opacity(0.3), radius: 14, y: -6)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, 6)
+        .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, PigSpacing.s)
         .accessibilityLabel(items.first.map { "Coming up, \(items.count) scheduled. Next: \($0.title), \(RecordingsHome.when($0.start, now: now))" }
                             ?? "Coming up, nothing scheduled")
         .accessibilityHint("Opens Scheduled")
@@ -623,13 +623,13 @@ private struct RecordingStackCard: View {
                 RecordingArt(item: item, teams: teams, client: client, badge: 110)
                     .overlay(alignment: .topLeading) {
                         if item.status == "recording" {
-                            RecNowBadge().padding(14)
+                            RecNowBadge().padding(PigSpacing.l)
                         } else if let fraction = progress.fraction, let duration = item.duration_sec {
                             Text("Continue · \(DetailText.duration(duration * (1 - fraction))) left")
                                 .font(.caption.weight(.bold)).foregroundStyle(Color.pigAccentText)
-                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.xs)
                                 .background(Color.pigAccent.opacity(0.18), in: Capsule())
-                                .padding(14)
+                                .padding(PigSpacing.l)
                         }
                     }
             }
@@ -637,10 +637,10 @@ private struct RecordingStackCard: View {
             .accessibilityLabel(RecordingLabel.text(item, progress: progress))
             .accessibilityHint("Opens the recording")
             PigProgressBar(fraction: progress.fraction ?? 0, height: 4).opacity(progress.fraction == nil ? 0 : 1)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text(kicker).font(.caption2.weight(.bold)).tracking(1.2).foregroundStyle(.secondary).lineLimit(1)
                 Text(item.title).font(.title3.weight(.heavy)).lineLimit(2)
-                HStack(spacing: 8) {
+                HStack(spacing: PigSpacing.s) {
                     if item.playLabel != nil {
                         Button { play(false) } label: {
                             Label(progress.fraction == nil ? "Play" : "Resume", systemImage: "play.fill").frame(maxWidth: .infinity)
@@ -661,9 +661,9 @@ private struct RecordingStackCard: View {
                     .buttonStyle(.bordered)
                     .accessibilityLabel("Details of \(item.title)")
                 }
-                .padding(.top, 8)
+                .padding(.top, PigSpacing.s)
             }
-            .padding(.horizontal, 16).padding(.vertical, 14)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.l)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.pigSurface)
         }

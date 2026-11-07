@@ -111,15 +111,15 @@ struct SportSettingsSection: View {
     @ViewBuilder
     private var content: some View {
         #if os(tvOS)
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             statusLines
             if let follows = model.follows {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: PigSpacing.s) {
                     spoilerRow(follows.spoilerFree)
                     if delay.available { delayRow }
                 }
                 .focusSection()
-                yourSportsHeading.padding(.top, 8)
+                yourSportsHeading.padding(.top, PigSpacing.xs)
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
                 if follows.sports.isEmpty {
                     SportStatusLine(text: "Follow a sport to fill the Sport tab.").accessibilityIdentifier("settings.sport.empty")
@@ -171,7 +171,7 @@ struct SportSettingsSection: View {
             Button { Task { await model.load() } } label: {
                 Text("Retry")
                     #if os(tvOS)
-                    .font(.system(size: 24))
+                    .font(.system(size: PigType.body))
                     #endif
             }
             .accessibilityIdentifier("settings.sport.retry")
@@ -181,7 +181,7 @@ struct SportSettingsSection: View {
     }
 
     private var yourSportsHeading: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
+        HStack(alignment: .firstTextBaseline, spacing: PigSpacing.m) {
             Text("Your sports").font(SettingsSportType.heading).foregroundStyle(Color("PigText"))
                 .accessibilityAddTraits(.isHeader)
             #if os(tvOS)
@@ -197,8 +197,8 @@ struct SportSettingsSection: View {
     private func spoilerRow(_ on: Bool) -> some View {
         #if os(tvOS)
         Button { Task { await model.setSpoilerFree(!on) } } label: {
-            HStack(spacing: 18) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: PigSpacing.m) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text("Hide scores").font(SettingsSportType.tileTitle)
                     Text("Scores and results stay hidden on every device signed in as you.").font(SettingsSportType.tileDetail)
                         .foregroundStyle(Color("PigSecondary")).fixedSize(horizontal: false, vertical: true)
@@ -206,7 +206,7 @@ struct SportSettingsSection: View {
                 Spacer(minLength: 8)
                 SwitchGlyph(on: on)
             }
-            .padding(.horizontal, 24).padding(.vertical, 18)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             .frame(maxWidth: .infinity, minHeight: SettingsSportMetrics.tileHeight, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -216,7 +216,7 @@ struct SportSettingsSection: View {
         .accessibilityValue(on ? "On" : "Off")
         #else
         Toggle(isOn: Binding(get: { on }, set: { value in Task { await model.setSpoilerFree(value) } })) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text("Hide scores")
                 Text("On every device signed in as you.").font(.footnote).foregroundStyle(.secondary)
             }
@@ -248,8 +248,8 @@ struct SportSettingsSection: View {
             .accessibilityLabel("Score delay \(seconds.map { "\($0) seconds" } ?? "unknown")")
             .accessibilityIdentifier("settings.sport.delay.value")
         #if os(tvOS)
-        return HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        return HStack(spacing: PigSpacing.s) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text("Score delay").font(SettingsSportType.tileTitle)
                 Text("0–300 seconds. Clocks and scores follow it.").font(SettingsSportType.tileDetail)
                     .foregroundStyle(Color("PigSecondary")).fixedSize(horizontal: false, vertical: true)
@@ -259,13 +259,13 @@ struct SportSettingsSection: View {
             value
             more.buttonStyle(PigSurfaceButtonStyle())
         }
-        .padding(.horizontal, 24).padding(.vertical, 18)
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
         .frame(maxWidth: .infinity, minHeight: SettingsSportMetrics.tileHeight, alignment: .leading)
         .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         .focusSection()
         #else
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+        return HStack(spacing: PigSpacing.m) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text("Score delay")
                 Text("0–300 seconds").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
             }
@@ -287,14 +287,14 @@ struct SportSettingsSection: View {
         let names = SettingsSportLogos.names(entry, follows: frontFollows)
         #if os(tvOS)
         return Button { route = .sport(entry.sport) } label: {
-            HStack(spacing: 18) {
+            HStack(spacing: PigSpacing.m) {
                 Text(entry.sport).font(SettingsSportType.tileTitle).frame(width: SettingsSportMetrics.nameWidth, alignment: .leading)
                     .lineLimit(1)
                 Text(leagues).font(SettingsSportType.rowDetail).foregroundStyle(Color("PigSecondary")).lineLimit(1)
                 Spacer(minLength: 12)
                 FollowedNames(names: names, client: model.client)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, PigSpacing.l)
             .frame(maxWidth: .infinity, minHeight: SettingsSportMetrics.rowHeight, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -305,8 +305,8 @@ struct SportSettingsSection: View {
         return NavigationLink {
             SportFollowScreen(model: model, sport: entry.sport, me: me)
         } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: PigSpacing.m) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(entry.sport).font(.headline)
                     Text(leagues).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -323,7 +323,7 @@ struct SportSettingsSection: View {
         #if os(tvOS)
         return Button { route = .addSport } label: {
             Label("Add a sport", systemImage: "plus").font(SettingsSportType.tileTitle)
-                .padding(.horizontal, 22).padding(.vertical, 14)
+                .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
         .disabled(!model.canEdit)
@@ -370,7 +370,7 @@ private struct SwitchGlyph: View {
         Capsule().fill(on ? Color.pigAccent : Color.pigBorder)
             .frame(width: 64, height: 36)
             .overlay(alignment: on ? .trailing : .leading) {
-                Circle().fill(Color.pigOnStatus).frame(width: 30, height: 30).padding(3)
+                Circle().fill(Color.pigOnStatus).frame(width: 30, height: 30).padding(PigSpacing.xxs)
             }
             .animation(.easeOut(duration: 0.15), value: on)
             .accessibilityHidden(true)
@@ -395,14 +395,14 @@ nonisolated enum SettingsSportMetrics {
 
 nonisolated enum SettingsSportType {
     #if os(tvOS)
-    static let heading: Font = .system(size: 25, weight: .heavy)
-    static let caption: Font = .system(size: 18)
-    static let tileTitle: Font = .system(size: 23, weight: .bold)
-    static let tileDetail: Font = .system(size: 17)
-    static let rowDetail: Font = .system(size: 19)
-    static let follow: Font = .system(size: 18, weight: .semibold)
-    static let stepper: Font = .system(size: 20, weight: .bold)
-    static let delay: Font = .system(size: 26, weight: .bold)
+    static let heading: Font = .system(size: PigType.cardTitle, weight: .heavy)
+    static let caption: Font = .system(size: PigType.caption)
+    static let tileTitle: Font = .system(size: PigType.body, weight: .bold)
+    static let tileDetail: Font = .system(size: PigType.caption)
+    static let rowDetail: Font = .system(size: PigType.secondary)
+    static let follow: Font = .system(size: PigType.caption, weight: .semibold)
+    static let stepper: Font = .system(size: PigType.secondary, weight: .bold)
+    static let delay: Font = .system(size: PigType.cardTitle, weight: .bold)
     #else
     static let heading: Font = .headline
     static let caption: Font = .footnote
@@ -431,21 +431,21 @@ private struct SportSuggestionRow: View {
         }
         .disabled(!model.canEdit)
         #if os(tvOS)
-        HStack(spacing: 24) {
+        HStack(spacing: PigSpacing.l) {
             text.fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 12)
             buttons
         }
-        .font(.system(size: 24))
-        .padding(.horizontal, 24).padding(.vertical, 12)
+        .font(.system(size: PigType.body))
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
         .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.compact))
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.sport.suggestion")
         #else
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             text
-            HStack(spacing: 16) { buttons }.buttonStyle(.borderless)
+            HStack(spacing: PigSpacing.l) { buttons }.buttonStyle(.borderless)
         }
         .listRowBackground(Color.pigRaised)
         .accessibilityElement(children: .contain)
@@ -480,9 +480,9 @@ struct SportFollowScreen: View {
     private var page: some View {
         #if os(tvOS)
         DetailPage(title: sport) {
-            VStack(alignment: .leading, spacing: 28) { content }
+            VStack(alignment: .leading, spacing: PigSpacing.l) { content }
                 .frame(maxWidth: 1300, alignment: .leading)
-                .padding(.horizontal, 48)
+                .padding(.horizontal, PigSpacing.section)
         }
         .accessibilityIdentifier("settings.sport.screen")
         .detailCover(isPresented: $searching) { SportNameSearchScreen(model: model, sport: sport) }
@@ -562,7 +562,7 @@ struct SportFollowScreen: View {
                         Text(heading).font(DetailType.rowDetail).foregroundStyle(.secondary)
                     }
                     #if os(tvOS)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 380), spacing: 24, alignment: .leading)], alignment: .leading, spacing: 24) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 380), spacing: PigSpacing.l, alignment: .leading)], alignment: .leading, spacing: PigSpacing.l) {
                         ForEach(group.leagues, id: \.league) { league in addLeagueButton(league) }
                     }
                     .focusSection()
@@ -680,9 +680,9 @@ struct SportAddSportScreen: View {
     var body: some View {
         #if os(tvOS)
         DetailPage(title: "Add a sport") {
-            VStack(alignment: .leading, spacing: 20) { list }
+            VStack(alignment: .leading, spacing: PigSpacing.m) { list }
                 .frame(maxWidth: 1100, alignment: .leading)
-                .padding(.horizontal, 48)
+                .padding(.horizontal, PigSpacing.section)
         }
         #else
         Form { Section { list } }.navigationTitle("Add a sport")
@@ -700,7 +700,7 @@ struct SportAddSportScreen: View {
                 .accessibilityIdentifier("settings.sport.addSport.\(sport.sport)")
             #else
             Button { choose(sport.sport) } label: {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(sport.sport).foregroundStyle(Color("PigText"))
                     Text(leagues).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -736,9 +736,9 @@ struct SportNameSearchScreen: View {
     var body: some View {
         #if os(tvOS)
         DetailPage(title: title) {
-            VStack(alignment: .leading, spacing: 20) { content }
+            VStack(alignment: .leading, spacing: PigSpacing.m) { content }
                 .frame(maxWidth: 1100, alignment: .leading)
-                .padding(.horizontal, 48)
+                .padding(.horizontal, PigSpacing.section)
         }
         .onAppear { model.message = "" }
         #else
@@ -802,11 +802,11 @@ private struct SportSurfaceRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: PigSpacing.l) {
+                VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     Text(title)
                     if let detail, !detail.isEmpty {
-                        Text(detail).font(.system(size: 20)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(detail).font(.system(size: PigType.secondary)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 Spacer()
@@ -814,8 +814,8 @@ private struct SportSurfaceRow: View {
                 if chevron { Image(systemName: "chevron.right").foregroundStyle(.secondary).accessibilityHidden(true) }
             }
             #if os(tvOS)
-            .font(.system(size: 24))
-            .padding(.horizontal, 24).padding(.vertical, 16)
+            .font(.system(size: PigType.body))
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             #endif
             .contentShape(Rectangle())
         }
@@ -834,16 +834,16 @@ private struct SportItemRow<Title: View, Actions: View>: View {
 
     var body: some View {
         #if os(tvOS)
-        HStack(spacing: 20) {
+        HStack(spacing: PigSpacing.m) {
             title.font(DetailType.rowTitle).lineLimit(1)
             Spacer(minLength: 12)
             actions.font(DetailType.button)
         }
-        .padding(.horizontal, 24).padding(.vertical, 10)
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
         .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.compact))
         .focusSection()
         #else
-        HStack(spacing: 16) {
+        HStack(spacing: PigSpacing.l) {
             title.lineLimit(1)
             Spacer(minLength: 8)
             actions
@@ -879,7 +879,7 @@ private struct SportStatusLine: View {
     var body: some View {
         Text(text)
             #if os(tvOS)
-            .font(.system(size: 22))
+            .font(.system(size: PigType.body))
             #else
             .font(.footnote)
             #endif

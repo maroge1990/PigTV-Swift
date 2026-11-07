@@ -97,8 +97,8 @@ struct GuideFocusStrip<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: Self.spacing) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(spacing: PigSpacing.s) {
                     if text.recording {
                         Circle().fill(Color.pigDanger).frame(width: Self.dot, height: Self.dot)
                             .accessibilityHidden(true)
@@ -128,14 +128,14 @@ struct GuideFocusStrip<Trailing: View>: View {
     #if os(tvOS)
     static var height: CGFloat { 110 }
     static var padding: CGFloat { 28 }
-    static var spacing: CGFloat { 28 }
+    static var spacing: CGFloat { PigSpacing.l }
     static var dot: CGFloat { 12 }
-    static var titleFont: Font { .system(size: 30, weight: .heavy) }
-    static var detailFont: Font { .system(size: 20) }
+    static var titleFont: Font { .system(size: PigType.sectionTitle, weight: .heavy) }
+    static var detailFont: Font { .system(size: PigType.secondary) }
     #else
     static var height: CGFloat { 64 }
     static var padding: CGFloat { 16 }
-    static var spacing: CGFloat { 12 }
+    static var spacing: CGFloat { PigSpacing.m }
     static var dot: CGFloat { 9 }
     static var titleFont: Font { .headline.weight(.heavy) }
     static var detailFont: Font { .caption }
@@ -148,7 +148,7 @@ struct GuideToolLabel: View {
     let systemImage: String
     var trailingIcon = false
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PigSpacing.s) {
             if !trailingIcon { Image(systemName: systemImage).accessibilityHidden(true) }
             Text(title).fixedSize()
             if trailingIcon { Image(systemName: systemImage).accessibilityHidden(true) }

@@ -49,7 +49,7 @@ struct SportFrontPhonePage: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
                 header
                 if let front = model.front {
                     if model.stale, let updated = model.updatedAt {
@@ -74,9 +74,9 @@ struct SportFrontPhonePage: View {
                         also(front, now: now)
                     }
                 } else if !model.loaded {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, 80)
+                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                 } else {
-                    VStack(spacing: 14) {
+                    VStack(spacing: PigSpacing.l) {
                         SportPhoneEmpty(icon: "sportscourt", title: "Sport is unavailable right now",
                                         text: model.error ?? "The sport data could not be reached. The guide and playback are not affected.")
                         Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
@@ -84,7 +84,7 @@ struct SportFrontPhonePage: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.bottom, 40)
+            .padding(.bottom, PigSpacing.section)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
@@ -94,7 +94,7 @@ struct SportFrontPhonePage: View {
     private var header: some View {
         PigPageHeader(title: "Sport") {
             Text(SportPhoneLayout.scoresChip(hidden: hidden)).font(.footnote).foregroundStyle(.secondary)
-                .padding(.horizontal, 12).padding(.vertical, 6)
+                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                 .background(Color.pigRaised, in: Capsule())
                 .accessibilityIdentifier("sport.front.scores")
         }
@@ -111,15 +111,15 @@ struct SportFrontPhonePage: View {
     // MARK: A sport's card
 
     private func groupView(_ group: SportPhoneGroup, front: SportFront, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Button { open(group.sport) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                     Text(group.sport).font(.title3.weight(.heavy))
                     Text("›").font(.title3.weight(.heavy)).foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     Text(group.note).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, PigSpacing.xs)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -137,19 +137,19 @@ struct SportFrontPhonePage: View {
     private func also(_ front: SportFront, now: Date) -> some View {
         let sports = SportFrontLayout.alsoInYourSports(front)
         if !sports.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Text("Also in your sports").font(.footnote).foregroundStyle(.secondary)
                 ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: PigSpacing.s) {
                         ForEach(sports, id: \.self) { sport in
                             Button { open(sport) } label: {
-                                HStack(spacing: 6) {
+                                HStack(spacing: PigSpacing.s) {
                                     Text(sport).font(.subheadline.weight(.bold))
                                     if let line = SportFrontLayout.alsoLine(sport, in: front, now: now) {
                                         Text(line).font(.subheadline).foregroundStyle(.secondary)
                                     }
                                 }
-                                .padding(.horizontal, 14).frame(minHeight: 36)
+                                .padding(.horizontal, PigSpacing.l).frame(minHeight: 36)
                                 .background(Color.pigRaised, in: Capsule())
                             }
                             .buttonStyle(.plain)
@@ -172,8 +172,8 @@ struct SportFixtureRow: View {
     let client: APIClient?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+            HStack(spacing: PigSpacing.s) {
                 if row.sides.count == 2 {
                     SportBadge(name: row.sides[0].name, logo: row.sides[0].logo, league: row.league, client: client,
                                size: SportPhoneMetrics.rowBadge)
@@ -181,7 +181,7 @@ struct SportFixtureRow: View {
                     SportBadge(name: row.sides[1].name, logo: row.sides[1].logo, league: row.league, client: client,
                                size: SportPhoneMetrics.rowBadge)
                 } else {
-                    Text(row.badge ?? "").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
+                    Text(row.badge ?? "").font(.system(size: PigType.micro, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
                         .frame(width: SportPhoneMetrics.rowBadge, height: SportPhoneMetrics.rowBadge)
                         .background(Color(teamHex: SportFrontText.leagueColor(row.league)) ?? Color.pigDanger,
                                     in: RoundedRectangle(cornerRadius: PigRadius.inner, style: .continuous))
@@ -194,7 +194,7 @@ struct SportFixtureRow: View {
                         .fixedSize()
                 }
             }
-            HStack(spacing: 6) {
+            HStack(spacing: PigSpacing.s) {
                 if let live = row.live {
                     Text("● \(live)").font(.caption.weight(.bold)).foregroundStyle(Color.pigDanger).monospacedDigit()
                         .fixedSize()
@@ -203,9 +203,9 @@ struct SportFixtureRow: View {
                 Text(row.sub).lineLimit(1)
             }
             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            .padding(.leading, 30)
+            .padding(.leading, PigSpacing.section)
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
@@ -231,13 +231,13 @@ struct SportPhoneEmpty: View {
     let text: String
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 44, weight: .semibold)).foregroundStyle(Color.pigAccentText)
+        VStack(spacing: PigSpacing.m) {
+            Image(systemName: icon).font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
                 .accessibilityHidden(true)
             Text(title).font(.title3.bold()).multilineTextAlignment(.center)
             Text(text).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
-        .padding(.vertical, 48).padding(.horizontal, 24).frame(maxWidth: .infinity)
+        .padding(.vertical, PigSpacing.empty).padding(.horizontal, PigSpacing.xl).frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
 }

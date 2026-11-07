@@ -37,16 +37,16 @@ struct RecordingTouchPlayer: View {
                         Spacer()
                         Button { lastInput = Date(); model.skipBreak() } label: {
                             Label("Skip break", systemImage: "forward.end.fill")
-                                .font(.headline).padding(.horizontal, 18).frame(minHeight: 44)
+                                .font(.headline).padding(.horizontal, PigSpacing.l).frame(minHeight: 44)
                         }
                         .buttonStyle(.borderedProminent).tint(Color.pigAccent)
                         .foregroundStyle(Color.pigOnAccent)
                         .accessibilityIdentifier("recording.skipBreak")
                     }
                     // Above the scrub panel when it is showing.
-                    .padding(.bottom, chromeVisible ? 96 : 24)
+                    .padding(.bottom, chromeVisible ? PigSpacing.empty : PigSpacing.xl)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, PigSpacing.xl)
                 .transition(.opacity)
             }
         }
@@ -68,7 +68,7 @@ struct RecordingTouchPlayer: View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
             let timeline = model.timeline()
             VStack(spacing: 0) {
-                HStack(spacing: 12) {
+                HStack(spacing: PigSpacing.m) {
                     PlayerCircleButton(icon: "xmark", label: "Close player", size: 44, action: close)
                         .accessibilityIdentifier("recording.close")
                     Text(model.recording.title).font(.headline).lineLimit(1)
@@ -82,7 +82,7 @@ struct RecordingTouchPlayer: View {
                     }
                 }
                 Spacer(minLength: 8)
-                HStack(spacing: 36) {
+                HStack(spacing: PigSpacing.section) {
                     PlayerCircleButton(icon: "gobackward.15", label: "Back 15 seconds", size: 56) {
                         lastInput = Date(); model.skip(-15)
                     }
@@ -98,7 +98,7 @@ struct RecordingTouchPlayer: View {
                 Spacer(minLength: 8)
                 scrubPanel(timeline)
             }
-            .padding(.horizontal, 16).padding(.vertical, 8)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
         }
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
@@ -108,7 +108,7 @@ struct RecordingTouchPlayer: View {
     private func scrubPanel(_ timeline: RecordingTimeline?) -> some View {
         if let timeline {
             let fraction = dragFraction ?? timeline.fraction
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.m) {
                 Text(RecordingTimeline.clock(timeline.end * fraction))
                     .font(.footnote.weight(.semibold).monospacedDigit()).fontDesign(.rounded)
                     .frame(minWidth: 56, alignment: .leading)
@@ -123,7 +123,7 @@ struct RecordingTouchPlayer: View {
                     .font(.footnote.weight(.semibold).monospacedDigit()).fontDesign(.rounded)
                     .frame(minWidth: 56, alignment: .trailing)
             }
-            .padding(12)
+            .padding(PigSpacing.m)
             .background(reduceTransparency ? AnyShapeStyle(Color.pigMediaSolidPanel) : AnyShapeStyle(Color.pigMediaPanel),
                         in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         }

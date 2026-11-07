@@ -160,7 +160,7 @@ struct LibrarySettings: View {
                         } footer: {
                             Text("App \(Self.appVersion) (\(Self.appBuild))" + (model.serverInfo.map { " · Server \($0.build ?? $0.version ?? "?")" } ?? ""))
                                 .font(.footnote.monospacedDigit()).fontDesign(.rounded)
-                                .frame(maxWidth: .infinity).padding(.top, 12)
+                                .frame(maxWidth: .infinity).padding(.top, PigSpacing.m)
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -193,7 +193,7 @@ struct LibrarySettings: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .focusSection()
                 }
-                .padding(.top, 20)
+                .padding(.top, PigSpacing.m)
                 #else
                 NavigationSplitView(columnVisibility: .constant(.all)) {
                     menu
@@ -314,8 +314,8 @@ struct LibrarySettings: View {
                     Spacer()
                 }
                 #if os(tvOS)
-                .font(.system(size: 24))
-                .padding(.horizontal, 24).padding(.vertical, 16)
+                .font(.system(size: PigType.body))
+                .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
                 .background(appearance == value ? Color.pigAccent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: PigRadius.compact))
                 #endif
                 .overlay(alignment: .leading) {
@@ -383,7 +383,7 @@ private struct SettingsMenuLabel: View {
                 .frame(width: SettingsMetrics.icon)
                 .foregroundStyle(selected ? Color.pigAccentText : Color("PigSecondary"))
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(page.title).font(SettingsType.menuTitle)
                     .foregroundStyle(selected ? Color.pigAccentText : Color("PigText"))
                 Text(summary).font(SettingsType.menuSummary).monospacedDigit()
@@ -412,7 +412,7 @@ private struct SettingsMenuRowStyle: ButtonStyle {
             .overlay(alignment: .leading) {
                 if selected {
                     Capsule().fill(Color.pigAccent).frame(width: SettingsMetrics.barWidth, height: 26)
-                        .padding(.leading, 6).allowsHitTesting(false).accessibilityHidden(true)
+                        .padding(.leading, PigSpacing.xs).allowsHitTesting(false).accessibilityHidden(true)
                 }
             }
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
@@ -426,12 +426,12 @@ private struct SettingsMenuRowStyle: ButtonStyle {
 
 nonisolated enum SettingsType {
     #if os(tvOS)
-    static let menuTitle: Font = .system(size: 23, weight: .bold)
-    static let menuSummary: Font = .system(size: 17).monospacedDigit()
-    static let pageTitle: Font = .system(size: 40, weight: .heavy)
-    static let confirmTitle: Font = .system(size: 26, weight: .bold)
-    static let confirmBody: Font = .system(size: 21)
-    static let footnote: Font = .system(size: 18)
+    static let menuTitle: Font = .system(size: PigType.body, weight: .bold)
+    static let menuSummary: Font = .system(size: PigType.caption).monospacedDigit()
+    static let pageTitle: Font = .system(size: PigType.display, weight: .heavy)
+    static let confirmTitle: Font = .system(size: PigType.cardTitle, weight: .bold)
+    static let confirmBody: Font = .system(size: PigType.secondary)
+    static let footnote: Font = .system(size: PigType.caption)
     #else
     static let menuTitle: Font = .headline
     static let menuSummary: Font = .footnote
@@ -452,12 +452,12 @@ struct SettingsPageBody<Content: View>: View {
     var body: some View {
         #if os(tvOS)
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: PigSpacing.l) {
                 if showsTitle { Text(title).font(SettingsType.pageTitle).accessibilityAddTraits(.isHeader) }
                 content
             }
             .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
-            .padding(.horizontal, SettingsMetrics.pagePadding).padding(.bottom, 40)
+            .padding(.horizontal, SettingsMetrics.pagePadding).padding(.bottom, PigSpacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("settings.page")
@@ -507,8 +507,8 @@ struct SettingsAccountPage: View {
                         Image(systemName: "chevron.right").foregroundStyle(.secondary).accessibilityHidden(true)
                     }
                     #if os(tvOS)
-                    .font(.system(size: 24))
-                    .padding(.horizontal, 28).padding(.vertical, 22)
+                    .font(.system(size: PigType.body))
+                    .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.l)
                     #endif
                     .contentShape(Rectangle())
                 }
@@ -556,8 +556,8 @@ struct SettingsAccountPage: View {
             Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                 .foregroundStyle(Color.pigDanger)
                 #if os(tvOS)
-                .font(.system(size: 24))
-                .padding(.horizontal, 28).padding(.vertical, 22)
+                .font(.system(size: PigType.body))
+                .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.l)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 #endif
         }
@@ -581,7 +581,7 @@ struct SettingsAccountPage: View {
                  : "You will need to pair or sign in again on this device.")
                 .font(SettingsType.confirmBody).foregroundStyle(Color("PigSecondary"))
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 12) {
+            HStack(spacing: PigSpacing.s) {
                 Button("Stay signed in") { close() }
                     .pigPrimaryButton()
                     #if os(tvOS)
@@ -637,16 +637,16 @@ private struct LabsToggleRow: View {
     var body: some View {
         #if os(tvOS)
         Button { isOn.toggle() } label: {
-            HStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: PigSpacing.l) {
+                VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     Text(toggle.title)
-                    Text(toggle.detail).font(.system(size: 20)).foregroundStyle(.secondary)
+                    Text(toggle.detail).font(.system(size: PigType.secondary)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Text(isOn ? "On" : "Off").foregroundStyle(.secondary)
             }
-            .font(.system(size: 24))
-            .padding(.horizontal, 24).padding(.vertical, 16)
+            .font(.system(size: PigType.body))
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             .contentShape(Rectangle())
         }
         .buttonStyle(PigSurfaceButtonStyle())
@@ -654,7 +654,7 @@ private struct LabsToggleRow: View {
         .accessibilityValue(isOn ? "On" : "Off")
         #else
         Toggle(isOn: $isOn) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(toggle.title)
                 Text(toggle.detail).font(.footnote).foregroundStyle(.secondary)
             }
@@ -697,14 +697,14 @@ struct SettingsRow: View {
     }
     var body: some View {
         #if os(tvOS)
-        HStack(alignment: .firstTextBaseline, spacing: 24) {
+        HStack(alignment: .firstTextBaseline, spacing: PigSpacing.l) {
             Text(title).foregroundStyle(.secondary).fixedSize()
             Spacer()
             Text(value).fontWeight(.semibold).fontDesign(monospaced ? .monospaced : nil)
                 .lineLimit(wraps ? 2 : 1).multilineTextAlignment(.trailing)
         }
-        .font(.system(size: 24))
-        .padding(.horizontal, 28).padding(.vertical, 22)
+        .font(.system(size: PigType.body))
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.l)
         .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.card))
         .accessibilityElement(children: .combine)
         #else

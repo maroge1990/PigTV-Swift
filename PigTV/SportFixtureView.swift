@@ -26,14 +26,14 @@ nonisolated enum SportFixtureMetrics {
         }
     }
 
-    static let tvTable = Table(width: 680, valueWidth: 42, rankWidth: 28, badge: 24, spacing: 10, inset: 2 * 22 + 2 * 8)
+    static let tvTable = Table(width: 680, valueWidth: 42, rankWidth: 28, badge: 24, spacing: PigSpacing.s, inset: 2 * 22 + 2 * 8)
     // #228 (Mark, 4 Nov 2026: "a lot of dead space in the standings table"): on iPad the values were held 44 pt wide with
     // 10 pt gaps, wider together than the 380 pt table, so a row overflowed onto the games' scores and the team name was
     // cut to a few letters. The values now take what two or three digits need (a wider one, "137.2", is still drawn
     // whole), the table is 80 pt wider and the game cards give that up.
-    static let touchTable = Table(width: 460, valueWidth: 28, rankWidth: 22, badge: 24, spacing: 6, inset: 2 * 16 + 2 * 8)
+    static let touchTable = Table(width: 460, valueWidth: 28, rankWidth: 22, badge: 24, spacing: PigSpacing.xs, inset: 2 * 16 + 2 * 8)
     /// Before Apple 144 (#228's cause).
-    static let touchTableBefore = Table(width: 380, valueWidth: 44, rankWidth: 28, badge: 24, spacing: 10, inset: 2 * 16 + 2 * 8)
+    static let touchTableBefore = Table(width: 380, valueWidth: 44, rankWidth: 28, badge: 24, spacing: PigSpacing.s, inset: 2 * 16 + 2 * 8)
 
     #if os(tvOS)
     static let table = tvTable
@@ -129,8 +129,8 @@ struct SportFixtureContent: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         if let fixture {
-            SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap + 8).callAsFunction {
-                VStack(alignment: .leading, spacing: 14) {
+            SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap + PigSpacing.s).callAsFunction {
+                VStack(alignment: .leading, spacing: PigSpacing.m) {
                     roundPicker(fixture)
                     if let shown = FixtureText.round(round, in: fixture) {
                         grid(shown, fixture: fixture, now: now)
@@ -144,10 +144,10 @@ struct SportFixtureContent: View {
                 }
             }
         } else if loading {
-            ProgressView("Loading \(label)…").frame(maxWidth: .infinity).padding(.top, 60)
+            ProgressView("Loading \(label)…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
         } else {
             Text("\(label) is unavailable right now.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, 60)
+                .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
         }
     }
 
@@ -155,7 +155,7 @@ struct SportFixtureContent: View {
 
     private func roundPicker(_ fixture: FixtureLeague) -> some View {
         let shown = FixtureText.round(round, in: fixture)
-        return ScrollView(.horizontal) { HStack(spacing: 12) {
+        return ScrollView(.horizontal) { HStack(spacing: PigSpacing.s) {
             ForEach(fixture.rounds) { item in
                 Button { round = item.key } label: {
                     Text(item.label).font(SportPageMetrics.rowName).lineLimit(1)
@@ -165,7 +165,7 @@ struct SportFixtureContent: View {
                 .accessibilityIdentifier("sport.fixture.round.\(item.key)")
             }
             if let note = shown?.note {
-                Text(note).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1).padding(.leading, 8)
+                Text(note).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1).padding(.leading, PigSpacing.s)
             }
         } }
         .scrollIndicators(.hidden)
@@ -174,9 +174,9 @@ struct SportFixtureContent: View {
     }
 
     private func grid(_ round: FixtureLeague.Round, fixture: FixtureLeague, now: Date) -> some View {
-        LazyVGrid(columns: narrow ? [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)]
-                    : Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: SportFixtureMetrics.columns),
-                  alignment: .leading, spacing: 14) {
+        LazyVGrid(columns: narrow ? [GridItem(.adaptive(minimum: 300), spacing: PigSpacing.m, alignment: .top)]
+                    : Array(repeating: GridItem(.flexible(), spacing: PigSpacing.m, alignment: .top), count: SportFixtureMetrics.columns),
+                  alignment: .leading, spacing: PigSpacing.m) {
             ForEach(round.games) { game in gameCard(game, fixture: fixture, now: now) }
         }
         .tvFocusSection()
@@ -192,9 +192,9 @@ struct SportFixtureContent: View {
         return Button {
             SportCardActions.select(card: card, event: event, app: app, presenter: presenter)
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 ForEach(Array(sides.enumerated()), id: \.offset) { _, side in
-                    HStack(spacing: 10) {
+                    HStack(spacing: PigSpacing.s) {
                         SportBadge(name: side.name, logo: side.logo, league: fixture.league, client: browse.client,
                                    size: SportPageMetrics.badge, disc: side.logo == nil ? (side.abbr, side.color) : nil)
                         SportFollowStar(followed: side.followed)
@@ -211,7 +211,7 @@ struct SportFixtureContent: View {
                     Text(situation).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                HStack(spacing: 8) {
+                HStack(spacing: PigSpacing.s) {
                     if game.ongoing {
                         Circle().fill(Color.pigDanger).frame(width: 10, height: 10).accessibilityHidden(true)
                         Text(game.detail ?? "Live").font(SportPageMetrics.note.weight(.bold)).foregroundStyle(Color.pigDanger).lineLimit(1)
@@ -253,8 +253,8 @@ struct SportFixtureContent: View {
     @ViewBuilder
     private func standings(_ fixture: FixtureLeague) -> some View {
         let shown = FixtureText.view(view, in: fixture)
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            HStack(spacing: PigSpacing.s) {
                 Text("Standings").font(SportPageMetrics.cardTitle)
                 Spacer(minLength: 8)
                 if fixture.views.count > 1 {
@@ -273,7 +273,7 @@ struct SportFixtureContent: View {
                 let groups = FixtureText.groups(shown)
                 let group = groups.first { $0.name == tableGroup } ?? groups[0]
                 if groups.count > 1 {
-                    HStack(spacing: 12) {
+                    HStack(spacing: PigSpacing.s) {
                         ForEach(groups, id: \.name) { item in
                             Button { tableGroup = item.name } label: { Text(item.name).font(SportPageMetrics.rowDetail).lineLimit(1) }
                                 .buttonStyle(GuideFilterStyle(selected: group.name == item.name))
@@ -293,9 +293,9 @@ struct SportFixtureContent: View {
     }
 
     private func tableRows(_ table: FixtureLeague.Table) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: PigSpacing.xxs) {
             ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
-                HStack(spacing: narrow ? 6 : SportFixtureMetrics.table.spacing) {
+                HStack(spacing: narrow ? PigSpacing.xs : SportFixtureMetrics.table.spacing) {
                     Text(String(row.rank ?? index + 1)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).monospacedDigit()
                         .frame(minWidth: narrow ? 20 : SportFixtureMetrics.table.rankWidth, alignment: .trailing)
                     SportBadge(name: row.name, logo: row.logo, league: leagueName, client: browse.client,

@@ -172,11 +172,11 @@ struct SportChannelRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 24) {
+            HStack(spacing: PigSpacing.l) {
                 ChannelLogoTile(logo: browse.logo(for: channel), client: browse.client, name: channel.name,
                                 size: SportMetrics.rowLogo)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                    HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                         Text(channel.name).font(DetailType.rowTitle).lineLimit(1)
                         if browse.showsChannelNumbers, let number = channel.number {
                             ChannelNumberText(number: String(number), font: DetailType.rowDetail)
@@ -197,9 +197,9 @@ struct SportChannelRow: View {
                 Image(systemName: icon).foregroundStyle(.secondary).accessibilityHidden(true)
             }
             #if os(tvOS)
-            .padding(.horizontal, 24).padding(.vertical, 16)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             #else
-            .padding(.horizontal, 14).padding(.vertical, 10)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             #endif
             .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
             .contentShape(Rectangle())
@@ -239,7 +239,7 @@ struct SportChannelPicker: View {
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 let now = max(context.date, clock)
                 VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: PigSpacing.s) {
                         Eyebrow(text: event.league)
                         Text(event.title).font(DetailType.channel)
                         Text(SportRows.timing(event, now: now)).font(DetailType.meta).foregroundStyle(.secondary)
@@ -283,7 +283,7 @@ struct SportChannelList: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             ForEach(Array(event.channels.enumerated()), id: \.element.id) { index, channel in
                 // #20: each row on its own channel's airing.
                 let action = SportRows.channelAction(event, on: channel, now: clock)

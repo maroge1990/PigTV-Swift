@@ -151,8 +151,8 @@ struct ProgrammeDetails: View {
     /// R5-Programme-*: the channel, the recording state as a word, when, the title, the date and times, the description.
     private func hero(now: Date, live: Bool) -> some View {
         PigHeroCard {
-            HStack(alignment: .top, spacing: 20) {
-                HStack(spacing: 16) {
+            HStack(alignment: .top, spacing: PigSpacing.l) {
+                HStack(spacing: PigSpacing.m) {
                     ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
                                     size: DetailMetrics.smallLogo)
                     Text([channel.name, model.number(for: channel).map { String($0) }].compactMap { $0 }.joined(separator: " · "))
@@ -162,12 +162,12 @@ struct ProgrammeDetails: View {
                 statusPill
             }
             Eyebrow(text: eyebrow(now: now, live: live), colour: programme.end <= now ? .pigSecondary : .pigAccentText)
-                .padding(.top, 10)
+                .padding(.top, PigSpacing.s)
             Text(programme.title).font(DetailType.title).lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
             Text(meta(now: now)).font(DetailType.meta).foregroundStyle(Color.pigSecondary).monospacedDigit()
             if live {
-                HStack(spacing: 18) {
+                HStack(spacing: PigSpacing.m) {
                     PigProgressBar(fraction: now.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start), height: 6)
                         .frame(maxWidth: 640)
                     Text("\(DetailText.duration(programme.end.timeIntervalSince(now).rounded(.up))) left")
@@ -179,7 +179,7 @@ struct ProgrammeDetails: View {
                     .font(DetailType.body).foregroundStyle(Color.pigSecondary).lineSpacing(6)
                     .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 6)
+                    .padding(.top, PigSpacing.xs)
             }
         }
     }
@@ -198,13 +198,13 @@ struct ProgrammeDetails: View {
     private func alsoOn(now: Date) -> some View {
         let next = AlsoOn.programmes(after: programme, in: model.guideChannel(id: channel.id)?.programmes ?? channel.programmes)
         if let openProgramme, !next.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Text(AlsoOn.heading(channel: channel.name, programme: programme, now: now))
-                    .font(DetailType.section.weight(.heavy)).padding(.top, 8)
+                    .font(DetailType.section.weight(.heavy)).padding(.top, PigSpacing.s)
                     .accessibilityAddTraits(.isHeader)
                 ForEach(next, id: \.startTime) { other in
                     Button { openProgramme(other) } label: {
-                        HStack(spacing: 18) {
+                        HStack(spacing: PigSpacing.m) {
                             Text(other.start.formatted(date: .omitted, time: .shortened))
                                 .font(DetailType.rowTitle).fontDesign(.rounded).monospacedDigit()
                                 .lineLimit(1).fixedSize()
@@ -216,7 +216,7 @@ struct ProgrammeDetails: View {
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right").foregroundStyle(Color.pigSecondary).accessibilityHidden(true)
                         }
-                        .padding(.horizontal, 20).padding(.vertical, 14)
+                        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
@@ -318,7 +318,7 @@ struct ChannelPageView: View {
                         Text("No programme information for this channel.").font(DetailType.meta).foregroundStyle(Color.pigSecondary)
                     }
                     ForEach(days, id: \.title) { day in
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: PigSpacing.s) {
                             PigSectionHeader(title: day.title)
                             ForEach(day.programmes, id: \.startTime) { programme in
                                 ScheduleRow(programme: programme, now: now,
@@ -340,18 +340,18 @@ struct ChannelPageView: View {
     private func hero(row: OnNowRow, now: Date) -> some View {
         PigHeroCard {
             #if os(tvOS)
-            HStack(alignment: .top, spacing: 40) {
+            HStack(alignment: .top, spacing: PigSpacing.xl) {
                 ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name)
                 onNow(row: row, now: now).frame(maxWidth: .infinity, alignment: .leading)
                 if let next = row.next {
                     upNext(next, now: now)
                         .frame(width: 460, alignment: .leading)
-                        .padding(.leading, 32)
+                        .padding(.leading, PigSpacing.xl)
                         .overlay(alignment: .leading) { Rectangle().fill(Color.pigBorder).frame(width: 1) }
                 }
             }
             #else
-            HStack(spacing: 16) {
+            HStack(spacing: PigSpacing.l) {
                 ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name)
                 channelLine
             }
@@ -371,12 +371,12 @@ struct ChannelPageView: View {
 
     @ViewBuilder
     private func onNow(row: OnNowRow, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             #if os(tvOS)
             channelLine
             #endif
             if let current = row.current {
-                HStack(spacing: 12) {
+                HStack(spacing: PigSpacing.s) {
                     if recordingNow {
                         Circle().fill(Color.pigDanger).frame(width: 12, height: 12).accessibilityHidden(true)
                     }
@@ -402,12 +402,12 @@ struct ChannelPageView: View {
                 FavouriteButton(model: model, channel: model.asChannel(channel))
             }
             .defaultFocus($watchFocused, true)
-            .padding(.top, 10)
+            .padding(.top, PigSpacing.s)
         }
     }
 
     private func upNext(_ next: GuideProgramme, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text("UP NEXT").font(DetailType.eyebrow).tracking(1.4).foregroundStyle(Color.pigSecondary)
                 .accessibilityAddTraits(.isHeader)
             Text("\(Countdown.text(to: next.start, now: now)) · \(next.start.formatted(date: .omitted, time: .shortened))")
@@ -445,15 +445,15 @@ private struct ScheduleRow: View {
     }
 
     private func content(chevron: Bool) -> some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: PigSpacing.l) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(programme.start.formatted(date: .omitted, time: .shortened))
                     .font(DetailType.rowTitle.monospacedDigit()).fontDesign(.rounded).lineLimit(1).fixedSize()
                 Text(programme.durationText).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).lineLimit(1)
             }
             .frame(minWidth: DetailMetrics.timeColumn, alignment: .leading)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(spacing: PigSpacing.s) {
                     Text(programme.title).font(DetailType.rowTitle).lineLimit(1)
                     if scheduled { StatusPill(text: "REC") }
                 }
@@ -468,9 +468,9 @@ private struct ScheduleRow: View {
             }
         }
         #if os(tvOS)
-        .padding(.horizontal, 24).padding(.vertical, 16)
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
         #else
-        .padding(14)
+        .padding(PigSpacing.l)
         #endif
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())

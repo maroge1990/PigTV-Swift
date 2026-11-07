@@ -32,6 +32,8 @@ private enum PlayerAction: CaseIterable {
 }
 
 struct CustomPlayerView: View {
+    /// Room above and below the channel list, so its first and last rows can scroll to the centre.
+    private static let channelListOverscroll: CGFloat = 340
     @ObservedObject var playback: PlaybackModel
     @ObservedObject var app: AppModel
     let exit: () -> Void
@@ -90,9 +92,9 @@ struct CustomPlayerView: View {
                         if chrome == .scrub { scrubBar(now: context.date) }
                         if let notice {
                             Text(notice).font(.callout.weight(.semibold)).foregroundStyle(.white)
-                                .padding(.horizontal, 24).padding(.vertical, 12)
+                                .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
                                 .background(panelFill, in: Capsule())
-                                .frame(maxHeight: .infinity, alignment: .top).padding(.top, 60)
+                                .frame(maxHeight: .infinity, alignment: .top).padding(.top, PigSpacing.tvSafeTop)
                         }
                     }
                     .onChange(of: context.date) { _, now in autoHide(now) }
@@ -258,32 +260,32 @@ struct CustomPlayerView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Spacer()
             HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: PigSpacing.s) {
                     LogoTile(logo: browse?.logo(for: playback.channel) ?? playback.channel.logo, client: browse?.client,
                              name: playback.channel.name)
                         .frame(width: 180, height: 100)
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                         Text(playback.channel.name)
-                            .font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                            .font(.system(size: PigType.cardTitle, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
                         // C-A, build 29: the number small and muted after the name.
                         if let number = playback.channel.numberText {
-                            ChannelNumberText(number: number, font: .system(size: 20, weight: .medium), onDark: true)
+                            ChannelNumberText(number: number, font: .system(size: PigType.secondary, weight: .medium), onDark: true)
                         }
                     }
                     Text(programme?.title ?? "No programme information")
-                        .font(.system(size: 56, weight: .bold)).lineLimit(2)
+                        .font(.system(size: PigType.hero, weight: .bold)).lineLimit(2)
                     if let programme {
                         Text("\(programme.start.formatted(date: .omitted, time: .shortened)) — \(programme.end.formatted(date: .omitted, time: .shortened))")
-                            .font(.system(size: 26, weight: .medium))
+                            .font(.system(size: PigType.cardTitle, weight: .medium))
                         if let description = programme.description, !description.isEmpty {
-                            Text(description).font(.system(size: 24)).foregroundStyle(.white.opacity(0.85))
+                            Text(description).font(.system(size: PigType.body)).foregroundStyle(.white.opacity(0.85))
                                 .lineLimit(2).frame(maxWidth: 1000, alignment: .leading)
                         }
                     }
-                    HStack(spacing: 8) {
+                    HStack(spacing: PigSpacing.xs) {
                         ForEach(qualityTags, id: \.self) { tag in
-                            Text(tag).font(.system(size: 18, weight: .semibold))
-                                .padding(.horizontal, 10).padding(.vertical, 4)
+                            Text(tag).font(.system(size: PigType.caption, weight: .semibold))
+                                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
                                 .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: PigRadius.inner))
                         }
                     }
@@ -292,10 +294,10 @@ struct CustomPlayerView: View {
                 Spacer()
                 actionRow
             }
-            timeline(programme: programme, next: next, now: now).padding(.top, 28)
+            timeline(programme: programme, next: next, now: now).padding(.top, PigSpacing.l)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 90).padding(.bottom, 40)
+        .padding(.horizontal, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background(alignment: .bottom) {
             LinearGradient(stops: [.init(color: .clear, location: 0),
@@ -353,8 +355,8 @@ struct CustomPlayerView: View {
     // MARK: Audio & subtitles panel
 
     private var tracksPanel: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("Audio & subtitles").font(.system(size: 34, weight: .bold))
+        VStack(alignment: .leading, spacing: PigSpacing.l) {
+            Text("Audio & subtitles").font(.system(size: PigType.sectionTitle, weight: .bold))
             if !playback.audioTracks.isEmpty {
                 trackSection("Audio", tracks: playback.audioTracks)
             }
@@ -364,25 +366,25 @@ struct CustomPlayerView: View {
         }
         .foregroundStyle(.white)
         .frame(maxWidth: 620, alignment: .leading)
-        .padding(40)
+        .padding(PigSpacing.xl)
         .background(RoundedRectangle(cornerRadius: PigRadius.hero).fill(panelFill))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(.leading, 80)
+        .padding(.leading, PigSpacing.tvSafeSide)
         .transition(.opacity)
     }
 
     private func trackSection(_ title: String, tracks: [PlaybackModel.MediaTrack]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased()).font(.system(size: 18, weight: .bold)).foregroundStyle(Color.pigMediaAccent)
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
+            Text(title.uppercased()).font(.system(size: PigType.caption, weight: .bold)).foregroundStyle(Color.pigMediaAccent)
             ForEach(tracks) { track in
                 let highlighted = allTracks.indices.contains(trackCursor) && allTracks[trackCursor].id == track.id
-                HStack(spacing: 16) {
+                HStack(spacing: PigSpacing.m) {
                     Image(systemName: track.selected ? "circle.inset.filled" : "circle")
                         .foregroundStyle(track.selected ? Color.pigMediaAccent : Color.white.opacity(0.5))
-                    Text(track.name).font(.system(size: 24, weight: .medium))
+                    Text(track.name).font(.system(size: PigType.body, weight: .medium))
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 18).padding(.vertical, 12)
+                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                 .background(highlighted ? Color.pigMediaAccent.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: PigRadius.compact))
                 .overlay { RoundedRectangle(cornerRadius: PigRadius.compact).stroke(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3) }
             }
@@ -398,8 +400,8 @@ struct CustomPlayerView: View {
         // position in the buffer.
         let scrubbing = playback.behindLive
         let progress = !scrubbing ? programmeProgress : (playback.bufferPosition() ?? programmeProgress)
-        return HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 10) {
+        return HStack(alignment: .top, spacing: PigSpacing.m) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.3))
@@ -413,18 +415,18 @@ struct CustomPlayerView: View {
                 HStack {
                     Text(programme?.start.formatted(date: .omitted, time: .shortened) ?? "")
                     Spacer()
-                    HStack(spacing: 8) {
+                    HStack(spacing: PigSpacing.xs) {
                         if !paused && !playback.behindLive { Circle().fill(Color.pigMediaAccent).frame(width: 12, height: 12) }
                         Text(paused || playback.behindLive ? "BEHIND LIVE" : "LIVE").foregroundStyle(paused || playback.behindLive ? Color.white : Color.pigMediaAccent)
                         Text(now.formatted(date: .omitted, time: .shortened))
                     }
-                }.font(.system(size: 22, weight: .semibold))
+                }.font(.system(size: PigType.body, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Capsule().fill(Color.white.opacity(0.2)).frame(height: 10)
                 Text(next.map { "\($0.start.formatted(date: .omitted, time: .shortened)) · \($0.title)" } ?? "")
-                    .font(.system(size: 22, weight: .semibold)).lineLimit(1)
+                    .font(.system(size: PigType.body, weight: .semibold)).lineLimit(1)
             }
             .frame(width: 420)
         }
@@ -438,15 +440,15 @@ struct CustomPlayerView: View {
         let position = playback.bufferPosition()
         let behind = playback.secondsBehindLive() ?? 0
         let live = behind <= 20
-        return VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 18) {
+        return VStack(alignment: .leading, spacing: PigSpacing.m) {
+            HStack(spacing: PigSpacing.m) {
                 Image(systemName: seekForward ? "goforward.15" : "gobackward.15")
-                    .font(.system(size: 40, weight: .semibold))
-                Text(playback.channel.name).font(.system(size: 26, weight: .semibold))
+                    .font(.system(size: PigType.display, weight: .semibold))
+                Text(playback.channel.name).font(.system(size: PigType.cardTitle, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                 Spacer()
                 if live {
-                    HStack(spacing: 8) {
+                    HStack(spacing: PigSpacing.xs) {
                         Circle().fill(Color.pigMediaAccent).frame(width: 12, height: 12)
                         Text("LIVE").foregroundStyle(Color.pigMediaAccent)
                     }
@@ -455,11 +457,11 @@ struct CustomPlayerView: View {
                 }
                 Text(now.formatted(date: .omitted, time: .shortened))
             }
-            .font(.system(size: 24, weight: .semibold))
+            .font(.system(size: PigType.body, weight: .semibold))
             PlayerScrubTrack(fraction: position ?? 1)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 90).padding(.bottom, 50)
+        .padding(.horizontal, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.section)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .playerBottomShade(height: 260, opacity: 0.82)
         .transition(.opacity)
@@ -471,11 +473,11 @@ struct CustomPlayerView: View {
         HStack {
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: PigSpacing.xs) {
                         ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
                             channelRow(channel, highlighted: index == cursor, now: now).id(index)
                         }
-                    }.padding(.vertical, 340)
+                    }.padding(.vertical, Self.channelListOverscroll)
                 }
                 .scrollDisabled(true)
                 .scrollIndicators(.hidden)
@@ -488,7 +490,7 @@ struct CustomPlayerView: View {
             .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
                                          .init(color: .black, location: 0.82), .init(color: .clear, location: 1)],
                                  startPoint: .top, endPoint: .bottom))
-            .padding(.leading, 60)
+            .padding(.leading, PigSpacing.section)
             .background(alignment: .leading) {
                 LinearGradient(colors: [Color.pigMediaCanvas.opacity(reduceTransparency ? 0.95 : 0.82), .clear],
                                startPoint: .leading, endPoint: .trailing)
@@ -515,7 +517,7 @@ private struct StreamInfoLine: View {
     @State private var stats: StreamStats?
     var body: some View {
         Text(stats?.line ?? " ")
-            .font(.system(size: 18, weight: .medium).monospacedDigit())
+            .font(.system(size: PigType.caption, weight: .medium).monospacedDigit())
             .fontDesign(.rounded)
             .foregroundStyle(.white.opacity(0.8))
             .lineLimit(1).minimumScaleFactor(0.7)

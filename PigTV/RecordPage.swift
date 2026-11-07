@@ -423,7 +423,7 @@ struct RecordPage: View {
     private func header(now: Date) -> some View {
         HStack(alignment: .center, spacing: Metrics.headerGap) {
             if request.teams.count == 2 {
-                HStack(spacing: 10) {
+                HStack(spacing: PigSpacing.s) {
                     ForEach(Array(request.teams.enumerated()), id: \.offset) { _, team in
                         SportBadge(name: team.name, logo: team.logo, league: request.league ?? "", client: model.client,
                                    size: Metrics.badge)
@@ -435,7 +435,7 @@ struct RecordPage: View {
                                 size: DetailMetrics.smallLogo)
                     .accessibilityHidden(true)
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 // Two lines on a narrow screen rather than "CHANGE RECORDING · RECOR…".
                 Text(kicker).font(Metrics.kicker).tracking(2).foregroundStyle(Color.pigSecondary).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -460,19 +460,19 @@ struct RecordPage: View {
     // MARK: What
 
     private func whatSection(_ whats: [RecordPlan.What], now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             sectionTitle("What")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: whatColumns(whats.count)),
-                      alignment: .leading, spacing: 14) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: PigSpacing.m, alignment: .top), count: whatColumns(whats.count)),
+                      alignment: .leading, spacing: PigSpacing.m) {
                 ForEach(whats, id: \.self) { option in
                     let label = RecordPlan.label(option, request: request, leagueLabel: leagueLabel, now: now)
                     Button { what = option } label: {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: PigSpacing.xs) {
                             Text(label.title).font(Metrics.choice).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             Text(label.detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).lineLimit(2)
                                 .monospacedDigit()
                         }
-                        .padding(.horizontal, 18).padding(.vertical, 14)
+                        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.m)
                         .frame(maxWidth: .infinity, minHeight: Metrics.choiceHeight, alignment: .leading)
                         .modifier(Selected(on: what == option))
                         .contentShape(Rectangle())
@@ -511,20 +511,20 @@ struct RecordPage: View {
 
     private func stopSection(now: Date) -> some View {
         let lines = RecordPlan.stopLines(request, airing: airing, now: now)
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: PigSpacing.s) {
             sectionTitle("When it stops")
-            HStack(spacing: 16) {
+            HStack(spacing: PigSpacing.m) {
                 Circle().strokeBorder(Color.pigAccent, lineWidth: 3)
-                    .overlay { Circle().fill(Color.pigAccent).padding(7) }
+                    .overlay { Circle().fill(Color.pigAccent).padding(PigSpacing.xs) }
                     .frame(width: Metrics.radio, height: Metrics.radio)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(lines.title).font(Metrics.choice)
                     Text(lines.detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).monospacedDigit()
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 18).padding(.vertical, 12)
+            .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
             .overlay { RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigAccent, lineWidth: 2) }
             .accessibilityElement(children: .combine)
@@ -550,17 +550,17 @@ struct RecordPage: View {
         }
         return Group {
             #if os(tvOS)
-            HStack(spacing: 10) {
+            HStack(spacing: PigSpacing.s) {
                 Text(title).font(Metrics.rowLabel).foregroundStyle(Color.pigSecondary).frame(width: 170, alignment: .leading)
                 chips
             }
             .focusSection()
             #else
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Text(title).font(Metrics.rowLabel).foregroundStyle(Color.pigSecondary)
                 // The chosen chip is scrolled into view on opening (Change recording's 15 min sat off screen).
                 ScrollViewReader { reader in
-                    ScrollView(.horizontal) { HStack(spacing: 8) { chips }.padding(.vertical, 4) }
+                    ScrollView(.horizontal) { HStack(spacing: PigSpacing.s) { chips }.padding(.vertical, PigSpacing.xs) }
                         .scrollIndicators(.hidden).scrollClipDisabled()
                         .onAppear { reader.scrollTo(chipID(id, selection.wrappedValue), anchor: .center) }
                 }
@@ -575,7 +575,7 @@ struct RecordPage: View {
     // MARK: Record on
 
     private func recordOn(now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             HStack(alignment: .firstTextBaseline) {
                 sectionTitle("Record on")
                 Spacer()
@@ -586,12 +586,12 @@ struct RecordPage: View {
                 let on = index == airingIndex
                 let detail = RecordPlan.airingDetail(option, index: index, first: request.airings.first, now: now)
                 Button { airingIndex = index } label: {
-                    HStack(spacing: 18) {
+                    HStack(spacing: PigSpacing.m) {
                         Circle().strokeBorder(on ? Color.pigAccent : Color.pigSecondary, lineWidth: 3)
-                            .overlay { if on { Circle().fill(Color.pigAccent).padding(7) } }
+                            .overlay { if on { Circle().fill(Color.pigAccent).padding(PigSpacing.xs) } }
                             .frame(width: Metrics.radio, height: Metrics.radio)
                             .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                             Text(option.channel.name).font(Metrics.choice).lineLimit(1)
                             Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).monospacedDigit().lineLimit(1)
                         }
@@ -599,12 +599,12 @@ struct RecordPage: View {
                         if let quality = option.quality {
                             Text(quality.rawValue).font(Metrics.badgeFont).tracking(1)
                                 .foregroundStyle(quality == .uhd ? Color.pigOnAccent : Color.pigSecondary)
-                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                                 .background(quality == .uhd ? Color.pigAccent : Color.pigRaised,
                                             in: RoundedRectangle(cornerRadius: PigRadius.inner))
                         }
                     }
-                    .padding(.horizontal, 18).padding(.vertical, 8)
+                    .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .modifier(Selected(on: on))
                     .contentShape(Rectangle())
@@ -626,13 +626,13 @@ struct RecordPage: View {
     @ViewBuilder
     private var buttons: some View {
         #if os(tvOS)
-        HStack(spacing: 16) { actionButtons(stacked: false) }
+        HStack(spacing: PigSpacing.m) { actionButtons(stacked: false) }
             .focusSection()
         #else
         if sizeClass == .regular {
-            HStack(spacing: 16) { actionButtons(stacked: false) }
+            HStack(spacing: PigSpacing.l) { actionButtons(stacked: false) }
         } else {
-            VStack(spacing: 10) { actionButtons(stacked: true) }
+            VStack(spacing: PigSpacing.m) { actionButtons(stacked: true) }
         }
         #endif
     }
@@ -717,7 +717,7 @@ struct RecordPage: View {
                             in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
                 .overlay(alignment: .leading) {
                     if on {
-                        Capsule().fill(Color.pigAccent).frame(width: 4).padding(.vertical, 12)
+                        Capsule().fill(Color.pigAccent).frame(width: 4).padding(.vertical, PigSpacing.s)
                             .accessibilityHidden(true)
                     }
                 }
@@ -730,19 +730,19 @@ struct RecordPage: View {
         static let outer: CGFloat = 36
         static let padding = EdgeInsets(top: 34, leading: 52, bottom: 34, trailing: 52)
         static let gap: CGFloat = 18
-        static let section: Font = .system(size: 20, weight: .bold)
+        static let section: Font = .system(size: PigType.secondary, weight: .bold)
         static let headerGap: CGFloat = 26
         static let badge: CGFloat = 64
-        static let kicker: Font = .system(size: 18, weight: .bold)
-        static let title: Font = .system(size: 42, weight: .heavy)
-        static let meta: Font = .system(size: 20)
-        static let choice: Font = .system(size: 22, weight: .bold)
-        static let choiceDetail: Font = .system(size: 17)
+        static let kicker: Font = .system(size: PigType.kicker, weight: .bold)
+        static let title: Font = .system(size: PigType.display, weight: .heavy)
+        static let meta: Font = .system(size: PigType.secondary)
+        static let choice: Font = .system(size: PigType.body, weight: .bold)
+        static let choiceDetail: Font = .system(size: PigType.caption)
         static let choiceHeight: CGFloat = 68
-        static let rowLabel: Font = .system(size: 19, weight: .semibold)
-        static let note: Font = .system(size: 18)
+        static let rowLabel: Font = .system(size: PigType.secondary, weight: .semibold)
+        static let note: Font = .system(size: PigType.caption)
         static let radio: CGFloat = 26
-        static let badgeFont: Font = .system(size: 16, weight: .heavy)
+        static let badgeFont: Font = .system(size: PigType.caption, weight: .heavy)
         #else
         static let cardWidth: CGFloat = 760
         static let outer: CGFloat = 16

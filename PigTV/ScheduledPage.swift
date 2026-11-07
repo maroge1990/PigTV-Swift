@@ -11,13 +11,13 @@ private enum ScheduledMetrics {
     static let columnGap: CGFloat = 40
     static let sideWidth: CGFloat = 640
     static let dayWidth: CGFloat = 150
-    static let heading: Font = .system(size: 40, weight: .heavy)
-    static let section: Font = .system(size: 24, weight: .bold)
-    static let day: Font = .system(size: 21, weight: .bold)
-    static let time: Font = .system(size: 18)
-    static let title: Font = .system(size: 23, weight: .bold)
-    static let detail: Font = .system(size: 18)
-    static let chip: Font = .system(size: 15, weight: .bold)
+    static let heading: Font = .system(size: PigType.display, weight: .heavy)
+    static let section: Font = .system(size: PigType.body, weight: .bold)
+    static let day: Font = .system(size: PigType.secondary, weight: .bold)
+    static let time: Font = .system(size: PigType.caption)
+    static let title: Font = .system(size: PigType.body, weight: .bold)
+    static let detail: Font = .system(size: PigType.caption)
+    static let chip: Font = .system(size: PigType.caption, weight: .bold)
     static let rowPadding = EdgeInsets(top: 16, leading: 22, bottom: 16, trailing: 22)
     #else
     static let pagePadding: CGFloat = 20
@@ -133,15 +133,15 @@ struct ScheduledPage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: PigSpacing.l) {
                 #if os(tvOS)
                 Text("Scheduled").font(ScheduledMetrics.heading).accessibilityAddTraits(.isHeader)
                 #endif
                 status
                 if compact {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: PigSpacing.s) {
                         comingUp
-                        HStack(spacing: 8) {
+                        HStack(spacing: PigSpacing.s) {
                             if showsRules {
                                 ScheduledTile(title: "Recording rules", detail: "\(ScheduledRows.rulesSummary(rules)) ›",
                                               warning: false, route: .rules)
@@ -153,7 +153,7 @@ struct ScheduledPage: View {
                 } else {
                     HStack(alignment: .top, spacing: ScheduledMetrics.columnGap) {
                         comingUp.frame(maxWidth: .infinity, alignment: .leading).tvFocusSection()
-                        VStack(alignment: .leading, spacing: 26) {
+                        VStack(alignment: .leading, spacing: PigSpacing.xl) {
                             if showsRules { rulesSection }
                             attentionSection
                         }
@@ -163,7 +163,7 @@ struct ScheduledPage: View {
                 }
             }
             .padding(.horizontal, ScheduledMetrics.pagePadding)
-            .padding(.bottom, 24)
+            .padding(.bottom, PigSpacing.l)
         }
         #if os(iOS)
         .refreshable { await model.loadRecordings(); await model.reloadRules() }
@@ -191,7 +191,7 @@ struct ScheduledPage: View {
     // MARK: Coming up
 
     private var comingUp: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             ScheduledSectionTitle(text: upcoming.isEmpty ? "Coming up" : "Coming up · \(upcoming.count)")
             if upcoming.isEmpty {
                 Text("Nothing scheduled. Choose a programme in the TV Guide, or a game in Sport, and record it.")
@@ -272,10 +272,10 @@ private struct ScheduleRow: View {
     private var clash: Bool { RecordingsHome.clashes(item) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 18) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            HStack(alignment: .center, spacing: PigSpacing.m) {
                 if !compact {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                         Text(RecordingsHome.day(item.start, now: Date())).font(ScheduledMetrics.day)
                         Text(item.start.formatted(date: .omitted, time: .shortened)).font(ScheduledMetrics.time)
                             .foregroundStyle(.secondary)
@@ -283,11 +283,11 @@ private struct ScheduleRow: View {
                     .monospacedDigit().fontDesign(.rounded)
                     .frame(width: ScheduledMetrics.dayWidth, alignment: .leading)
                 }
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     if compact {
                         Text(when).font(ScheduledMetrics.chip).monospacedDigit().fontDesign(.rounded).foregroundStyle(.secondary)
                     }
-                    HStack(spacing: 10) {
+                    HStack(spacing: PigSpacing.s) {
                         Text(item.title).font(ScheduledMetrics.title).lineLimit(1)
                         if let rule, !compact { RuleChip(text: rule) }
                     }
@@ -310,7 +310,7 @@ private struct ScheduleRow: View {
                     clashLine(beaten, id: "recordings.beaten.\(item.id)")
                     if item.canChoose { chooseButton.frame(maxWidth: .infinity) }
                 } else {
-                    HStack(spacing: 16) {
+                    HStack(spacing: PigSpacing.m) {
                         clashLine(beaten, id: "recordings.beaten.\(item.id)").frame(maxWidth: .infinity, alignment: .leading)
                         if item.canChoose { chooseButton }
                     }
@@ -338,7 +338,7 @@ private struct ScheduleRow: View {
         Label(text, systemImage: "exclamationmark.triangle")
             .font(ScheduledMetrics.detail.weight(.semibold)).foregroundStyle(Color.pigWarning)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.leading, compact ? 0 : ScheduledMetrics.dayWidth + 18)
+            .padding(.leading, compact ? 0 : ScheduledMetrics.dayWidth + PigSpacing.m)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(text)
             .accessibilityIdentifier(id)
@@ -350,7 +350,7 @@ private struct RuleChip: View {
     let text: String
     var body: some View {
         Text(text).font(ScheduledMetrics.chip).foregroundStyle(.secondary).lineLimit(1)
-            .padding(.horizontal, 10).padding(.vertical, 3)
+            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
             .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.inner))
     }
 }
@@ -372,7 +372,7 @@ struct ScheduledRulesList: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             ScheduledSectionTitle(text: rules.isEmpty ? "Recording rules" : "Recording rules · \(rules.count)")
             if let error = store.rulesError { Text(error).font(ScheduledMetrics.detail).foregroundStyle(.secondary) }
             if rules.isEmpty && store.rulesError == nil {
@@ -380,8 +380,8 @@ struct ScheduledRulesList: View {
                     .font(ScheduledMetrics.detail).foregroundStyle(.secondary)
             }
             ForEach(rules) { rule in
-                HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: PigSpacing.m) {
+                    VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                         Text(rule.summary).font(ScheduledMetrics.title).lineLimit(1)
                         Text([rule.detail, rule.setBy].compactMap { $0 }.joined(separator: " · "))
                             .font(ScheduledMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
@@ -416,20 +416,20 @@ struct ScheduledAttentionList: View {
     let delete: (AttentionItem) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             ScheduledSectionTitle(text: items.isEmpty ? "Needs attention" : "Needs attention · \(items.count)")
             if items.isEmpty {
                 Text("Nothing needs attention.").font(ScheduledMetrics.detail).foregroundStyle(.secondary)
             }
             ForEach(items) { item in
                 let (kind, title, detail) = Self.text(item)
-                HStack(spacing: 14) {
+                HStack(spacing: PigSpacing.m) {
                     Text(kind).font(ScheduledMetrics.chip)
                         .foregroundStyle(kind == "Missed" ? Color.pigWarning : Color.pigDanger)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                         .background((kind == "Missed" ? Color.pigWarning : Color.pigDanger).opacity(0.16),
                                     in: RoundedRectangle(cornerRadius: PigRadius.inner))
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                         Text(title).font(ScheduledMetrics.title).lineLimit(1)
                         Text(detail).font(ScheduledMetrics.detail).foregroundStyle(.secondary).lineLimit(2)
                     }
@@ -482,11 +482,11 @@ private struct ScheduledTile: View {
 
     var body: some View {
         NavigationLink(value: route) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(title).font(.subheadline.weight(.bold)).foregroundStyle(Color("PigText"))
                 Text(detail).font(.caption).foregroundStyle(warning ? Color.pigWarning : Color.pigSecondary)
             }
-            .padding(12)
+            .padding(PigSpacing.s)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
             .overlay {
@@ -518,7 +518,7 @@ struct ScheduledSubpage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
                 if let error = actions.actionError {
                     Text(error).font(ScheduledMetrics.detail).foregroundStyle(Color.pigDanger)
                 }
@@ -532,7 +532,7 @@ struct ScheduledSubpage: View {
                                            delete: { ScheduledRows.delete($0, model: model, presenter: presenter) })
                 }
             }
-            .padding(.horizontal, ScheduledMetrics.pagePadding).padding(.bottom, 24)
+            .padding(.horizontal, ScheduledMetrics.pagePadding).padding(.bottom, PigSpacing.l)
         }
         #if os(iOS)
         .navigationTitle(route == .rules ? "Recording rules" : "Needs attention")

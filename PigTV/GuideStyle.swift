@@ -22,7 +22,7 @@ struct ChannelTile: View {
             RoundedRectangle(cornerRadius: PigRadius.compact).fill(Color.logoTile(scheme))
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client)
-                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
             } else {
                 Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(3)
                     .foregroundStyle(.primary)
@@ -56,14 +56,14 @@ enum GuideMetrics {
 enum GuideTypography {
     static var body: Font {
         #if os(tvOS)
-        .system(size: 24)
+        .system(size: PigType.body)
         #else
         .subheadline
         #endif
     }
     static var small: Font {
         #if os(tvOS)
-        .system(size: 20)
+        .system(size: PigType.secondary)
         #else
         .caption
         #endif

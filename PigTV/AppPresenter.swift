@@ -184,8 +184,8 @@ struct UndoToast: View {
     #endif
 
     #if os(tvOS)
-    private static let title: Font = .system(size: 23, weight: .bold)
-    private static let detail: Font = .system(size: 17)
+    private static let title: Font = .system(size: PigType.body, weight: .bold)
+    private static let detail: Font = .system(size: PigType.caption)
     private static let bottom: CGFloat = 64
     #else
     private static let title: Font = .subheadline.weight(.bold)
@@ -195,8 +195,8 @@ struct UndoToast: View {
 
     var body: some View {
         if let pending = presenter.pendingUndo {
-            HStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: PigSpacing.l) {
+                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(pending.message).font(Self.title).foregroundStyle(Color("PigText")).lineLimit(2)
                     Text(pending.detail ?? "Undo for 10 seconds").font(Self.detail).foregroundStyle(Color.pigSecondary)
                 }
@@ -207,10 +207,10 @@ struct UndoToast: View {
                     .accessibilityLabel("Undo: \(pending.message)")
                     .accessibilityIdentifier("undo.toast.undo")
             }
-            .padding(.leading, 26).padding(.trailing, 14).padding(.vertical, 14)
+            .padding(.leading, PigSpacing.xl).padding(.trailing, PigSpacing.m).padding(.vertical, PigSpacing.m)
             .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
             .shadow(color: Color.pigShadow.opacity(0.5), radius: 30, y: 14)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, PigSpacing.s)
             .padding(.bottom, bottom)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .accessibilityElement(children: .contain)

@@ -59,10 +59,10 @@ struct LogoTile: View {
         ZStack {
             RoundedRectangle(cornerRadius: PigRadius.compact).fill(Color.logoTile(.dark))
             if logo != nil {
-                ChannelArtwork(logo: logo, client: client).padding(.horizontal, 14).padding(.vertical, 10)
+                ChannelArtwork(logo: logo, client: client).padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             } else {
-                Text(name).font(.system(size: 18, weight: .semibold)).lineLimit(2)
-                    .multilineTextAlignment(.center).minimumScaleFactor(0.6).padding(8)
+                Text(name).font(.system(size: PigType.secondary, weight: .semibold)).lineLimit(2)
+                    .multilineTextAlignment(.center).minimumScaleFactor(0.6).padding(PigSpacing.s)
             }
         }
     }
@@ -87,14 +87,14 @@ nonisolated enum TuningText {
 /// #6: a mid-play wait for data, so a stall reads as buffering rather than a frozen app.
 struct BufferingPill: View {
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PigSpacing.s) {
             ProgressView()
             Text("Buffering…").font(.headline)
         }
-        .padding(.horizontal, 24).padding(.vertical, 12)
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
         .background(Color.pigMediaPanel, in: Capsule())
         .foregroundStyle(.white)
-        .padding(.top, 48)
+        .padding(.top, PigSpacing.section)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Buffering")
     }
@@ -133,11 +133,11 @@ struct TuningCard: View {
                     Text(next).font(.system(size: PlayerMetrics.tuningNext)).foregroundStyle(.white.opacity(0.65))
                         .multilineTextAlignment(.center)
                 }
-                HStack(spacing: 10) {
+                HStack(spacing: PigSpacing.s) {
                     ProgressView().tint(.white)
                     Text(message).font(.system(size: PlayerMetrics.tuningNext, weight: .medium)).foregroundStyle(.white.opacity(0.8))
                 }
-                .padding(.top, 6)
+                .padding(.top, PigSpacing.xs)
                 if let hint = TuningText.hint(elapsed: context.date.timeIntervalSince(shownAt)) {
                     Text(hint).font(.system(size: PlayerMetrics.tuningNext)).foregroundStyle(.white.opacity(0.75))
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
@@ -169,8 +169,8 @@ struct PlayerChannelRow: View {
         HStack(spacing: PlayerMetrics.rowPadding.width) {
             LogoTile(logo: browse?.logo(for: channel) ?? channel.logo, client: browse?.client, name: channel.name)
                 .frame(width: PlayerMetrics.rowLogo.width, height: PlayerMetrics.rowLogo.height)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                     Text(channel.name).font(.system(size: PlayerMetrics.rowName)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
                     if let number = channel.numberText {
                         ChannelNumberText(number: number, font: .system(size: PlayerMetrics.rowNumber, weight: .medium), onDark: true)

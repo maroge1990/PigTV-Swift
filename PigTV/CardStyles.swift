@@ -27,17 +27,17 @@ struct CardBadge: View {
     var systemImage: String? = nil
     var colour: Color = .pigAccent
     #if os(tvOS)
-    private static let font: Font = .system(size: 18, weight: .bold)
+    private static let font: Font = .system(size: PigType.caption, weight: .bold)
     #else
     private static let font: Font = .caption.bold()
     #endif
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: PigSpacing.xs) {
             if let systemImage { Image(systemName: systemImage) }
             Text(text)
         }
         .font(Self.font)
-        .padding(.horizontal, 12).padding(.vertical, 5)
+        .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
         .background(colour, in: Capsule())
         .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.pigOnStatus)
     }

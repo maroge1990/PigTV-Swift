@@ -39,7 +39,7 @@ struct GuideGridProgrammeView: View {
             // 160 pt wide and lets the rest slide under the column.
             .frame(width: shift < 0 ? 136 : nil, alignment: .leading)
             .offset(x: shift)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, PigSpacing.s)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme), in: shape)
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
@@ -49,8 +49,8 @@ struct GuideGridProgrammeView: View {
 
     @ViewBuilder private var content: some View {
         if let programme = info.programme {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(spacing: PigSpacing.s) {
                     if let caption = info.caption { Text(caption).lineLimit(1).layoutPriority(1) }
                     Text(programme.start, style: .time)
                     if info.scheduled {
@@ -88,11 +88,11 @@ struct GuideGridTileView: View {
     var body: some View {
         ChannelTile(name: channel.name, logo: logo, client: client)
             .overlay(alignment: .topTrailing) {
-                HStack(spacing: 4) {
+                HStack(spacing: PigSpacing.xs) {
                     if flaky { Circle().fill(Color.pigWarning).frame(width: 12, height: 12) }
                     if recording { Circle().fill(Color.pigDanger).frame(width: 12, height: 12) }
                 }
-                .padding(6)
+                .padding(PigSpacing.xs)
             }
             .overlay { RoundedRectangle(cornerRadius: PigRadius.compact).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
     }

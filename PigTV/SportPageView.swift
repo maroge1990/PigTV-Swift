@@ -188,7 +188,7 @@ struct SportPageView: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: PigSpacing.l) {
                 if let front = model.front {
                     let hero = SportPageRules.hero(sport, in: front)
                     let leagues = SportPageRules.leagues(sport, in: front)
@@ -199,12 +199,12 @@ struct SportPageView: View {
                         leagueContent(shown, front: front, now: now)
                     }
                 } else {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, 80)
+                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                 }
             }
-            .padding(.bottom, 60)
+            .padding(.bottom, PigSpacing.empty)
             #if os(iOS)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, PigSpacing.xl)
             #endif
         }
         .scrollClipDisabled()
@@ -289,11 +289,11 @@ struct SportLeagueContent: View {
     @ViewBuilder
     private func games(_ league: String) -> some View {
         let games = SportPageRules.games(league: league, in: front)
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text(SportLabels.label(league, in: labels)).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             if games.isEmpty {
                 Text("Nothing in the next three days").font(SportCardMetrics.detail).foregroundStyle(.secondary)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, PigSpacing.s)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: SportCardMetrics.width, maximum: SportCardMetrics.width),
                                              spacing: SportCardMetrics.spacing, alignment: .topLeading)],
