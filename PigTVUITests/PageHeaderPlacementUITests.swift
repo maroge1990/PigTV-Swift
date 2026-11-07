@@ -58,4 +58,61 @@ final class PageHeaderPlacementUITests: XCTestCase {
             XCTAssertEqual(frame.height, reference.height, accuracy: 0.5, "\(name): title height \(frame.height), Sport \(reference.height)")
         }
     }
+
+    /// #243 (6 Nov audit): the Sport front page (C-R, the server's `sportFront`) had no pig-and-title header on tvOS and
+    /// iPad, and its date read "Friday 6 November" where the guide's reads "Fri, 6 Nov". Its header sits where the TV
+    /// Guide's does, with the same date.
+    @MainActor
+    func testTheSportFrontPageHeaderSitsWhereTheGuidesDoes() throws {
+        #if os(iOS)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("PigTVTests/Fixtures/sport-front-0427.json")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+        let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "front"
+        app.launchEnvironment["PIGTV_UI_TEST_FRONT_F1"] = "1"
+        app.launchEnvironment["PIGTV_UI_TEST_FRONT_JSON"] = try JSONSerialization.data(withJSONObject: Self.shifted(json, by: delta))
+            .base64EncodedString()
+        app.launch()
+        func title(_ name: String) -> XCUIElement {
+            app.staticTexts.matching(identifier: "page.header.title").matching(NSPredicate(format: "label == %@", name)).firstMatch
+        }
+        let sport = title("Sport")
+        XCTAssertTrue(sport.waitForExistence(timeout: 15), "the Sport front page has the shared page header")
+        let date = Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        XCTAssertTrue(app.staticTexts[date].exists, "the header's date reads like the guide's: \(date)")
+        let sportFrame = sport.frame
+        #if os(tvOS)
+        // up to the tab bar, then right to the TV Guide
+        for _ in 0..<6 { XCUIRemote.shared.press(.up) }
+        XCUIRemote.shared.press(.right)
+        #else
+        let tab = app.tabBars.buttons["TV Guide"].firstMatch
+        (tab.exists ? tab : app.buttons["TV Guide"].firstMatch).tap()
+        #endif
+        let guide = title("TV Guide")
+        XCTAssertTrue(guide.waitForExistence(timeout: 15), "the TV Guide")
+        _ = waitUntil(5) { Thread.sleep(forTimeInterval: 0.3); return guide.frame.minY > 0 }
+        XCTAssertEqual(guide.frame.minX, sportFrame.minX, accuracy: 0.5, "title x: Guide \(guide.frame.minX), Sport \(sportFrame.minX)")
+        XCTAssertEqual(guide.frame.minY, sportFrame.minY, accuracy: 0.5, "title y: Guide \(guide.frame.minY), Sport \(sportFrame.minY)")
+        XCTAssertEqual(guide.frame.height, sportFrame.height, accuracy: 0.5, "title height")
+    }
+
+    private static func shifted(_ value: Any, by delta: Double) -> Any {
+        if var dict = value as? [String: Any] {
+            for (key, inner) in dict {
+                if ["now", "start", "end", "observedAt"].contains(key), let number = inner as? Double {
+                    dict[key] = number + delta
+                } else {
+                    dict[key] = shifted(inner, by: delta)
+                }
+            }
+            return dict
+        }
+        if let list = value as? [Any] { return list.map { shifted($0, by: delta) } }
+        return value
+    }
 }

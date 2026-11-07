@@ -92,12 +92,7 @@ struct SportFrontPhonePage: View {
 
     /// #226: the one page header every tab draws (PigPageHeader), the scores chip trailing.
     private var header: some View {
-        PigPageHeader(title: "Sport") {
-            Text(SportPhoneLayout.scoresChip(hidden: hidden)).font(.footnote).foregroundStyle(.secondary)
-                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-                .background(Color.pigRaised, in: Capsule())
-                .accessibilityIdentifier("sport.front.scores")
-        }
+        SportTabHeader(now: Date(), hidden: hidden)
     }
 
     @ViewBuilder

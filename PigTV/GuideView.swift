@@ -429,7 +429,7 @@ struct GuideView: View {
     private var regularHeader: some View {
         // D-44 (Apple 106): the tools moved beside the chips (`tools`).
         PigPageHeader(title: "TV Guide",
-                      subtitle: Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated)))
+                      subtitle: PigHeaderDate.text(viewport))
     }
 
     /// Now, Earlier, Later, Search and Jump to… at the end of the chip row (R5-Guide-TV). Up from the grid's top row
@@ -482,7 +482,7 @@ struct GuideView: View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             // The shared header (16 Oct); the controls go icon-only so nothing wraps.
             PigPageHeader(title: "TV Guide",
-                          subtitle: Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))) {
+                          subtitle: PigHeaderDate.text(viewport)) {
                 // The On now list (A4.4) has no time axis to move.
                 if !usesOnNowList {
                     Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }

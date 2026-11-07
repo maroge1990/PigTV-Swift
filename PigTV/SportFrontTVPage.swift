@@ -48,6 +48,14 @@ struct SportFrontTVPage: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            // #243: the header every tab draws, where the TV Guide draws it (before, the Sport tab had none here)
+            SportTabHeader(now: now, hidden: hidden)
+            scroll(now: now)
+        }
+    }
+
+    private func scroll(now: Date) -> some View {
         ScrollView(.vertical) {
             // D-43: the banner, then the rails 20 pt below it (the television's m is the nearest step)
             VStack(alignment: .leading, spacing: PigSpacing.m) {

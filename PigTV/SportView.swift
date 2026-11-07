@@ -139,7 +139,7 @@ struct SportView: View {
     }
 
     private var header: some View {
-        PigPageHeader(title: "Sport", subtitle: Text(sport.clock, format: .dateTime.weekday(.wide).day().month(.wide)))
+        PigPageHeader(title: "Sport", subtitle: PigHeaderDate.text(sport.clock))
     }
 
     /// All + one chip per league (most events first), the guide's chips.

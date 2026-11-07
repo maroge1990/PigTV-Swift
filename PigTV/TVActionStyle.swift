@@ -223,6 +223,33 @@ extension PigPageHeader where Trailing == EmptyView {
     }
 }
 
+/// #243: the one way a tab header writes its date ("Fri, 6 Nov"), on every tab and device.
+nonisolated enum PigHeaderDate {
+    static let format: Date.FormatStyle = .dateTime.weekday(.abbreviated).day().month(.abbreviated)
+    static func string(_ date: Date) -> String { date.formatted(format) }
+    static func text(_ date: Date) -> Text { Text(date, format: format) }
+}
+
+/// #243: the Sport tab's header on every device: the shared page header with today's date, and whether scores show.
+struct SportTabHeader: View {
+    let now: Date
+    let hidden: Bool
+    var body: some View {
+        PigPageHeader(title: "Sport", subtitle: PigHeaderDate.text(now)) {
+            Text(SportPhoneLayout.scoresChip(hidden: hidden))
+                #if os(tvOS)
+                .font(.system(size: PigType.caption))
+                #else
+                .font(.footnote)
+                #endif
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
+                .background(Color.pigRaised, in: Capsule())
+                .accessibilityIdentifier("sport.front.scores")
+        }
+    }
+}
+
 nonisolated enum PigPageHeaderMetrics {
     #if os(tvOS)
     static let markWidth: CGFloat = 58
