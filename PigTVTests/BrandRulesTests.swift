@@ -162,6 +162,21 @@ final class BrandRulesTests: XCTestCase {
                "a literal padding or spacing (use PigSpacing.xxs/xs/s/m/l/xl, section, empty, or a named metric)")
     }
 
+    /// Files allowed the system bordered style, each with its reason.
+    private static let borderedAllowlist: [String: String] = [
+        "GuideView.swift": "the guide's icon-only toolbar (Search, Jump to): navigation controls, not actions",
+        "SettingsView.swift": "Sign out's destructive confirmation, tinted danger",
+    ]
+
+    // #243: a secondary action has one look per platform (PigSecondaryButtonStyle / pigSecondaryButton()); the system
+    // bordered style tinted the accent and made a second pink control beside the primary.
+    func testSecondaryActionsShareOneStyle() throws {
+        let lines = try sourceLines().filter { Self.borderedAllowlist[$0.file] == nil }
+        report(lines.filter { matches(#"\.buttonStyle\(\.bordered\)"#, $0.text) },
+               "the system bordered style on an action (use .pigSecondaryButton(), or .pigPrimaryButton() for the one primary)")
+        report(try sourceLines().filter { matches(#"\bTVActionStyle\b"#, $0.text) }, "TVActionStyle is PigSecondaryButtonStyle now")
+    }
+
     // #243: font sizes come from PigType's roles; the weight and design stay at the call site.
     func testFontSizesComeFromTheTypeScale() throws {
         let lines = try sourceLines().filter { $0.file != Self.rolesFile }

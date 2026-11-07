@@ -145,7 +145,7 @@ struct ProgrammeDetails: View {
             .disabled(model.mutationBusy)
             .focused($focus, equals: .record)
             .accessibilityIdentifier("details.record")
-        if primary { button.pigPrimaryButton() } else { button }
+        if primary { button.pigPrimaryButton() } else { button.pigSecondaryButton() }
     }
 
     /// R5-Programme-*: the channel, the recording state as a word, when, the title, the date and times, the description.

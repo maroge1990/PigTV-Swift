@@ -430,9 +430,11 @@ private struct FeaturedRecording: View {
                             .accessibilityIdentifier("recordings.featured.playFromLive")
                     }
                     Button("Details") { details() }
+                        .pigSecondaryButton()
                         .accessibilityLabel("Details of \(item.title)")
                         .accessibilityIdentifier("recordings.featured.details")
                     Button { delete() } label: { Text("Delete").foregroundStyle(Color.pigDanger) }
+                        .pigSecondaryButton()
                         .accessibilityLabel("Delete \(item.title)")
                         .accessibilityIdentifier("recordings.featured.delete")
                 }
@@ -658,7 +660,7 @@ private struct RecordingStackCard: View {
                     Button(action: details) {
                         Image(systemName: "ellipsis").frame(width: 30, height: 30)
                     }
-                    .buttonStyle(.bordered)
+                    .pigSecondaryButton()
                     .accessibilityLabel("Details of \(item.title)")
                 }
                 .padding(.top, PigSpacing.s)

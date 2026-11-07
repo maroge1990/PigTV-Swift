@@ -339,6 +339,7 @@ struct NFLPageView: View {
                         Button("Record every \(name) game", systemImage: "record.circle") {
                             Task { await browse.addRule(RuleBody(kind: "sport", match: name)) }
                         }
+                        .pigSecondaryButton()
                         .accessibilityIdentifier("nfl.team.recordEvery")
                     }
                 }

@@ -263,6 +263,7 @@ struct F1PageView: View {
                 }
                 if !scheduled && event.end(on: best) > now {
                     Button("Record", systemImage: "record.circle") { app.record(event) }
+                        .pigSecondaryButton()
                         .disabled(browse.mutationBusy)
                         .accessibilityIdentifier("f1.record")
                 } else if scheduled {

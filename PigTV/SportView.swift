@@ -292,7 +292,7 @@ struct PendingWatchBanner: View {
                 #if os(tvOS)
                 .font(GuideTypography.body)
                 #else
-                .buttonStyle(.bordered)
+                .pigSecondaryButton()
                 #endif
         }
         .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)

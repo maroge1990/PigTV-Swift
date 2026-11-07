@@ -91,7 +91,7 @@ private struct SettingsTestScreen: View {
     var body: some View {
         LibraryView(model: model)
             #if os(tvOS)
-            .buttonStyle(TVActionStyle())
+            .buttonStyle(PigSecondaryButtonStyle())
             #endif
             .preferredColorScheme(fixtureScheme)
     }
@@ -104,7 +104,7 @@ private struct SportSettingsTestScreen: View {
     var body: some View {
         LibraryView(model: model, initialTab: "settings")
             #if os(tvOS)
-            .buttonStyle(TVActionStyle())
+            .buttonStyle(PigSecondaryButtonStyle())
             #endif
             .task {
                 model.injectHomeFixture(sportFollows: true)
@@ -140,7 +140,7 @@ private struct F1TestScreen: View {
             }
         }
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .preferredColorScheme(fixtureScheme)
         .task {
@@ -169,7 +169,7 @@ private struct NFLTestScreen: View {
             }
         }
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .preferredColorScheme(fixtureScheme)
         .task {
@@ -206,7 +206,7 @@ private struct SportFrontTestScreen: View {
     var body: some View {
         LibraryView(model: model)
             #if os(tvOS)
-            .buttonStyle(TVActionStyle())
+            .buttonStyle(PigSecondaryButtonStyle())
             #endif
             .preferredColorScheme(fixtureScheme)
             .task {
@@ -272,7 +272,7 @@ private struct HomeTestScreen: View {
     var body: some View {
         LibraryView(model: model, initialTab: initialTab)
             #if os(tvOS)
-            .buttonStyle(TVActionStyle())
+            .buttonStyle(PigSecondaryButtonStyle())
             #endif
             // The Undo toast, as ContentView shows it over the tabs (Apple 122).
             .overlay(alignment: .bottom) { UndoToast(presenter: model.presenter) }
@@ -346,7 +346,7 @@ private struct DesignTestScreen: View {
             if ready, let browse = app.browse { content(browse) } else { Color.clear }
         }
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .tint(Color("AccentColor"))
         .preferredColorScheme(fixtureScheme)

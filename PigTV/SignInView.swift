@@ -59,7 +59,7 @@ struct OnboardingView: View {
             }
         }
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         #endif
     }
 

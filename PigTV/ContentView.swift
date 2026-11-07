@@ -60,7 +60,7 @@ struct ContentView: View {
         // The splash never holds the app back: when start-up finishes it fades out at once.
         .animation(.easeOut(duration: 0.25), value: initialRestoreFinished)
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .task {
             // Build 37: Siri is gone; remove the channel directory older builds wrote.
@@ -242,10 +242,10 @@ struct UnreachableView: View {
         if UIDevice.current.userInterfaceIdiom == .phone {
             VStack(spacing: PigSpacing.m) {
                 tryNow.frame(maxWidth: .infinity)
-                other.buttonStyle(.bordered).tint(Color("PigText")).frame(maxWidth: .infinity)
+                other.pigSecondaryButton().frame(maxWidth: .infinity)
             }
         } else {
-            HStack(spacing: PigSpacing.m) { tryNow; other.buttonStyle(.bordered).tint(Color("PigText")) }
+            HStack(spacing: PigSpacing.m) { tryNow; other.pigSecondaryButton() }
         }
         #else
         DetailActions { tryNow; other }
@@ -446,7 +446,7 @@ struct PlayerScreen: View {
         }
         .environment(\.colorScheme, .dark)
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         .defaultFocus($stateFocus, true)
         .onChange(of: stateName, initial: true) { _, state in
             // The picture (CustomPlayerView) takes focus itself; every other state claims it for its button, once

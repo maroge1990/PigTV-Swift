@@ -24,14 +24,28 @@ private struct PigFocusSurface: ViewModifier {
     }
 }
 
-// Standalone secondary/neutral button (also the app-wide default). Capsule.
-struct TVActionStyle: ButtonStyle {
+/// #243: the one secondary action (Record beside Watch, Channel schedule, Details, Delete, Open …, Cancel). Only a
+/// screen's one primary action has the accent fill (`pigPrimaryButton()`). On tvOS a dark capsule with the shared focus
+/// ring (also the app-wide default there); on touch a neutral capsule with secondary text, never the accent.
+struct PigSecondaryButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
+    @Environment(\.isEnabled) private var enabled
     @Environment(\.colorScheme) private var scheme
     func makeBody(configuration: Configuration) -> some View {
+        #if os(tvOS)
         configuration.label
             .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
             .modifier(PigFocusSurface(focused: focused, scheme: scheme, shape: AnyShape(Capsule())))
+        #else
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
+            .foregroundStyle(Color("PigSecondary"))
+            .background(Color("PigRaised"), in: Capsule())
+            .overlay { Capsule().strokeBorder(Color.pigBorder, lineWidth: 1) }
+            .opacity(configuration.isPressed ? 0.6 : enabled ? 1 : 0.45)
+            .contentShape(Capsule())
+        #endif
     }
 }
 
@@ -89,6 +103,9 @@ struct PigPrimaryButtonStyle: ButtonStyle {
 }
 
 extension View {
+    /// A secondary action (#243): the same look on every screen of a platform.
+    func pigSecondaryButton() -> some View { buttonStyle(PigSecondaryButtonStyle()) }
+
     @ViewBuilder
     func pigPrimaryButton() -> some View {
         #if os(tvOS)

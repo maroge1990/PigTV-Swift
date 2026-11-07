@@ -366,7 +366,7 @@ struct RecordPage: View {
             .scrollClipDisabled()
         }
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .presentationBackground { PigPageBackground() }
         .interactiveDismissDisabled(busy)

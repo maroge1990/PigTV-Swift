@@ -193,11 +193,13 @@ struct SportHeroButtons: View {
                 EmptyView()
             }
             Button("Record", systemImage: "record.circle") { flow.record(event, game: game, team: team) }
+                .pigSecondaryButton()
                 .modifier(HeroFocus(focus: primary ? nil : focus))
                 .accessibilityIdentifier("sport.banner.hero.record")
         }
         if let open {
             Button(open.label, systemImage: "chevron.right") { open.action() }
+                .pigSecondaryButton()
                 .modifier(HeroFocus(focus: event == nil ? focus : nil))
                 .accessibilityIdentifier("sport.banner.hero.open")
         }

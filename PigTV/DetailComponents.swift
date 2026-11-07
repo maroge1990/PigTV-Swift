@@ -4,7 +4,7 @@ import SwiftUI
 // Programme, Channel, Schedule, Recording, Search, Jump to… and the sign-in
 // screens share one language with Home and the guide: the page background,
 // a hero card over the channel's blurred logo colours, `guideCell` surfaces,
-// the pink focus family (TVActionStyle / PigSurfaceButtonStyle /
+// the pink focus family (PigSecondaryButtonStyle / PigSurfaceButtonStyle /
 // PigPrimaryButtonStyle / GuideFilterStyle) and one type scale.
 
 /// Type scale for detail screens (tvOS sizes; iOS uses text styles).
@@ -114,7 +114,7 @@ struct DetailPage<Content: View>: View {
             .scrollClipDisabled()
             #if os(tvOS)
             // Covers and sheets do not always inherit the app's default.
-            .buttonStyle(TVActionStyle())
+            .buttonStyle(PigSecondaryButtonStyle())
             #endif
     }
 }
@@ -334,7 +334,7 @@ struct DetailActions<Content: View>: View {
             HStack(spacing: PigSpacing.m) { content }
             VStack(alignment: .leading, spacing: PigSpacing.m) { content }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(PigSecondaryButtonStyle()) // #243: the one primary keeps its own style
         #endif
     }
 }

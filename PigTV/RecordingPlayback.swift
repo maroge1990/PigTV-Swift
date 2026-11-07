@@ -513,7 +513,7 @@ struct RecordingPlayerScreen: View {
         }
         .environment(\.colorScheme, .dark)
         #if os(tvOS)
-        .buttonStyle(TVActionStyle())
+        .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .onAppear {
             #if DEBUG

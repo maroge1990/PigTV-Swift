@@ -391,6 +391,7 @@ struct GuideView: View {
             #endif
             if let programme = focusedProgramme, let channel = focusedChannel {
                 Button("Details", systemImage: "info.circle") { open(channel, programme) }
+                .pigSecondaryButton()
                 .accessibilityIdentifier("guide.strip.details")
                 #if os(iOS)
                 // D-44 (Apple 107): touch has no long press on the strip; its … opens the same menu.
