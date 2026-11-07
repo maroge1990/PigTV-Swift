@@ -177,13 +177,14 @@ struct SportChannelRow: View {
                                 size: SportMetrics.rowLogo)
                 VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
-                        Text(channel.name).font(DetailType.rowTitle).lineLimit(1)
+                        Text(channel.name).font(DetailType.rowTitle).lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
                         if browse.showsChannelNumbers, let number = channel.number {
-                            ChannelNumberText(number: String(number), font: DetailType.rowDetail)
+                            // never broken over lines; the name shrinks first (#243: "beIN Sp…" at phone width)
+                            ChannelNumberText(number: String(number), font: DetailType.rowDetail).fixedSize()
                         }
                     }
                     if isBest {
-                        Text("Recommended").font(DetailType.rowDetail).foregroundStyle(.secondary)
+                        Text("Recommended").font(DetailType.rowDetail).foregroundStyle(.secondary).lineLimit(1).fixedSize()
                     }
                     if scheduled {
                         Text("Recording scheduled").font(DetailType.rowDetail).foregroundStyle(.secondary)
@@ -346,6 +347,9 @@ struct SportEventDetails: View {
     }
     private enum Control: Hashable { case watch }
     @FocusState private var focus: Control?
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
 
     var body: some View {
         DetailPage {
@@ -357,77 +361,66 @@ struct SportEventDetails: View {
         .onAppear { browse.actionError = nil; browse.actionMessage = nil }
     }
 
+    /// #243 (Apple 169): the page opens with the Sport pages' own banner (D-43) on Apple TV and iPad, its actions inside;
+    /// on iPhone with a card in the touch league page's style, the actions below. Neither takes the logo's colour (the
+    /// old hero was tinted by it, so an event on beIN Sports was purple).
+    private var usesBanner: Bool {
+        #if os(tvOS)
+        true
+        #else
+        sizeClass == .regular
+        #endif
+    }
+
+    /// The banner's words: "LIVE · NRL" or "NRL · TODAY"; "1:15 pm – 3:15 pm · starts in 22 min".
+    private func hero(now: Date) -> SportBannerHero {
+        let live = event.isLive(at: now)
+        let scheduled = event.best.map { browse.isScheduled(event, on: $0) } ?? false
+        let league = event.league.uppercased()
+        return SportBannerHero(
+            kicker: live ? "LIVE · \(league)" : "\(league) · \(DetailText.day(event.start, now: now).uppercased())",
+            live: live, title: event.title,
+            line: "\(event.programme.timeRange) · \(live ? SportRows.endsIn(event, now: now) : SportRows.startsIn(event, now: now))"
+                + (scheduled && !live ? " · Recording scheduled" : ""))
+    }
+
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let live = event.isLive(at: now)
-        let action = SportRows.channelAction(event, now: now)
         let pending = app.pendingWatch?.eventID == event.id
         let best = event.best
+        let words = hero(now: now)
         VStack(alignment: .leading, spacing: DetailMetrics.spacing) {
-            DetailHero(logo: best.flatMap { browse.logo(for: $0) }, client: browse.client) {
-                HStack(alignment: .top) {
-                    Eyebrow(text: "\(event.league) · \(live ? "Live" : DetailText.day(event.start, now: now))")
-                    Spacer(minLength: 20)
-                    if live { StatusBadge(text: "LIVE", colour: .pigDanger) }
-                    else if let best, browse.isScheduled(event, on: best) {
-                        StatusBadge(text: "Recording scheduled", systemImage: "record.circle")
+            if usesBanner {
+                SportBanner(hero: words, items: [], listTitle: "", selected: nil, backdrop: nil, client: browse.client,
+                            onSelect: { _ in }) {
+                    if best != nil { actions(now: now) }
+                }
+                .defaultFocus($focus, .watch)
+            } else {
+                VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                    HStack(spacing: PigSpacing.s) {
+                        if words.live { Circle().fill(Color.pigDanger).frame(width: 8, height: 8).accessibilityHidden(true) }
+                        Text(words.kicker).font(SportBannerMetrics.kicker).tracking(1).lineLimit(1)
+                            .foregroundStyle(words.live ? Color.pigDanger : Color.pigAccentText)
+                    }
+                    Text(words.title).font(.title2.weight(.heavy)).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(words.line).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                    if words.live {
+                        PigProgressBar(fraction: SportRows.progress(event, now: now), height: 6).padding(.top, PigSpacing.xs)
                     }
                 }
-                Text(event.title).font(DetailType.title).lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("\(event.programme.timeRange) · \(live ? SportRows.endsIn(event, now: now) : SportRows.startsIn(event, now: now))")
-                    .font(DetailType.meta).foregroundStyle(.secondary).monospacedDigit().fontDesign(.rounded)
-                if live {
-                    PigProgressBar(fraction: SportRows.progress(event, now: now), height: 6).frame(maxWidth: 640)
+                .padding(PigSpacing.l)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("sport.event.card")
+                if best != nil {
+                    DetailActions { actions(now: now) }
+                        .defaultFocus($focus, .watch)
                 }
             }
             if let best {
-                DetailActions {
-                    if pending {
-                        Button("Don't watch at \((app.pendingWatch?.at ?? event.start).formatted(date: .omitted, time: .shortened))",
-                               systemImage: "xmark") { app.cancelPendingWatch() }
-                            .focused($focus, equals: .watch)
-                    } else if action == .ended {
-                        // Apple 89 (Codex round 2): the airing is over; the channel shows something else now.
-                        Button("Not on now", systemImage: "xmark.circle") {}
-                            .disabled(true)
-                            .focused($focus, equals: .watch)
-                            .accessibilityIdentifier("sport.notOnNow")
-                    } else if action == .play {
-                        Button("Watch \(best.name)", systemImage: "play.fill") {
-                            // Decided again at the press (the page may have been open since before the airing ended).
-                            let at = Date()
-                            switch SportRows.channelAction(event, now: at) {
-                            case .play: play { app.playSportEvent(event) }
-                            case .wait: play { app.watchWhenStarts(event, now: at) }
-                            case .ended: break
-                            }
-                        }
-                        .pigPrimaryButton()
-                        .focused($focus, equals: .watch)
-                        .accessibilityIdentifier("sport.watch")
-                    } else {
-                        // Closes the page (the wait shows as a banner on
-                        // the Sport tab and Home), so nothing is covering
-                        // the player when the event starts.
-                        Button("Watch \(best.name) when it starts", systemImage: "alarm") {
-                            play { app.watchWhenStarts(event, now: now) }
-                        }
-                        .pigPrimaryButton()
-                        .focused($focus, equals: .watch)
-                        .accessibilityIdentifier("sport.watch")
-                    }
-                    if event.end(on: best) > now {
-                        // Apple 114: one Record (the record page: this game, every game of a side or the league, the
-                        // channel); Change recording when it is scheduled. This page closes first (one page at a time).
-                        Button(browse.isScheduled(event, on: best) ? "Change recording" : "Record", systemImage: "record.circle") {
-                            play { app.record(event) }
-                        }
-                        .disabled(browse.mutationBusy)
-                        .accessibilityIdentifier("sport.record")
-                    }
-                }
-                .defaultFocus($focus, .watch)
                 if let error = browse.actionError {
                     Text(error).font(DetailType.meta).foregroundStyle(.secondary)
                 }
@@ -438,6 +431,59 @@ struct SportEventDetails: View {
             }
             PigSectionHeader(title: event.channels.count == 1 ? "Channel" : "Channels")
             SportChannelList(event: event, app: app, browse: browse, clock: now, play: play)
+        }
+    }
+
+    /// Watch (or Watch when it starts, or Don't watch) and Record: in the banner, or under the iPhone's card.
+    @ViewBuilder
+    private func actions(now: Date) -> some View {
+        if let best = event.best {
+            let action = SportRows.channelAction(event, now: now)
+            if app.pendingWatch?.eventID == event.id {
+                Button("Don't watch at \((app.pendingWatch?.at ?? event.start).formatted(date: .omitted, time: .shortened))",
+                       systemImage: "xmark") { app.cancelPendingWatch() }
+                    .pigSecondaryButton()
+                    .focused($focus, equals: .watch)
+            } else if action == .ended {
+                // Apple 89 (Codex round 2): the airing is over; the channel shows something else now.
+                Button("Not on now", systemImage: "xmark.circle") {}
+                    .pigSecondaryButton()
+                    .disabled(true)
+                    .focused($focus, equals: .watch)
+                    .accessibilityIdentifier("sport.notOnNow")
+            } else if action == .play {
+                Button("Watch \(best.name)", systemImage: "play.fill") {
+                    // Decided again at the press (the page may have been open since before the airing ended).
+                    let at = Date()
+                    switch SportRows.channelAction(event, now: at) {
+                    case .play: play { app.playSportEvent(event) }
+                    case .wait: play { app.watchWhenStarts(event, now: at) }
+                    case .ended: break
+                    }
+                }
+                .pigPrimaryButton()
+                .focused($focus, equals: .watch)
+                .accessibilityIdentifier("sport.watch")
+            } else {
+                // Closes the page (the wait shows as a banner on the Sport tab), so nothing is covering the player when
+                // the event starts.
+                Button("Watch \(best.name) when it starts", systemImage: "alarm") {
+                    play { app.watchWhenStarts(event, now: now) }
+                }
+                .pigPrimaryButton()
+                .focused($focus, equals: .watch)
+                .accessibilityIdentifier("sport.watch")
+            }
+            if event.end(on: best) > now {
+                // Apple 114: one Record (the record page: this game, every game of a side or the league, the channel);
+                // Change recording when it is scheduled. This page closes first (one page at a time).
+                Button(browse.isScheduled(event, on: best) ? "Change recording" : "Record", systemImage: "record.circle") {
+                    play { app.record(event) }
+                }
+                .pigSecondaryButton()
+                .disabled(browse.mutationBusy)
+                .accessibilityIdentifier("sport.record")
+            }
         }
     }
 }

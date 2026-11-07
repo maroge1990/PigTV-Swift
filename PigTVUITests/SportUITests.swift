@@ -48,6 +48,11 @@ final class SportUITests: XCTestCase {
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(app.buttons["sport.watch"].waitForExistence(timeout: 5), "the event page did not open")
         XCTAssertTrue(app.buttons["sport.record"].exists)
+        // #243 (Apple 169): the event page opens on the Sport pages' banner (D-43), its actions inside it
+        let banner = app.descendants(matching: .any)["sport.banner"]
+        XCTAssertTrue(banner.exists, "the event page's banner")
+        XCTAssertTrue(banner.frame.contains(app.buttons["sport.watch"].frame), "Watch sits in the banner")
+        XCTAssertEqual(app.descendants(matching: .any)["sport.banner.hero.title"].label, "NRL Preliminary Final: Storm v Panthers")
         attach(app, "sport-event-page")
     }
 
