@@ -367,7 +367,7 @@ nonisolated enum SignInMetrics {
     static let tileHeight: CGFloat = 0
     static let tileRadius = PigRadius.hero
     static var stacksTiles: Bool { UIDevice.current.userInterfaceIdiom == .phone }
-    static let welcome = "Welcome to PigTV"
+    static let welcome = "Your channels. Your server." // #243: one tagline on every platform
     static var pairDetail: String {
         "The \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone") shows a code; approve it in PigTV on your phone or computer."
     }

@@ -490,7 +490,11 @@ extension View {
         // Preserve the existing footprint without a second shape behind the native capsule.
         self.padding(.horizontal, PigSpacing.xs).padding(.vertical, PigSpacing.xxs)
         #else
-        self.textFieldStyle(.roundedBorder)
+        // #243: the television's capsule on the card's surface, not the system's black rounded rectangle
+        self.textFieldStyle(.plain)
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
+            .background(Color.pigSurface, in: Capsule())
+            .overlay { Capsule().strokeBorder(Color.pigBorder, lineWidth: 1) }
         #endif
     }
 

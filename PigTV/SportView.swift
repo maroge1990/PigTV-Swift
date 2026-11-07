@@ -93,7 +93,7 @@ struct SportView: View {
                     if !sport.loaded {
                         ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                     } else if buckets.isEmpty {
-                        SportEmptyState(error: sport.error) { Task { await sport.load() } }
+                        SportEmptyState(error: sport.error, followsInSettings: browse.sportFollowsEnabled) { Task { await sport.load() } }
                     }
                 }
                 .padding(.horizontal, SportMetrics.pagePadding)
@@ -297,9 +297,11 @@ struct PendingWatchBanner: View {
     }
 }
 
-/// No events: how to follow sports (web app → Settings → Sports).
+/// No events: how to follow sports (Settings › Sport, or the web app on a server without per-account follows).
 private struct SportEmptyState: View {
     let error: String?
+    /// C-U: the server keeps follows per account, so Settings › Sport chooses them.
+    var followsInSettings = false
     let retry: () -> Void
     @Environment(\.colorScheme) private var scheme
     var body: some View {
@@ -309,7 +311,7 @@ private struct SportEmptyState: View {
                 .accessibilityHidden(true)
             Text(error == nil ? "No sport in the next three days" : "Sport is unavailable right now")
                 .font(DetailType.title).multilineTextAlignment(.center)
-            Text(error ?? "Choose the sports, leagues and teams you follow in the PigTV web app, under Settings → Sports. Their events on your channels appear here and on Home, live ones first.")
+            Text(error ?? SportFrontText.followHelp(settings: followsInSettings))
                 .font(DetailType.meta).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: 900)
             if error != nil {

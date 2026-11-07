@@ -178,6 +178,16 @@ final class BrandRulesTests: XCTestCase {
         report(try sourceLines().filter { matches(#"\bTVActionStyle\b"#, $0.text) }, "TVActionStyle is PigSecondaryButtonStyle now")
     }
 
+    // #243: one tagline, one field style and current copy on every platform (the 6 Nov audit found "Welcome to PigTV" on
+    // touch beside the television's tagline, the system's black rounded field on touch, and an empty Sport page sending
+    // the viewer to Home, which #216 retired).
+    func testCopyAndFieldsMatchAcrossPlatforms() throws {
+        let lines = try sourceLines()
+        report(lines.filter { $0.text.contains("Welcome to PigTV") }, "a second tagline (SignInMetrics.welcome is one line)")
+        report(lines.filter { matches(#"textFieldStyle\(\.roundedBorder\)"#, $0.text) }, "the system's rounded field (use .pigField())")
+        report(lines.filter { $0.text.contains("and on Home") }, "Home is gone (D-44)")
+    }
+
     // #243: font sizes come from PigType's roles; the weight and design stay at the call site.
     func testFontSizesComeFromTheTypeScale() throws {
         report(try sourceFiles().filter { $0.file != Self.rolesFile }.flatMap { file in
