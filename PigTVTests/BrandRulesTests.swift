@@ -155,11 +155,12 @@ final class BrandRulesTests: XCTestCase {
 
     // #243: paddings and stack spacings come from PigSpacing. A bare number in a `.padding(...)` or after `spacing:` is a
     // new value outside the scale (0 is not a distance; a number after `*` or `/` is a multiple of a token, not a size).
+    // Whole files are read, so a call written over several lines is checked too (batch 3 Codex round 1).
     func testSpacingComesFromTheScale() throws {
-        let files: Set<String> = [Self.rolesFile, "BrandLayout.swift"]
-        let lines = try sourceLines().filter { !files.contains($0.file) }
-        report(lines.filter { !Self.spacingLiterals(in: $0.text).isEmpty },
-               "a literal padding or spacing (use PigSpacing.xxs/xs/s/m/l/xl, section, empty, or a named metric)")
+        let skip: Set<String> = [Self.rolesFile, "BrandLayout.swift"]
+        report(try sourceFiles().filter { !skip.contains($0.file) }.flatMap { file in
+            (Self.literals(in: file.code, kind: .padding) + Self.literals(in: file.code, kind: .spacing)).map { file.line($0.offset) }
+        }, "a literal padding or spacing (use PigSpacing.xxs/xs/s/m/l/xl, section, empty, or a named metric)")
     }
 
     /// Files allowed the system bordered style, each with its reason.
@@ -171,56 +172,93 @@ final class BrandRulesTests: XCTestCase {
     // #243: a secondary action has one look per platform (PigSecondaryButtonStyle / pigSecondaryButton()); the system
     // bordered style tinted the accent and made a second pink control beside the primary.
     func testSecondaryActionsShareOneStyle() throws {
-        let lines = try sourceLines().filter { Self.borderedAllowlist[$0.file] == nil }
-        report(lines.filter { matches(#"\.buttonStyle\(\.bordered\)"#, $0.text) },
-               "the system bordered style on an action (use .pigSecondaryButton(), or .pigPrimaryButton() for the one primary)")
+        let files = try sourceFiles()
+        report(files.filter { Self.borderedAllowlist[$0.file] == nil }.flatMap { file in
+            Self.borderedStyles(in: file.code).map { file.line($0) }
+        }, "the system bordered style on an action (use .pigSecondaryButton(), or .pigPrimaryButton() for the one primary)")
         report(try sourceLines().filter { matches(#"\bTVActionStyle\b"#, $0.text) }, "TVActionStyle is PigSecondaryButtonStyle now")
     }
 
     // #243: font sizes come from PigType's roles; the weight and design stay at the call site.
     func testFontSizesComeFromTheTypeScale() throws {
-        let lines = try sourceLines().filter { $0.file != Self.rolesFile }
-        report(lines.filter { matches(#"\.system\(size:\s*[0-9(]"#, $0.text) || matches(#"\.system\(size:[^,)]*\?\s*[0-9]"#, $0.text) },
-               "a literal font size (use PigType.caption/kicker/secondary/body/cardTitle/sectionTitle/display/pageTitle/hero)")
+        report(try sourceFiles().filter { $0.file != Self.rolesFile }.flatMap { file in
+            Self.literals(in: file.code, kind: .fontSize).map { file.line($0.offset) }
+        }, "a literal font size (use PigType.caption/kicker/secondary/body/cardTitle/sectionTitle/display/pageTitle/hero)")
     }
 
-    /// The bare, non-zero numbers in a line's `.padding(...)` arguments and `spacing:` expressions.
-    static func spacingLiterals(in text: String) -> [String] {
-        var found: [String] = []
+    /// A source file with its `//` comments removed (line breaks kept, so offsets map back to lines).
+    private struct SourceFile {
+        let file: String
+        let code: String
+        func line(_ offset: Int) -> Line {
+            let number = code.prefix(offset).filter { $0 == "\n" }.count + 1
+            let text = code.components(separatedBy: "\n")[number - 1]
+            return Line(file: file, number: number, text: text)
+        }
+    }
+
+    private func sourceFiles() throws -> [SourceFile] {
+        Dictionary(grouping: try sourceLines(), by: \.file).map { file, lines in
+            SourceFile(file: file, code: lines.sorted { $0.number < $1.number }.map(\.text).joined(separator: "\n"))
+        }.sorted { $0.file < $1.file }
+    }
+
+    enum LiteralKind { case padding, spacing, fontSize }
+
+    /// The bare, non-zero numbers in `.padding(...)`'s arguments, a `spacing:` expression or a `.system(size:` expression
+    /// (every arm of a ternary), with their character offsets in `text`. Expressions may span lines.
+    static func literals(in text: String, kind: LiteralKind) -> [(literal: String, offset: Int)] {
+        let chars = Array(text)
+        var found: [(String, Int)] = []
         let number = try! NSRegularExpression(pattern: #"(?<![A-Za-z_0-9.])-?[0-9]+(\.[0-9]+)?(?![A-Za-z_0-9.])"#)
-        func scan(_ inside: String) {
+        func scan(_ from: Int, _ to: Int) {
+            let inside = String(chars[from..<to])
             for m in number.matches(in: inside, range: NSRange(inside.startIndex..., in: inside)) {
                 guard let r = Range(m.range, in: inside) else { continue }
-                let before = inside[..<r.lowerBound].trimmingCharacters(in: .whitespaces)
+                let before = inside[..<r.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
                 if before.hasSuffix("*") || before.hasSuffix("/") { continue }
                 if Double(inside[r]) == 0 { continue }
-                found.append(String(inside[r]))
+                found.append((String(inside[r]), from + inside.distance(from: inside.startIndex, to: r.lowerBound)))
             }
         }
-        // .padding(...): everything up to its closing parenthesis
-        var search = text.startIndex..<text.endIndex
-        while let hit = text.range(of: ".padding(", range: search) {
-            var depth = 1, end = hit.upperBound
-            while end < text.endIndex, depth > 0 {
-                if text[end] == "(" { depth += 1 } else if text[end] == ")" { depth -= 1 }
-                end = text.index(after: end)
-            }
-            scan(String(text[hit.upperBound..<(depth == 0 ? text.index(before: end) : end)]))
-            search = end..<text.endIndex
+        let pattern: String
+        switch kind {
+        case .padding: pattern = #"\.padding\("#
+        case .spacing: pattern = #"\bspacing:"#
+        case .fontSize: pattern = #"\.system\(\s*size:"#
         }
-        // spacing: up to the next top-level comma or closing parenthesis
-        search = text.startIndex..<text.endIndex
-        while let hit = text.range(of: #"\bspacing:"#, options: .regularExpression, range: search) {
-            var depth = 0, end = hit.upperBound
-            while end < text.endIndex {
-                let c = text[end]
-                if c == "(" || c == "[" { depth += 1 } else if c == ")" || c == "]" { if depth == 0 { break }; depth -= 1 } else if c == ",", depth == 0 { break }
-                end = text.index(after: end)
+        let opener = try! NSRegularExpression(pattern: pattern)
+        for m in opener.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let r = Range(m.range, in: text) else { continue }
+            let start = text.distance(from: text.startIndex, to: r.upperBound)
+            var depth = 0, end = start, content = false
+            // .padding( runs to its closing parenthesis; spacing: and size: to the next top-level comma or closer, or
+            // the end of the line once the value has begun (a value may start on the next line)
+            while end < chars.count {
+                let c = chars[end]
+                if c == "(" || c == "[" { depth += 1 }
+                else if c == ")" || c == "]" { if depth == 0 { break }; depth -= 1 }
+                else if c == ",", depth == 0, kind != .padding { break }
+                else if c == "\n", depth == 0, kind != .padding, content { break }
+                if !c.isWhitespace { content = true }
+                end += 1
             }
-            scan(String(text[hit.upperBound..<end]))
-            search = end..<text.endIndex
+            // (a declaration `static let spacing: CGFloat = PigSpacing.l` ends at its line, and its value is checked too)
+            scan(start, end)
         }
         return found
+    }
+
+    /// The offsets of `.buttonStyle(.bordered)` calls, however they are spaced over lines.
+    static func borderedStyles(in text: String) -> [Int] {
+        let regex = try! NSRegularExpression(pattern: #"\.buttonStyle\(\s*\.bordered\s*\)"#)
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+            Range($0.range, in: text).map { text.distance(from: text.startIndex, to: $0.lowerBound) }
+        }
+    }
+
+    static func spacingLiterals(in text: String) -> [String] {
+        (literals(in: text, kind: .padding) + literals(in: text, kind: .spacing)).sorted { $0.offset < $1.offset }.map(\.literal)
     }
 
     func testSpacingParser() {
@@ -231,6 +269,22 @@ final class BrandRulesTests: XCTestCase {
         XCTAssertEqual(Self.spacingLiterals(in: ".padding(EdgeInsets(top: 26, leading: PigSpacing.m, bottom: 0, trailing: 0))"), ["26"])
         XCTAssertEqual(Self.spacingLiterals(in: "GridItem(.flexible(minimum: 0), spacing: PigSpacing.xl, alignment: .top)"), [])
         XCTAssertEqual(Self.spacingLiterals(in: "Text(\"x\").lineSpacing(4).padding(.top, PigSpacing.empty)"), [])
+        // over several lines (Codex round 1)
+        XCTAssertEqual(Self.spacingLiterals(in: ".padding(\n    19\n)"), ["19"])
+        XCTAssertEqual(Self.spacingLiterals(in: "VStack(alignment: .leading,\n       spacing:\n       14) {"), ["14"])
+        XCTAssertEqual(Self.spacingLiterals(in: "static let spacing: CGFloat = PigSpacing.l\nstatic let width: CGFloat = 1100"), [])
+        XCTAssertEqual(Self.spacingLiterals(in: "static let spacing: CGFloat = 14\nstatic let width: CGFloat = 1100"), ["14"])
+    }
+
+    func testFontAndBorderedParsers() {
+        let font = { (text: String) in Self.literals(in: text, kind: .fontSize).map(\.literal) }
+        XCTAssertEqual(font(".font(.system(size: 19))"), ["19"])
+        XCTAssertEqual(font(".font(.system(size: wide ? PigType.body : 19, weight: .bold))"), ["19"])
+        XCTAssertEqual(font(".font(.system(\n    size: 22,\n    weight: .bold))"), ["22"])
+        XCTAssertEqual(font(".font(.system(size: PigType.body, weight: .semibold))"), [])
+        XCTAssertEqual(font(".font(.system(size: badge * 0.4, weight: .heavy))"), [])
+        XCTAssertEqual(Self.borderedStyles(in: "Button(\"x\") {}\n    .buttonStyle(\n        .bordered\n    )").count, 1)
+        XCTAssertEqual(Self.borderedStyles(in: ".buttonStyle(.borderedProminent)").count, 0)
     }
 
     /// Every decimal literal inside the parentheses that follow `prefix` ("0.45" and both sides of "x ? 0.9 : 0.7").
