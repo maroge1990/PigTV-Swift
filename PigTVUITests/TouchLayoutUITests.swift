@@ -103,5 +103,30 @@ final class TouchLayoutUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
     }
+
+    /// #258: on iPad, Settings' header and pig sat level with every tab's on first opening, then 64 pt higher (at the top
+    /// of the screen) every later time: the system split view dropped the tab bar's inset.
+    @MainActor
+    func testPadSettingsHeaderStaysPutOnASecondVisit() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad layout only") }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "home"
+        app.launch()
+        let settings = app.buttons["Settings"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 15))
+        let title = app.staticTexts.matching(identifier: "page.header.title").matching(NSPredicate(format: "label == 'Settings'")).firstMatch
+        settings.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        sleep(1)
+        let first = title.frame
+        app.buttons["TV Guide"].firstMatch.tap()
+        sleep(1)
+        settings.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        sleep(1)
+        XCTAssertEqual(title.frame.minY, first.minY, accuracy: 1, "the header moved: \(first) then \(title.frame)")
+    }
 }
 #endif

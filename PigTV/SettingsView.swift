@@ -181,43 +181,37 @@ struct LibrarySettings: View {
             VStack(alignment: .leading, spacing: 0) {
                 // At the page's corner like every tab's header (it insets itself).
                 PigPageHeader(title: "Settings")
-                #if os(tvOS)
                 // tvOS 27's NavigationSplitView inside the tab bar drew its sidebar across the whole screen and never the
                 // page beside it (checked on the simulator), so the TV puts the two columns side by side itself, each a
                 // focus section: Right from the menu enters the page, Left from the page returns to the menu.
+                // #258 (iPad): the system split view dropped the tab bar's 64 pt top inset when Settings was opened a
+                // second time, so the header jumped to the top of the screen; the iPad lays the columns out the same way.
                 HStack(alignment: .top, spacing: SettingsMetrics.columnSpacing) {
                     menu.frame(width: SettingsMetrics.menuWidth)
-                    Group {
-                        if let page { pageView(page).id(page) } else { Color.clear }
+                    #if os(tvOS)
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .focusSection()
+                    #else
+                    NavigationStack {
+                        detail
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .toolbar(.hidden, for: .navigationBar)
+                            .background(PigPageBackground()) // the stack paints its own white otherwise
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .focusSection()
+                    #endif
                 }
                 .padding(.top, PigSpacing.m)
-                #else
-                NavigationSplitView(columnVisibility: .constant(.all)) {
-                    menu
-                        .background(PigPageBackground())
-                        .navigationSplitViewColumnWidth(SettingsMetrics.menuWidth)
-                        #if os(iOS)
-                        .toolbar(.hidden, for: .navigationBar)
-                        #endif
-                } detail: {
-                    NavigationStack {
-                        Group {
-                            if let page { pageView(page).id(page) } else { Color.clear }
-                        }
-                        #if os(iOS)
-                        .toolbar(.hidden, for: .navigationBar)
-                        #endif
-                        .background(PigPageBackground())
-                    }
-                }
-                .navigationSplitViewStyle(.balanced)
-                #endif
             }
             // The app's page, not the system's blurred backdrop (build 28).
             .pigPageBackdrop()
+        }
+    }
+
+    /// The page beside the menu (nothing until one is chosen).
+    private var detail: some View {
+        Group {
+            if let page { pageView(page).id(page) } else { Color.clear }
         }
     }
 
@@ -358,6 +352,7 @@ nonisolated enum SettingsMetrics {
     static let confirmPadding = EdgeInsets(top: 26, leading: 28, bottom: 26, trailing: 28)
     #else
     static let menuWidth: CGFloat = 280
+    static let columnSpacing: CGFloat = 12
     static let menuSpacing: CGFloat = 8
     static let menuPadding = EdgeInsets(top: 8, leading: 20, bottom: 20, trailing: 4)
     static let rowPadding = EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
