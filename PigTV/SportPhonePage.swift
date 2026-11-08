@@ -138,7 +138,7 @@ struct SportPhoneCarousel: View {
                 .overlay(alignment: .topTrailing) {
                     if side.followed {
                         Text("★").font(.subheadline.weight(.bold)).foregroundStyle(Color.pigAccentText)
-                            .padding(3).background(Color.pigRaised, in: Circle())
+                            .padding(PigSpacing.xxs).background(Color.pigRaised, in: Circle())
                             .offset(x: 6, y: -4).accessibilityHidden(true)
                     }
                 }

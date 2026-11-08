@@ -515,9 +515,11 @@ nonisolated enum SportFrontLayout {
     /// Packers"), for the card's star; nil when none matches.
     static func followedSide(_ game: SportsGame, names: [String]) -> Int? {
         // #249: a name that matches decides (a follow's own side when both are followed); else the server's match
-        // ("ARI" never ends "Arizona Cardinals").
-        game.competitors.firstIndex { matches($0.name, names: names) }
-            ?? game.followedSides?.first { game.competitors.indices.contains($0) }
+        // ("ARI" never ends "Arizona Cardinals"), but only when it names one side: with both followed it cannot say which
+        // is this follow's (176 Codex round 1, high: Record from SEA's card would have offered ARI's rule).
+        if let byName = game.competitors.firstIndex(where: { matches($0.name, names: names) }) { return byName }
+        let sides = (game.followedSides ?? []).filter { game.competitors.indices.contains($0) }
+        return sides.count == 1 ? sides[0] : nil
     }
 
     /// The hero's words in the banner. `hidden`: spoiler-free (the answer's or the preference): no score, no situation.

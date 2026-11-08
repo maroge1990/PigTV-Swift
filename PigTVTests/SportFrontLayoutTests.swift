@@ -131,6 +131,12 @@ final class SportFrontLayoutTests: XCTestCase {
         var older = game
         older.followedSides = nil
         XCTAssertNil(SportFrontLayout.followedSide(older, names: ["ARI"]), "an older server: names only, as before")
+        // 176 Codex round 1 (high): both sides followed by abbreviation: a specific follow cannot tell which is its own.
+        var both = game
+        both.followedSides = [0, 1]
+        XCTAssertNil(SportFrontLayout.followedSide(both, names: ["SEA"]), "ambiguous: not the first side")
+        XCTAssertNil(SportFrontLayout.followedSide(both, names: ["ARI"]))
+        XCTAssertEqual(SportFrontLayout.followedSides(both, names: ["ARI", "SEA"]), [0, 1], "both starred")
     }
 
     func testTheEmptyStatePointsAtSettingsWithFollows() {
