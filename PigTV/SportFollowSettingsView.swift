@@ -136,11 +136,27 @@ struct SportSettingsSection: View {
                 if delay.available { delayRow }
             }
             Section {
+                // #256: Edit order, then drag a sport by its handle (each sport's page keeps Move up / Move down).
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
+                    .onMove(perform: model.canEdit ? { from, to in Task { await model.moveSports(from: from, to: to) } } : nil)
                 if follows.sports.isEmpty {
                     SportStatusLine(text: "Follow a sport to fill the Sport tab.").accessibilityIdentifier("settings.sport.empty")
                 }
-            } header: { yourSportsHeading }
+            } header: {
+                HStack(alignment: .firstTextBaseline) {
+                    yourSportsHeading
+                    Spacer()
+                    if follows.sports.count > 1 && model.canEdit {
+                        // #256: a press and drag on the row itself goes to its button; Edit order shows the handles.
+                        Button(model.ordering ? "Done" : "Edit order") {
+                            withAnimation { model.ordering.toggle() }
+                        }
+                        .font(SettingsSportType.caption.weight(.semibold))
+                        .textCase(nil)
+                        .accessibilityIdentifier("settings.sport.order")
+                    }
+                }
+            }
             if !model.offline, !model.suggestions.isEmpty {
                 Section { ForEach(model.suggestions) { SportSuggestionRow(model: model, suggestion: $0) } }
             }

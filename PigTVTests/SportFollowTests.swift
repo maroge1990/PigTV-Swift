@@ -397,3 +397,21 @@ final class SportFollowSettingsModelTests: XCTestCase {
         XCTAssertTrue(account.puts.value.isEmpty)
     }
 }
+
+extension SportFollowLogicTests {
+    /// #256: a drag puts the sports in the order the list showed after the drop, applied to the state its save finds.
+    func testADragOrdersTheSportsAndKeepsOneAddedMeanwhile() throws {
+        let state = try JSONDecoder().decode(SportFollows.self, from: Data(#"""
+        {"spoilerFree":false,"sports":[{"sport":"Football","leagues":["EPL"],"teams":[]},
+         {"sport":"Cricket","leagues":["Cricket"],"teams":[]},{"sport":"Motorsport","leagues":["F1"],"teams":[]},
+         {"sport":"Tennis","leagues":["ATP Tour"],"teams":[]}]}
+        """#.utf8))
+        let shown = SportFollowLogic.moved(["Football", "Cricket", "Motorsport"], from: IndexSet(integer: 2), to: 0)
+        XCTAssertEqual(SportFollowLogic.moved(["A", "B", "C"], from: IndexSet(integer: 0), to: 3), ["B", "C", "A"], "to the end")
+        XCTAssertEqual(SportFollowLogic.moved(["A", "B", "C"], from: IndexSet(integer: 0), to: 2), ["B", "A", "C"])
+        let next = SportFollowLogic.orderSports(state, shown)
+        XCTAssertEqual(next.sports.map(\.sport), ["Motorsport", "Football", "Cricket", "Tennis"],
+                       "Tennis, added on another device after the list was drawn, keeps its place after them")
+        XCTAssertEqual(SportFollowLogic.orderSports(state, []).sports.map(\.sport), state.sports.map(\.sport))
+    }
+}

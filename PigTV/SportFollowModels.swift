@@ -220,6 +220,27 @@ nonisolated enum SportFollowLogic {
         return next
     }
 
+    /// #256: a drag in the list. `order` is the sports as the list shows them after the drop; the state its save finds
+    /// is put in that order (a sport the list did not have keeps its place after them), so a change made meanwhile on
+    /// another device is not lost.
+    static func orderSports(_ state: SportFollows, _ order: [String]) -> SportFollows {
+        var next = state
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        next.sports = state.sports.enumerated().sorted { a, b in
+            (rank[a.element.sport] ?? order.count + a.offset, a.offset) < (rank[b.element.sport] ?? order.count + b.offset, b.offset)
+        }.map(\.element)
+        return next
+    }
+
+    /// A list after a drag: the rows at `source` moved to before `destination` (as SwiftUI's `onMove` reports them).
+    static func moved<T>(_ list: [T], from source: IndexSet, to destination: Int) -> [T] {
+        let moving = source.filter { list.indices.contains($0) }.map { list[$0] }
+        var rest = list.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let at = min(rest.count, max(0, destination - source.filter { $0 < destination }.count))
+        rest.insert(contentsOf: moving, at: at)
+        return rest
+    }
+
     static func moveLeague(_ state: SportFollows, _ sport: String, _ league: String, _ delta: Int) -> SportFollows {
         var next = state
         if let s = next.sports.firstIndex(where: { $0.sport == sport }), let i = next.sports[s].leagues.firstIndex(of: league) {

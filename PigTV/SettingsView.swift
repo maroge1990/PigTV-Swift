@@ -264,10 +264,8 @@ struct LibrarySettings: View {
         switch item {
         case .sport:
             if let browse = model.browse {
-                SettingsPageBody(title: item.title, showsTitle: !compact) {
-                    SportSettingsSection(model: browse.sportFollows, me: model.user?.username,
-                                         frontFollows: browse.sportFrontEnabled ? browse.sportFront.front?.follows ?? [] : [])
-                }
+                SportSettingsPage(model: browse.sportFollows, title: item.title, showsTitle: !compact, me: model.user?.username,
+                                  frontFollows: browse.sportFrontEnabled ? browse.sportFront.front?.follows ?? [] : [])
             }
         case .account:
             SettingsAccountPage(model: model, showsTitle: !compact) { if !isTab { dismiss() } }
@@ -439,9 +437,36 @@ nonisolated enum SettingsType {
 
 /// A page beside the menu: its title (the iPhone's pushed page has the navigation bar's instead), then its sections: on
 /// the TV surface rows in a scroll view, on iOS a Form.
+/// Settings › Sport's page: watches its model so Edit order (#256) reaches the form.
+private struct SportSettingsPage: View {
+    @ObservedObject var model: SportFollowSettingsModel
+    let title: String
+    let showsTitle: Bool
+    let me: String?
+    let frontFollows: [SportFront.Follow]
+
+    var body: some View {
+        #if os(iOS)
+        SettingsPageBody(title: title, showsTitle: showsTitle,
+                         editMode: Binding(get: { model.ordering ? .active : .inactive }, set: { model.ordering = $0.isEditing })) {
+            SportSettingsSection(model: model, me: me, frontFollows: frontFollows)
+        }
+        .onDisappear { model.ordering = false }
+        #else
+        SettingsPageBody(title: title, showsTitle: showsTitle) {
+            SportSettingsSection(model: model, me: me, frontFollows: frontFollows)
+        }
+        #endif
+    }
+}
+
 struct SettingsPageBody<Content: View>: View {
     let title: String
     var showsTitle = true
+    #if os(iOS)
+    /// #256: Settings › Sport's Edit order (the form's rows show their drag handles).
+    var editMode: Binding<EditMode>? = nil
+    #endif
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -462,6 +487,7 @@ struct SettingsPageBody<Content: View>: View {
         // the selected menu row already names the page, so the title is only VoiceOver's header now. The iPhone's pages
         // keep the navigation bar's title.
         Form { content }
+            .environment(\.editMode, editMode)
             .scrollContentBackground(.hidden)
             .contentMargins(.top, 5, for: .scrollContent) // the menu rows' text and the first row's on one line
             .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)

@@ -128,5 +128,37 @@ final class TouchLayoutUITests: XCTestCase {
         sleep(1)
         XCTAssertEqual(title.frame.minY, first.minY, accuracy: 1, "the header moved: \(first) then \(title.frame)")
     }
+
+    /// #256: a followed sport is moved by dragging it in Settings › Sport, after Edit order (before, only by Move up /
+    /// Move down on each sport's own page).
+    @MainActor
+    func testPhoneSportsAreReorderedByDragging() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "settings-sport"
+        app.launchEnvironment["PIGTV_UI_TEST_SETTINGS_PAGE"] = "sport"
+        app.launch()
+        sleep(4) // the offline fixture signs in and applies its follows after the page appears
+        let menu = app.buttons["settings.menu.sport"]
+        if menu.exists { menu.tap() }
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settings.sport.row.'"))
+        XCTAssertTrue(rows.element(boundBy: 1).waitForExistence(timeout: 15), "two followed sports")
+        sleep(2) // the follows can be changed once loaded (dragging is off before)
+        let before = rows.allElementsBoundByIndex.map(\.identifier)
+        let order = app.buttons["settings.sport.order"]
+        XCTAssertTrue(order.exists, "no Edit order")
+        order.tap()
+        sleep(1)
+        let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
+        XCTAssertGreaterThanOrEqual(handles.count, 2, "no drag handles: \(app.buttons.allElementsBoundByIndex.map(\.label))")
+        handles.element(boundBy: 1).press(forDuration: 0.5, thenDragTo: handles.element(boundBy: 0))
+        XCTAssertTrue(waitUntil(5) { rows.allElementsBoundByIndex.map(\.identifier) == [before[1], before[0]] + before.dropFirst(2) },
+                      "not reordered: \(rows.allElementsBoundByIndex.map(\.identifier))")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "iphone-sport-edit-order"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
 }
 #endif

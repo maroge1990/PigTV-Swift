@@ -24,6 +24,8 @@ final class SportFollowSettingsModel: ObservableObject {
     @Published private(set) var suggestions: [SportSuggestions.Suggestion] = []
     /// The line under the controls: what the last change did, or why it was not saved.
     @Published var message = ""
+    /// #256 (iPhone, iPad): Edit order is on; the page's form shows each sport's drag handle.
+    @Published var ordering = false
     /// #250: how long a "what the change did" line stays ("Removed NFL."). The model lives as long as the app, so it
     /// stayed until the next save or a relaunch. A "Not saved" line stays until the next change. Tests shorten it.
     var doneLingers: Duration = .seconds(6)
@@ -238,6 +240,13 @@ final class SportFollowSettingsModel: ObservableObject {
 
     func moveSport(_ sport: String, by delta: Int) async {
         await save { SportFollowLogic.moveSport($0, sport, delta) }
+    }
+
+    /// #256: a sport dragged to a new place in the list (iPhone, iPad).
+    func moveSports(from source: IndexSet, to destination: Int) async {
+        guard let shown = follows?.sports.map(\.sport) else { return }
+        let order = SportFollowLogic.moved(shown, from: source, to: destination)
+        await save { SportFollowLogic.orderSports($0, order) }
     }
 
     func moveLeague(_ sport: String, _ league: String, by delta: Int) async {
