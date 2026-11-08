@@ -116,6 +116,23 @@ final class SportFrontLayoutTests: XCTestCase {
         XCTAssertEqual(SportFrontLayout.followedSide(try XCTUnwrap(f.game("espn:soccer/eng.1:1")), names: f.follows.map(\.name)), 0)
     }
 
+    /// #249: production follows the Arizona Cardinals as "ARI"; the server says which side (`followedSides`, server 0493).
+    func testTheServersFollowedSideStarsATeamFollowedByAbbreviation() throws {
+        let card = """
+        {"id":"espn:football/nfl:401873048","league":"NFL","title":"Seattle Seahawks v Arizona Cardinals","start":0,"end":null,
+         "session":null,"circuit":null,"format":null,"status":"scheduled","freshness":"fresh","progress":{},"scores":null,
+         "situation":null,"breakLabel":null,"availability":"listed","broadcastStatus":"scheduled","channels":[],"events":[],
+         "canWatch":false,"followed":true,"followedSides":[1],
+         "competitors":[{"id":"26","name":"Seattle Seahawks","logo":null},{"id":"22","name":"Arizona Cardinals","logo":null}]}
+        """
+        let game = try JSONDecoder().decode(SportsGame.self, from: Data(card.utf8))
+        XCTAssertEqual(SportFrontLayout.followedSide(game, names: ["ARI"]), 1)
+        XCTAssertEqual(SportFrontLayout.followedSides(game, names: ["ARI"]), [1])
+        var older = game
+        older.followedSides = nil
+        XCTAssertNil(SportFrontLayout.followedSide(older, names: ["ARI"]), "an older server: names only, as before")
+    }
+
     func testTheEmptyStatePointsAtSettingsWithFollows() {
         XCTAssertTrue(SportFrontText.followHelp(settings: true).contains("Settings › Sport"))
         XCTAssertTrue(SportFrontText.followHelp(settings: false).contains("web app"))

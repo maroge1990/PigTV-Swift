@@ -40,6 +40,9 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   let dataSource: String?
   /// C-R (server 0381): the card is a followed team's or driver's game; absent on the C-O routes.
   var followed: Bool? = nil
+  /// C-R since server 0493 (#249, additive): the competitor indices the household follows, as the server matched them
+  /// (aliases, abbreviations: a follow saved as "ARI" is the Arizona Cardinals). Absent on older servers.
+  var followedSides: [Int]? = nil
   /// C-R (server 0415, #198): an upcoming recording on one of the card's channels during its airing. Decoded
   /// tolerantly: a malformed one is dropped (`recordingMark` is nil), never the card.
   var recording: RecordingMark? = nil

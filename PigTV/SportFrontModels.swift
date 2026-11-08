@@ -501,7 +501,9 @@ nonisolated enum SportFrontLayout {
 
     /// Every competitor that is a followed team (both, when the account follows both sides).
     static func followedSides(_ game: SportsGame, names: [String]) -> [Int] {
-        game.competitors.indices.filter { matches(game.competitors[$0].name, names: names) }
+        // #249: the server's own match when it sends one; names only for an older server.
+        if let sides = game.followedSides { return sides.filter { game.competitors.indices.contains($0) } }
+        return game.competitors.indices.filter { matches(game.competitors[$0].name, names: names) }
     }
 
     private static func matches(_ competitor: String, names: [String]) -> Bool {
@@ -512,7 +514,10 @@ nonisolated enum SportFrontLayout {
     /// Which competitor is a followed team (its name or the follow's, either ending the other: "Packers" in "Green Bay
     /// Packers"), for the card's star; nil when none matches.
     static func followedSide(_ game: SportsGame, names: [String]) -> Int? {
+        // #249: a name that matches decides (a follow's own side when both are followed); else the server's match
+        // ("ARI" never ends "Arizona Cardinals").
         game.competitors.firstIndex { matches($0.name, names: names) }
+            ?? game.followedSides?.first { game.competitors.indices.contains($0) }
     }
 
     /// The hero's words in the banner. `hidden`: spoiler-free (the answer's or the preference): no score, no situation.
