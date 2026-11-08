@@ -55,10 +55,17 @@ final class TouchLayoutUITests: XCTestCase {
                 let cancel = app.buttons["record.cancelRecording"]
                 XCTAssertGreaterThan(cancel.frame.width, width * 0.7, "Cancel recording is not full width")
                 XCTAssertLessThan(cancel.frame.height, primary.frame.height * 1.5, "Cancel recording wraps")
-                let chosen = app.buttons["record.after.15"]
+                let chosen = app.buttons["record.after"]
                 XCTAssertTrue(chosen.exists)
-                XCTAssertLessThanOrEqual(chosen.frame.maxX, width, "the chosen Finish late is off screen: \(chosen.frame)")
+                XCTAssertTrue(chosen.label.contains("15 min"), "the chosen Finish late is shown: \(chosen.label)")
             }
+            // #253: Start early / Finish late are one line each, a menu on the right inside the card (chips ran past its edge).
+            for id in ["record.before", "record.after"] {
+                let menu = app.buttons[id]
+                XCTAssertTrue(menu.exists, "\(screen): no \(id) menu")
+                XCTAssertLessThanOrEqual(menu.frame.maxX, width - 8, "\(screen): \(id) runs off the card: \(menu.frame)")
+            }
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'record.after.'")).count, 0, "\(screen): no chips")
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "iphone-\(screen)"
             shot.lifetime = .keepAlways

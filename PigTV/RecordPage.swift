@@ -539,6 +539,7 @@ struct RecordPage: View {
     }
 
     private func chipRow(_ title: String, _ options: [Int?], selection: Binding<Int?>, id: String, locked: Bool) -> some View {
+        #if os(tvOS)
         let chips = ForEach(options, id: \.self) { minutes in
             Button { selection.wrappedValue = minutes } label: {
                 Text(RecordPlan.chipTitle(minutes)).lineLimit(1).fixedSize().monospacedDigit()
@@ -549,6 +550,7 @@ struct RecordPage: View {
             .accessibilityIdentifier("record.\(id).\(minutes.map(String.init) ?? "usual")")
             .id(chipID(id, minutes))
         }
+        #endif
         return Group {
             #if os(tvOS)
             HStack(spacing: PigSpacing.s) {
@@ -557,15 +559,30 @@ struct RecordPage: View {
             }
             .focusSection()
             #else
-            VStack(alignment: .leading, spacing: PigSpacing.s) {
+            // #253 (Mark, 8 Nov: a menu per row): one line each, the choice on the right; a sideways row of chips ran
+            // past the card's edge on iPhone, and wrapping them looked cluttered.
+            HStack {
                 Text(title).font(Metrics.rowLabel).foregroundStyle(Color.pigSecondary)
-                // The chosen chip is scrolled into view on opening (Change recording's 15 min sat off screen).
-                ScrollViewReader { reader in
-                    ScrollView(.horizontal) { HStack(spacing: PigSpacing.s) { chips }.padding(.vertical, PigSpacing.xs) }
-                        .scrollIndicators(.hidden).scrollClipDisabled()
-                        .onAppear { reader.scrollTo(chipID(id, selection.wrappedValue), anchor: .center) }
+                Spacer(minLength: PigSpacing.m)
+                Menu {
+                    Picker(title, selection: selection) {
+                        ForEach(options, id: \.self) { minutes in
+                            Text(RecordPlan.chipTitle(minutes)).tag(minutes)
+                                .accessibilityIdentifier("record.\(id).\(minutes.map(String.init) ?? "usual")")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: PigSpacing.xs) {
+                        Text(RecordPlan.chipTitle(selection.wrappedValue)).monospacedDigit()
+                        Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold))
+                    }
+                    .font(Metrics.rowLabel)
                 }
+                .disabled(locked)
+                .accessibilityLabel("\(title): \(RecordPlan.chipTitle(selection.wrappedValue))")
+                .accessibilityIdentifier("record.\(id)")
             }
+            .padding(.vertical, PigSpacing.xs)
             #endif
         }
         .opacity(locked ? 0.5 : 1)
