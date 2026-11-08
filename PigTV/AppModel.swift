@@ -684,9 +684,23 @@ final class AppModel: ObservableObject {
     // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).
     func injectGuideFixture() {
         guard let address = try? ServerAddress("http://127.0.0.1:3000") else { return }
-        let client = APIClient(address: address, token: "fixture")
+        // #257: PIGTV_UI_TEST_WATCH_ON=1: the server has sport events, and one live event is on the first three channels.
+        let watchOn = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_WATCH_ON"] == "1"
+        let info = watchOn ? try? JSONDecoder().decode(ServerInfo.self, from: Data(
+            #"{"name":"PigTV","version":"3.9.0","build":"0494","apiVersion":1,"features":{"library":true,"sportsEvents":true}}"#.utf8)) : nil
+        let client = info.map { APIClient(address: address, token: "fixture", info: $0) } ?? APIClient(address: address, token: "fixture")
         let model = BrowseModel(client: client)
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(), to: GuideFixtures.requestedCount)
+        if watchOn {
+            let now = Date()
+            let carrying = model.guide.filter { $0.programmes.contains { $0.start <= now && now < $0.end } }.prefix(3)
+            if let first = carrying.first, let on = first.programmes.first(where: { $0.start <= now && now < $0.end }) {
+                let channels = carrying.map { SportEventChannel(sourceId: $0.sourceId, rawID: $0.rawID, stableId: $0.stableId,
+                                                                name: $0.name, quality: .hd) }
+                model.sport.setFixture([SportEvent(id: "fixture-live", title: on.title, league: "F1", startTime: on.startTime,
+                                                   endTime: on.endTime, channels: Array(channels))])
+            }
+        }
         model.window = GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn)
         // Build 33: the fixture's synthetic programmes reach `forwardHorizon`
         // past now (well past a single loaded day), so the offline "moves

@@ -16,6 +16,8 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     /// "Record every new episode" (a series rule) or, for sport, "Record every game".
     case recordEvery(title: String, detail: String)
     case moreOptions
+    /// #257 (Mark, 8 Nov): a live event carried by several channels: choose which to watch, before the player opens.
+    case watchOn(channels: Int)
     case watchFromStart
     case details
     case schedule
@@ -27,6 +29,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
         case .changeRecording: "changeRecording"
         case .recordEvery: "recordEvery"
         case .moreOptions: "moreOptions"
+        case .watchOn: "watchOn"
         case .watchFromStart: "watchFromStart"
         case .details: "details"
         case .schedule: "schedule"
@@ -40,6 +43,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
         case .changeRecording: "Change recording"
         case .recordEvery(let title, _): title
         case .moreOptions: "More options…"
+        case .watchOn(let channels): "Watch on… (\(channels) channels)"
         case .watchFromStart: "Watch from start"
         case .details: "Programme details"
         case .schedule: "Channel schedule"
@@ -71,6 +75,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
         case .changeRecording: "record.circle.fill"
         case .recordEvery: "repeat.circle"
         case .moreOptions: "slider.horizontal.3"
+        case .watchOn: "play.rectangle.on.rectangle"
         case .watchFromStart: "backward.end.fill"
         case .details: "info.circle"
         case .schedule: "list.bullet.rectangle"
@@ -93,6 +98,8 @@ nonisolated struct ProgrammeMenuSubject: Equatable, Sendable {
     var isGame = false
     var canWatchFromStart = false
     var isFavourite = false
+    /// #257: how many channels carry this live event (0 or 1: no Watch on…).
+    var watchOnChannels = 0
 
     /// "ABC TV · 10:20 pm – 11:20 pm" under the menu's title.
     var subtitle: String { [channelName, programme?.timeRange].compactMap { $0 }.joined(separator: " · ") }
@@ -117,6 +124,7 @@ nonisolated enum ProgrammeMenu {
             }
             items.append(.moreOptions)
         }
+        if subject.watchOnChannels > 1 { items.append(.watchOn(channels: subject.watchOnChannels)) }
         if subject.canWatchFromStart { items.append(.watchFromStart) }
         if subject.programme != nil { items.append(.details) }
         items.append(.schedule)

@@ -388,3 +388,27 @@ nonisolated enum SportRows {
         return start.timeIntervalSince(now) <= watchNowWindow ? .play : .wait
     }
 }
+
+/// #257 (Mark, 8 Nov): the live sport event a guide programme is, when several channels carry it (its long-press menu's
+/// "Watch on…"). Pure; tested (WatchOnTests).
+nonisolated enum WatchOn {
+    static func event(in events: [SportEvent], sourceId: Int, rawID: String, stableId: String?,
+                      programme: GuideProgramme, now: Date) -> SportEvent? {
+        guard programme.start <= now, now < programme.end else { return nil }
+        return events.first { event in
+            guard !event.isReplay, event.channels.count > 1 else { return false }
+            return event.channels.contains { channel in
+                let same = (channel.sourceId == sourceId && channel.rawID == rawID)
+                    || (stableId != nil && channel.sourceId == sourceId && channel.stableId == stableId)
+                guard same else { return false }
+                let airing = event.airing(on: channel)
+                return airing.start < programme.endTime && airing.end > programme.startTime
+            }
+        }
+    }
+
+    /// "Sky Sports F1 · UHD": one choice in the list.
+    static func label(_ channel: SportEventChannel) -> String {
+        [channel.name, channel.quality?.rawValue].compactMap { $0 }.joined(separator: " · ")
+    }
+}

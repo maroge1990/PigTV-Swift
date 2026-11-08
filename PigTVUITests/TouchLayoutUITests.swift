@@ -160,5 +160,31 @@ final class TouchLayoutUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
     }
+
+    /// #257 (Mark, 8 Nov): a live event carried by several channels: the long-press menu offers "Watch on… (N channels)",
+    /// and the channel is chosen before the player opens.
+    @MainActor
+    func testPhoneGuideMenuOffersWatchOnForALiveEventOnSeveralChannels() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "guide"
+        app.launchEnvironment["PIGTV_UI_TEST_WATCH_ON"] = "1"
+        app.launch()
+        let list = app.collectionViews["guide.onNow"]
+        XCTAssertTrue(list.waitForExistence(timeout: 15), "On now list not shown")
+        sleep(1)
+        list.cells.element(boundBy: 0).press(forDuration: 1.2)
+        let watchOn = app.buttons["Watch on… (3 channels)"].firstMatch
+        XCTAssertTrue(watchOn.waitForExistence(timeout: 5), "no Watch on…: \(app.buttons.allElementsBoundByIndex.map(\.label))")
+        watchOn.tap()
+        let choices = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'watchOn.'"))
+        XCTAssertTrue(choices.firstMatch.waitForExistence(timeout: 5), "no channel list")
+        XCTAssertEqual(Set(choices.allElementsBoundByIndex.map(\.identifier)).count, 3, "one choice per channel")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "iphone-watch-on"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
 }
 #endif

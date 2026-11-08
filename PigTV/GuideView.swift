@@ -97,6 +97,8 @@ struct GuideView: View {
     @FocusState private var headerNowFocused: Bool
     /// D-44 (Apple 107): the long-press menu card, open beside a programme.
     @State private var menu: GuideMenuTarget?
+    /// #257: the live event whose channels "Watch on…" lists.
+    @State private var watchOn: SportEvent?
     /// #219: what failed in the iPhone's On now menu (the system menu has closed, so it cannot show it).
     @State private var onNowError: String?
     /// iPad: where the strip's More button is (the card opens beside it).
@@ -181,6 +183,15 @@ struct GuideView: View {
                                          actions: ProgrammeMenuActions { await runMenu($0, menu) }, close: closeMenu)
                 }
             }
+            // #257: the channels carrying the live event, best first; choosing one plays it there.
+            .confirmationDialog("Watch on", isPresented: Binding(get: { watchOn != nil }, set: { if !$0 { watchOn = nil } }),
+                                titleVisibility: .visible, presenting: watchOn) { event in
+                ForEach(event.channels) { channel in
+                    Button(WatchOn.label(channel)) { app.playSportEvent(event, channel: channel, origin: "TV Guide") }
+                        .accessibilityIdentifier("watchOn.\(channel.id)")
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { event in Text(event.title) }
             #if os(iOS)
             // Landscape iPhone: the grid gets the height (every control is in
             // the slim bar); rotate to portrait to reach the other tabs.
@@ -209,6 +220,8 @@ struct GuideView: View {
                 // Build 31: not on every appearance, only when stale.
                 await model.loadFavouritesIfStale()
                 await model.loadRecordingsIfStale()
+                // #257: the long-press menu's Watch on… needs the sport events (the Sport tab may not have loaded them).
+                if model.sportEnabled && !model.sport.loaded { await model.sport.load() }
             }
             .task { await model.loadArtworkIndex() }
             .whileVisible {
@@ -731,7 +744,15 @@ struct GuideView: View {
                              recordingStatus: programme.flatMap { model.activeSchedule(channel: channel, programme: $0)?.statusWord },
                              rulesAvailable: model.rulesAvailable,
                              canWatchFromStart: programme.flatMap { model.recordingInProgress(channel: channel, programme: $0) } != nil,
-                             isFavourite: model.isFavourite(asChannel(channel)))
+                             isFavourite: model.isFavourite(asChannel(channel)),
+                             watchOnChannels: liveEvent(channel, programme)?.channels.count ?? 0)
+    }
+
+    /// #257: the live sport event this programme is, when the server has sport events (several channels may carry it).
+    private func liveEvent(_ channel: GuideChannel, _ programme: GuideProgramme?) -> SportEvent? {
+        guard model.sportEnabled, let programme else { return nil }
+        return WatchOn.event(in: model.sport.events, sourceId: channel.sourceId, rawID: channel.rawID,
+                             stableId: channel.stableId, programme: programme, now: Date())
     }
 
     private func openMenu(_ channel: GuideChannel, _ programme: GuideProgramme?, anchor: CGRect) {
@@ -777,6 +798,10 @@ struct GuideView: View {
         case .moreOptions:
             closeMenu()
             if let programme = target.programme { app.presenter.present(.record(model.recordRequest(channel: channel, programme: programme))) }
+        case .watchOn:
+            let event = liveEvent(channel, target.programme)
+            closeMenu()
+            watchOn = event
         case .watchFromStart:
             closeMenu()
             if let programme = target.programme, let recording = model.recordingInProgress(channel: channel, programme: programme) {
