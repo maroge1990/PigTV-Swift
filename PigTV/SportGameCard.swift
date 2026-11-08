@@ -58,7 +58,10 @@ final class SportRecordFlow: ObservableObject {
     func attach(_ app: AppModel) { self.app = app }
 
     /// #257: play the event on the chosen channel.
-    func watch(_ event: SportEvent, on channel: SportEventChannel) { app?.playSportEvent(event, channel: channel, origin: "Sport") }
+    func watch(_ event: SportEvent, on channel: SportEventChannel) {
+        guard let current = WatchOn.play(event, on: channel, now: Date()) else { return } // its airing ended meanwhile
+        app?.playSportEvent(current, channel: channel, origin: "Sport")
+    }
 
     /// The record page (Change recording when one of its channels has it scheduled).
     func record(_ event: SportEvent, game: SportsGame? = nil, team: String? = nil) { app?.record(event, game: game, team: team) }
@@ -281,9 +284,10 @@ struct SportGameCard: View {
         .contextMenu {
             if let flow, !game.terminal, let event = SportFrontText.event(game) {
                 // #257: on air on several channels: choose one before the player opens.
-                if event.channels.count > 1, event.isLive(at: Date()) {
-                    Menu("Watch on… (\(event.channels.count) channels)", systemImage: "play.rectangle.on.rectangle") {
-                        ForEach(event.channels) { channel in
+                let onAir = WatchOn.onAir(event, now: Date())
+                if onAir.channels.count > 1, !event.isReplay {
+                    Menu("Watch on… (\(onAir.channels.count) channels)", systemImage: "play.rectangle.on.rectangle") {
+                        ForEach(onAir.channels) { channel in
                             Button(WatchOn.label(channel)) { flow.watch(event, on: channel) }
                         }
                     }

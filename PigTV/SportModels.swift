@@ -396,15 +396,29 @@ nonisolated enum WatchOn {
                       programme: GuideProgramme, now: Date) -> SportEvent? {
         guard programme.start <= now, now < programme.end else { return nil }
         return events.first { event in
-            guard !event.isReplay, event.channels.count > 1 else { return false }
+            guard !event.isReplay, onAir(event, now: now).channels.count > 1 else { return false }
             return event.channels.contains { channel in
-                let same = (channel.sourceId == sourceId && channel.rawID == rawID)
-                    || (stableId != nil && channel.sourceId == sourceId && channel.stableId == stableId)
+                // 185 Codex round 1 (medium): with stable ids on both sides they decide; a reused position never matches.
+                guard channel.sourceId == sourceId else { return false }
+                let same = (channel.stableId != nil && stableId != nil) ? channel.stableId == stableId : channel.rawID == rawID
                 guard same else { return false }
                 let airing = event.airing(on: channel)
                 return airing.start < programme.endTime && airing.end > programme.startTime
             }
         }
+    }
+
+    /// The event with only the channels airing it now (185 Codex round 1, high: one whose airing has ended, or not begun,
+    /// would tune whatever else it shows). What the list offers, what a choice is checked against, and the zap list.
+    static func onAir(_ event: SportEvent, now: Date) -> SportEvent {
+        SportEvent(id: event.id, title: event.title, league: event.league, startTime: event.startTime, endTime: event.endTime,
+                   channels: event.channels.filter { event.isLive(on: $0, at: now) }, kind: event.kind)
+    }
+
+    /// A chosen channel, checked again when it is pressed: the event to play (only its channels on air) or nil.
+    static func play(_ event: SportEvent, on channel: SportEventChannel, now: Date) -> SportEvent? {
+        let current = onAir(event, now: now)
+        return current.channels.contains(channel) ? current : nil
     }
 
     /// "Sky Sports F1 · UHD": one choice in the list.

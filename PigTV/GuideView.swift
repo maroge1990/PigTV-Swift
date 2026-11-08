@@ -186,9 +186,13 @@ struct GuideView: View {
             // #257: the channels carrying the live event, best first; choosing one plays it there.
             .confirmationDialog("Watch on", isPresented: Binding(get: { watchOn != nil }, set: { if !$0 { watchOn = nil } }),
                                 titleVisibility: .visible, presenting: watchOn) { event in
-                ForEach(event.channels) { channel in
-                    Button(WatchOn.label(channel)) { app.playSportEvent(event, channel: channel, origin: "TV Guide") }
-                        .accessibilityIdentifier("watchOn.\(channel.id)")
+                ForEach(WatchOn.onAir(event, now: Date()).channels) { channel in
+                    Button(WatchOn.label(channel)) {
+                        if let current = WatchOn.play(event, on: channel, now: Date()) {
+                            app.playSportEvent(current, channel: channel, origin: "TV Guide")
+                        }
+                    }
+                    .accessibilityIdentifier("watchOn.\(channel.id)")
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { event in Text(event.title) }
@@ -745,7 +749,7 @@ struct GuideView: View {
                              rulesAvailable: model.rulesAvailable,
                              canWatchFromStart: programme.flatMap { model.recordingInProgress(channel: channel, programme: $0) } != nil,
                              isFavourite: model.isFavourite(asChannel(channel)),
-                             watchOnChannels: liveEvent(channel, programme)?.channels.count ?? 0)
+                             watchOnChannels: liveEvent(channel, programme).map { WatchOn.onAir($0, now: Date()).channels.count } ?? 0)
     }
 
     /// #257: the live sport event this programme is, when the server has sport events (several channels may carry it).

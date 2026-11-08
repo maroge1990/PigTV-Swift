@@ -48,4 +48,24 @@ final class WatchOnTests: XCTestCase {
         XCTAssertEqual(watch?.isRecordSection, false)
         XCTAssertLessThan(items.firstIndex { $0.id == "watchOn" }!, items.firstIndex { $0.id == "details" }!, "first after RECORD")
     }
+
+    /// 185 Codex round 1 (high): a channel whose airing has ended, or not begun, is never offered or played.
+    func testOnlyChannelsAiringItNowAreOfferedAndPlayed() {
+        var ended = channel("pos_2", "Fox Sports 506"); ended.startTime = ms - 7_200_000; ended.endTime = ms - 60_000
+        var later = channel("pos_3", "Kayo 1"); later.startTime = ms + 3_600_000; later.endTime = ms + 9_000_000
+        let event = race(channels: [channel("pos_1", "Sky Sports F1"), ended, later, channel("pos_4", "Viaplay")])
+        XCTAssertEqual(WatchOn.onAir(event, now: now).channels.map(\.rawID), ["pos_1", "pos_4"])
+        XCTAssertNil(WatchOn.play(event, on: ended, now: now), "ended meanwhile: nothing plays")
+        XCTAssertEqual(WatchOn.play(event, on: event.channels[3], now: now)?.channels.map(\.rawID), ["pos_1", "pos_4"], "the zap list too")
+        let two = race(channels: [channel("pos_1", "Sky Sports F1"), ended])
+        XCTAssertNil(WatchOn.event(in: [two], sourceId: 1, rawID: "pos_1", stableId: nil, programme: programme, now: now),
+                     "only one channel on air: nothing to choose")
+    }
+
+    /// 185 Codex round 1 (medium): after a renumbering, a cached event's position can be another channel's.
+    func testAReusedPositionWithAnotherStableIdIsNotTheEvent() {
+        let event = race(channels: [channel("pos_1", "Sky Sports F1", stable: "skyf1"), channel("pos_2", "Fox Sports 506", stable: "fox506")])
+        XCTAssertNil(WatchOn.event(in: [event], sourceId: 1, rawID: "pos_2", stableId: "hbo", programme: programme, now: now))
+        XCTAssertNotNil(WatchOn.event(in: [event], sourceId: 1, rawID: "pos_9", stableId: "fox506", programme: programme, now: now))
+    }
 }
