@@ -217,6 +217,24 @@ final class SportFollowSettingsModelTests: XCTestCase {
         XCTAssertEqual(model.message, "Added Europa League.")
     }
 
+    /// #250: "Removed <league>." stayed until the next save or a relaunch (the model lives as long as the app).
+    func testWhatAChangeDidClearsAfterAWhileButNotSavedStays() async throws {
+        let account = Account()
+        let http = try server(account)
+        defer { http.stop() }
+        let model = try model(http)
+        model.doneLingers = .milliseconds(200)
+        await model.load()
+        await model.addLeague("Football", "League Cup")
+        XCTAssertEqual(model.message, "Added League Cup.")
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(model.message, "", "the line goes on its own")
+        account.putStatus.value = 400
+        await model.addLeague("Football", "Europa League")
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertTrue(model.message.hasPrefix("Not saved: "), "a refusal stays until the next change: \(model.message)")
+    }
+
     func testARefusedSaveSaysSoAndReadsTheFollowsAgain() async throws {
         let account = Account()
         let http = try server(account)

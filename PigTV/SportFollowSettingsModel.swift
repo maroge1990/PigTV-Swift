@@ -24,6 +24,23 @@ final class SportFollowSettingsModel: ObservableObject {
     @Published private(set) var suggestions: [SportSuggestions.Suggestion] = []
     /// The line under the controls: what the last change did, or why it was not saved.
     @Published var message = ""
+    /// #250: how long a "what the change did" line stays ("Removed NFL."). The model lives as long as the app, so it
+    /// stayed until the next save or a relaunch. A "Not saved" line stays until the next change. Tests shorten it.
+    var doneLingers: Duration = .seconds(6)
+    private var doneExpiry: Task<Void, Never>?
+
+    /// A line saying what a change did, cleared after `doneLingers` unless something else has replaced it.
+    func showDone(_ text: String) {
+        message = text
+        doneExpiry?.cancel()
+        guard !text.isEmpty else { return }
+        let lingers = doneLingers
+        doneExpiry = Task { [weak self] in
+            try? await Task.sleep(for: lingers)
+            guard !Task.isCancelled, let self, self.message == text else { return }
+            self.message = ""
+        }
+    }
     /// The follows could not be read: `follows` is this device's last copy, and nothing can be changed.
     @Published private(set) var offline = false
     /// The follows could not be read and there is no copy.
@@ -180,7 +197,7 @@ final class SportFollowSettingsModel: ObservableObject {
             guard let current = self.follows, !self.offline, let body = next(current) else { return }
             if self.isFixture {
                 self.follows = body
-                self.message = done()
+                self.showDone(done())
                 return
             }
             do {
@@ -188,7 +205,7 @@ final class SportFollowSettingsModel: ObservableObject {
                 self.answers += 1
                 self.follows = answer
                 self.keepCopy()
-                self.message = done()
+                self.showDone(done())
                 if answer.spoilerFree != current.spoilerFree { self.onSpoilerFreeChange?() }
                 async let namesRead: Void = self.loadNames()
                 async let suggestionsRead: Void = self.loadSuggestions()
@@ -338,7 +355,7 @@ final class SportFollowSettingsModel: ObservableObject {
                 } else {
                     let _: Row = try await client.request("recordings/rules", method: "POST", body: Create(kind: "team", match: name, sport: sport))
                 }
-                message = "Recording every \(name) game."
+                showDone("Recording every \(name) game.")
             } else if let current, await ask(SportFollowLogic.stopRecordingQuestion(name)) {
                 try await deleteRule(current)
                 message = ""
