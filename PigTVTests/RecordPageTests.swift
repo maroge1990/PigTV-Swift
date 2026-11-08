@@ -271,4 +271,14 @@ extension RecordPageTests {
             if case .everyTeam = $0 { return true } else { return false }
         })
     }
+
+    /// #251: the note told every household "PigTV has one provider stream", whatever its providers.
+    func testTheStreamNoteNamesNoNumberOfStreams() {
+        let airing = RecordRequest.Airing(channel: channel(), programme: programme())
+        let note = RecordPlan.streamNote(airing, before: nil, now: now)
+        XCTAssertFalse(note.contains("one provider stream"), note)
+        XCTAssertEqual(note, "If every provider connection is in use when it starts, the recording waits for one to free up.")
+        let started = RecordRequest.Airing(channel: channel(), programme: programme(start: -60))
+        XCTAssertEqual(RecordPlan.streamNote(started, before: nil, now: now), "It has started: only the rest of it is recorded.")
+    }
 }

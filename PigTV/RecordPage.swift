@@ -206,13 +206,14 @@ nonisolated enum RecordPlan {
         }
     }
 
-    /// The one-stream note: when the recording needs the provider stream.
+    /// When the recording needs a provider connection. #251: it said "PigTV has one provider stream" to every household,
+    /// whatever its providers; a recording waits only when every connection of every provider is in use.
     static func streamNote(_ airing: RecordRequest.Airing?, before: Int?, now: Date) -> String {
         guard let programme = airing?.programme else { return "" }
         if programme.start <= now { return "It has started: only the rest of it is recorded." }
         let starts = programme.start.addingTimeInterval(-Double(before ?? 0) * 60)
         let at = before == nil ? "when it starts" : "at \(starts.formatted(date: .omitted, time: .shortened))"
-        return "PigTV has one provider stream: if you are watching something else \(at), the recording waits for the stream."
+        return "If every provider connection is in use \(at), the recording waits for one to free up."
     }
 
     /// Record on's second line for one channel.
