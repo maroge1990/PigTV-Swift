@@ -143,6 +143,34 @@ struct ProgrammeMenuCard: View {
     @FocusState private var focus: String?
 
     var body: some View {
+        fitted
+        .padding(EdgeInsets(top: PigSpacing.l, leading: PigSpacing.m, bottom: PigSpacing.m, trailing: PigSpacing.m))
+        .frame(width: Self.width, alignment: .leading)
+        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .shadow(color: Color.pigShadow.opacity(0.7), radius: 50, y: 40)
+        #if os(tvOS)
+        .focusSection()
+        .defaultFocus($focus, items.first?.id)
+        .onExitCommand(perform: close)
+        #endif
+        .onAppear { focus = items.first?.id }
+    }
+
+    /// #255: on a short screen (iPhone landscape) the card is capped by its overlay and its rows scroll; they ran off the
+    /// bottom of the screen. When they fit, nothing changes.
+    @ViewBuilder
+    private var fitted: some View {
+        #if os(tvOS)
+        content
+        #else
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content }.scrollIndicators(.visible).accessibilityIdentifier("menu.scroll")
+        }
+        #endif
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: PigSpacing.xs) {
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text(subject.title).font(Self.titleFont).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -166,16 +194,6 @@ struct ProgrammeMenuCard: View {
                     .fixedSize(horizontal: false, vertical: true).padding(.horizontal, PigSpacing.s).padding(.top, PigSpacing.xs)
             }
         }
-        .padding(EdgeInsets(top: PigSpacing.l, leading: PigSpacing.m, bottom: PigSpacing.m, trailing: PigSpacing.m))
-        .frame(width: Self.width, alignment: .leading)
-        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
-        .shadow(color: Color.pigShadow.opacity(0.7), radius: 50, y: 40)
-        #if os(tvOS)
-        .focusSection()
-        .defaultFocus($focus, items.first?.id)
-        .onExitCommand(perform: close)
-        #endif
-        .onAppear { focus = items.first?.id }
     }
 
     private func row(_ item: ProgrammeMenuItem) -> some View {
@@ -228,7 +246,9 @@ struct ProgrammeMenuCard: View {
 /// The card's place beside the focused programme: on its right when the programme is in the left half of the screen,
 /// else on its left, vertically centred on it and kept on screen. Pure; tested.
 nonisolated enum ProgrammeMenuPlacement {
-    static func origin(card: CGSize, beside anchor: CGRect, in bounds: CGSize, gap: CGFloat = 20, margin: CGFloat = 24) -> CGPoint {
+    static let margin: CGFloat = 24
+
+    static func origin(card: CGSize, beside anchor: CGRect, in bounds: CGSize, gap: CGFloat = 20, margin: CGFloat = margin) -> CGPoint {
         var x = anchor.midX < bounds.width / 2 ? anchor.maxX + gap : anchor.minX - gap - card.width
         x = min(max(margin, x), max(margin, bounds.width - margin - card.width))
         var y = anchor.midY - card.height / 2
@@ -261,6 +281,8 @@ struct ProgrammeMenuOverlay: View {
                     .accessibilityHidden(true)
                 ProgrammeMenuCard(subject: subject, items: ProgrammeMenu.items(subject, now: now), choose: choose,
                                   close: close, busy: busy, error: error)
+                    // #255: never taller than the screen less the placement's margins (its rows scroll instead).
+                    .frame(maxHeight: max(200, geometry.size.height - 2 * ProgrammeMenuPlacement.margin))
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
                     .offset(x: origin.x, y: origin.y)
             }

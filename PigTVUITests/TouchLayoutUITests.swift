@@ -73,5 +73,35 @@ final class TouchLayoutUITests: XCTestCase {
             app.terminate()
         }
     }
+
+    /// #255: in iPhone landscape a programme's or channel's menu ran off the bottom of the screen (its last rows could not
+    /// be reached). It is capped at the screen and its rows scroll.
+    @MainActor
+    func testPhoneLandscapeGuideMenuReachesItsLastRow() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "guide"
+        app.launch()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCTAssertTrue(app.collectionViews.firstMatch.cells.firstMatch.waitForExistence(timeout: 15), "no guide")
+        sleep(1)
+        // A programme in the grid (its menu has the Record section, the longest).
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.55)).press(forDuration: 1.2)
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'menu.'"))
+        XCTAssertTrue(app.buttons["menu.recordThis"].waitForExistence(timeout: 5), "no programme menu")
+        let screen = app.windows.firstMatch.frame
+        func lastRowIsOnScreen(_ which: String) throws {
+            let last = try XCTUnwrap(rows.allElementsBoundByIndex.max { $0.frame.maxY < $1.frame.maxY })
+            let scroll = app.scrollViews["menu.scroll"]
+            if scroll.exists { scroll.swipeUp(); sleep(1) }
+            XCTAssertLessThanOrEqual(last.frame.maxY, screen.maxY, "\(which): \(last.identifier) runs off the screen: \(last.frame)")
+        }
+        try lastRowIsOnScreen("the programme's menu")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "iphone-landscape-menu"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
 }
 #endif
