@@ -12,6 +12,8 @@ enum SportPhoneMetrics {
     static let cardWidth: CGFloat = 330
     static let cardHeight: CGFloat = 212
     static let heroBadge: CGFloat = 48
+    /// #254: the hero card's score column between the two names (a longer score takes a smaller size).
+    static let heroScoreWidth: CGFloat = 100
     static let rowBadge: CGFloat = 22
     static let edge: CGFloat = 16
 }
@@ -184,7 +186,7 @@ struct SportFixtureRow: View {
                     Text(row.title).font(.subheadline.weight(.bold)).lineLimit(1)
                 }
                 Spacer(minLength: 10)
-                if let score = row.score {
+                if let score = row.shortScore ?? row.score {
                     Text(score).font(.system(.subheadline, design: .rounded).weight(.heavy)).monospacedDigit().lineLimit(1)
                         .fixedSize()
                 }

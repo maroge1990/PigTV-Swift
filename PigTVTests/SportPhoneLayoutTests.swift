@@ -75,4 +75,21 @@ final class SportPhoneLayoutTests: XCTestCase {
         XCTAssertTrue(nbl.sub.hasSuffix(" · No TV listing found"), nbl.sub)
         XCTAssertEqual(SportPhoneLayout.badge("NASCAR Cup"), "NAS")
     }
+
+    /// #254 (Mark, 8 Nov: the short score in the middle): a cricket score filled the iPhone card and squeezed both names.
+    func testALongScoreIsShortenedAndTheRestMovesUnderIt() {
+        XCTAssertEqual(SportScoreText.split("245/6 (48.2)").main, "245/6")
+        XCTAssertEqual(SportScoreText.split("245/6 (48.2)").detail, "48.2 ov")
+        XCTAssertEqual(SportScoreText.split("330/4 (90 ov)").detail, "90 ov")
+        XCTAssertEqual(SportScoreText.split("9.6 (60)").main, "60", "AFL: the total points")
+        XCTAssertEqual(SportScoreText.split("9.6 (60)").detail, "9.6")
+        XCTAssertEqual(SportScoreText.split("3").main, "3")
+        XCTAssertNil(SportScoreText.split("3").detail)
+        let cricket = SportScoreText.short(["245/6 (48.2)", "180/3 (31.4)"])
+        XCTAssertEqual(cricket.main, "245/6–180/3")
+        XCTAssertEqual(cricket.detail, "48.2 ov – 31.4 ov")
+        XCTAssertEqual(SportScoreText.short(["329", "330/4 (90 ov)"]).detail, "90 ov")
+        XCTAssertNil(SportScoreText.short(["2", "1"]).detail)
+        XCTAssertEqual(SportScoreText.short(["9.6 (60)", "7.5 (47)"]).main, "60–47")
+    }
 }

@@ -31,6 +31,37 @@ nonisolated struct SportFixtureRowModel: Equatable, Identifiable, Sendable {
     let sub: String
     /// What VoiceOver reads: never a hidden score.
     let accessibilityLabel: String
+    /// #254 (Mark, 8 Nov: the short score in the middle): what is drawn, "245/6–180/3", "60–47"; `score` stays whole
+    /// for VoiceOver. Nil when `score` is.
+    var shortScore: String? = nil
+    /// The rest of the score, small under the short one on a card: "48.2 ov – 31.4 ov", "9.6 – 7.5".
+    var scoreDetail: String? = nil
+}
+
+/// #254: a long score ("245/6 (48.2)", AFL's "9.6 (60)") split into what fits between two names and the rest.
+nonisolated enum SportScoreText {
+    /// One side's score: (main, detail). Cricket keeps runs/wickets and moves the overs; AFL shows its total points
+    /// and moves goals.behinds; anything else is shown whole.
+    static func split(_ score: String) -> (main: String, detail: String?) {
+        let text = score.trimmingCharacters(in: .whitespaces)
+        guard text.hasSuffix(")"), let open = text.lastIndex(of: "(") else { return (text, nil) }
+        let head = text[..<open].trimmingCharacters(in: .whitespaces)
+        let inner = text[text.index(after: open)..<text.index(before: text.endIndex)].trimmingCharacters(in: .whitespaces)
+        guard !head.isEmpty, !inner.isEmpty else { return (text, nil) }
+        let isNumber = { (s: String) in !s.isEmpty && s.allSatisfy(\.isNumber) }
+        let goalsBehinds = head.split(separator: ".").count == 2 && head.split(separator: ".").allSatisfy { isNumber(String($0)) }
+        if goalsBehinds && isNumber(inner) { return (inner, head) }
+        if inner.hasSuffix("ov") { return (head, inner) }
+        if inner.allSatisfy({ $0.isNumber || $0 == "." }) { return (head, "\(inner) ov") }
+        return (head, inner)
+    }
+
+    /// Two sides' scores: the short score and its detail (nil when nothing was moved).
+    static func short(_ scores: [String]) -> (main: String, detail: String?) {
+        let parts = scores.map(split)
+        let details = parts.compactMap(\.detail)
+        return (parts.map(\.main).joined(separator: "–"), details.isEmpty ? nil : details.joined(separator: " – "))
+    }
 }
 
 /// A follow in the carousel.
@@ -47,6 +78,7 @@ nonisolated struct SportPhoneCard: Equatable, Identifiable, Sendable {
     let title: String?
     /// The session under the title ("Race").
     let session: String?
+    /// #254: the short score ("245/6–180/3"); VoiceOver reads the whole one.
     let score: String?
     /// "2nd half 67' · Optus Sport 1 HD", "Mon 5:00 am · Fox Sports 503 HD", "Nothing in the next three days".
     let line: String
@@ -54,6 +86,8 @@ nonisolated struct SportPhoneCard: Equatable, Identifiable, Sendable {
     /// #49: the follow this card is for: its team rules are this team's, never the other followed side's.
     let team: String
     let accessibilityLabel: String
+    /// #254: the rest of the score, small under it ("48.2 ov – 31.4 ov").
+    var scoreDetail: String? = nil
 }
 
 /// A sport's card: its header and its first games.
@@ -116,9 +150,10 @@ nonisolated enum SportPhoneLayout {
         return SportPhoneCard(index: index, id: id, kicker: kicker, live: live,
                               sides: row.sides.isEmpty ? [badge] : row.sides,
                               title: row.sides.isEmpty ? game.title : nil, session: row.sides.isEmpty ? game.session : nil,
-                              score: row.score, line: text, gameId: game.id, team: follow?.name ?? "",
+                              score: row.shortScore ?? row.score, line: text, gameId: game.id, team: follow?.name ?? "",
                               accessibilityLabel: ([kicker] + names + [row.score, text].compactMap { $0 })
-                                .filter { !$0.isEmpty }.joined(separator: ", "))
+                                .filter { !$0.isEmpty }.joined(separator: ", "),
+                              scoreDetail: row.scoreDetail)
     }
 
     static func cards(_ front: SportFront, hidden: Bool, now: Date, labels: [String: String] = [:],
@@ -147,7 +182,9 @@ nonisolated enum SportPhoneLayout {
         let sides = two ? game.competitors.enumerated().map { index, team in
             SportFixtureRowModel.Side(name: team.name, logo: team.cachedLogo, followed: stars.contains(index))
         } : []
-        let score = two ? drawn.scores.flatMap { $0.count == 2 ? $0.joined(separator: "–") : nil } : nil
+        let pair = two ? drawn.scores.flatMap { $0.count == 2 ? $0 : nil } : nil
+        let score = pair?.joined(separator: "–")
+        let short = pair.map(SportScoreText.short)
         let ongoing = SportFrontHero.ongoing.contains(game.status)
         let clock = ongoing ? SportFrontText.cardClock(game, in: front, hidden: hidden) : nil
         let live = ongoing ? ["LIVE", clock == game.statusLabel ? nil : clock].compactMap { $0 }.joined(separator: " ") : nil
@@ -168,7 +205,8 @@ nonisolated enum SportPhoneLayout {
                       score, live, sub.isEmpty ? nil : sub].compactMap { $0 }
         return SportFixtureRowModel(id: game.id, league: game.league, sides: sides, title: title,
                                     badge: two ? nil : badge(game.league), score: score, live: live, sub: sub,
-                                    accessibilityLabel: spoken.joined(separator: ", "))
+                                    accessibilityLabel: spoken.joined(separator: ", "),
+                                    shortScore: short?.main, scoreDetail: short?.detail)
     }
 
     /// A session row's square badge: the league's short name ("F1", "NASCAR" → "NAS").

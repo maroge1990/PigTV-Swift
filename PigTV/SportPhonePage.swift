@@ -75,8 +75,26 @@ struct SportPhoneCarousel: View {
                     if card.sides.count == 2 {
                         HStack(alignment: .center) {
                             side(card.sides[0], league: league)
-                            Text(card.score ?? "v").font(card.score == nil ? .title3.weight(.semibold) : .system(.title, design: .rounded).weight(.heavy))
-                                .monospacedDigit().foregroundStyle(card.score == nil ? Color.secondary : Color.primary)
+                            // #254 (Mark, 8 Nov): the short score in the middle, the rest small under it; never wider than
+                            // the two names leave (a cricket score filled the card).
+                            VStack(spacing: PigSpacing.xxs) {
+                                if let score = card.score {
+                                    // The largest size that fits the column, never cut off ("60–47" large, "245/6–180/3" smaller).
+                                    ViewThatFits(in: .horizontal) {
+                                        ForEach(Self.scoreSizes, id: \.self) { size in
+                                            Text(score).font(.system(size, design: .rounded).weight(.heavy)).monospacedDigit()
+                                                .lineLimit(1).fixedSize()
+                                        }
+                                    }
+                                } else {
+                                    Text("v").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
+                                }
+                                if let detail = card.scoreDetail {
+                                    Text(detail).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                                        .fixedSize() // one size on every card; it may run a little past the column
+                                }
+                            }
+                            .frame(width: SportPhoneMetrics.heroScoreWidth) // the names share the rest
                             side(card.sides[1], league: league)
                         }
                     } else {
@@ -110,14 +128,24 @@ struct SportPhoneCarousel: View {
         .id(card.id)
     }
 
+    /// #254: the score's sizes, largest first; the hero takes the first that fits its column.
+    private static let scoreSizes: [Font.TextStyle] = [.title, .title2, .title3, .headline, .subheadline, .footnote]
+
     private func side(_ side: SportFixtureRowModel.Side, league: String) -> some View {
         VStack(spacing: PigSpacing.xs) {
             SportBadge(name: side.name, logo: side.logo, league: league, client: browse.client, size: SportPhoneMetrics.heroBadge)
-            HStack(spacing: PigSpacing.xs) {
-                if side.followed { Text("★").foregroundStyle(Color.pigAccentText).accessibilityHidden(true) }
-                Text(side.name).lineLimit(1).minimumScaleFactor(0.8)
-            }
-            .font(.subheadline.weight(.bold))
+                // The followed side's star sits on its badge, so the name keeps the width.
+                .overlay(alignment: .topTrailing) {
+                    if side.followed {
+                        Text("★").font(.subheadline.weight(.bold)).foregroundStyle(Color.pigAccentText)
+                            .padding(3).background(Color.pigRaised, in: Circle())
+                            .offset(x: 6, y: -4).accessibilityHidden(true)
+                    }
+                }
+            // #252: one size for both names and the rows below (each side shrank on its own to 80%): a long name takes
+            // a second line instead.
+            Text(side.name).font(.subheadline.weight(.bold)).lineLimit(2).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
     }
