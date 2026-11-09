@@ -565,7 +565,7 @@ How this client applies it:
 
 ## Branding implementation
 
-The rules are in the Pig family brand kit 1.7.0 (`~/code/PigBrand`) and the server's
+The rules are in the Pig family PigBrand kit (`~/code/PigBrand`; guide 1.8.0, token files 1.7.0) and the server's
 [`docs/DESIGN.md`](https://github.com/maroge1990/PigTV/blob/main/docs/DESIGN.md); this is how the client takes them in.
 
 The "Spotlight" look (plum plate, `#FF2E94` halo, generated bitmaps, `Tools/make-brand-assets.swift`) is **retired**. Every brand image

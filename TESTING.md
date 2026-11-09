@@ -32,16 +32,20 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 - Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a
   slice and advances `guideLoadedUntil`, ends cleanly when a slice is empty, a failed page is retried before it surfaces,
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,
-  `HomeRowsTests`, `ObservationTests` (audit R05: a guide page does not publish the recordings/favourites stores and vice versa, `HomeModel` publishes nothing for equal inputs and changes for a same-id status change; it also appends a per-screen publish count to `/tmp/pigtv-observation.txt`), `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `TimeshiftMathTests`,
-  `DisplayModeTests`, `StreamInfoTests`, `SportTests` (buckets, days over 72 h, replays, tolerant decoding, the model against
+  `ObservationTests` (audit R05: a guide page does not publish the recordings/favourites stores and vice versa, `HomeModel` publishes nothing for equal inputs and changes for a same-id status change; it also appends a per-screen publish count to `/tmp/pigtv-observation.txt`), `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `PlayerTimeMathTests`,
+  `DisplayModeTests`, `StreamInfoTests`, `SportRowsTests`/`SportModelTests` in `SportTests.swift` (buckets, days over 72 h, replays, tolerant decoding, the model against
   the fake server; build 33: `playsChannelNow`), `TopShelfTests` and `TopShelfCardTests`
   (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).
 
 **UI tests (`PigTVUITests`, tvOS).** Two tiers in `Tools/test.sh`: **push** (regression: `GuideGridNavigationUITests`,
-`HomeUITests`, `SportUITests`, `RecordingsUITests`, `TabSwitchUITests`, and any new suite) and **visual** (screenshots and
+`SportUITests`, `RecordingsUITests`, `TabSwitchUITests`, and any new suite) and **visual** (screenshots and
 appearance: `BrandDepthUITests`, `TabFlashUITests`, `BrandSplashUITests`, `TopShelfCardsUITests`, `PigTVUITests`,
 `PigTVUITestsLaunchTests`). `BrandDepthUITests`' two player checks need `Tools/generate-brand-review-media.sh` (ffmpeg); the
-visual tier runs it when ffmpeg is installed, and they skip otherwise (as on CI).
+visual tier runs it when ffmpeg is installed, and they skip otherwise.
+CI runs none of the UI tiers (D-49). `Tools/test.sh` tiers: `fast` (build, the contract script once, the unit tests), `push` (fast and
+the regression UI tests), `visual` (the screenshot suites), `all` (fast, regression and visual). A pass of `all` on a clean tree
+writes the git-ignored marker `.ui-full-passed` (the commit), which `Tools/testflight.sh` requires to equal HEAD, so an upload
+runs from the Mac's real clone, not an rsync copy. CI checks out the server's `test/golden`, so `GoldenChecks` runs there.
 - `PigTVUITests`: Settings › Appearance switching. `PigTVUITestsLaunchTests`: launch screenshot.
 - `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details;
   build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h

@@ -25,9 +25,9 @@ system setting). Simulators are named, not UDIDs (they differ per Mac); the 26.5
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
 sh Tools/test.sh fast      # contract checks, then the unit tests: while developing (~1 min after the build)
-sh Tools/test.sh push      # fast, then the regression UI tests: once per batch, before its review and before the push
-sh Tools/test.sh visual    # screenshot/appearance UI tests: before a release or a brand change (CI runs them on every push)
-sh Tools/test.sh all       # everything, as CI does
+sh Tools/test.sh push      # fast, then the regression UI tests: once per batch on the Mac, before the push (D-49)
+sh Tools/test.sh visual    # screenshot/appearance UI tests: before a release or a brand change
+sh Tools/test.sh all       # fast, regression and visual; a pass on a clean tree writes .ui-full-passed (the commit)
 
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0' \
@@ -42,7 +42,7 @@ sh Tools/bump-build.sh                                                          
 the end: a booted tvOS simulator left running crash-loops its daemons and loads the Mac. Do the same (`xcrun simctl shutdown
 all`) after a plain `xcodebuild test`. A new UI suite runs in the push tier unless it is listed in `VISUAL` in the script.
 
-## Installing on Mark's devices (until TestFlight)
+## TestFlight and installing on Mark's devices
 
 When Mark asks for a build on a device, sync this tree to `mac:~/pigtv-build/b3-swift` (only when no test run uses it),
 then run the installer **in the Claude desktop app's Terminal panel** (`run_in_terminal`), never through Bash:
@@ -51,25 +51,30 @@ which a plain SSH session cannot unlock (`errSecInternalComponent`): the script 
 and Mark types it there (tell him: open the tab, type the password, nothing shows, press Return). Never ask for the
 password in chat or store it. Devices by name: `iPad`, `PiGPhone`, `Downstairs Living Room`, `Upstairs Living Room`,
 `Mark Office`; on, awake, on the home network. Quote the `~` (else the local shell expands it). On the free team a
-build stops opening after 7 days; installing again renews it. TestFlight (`Tools/testflight.sh`) replaces this.
+build stops opening after 7 days; installing again renews it.
+
+TestFlight is the normal route. `Tools/testflight.sh` refuses to upload unless the git-ignored marker `.ui-full-passed`
+equals HEAD and the tree is clean (D-49). So run `sh Tools/test.sh all` and then the script from the Mac's real clone
+(`/Users/markrogers/Documents/GitHub/PigTV-Swift`), never from an rsync copy without `.git`.
 
 ## How changes ship
 
-**Commit to `main`; push once the batch has passed its reviews** (server D-34). Work on `main`; `git pull --rebase`
-first, push with `git push origin main` after the tests and Codex rounds, then watch CI. Never force-push. Work in
+**Commit to `main`; push once the batch has passed its reviews** (server D-34, D-51). Work on `main`; `git pull --rebase`
+first, push with `git push origin main` after the tests and Codex review, then watch CI. Never force-push. Work in
 batches by area (server D-35, its `AGENTS.md` › Work in batches): a batch is Swift-only where possible, each fix its own
-commit and build number, `Tools/test.sh push` once before the first review round and again before the push. Session start and end follow the
+commit and build number, `Tools/test.sh push` once, before the push. Session start and end follow the
 server's `AGENTS.md` › Session checklist (issues first; the end-of-session docs check; ask Mark about pushed-but-open issues).
 
 1. Before every commit: `sh Tools/test.sh fast` passes, plus the iOS build when shared code changed; `push` runs once
-   per batch before its review round and again before the push, and CI is the full gate (D-38). If something can't be
+   per batch before the push, and a TestFlight upload needs `all` for that commit (D-49). If something can't be
    run, say so in the commit message and to Mark.
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets) and its
    subject starts with the build number (`63: what changed`); Settings → Version identifies the installed copy.
 3. Commits write `Refs maroge1990/PigTV#n`, never `Fixes`/`Closes`; issues close as the server's `AGENTS.md` › Work
    tracking says (on T1–T3 evidence; device-check ones after Mark's report, D-38).
-4. CI (`.github/workflows/ci.yml`) builds for iOS and runs the tvOS tests on every push and PR (a docs-only push skips
-   it, D-38); a red run is fixed or reverted at once.
+4. CI (`.github/workflows/ci.yml`) builds for iOS, runs the contract checks, the unit tests and the playback tests on every
+   push and PR, with the server's `test/golden` checked out so the golden checks run; the UI tests are not in CI (D-49). A
+   docs-only push skips it (D-38); a red run is fixed or reverted at once.
 5. Device-dependent work ends with numbered T5 steps for Mark; nothing is *Verified* until he reports it. A simulator pass
    is not a device pass.
 
@@ -94,7 +99,8 @@ server's `AGENTS.md` › Session checklist (issues first; the end-of-session doc
   `APPLE_CLIENT_ROUTES`.
 - The lead session may delegate to sub-agents and reviews every diff before it's committed.
 - **Adversarial review:** the server's `AGENTS.md` › Reviews (Claude launches Codex itself; one round, a second only on
-  a high; highs and unfixed findings become issues, D-38). For this repo the threshold is any functional change to playback, the caches or other shared
+  a high; every fix for a finding goes back to Codex for sign-off, never Claude's own; sport and web batches fix highs
+  only, D-51). For this repo the threshold is any functional change to playback, the caches or other shared
   ownership/accounting, the Top Shelf, pairing/auth, or anything the server's `docs/CLIENT-CONTRACT.md` covers; any fix
   for a review finding; or more than ~150 changed non-test lines. Docs-only and test-only commits are exempt.
 - Docs describe the present and are edited in place; open work goes in issues, never in a doc.

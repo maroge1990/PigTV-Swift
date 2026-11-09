@@ -27,7 +27,7 @@ sh Tools/test-contracts.sh    # synthetic API/model checks, no server
 In the app, enter the server's origin (e.g. `http://192.168.1.235:3000`, no path), then sign in or choose **Pair with browser**
 and approve the code in the web app's Settings → Devices. Credentials are kept in the Keychain per server.
 
-Work happens on `main`; pushes run CI (`.github/workflows/ci.yml`: iOS build, tvOS tests).
+Work happens on `main`; pushes run CI (`.github/workflows/ci.yml`: iOS build, contract checks, unit and playback tests; the UI tests run on the Mac, D-49).
 
 ## Where to read next
 
