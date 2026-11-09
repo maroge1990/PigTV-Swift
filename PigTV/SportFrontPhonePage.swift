@@ -50,9 +50,16 @@ struct SportFrontPhonePage: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
+        // #263: the header stays put above the page, as the TV Guide's does; before, it scrolled away with the cards.
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
+            header
+            page(now: now)
+        }
+    }
+
+    private func page(now: Date) -> some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: PigSpacing.m) {
-                header
                 if let front = model.front {
                     if model.stale, let updated = model.updatedAt {
                         Text("Couldn't refresh. Last updated \(updated.formatted(date: .omitted, time: .shortened)).")

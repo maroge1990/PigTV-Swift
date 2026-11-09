@@ -29,6 +29,9 @@ struct SportFrontTVPage: View {
         _f1 = ObservedObject(wrappedValue: browse.f1Page)
     }
 
+    /// How far past its sides and bottom the page may draw (#263): more than a focused card grows.
+    static let overdraw: CGFloat = 200
+
     /// Scores, situations and results are hidden when either the answer or the account's preference says so.
     private var hidden: Bool { f1.hidesSpoilers }
 
@@ -86,7 +89,17 @@ struct SportFrontTVPage: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
+        // Cards draw outside the scroll's frame (a focused card grows past the page's edges), except at its top: #263, the
+        // rails used to slide up over the header as the page scrolled. The page now ends under the header, as the
+        // TV Guide's grid does, fading out over its first few points.
         .scrollClipDisabled()
+        .mask(alignment: .top) {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: PigSpacing.s)
+                Rectangle()
+            }
+            .padding(.horizontal, -SportFrontTVPage.overdraw).padding(.bottom, -SportFrontTVPage.overdraw)
+        }
         .defaultFocus($heroFocused, true, priority: .userInitiated)
     }
 
