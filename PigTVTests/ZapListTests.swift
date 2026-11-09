@@ -50,6 +50,18 @@ final class ZapListTests: XCTestCase {
 /// the app root runs it (`AppFreshness`, ContentView), whichever tab shows, and exports the Top Shelf each time.
 @MainActor
 final class AppFreshnessTests: XCTestCase {
+    /// The fake server has no guide route, so every guide fetch is a 404 and would sit through the real retry backoff
+    /// (8 s + 12 s) before the pass moved on. These tests count requests, not guides: fail at once.
+    override func setUp() {
+        super.setUp()
+        BrowseModel.guidePageRetryDelaysOverride = []
+    }
+
+    override func tearDown() {
+        BrowseModel.guidePageRetryDelaysOverride = nil
+        super.tearDown()
+    }
+
     func testTheRefreshAsksForAStaleGuideAndExportsTheTopShelf() async throws {
         let server = try FakePigTVServer()
         defer { server.http.stop() }
