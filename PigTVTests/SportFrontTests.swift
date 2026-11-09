@@ -149,6 +149,29 @@ final class SportFrontTests: XCTestCase {
         XCTAssertFalse(try front { $0["scores"] = "stale" }.scoresUnavailable)
     }
 
+    // #261 (187): on 9 Nov the Sunday night NFL score took about two minutes to appear: the page re-asked every 60 s
+    // until it had seen a game live. A game due within the hour is now enough for the 20 s pace.
+    func testAGameDueWithinTheHourIsReAskedEvery20Seconds() throws {
+        let now = Date(timeIntervalSince1970: 1_794_187_200)
+        func page(status: String, startsIn seconds: Double) throws -> SportFrontModel {
+            let f = try front { json in
+                json["games"] = (json["games"] as? [[String: Any]] ?? []).map { game in
+                    var g = game
+                    g["status"] = status
+                    g["start"] = (now.timeIntervalSince1970 + seconds) * 1000
+                    return g
+                }
+            }
+            let m = try model()
+            m.setFixture(f)
+            return m
+        }
+        XCTAssertEqual(try page(status: "scheduled", startsIn: 30 * 60).interval(at: now), SportFrontModel.liveRefreshInterval, "due in 30 min")
+        XCTAssertEqual(try page(status: "scheduled", startsIn: -10 * 60).interval(at: now), SportFrontModel.liveRefreshInterval, "past its start, not yet live")
+        XCTAssertEqual(try page(status: "scheduled", startsIn: 3 * 3600).interval(at: now), SportFrontModel.refreshInterval, "three hours away")
+        XCTAssertEqual(try page(status: "finished", startsIn: -10 * 60).interval(at: now), SportFrontModel.refreshInterval, "over")
+    }
+
     func testNoFollowedSportIsTheEmptyState() throws {
         let f = try front { json in
             json["sports"] = []

@@ -156,6 +156,12 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
     var isEmpty: Bool { sports.isEmpty }
     /// A game is under way (live, at a break or suspended): the page polls faster.
     var hasLiveGame: Bool { games.contains { SportFrontHero.ongoing.contains($0.status) } }
+    /// #261 (187): a game under way, or not over and within an hour of its start: the page re-asks every 20 s, so a game
+    /// going live shows within seconds of the server having it (not after a 60 s wait for the first live answer).
+    func wantsFastRefresh(at now: Date) -> Bool {
+        let ms = now.timeIntervalSince1970 * 1000
+        return games.contains { SportFrontHero.ongoing.contains($0.status) || (!$0.terminal && abs($0.start - ms) <= 3_600_000) }
+    }
 }
 
 /// Which game the hero band shows. The server proposes one (`hero`); the client keeps the hero it shows until its game

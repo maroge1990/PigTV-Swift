@@ -2,8 +2,8 @@ import Foundation
 import Combine
 
 /// C-R (#21, D-39): the Sport front page's data and its hero. One per signed-in session, owned by BrowseModel; used only
-/// when the server advertises `sportFront`. Loaded when the page opens, then every 20 s while a game is under way and
-/// every 60 s otherwise, while the page is on screen.
+/// when the server advertises `sportFront`. Loaded when the page opens, then every 20 s while a game is under way or
+/// within an hour of its start (#261) and every 60 s otherwise, while the page is on screen.
 @MainActor
 final class SportFrontModel: ObservableObject {
     static let refreshInterval: Duration = .seconds(60)
@@ -50,7 +50,10 @@ final class SportFrontModel: ObservableObject {
         return front.follows.firstIndex { $0.gameId == heroID }
     }
 
-    var interval: Duration { front?.hasLiveGame == true ? Self.liveRefreshInterval : Self.refreshInterval }
+    var interval: Duration { interval(at: Date()) }
+    func interval(at now: Date) -> Duration {
+        front?.wantsFastRefresh(at: now) == true ? Self.liveRefreshInterval : Self.refreshInterval
+    }
 
     /// Takes a new answer: a follow that has gone live replaces a flip; a pinned card that left the page or finished is
     /// let go, and so is a flip whose game is no longer under way (a finished game does not stay the hero all day).
