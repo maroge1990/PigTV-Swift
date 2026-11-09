@@ -5,3 +5,5 @@ xcuserdata/
 DerivedData/
 build/
 CLAUDE.local.md
+# Written by Tools/test.sh all; Tools/testflight.sh reads it
+.ui-full-passed

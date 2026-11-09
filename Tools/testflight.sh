@@ -11,9 +11,18 @@
 #   PIGTV_ASC_ISSUER_ID the issuer ID shown above the keys
 #   PIGTV_ASC_KEY_PATH  the downloaded AuthKey_<id>.p8 (kept outside the repository)
 # Signing is automatic: the key lets xcodebuild register the bundle ids, the App Group and a distribution certificate.
+# Refuses unless the full UI run (`sh Tools/test.sh all`) passed for exactly this commit on a clean tree (D-49): it leaves
+# .ui-full-passed holding the commit. There is no bypass; commit first, then run it again.
 # The build number is the project's (Tools/bump-build.sh); every upload needs a new one.
 set -eu
 cd "$(dirname "$0")/.."
+need="run 'sh Tools/test.sh all' on a clean, committed tree, then try again"
+command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1 \
+    || { echo "testflight: this is not a git checkout, so the tested commit cannot be known: use the Mac's clone, then $need" >&2; exit 1; }
+[ -z "$(git status --porcelain --untracked-files=no)" ] \
+    || { echo "testflight: uncommitted changes: commit them, then $need" >&2; exit 1; }
+[ -f .ui-full-passed ] && [ "$(cat .ui-full-passed)" = "$(git rev-parse HEAD)" ] \
+    || { echo "testflight: the full UI tests have not passed for this commit: $need" >&2; exit 1; }
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 [ -f "$HOME/.pigtv-testflight.env" ] && . "$HOME/.pigtv-testflight.env"
 : "${PIGTV_TEAM_ID:?set PIGTV_TEAM_ID}" "${PIGTV_ASC_KEY_ID:?set PIGTV_ASC_KEY_ID}" "${PIGTV_ASC_ISSUER_ID:?set PIGTV_ASC_ISSUER_ID}" "${PIGTV_ASC_KEY_PATH:?set PIGTV_ASC_KEY_PATH}"

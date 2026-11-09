@@ -21,6 +21,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The server's golden API answers, so GoldenChecks decodes them instead of skipping. The checkout cannot go
+      # beside this one (../PigTV), so GoldenChecks is pointed at it with PIGTV_GOLDEN_DIR (the env step below).
+      - uses: actions/checkout@v5
+        with:
+          repository: maroge1990/PigTV
+          path: server-golden
+          sparse-checkout: test/golden
+          sparse-checkout-cone-mode: true
+
+      - name: Point GoldenChecks at the server's golden answers
+        run: |
+          test -f "$GITHUB_WORKSPACE/server-golden/test/golden/routes.json"
+          echo "PIGTV_GOLDEN_DIR=$GITHUB_WORKSPACE/server-golden/test/golden" >> "$GITHUB_ENV"
+          echo "SIMULATOR_PIGTV_GOLDEN_DIR=$GITHUB_WORKSPACE/server-golden/test/golden" >> "$GITHUB_ENV"
+
       - name: Select newest available Xcode
         run: |
           LATEST_XCODE="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
@@ -44,6 +59,9 @@ jobs:
             -scheme PigTV \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Contract checks
+        run: sh Tools/test-contracts.sh
 
       # Newest tvOS runtime first: the app targets tvOS 26.5.
       - name: Find or create an Apple TV simulator
@@ -77,12 +95,16 @@ jobs:
       # the entitlements in an ad-hoc signature, so the app and the Top Shelf
       # extension get their App Group. CODE_SIGNING_ALLOWED=NO dropped the
       # entitlements, and the Top Shelf tests could never pass here (build 31-35).
-      - name: Run tvOS tests
+      # Unit and playback tests (RealPlaybackTests is in PigTVTests). The UI tests are not run here (D-49): they run on
+      # the Mac once per batch and again before a TestFlight upload. The contract wrapper already ran above.
+      - name: Run tvOS unit and playback tests
         run: |
           xcodebuild test \
             -project PigTV.xcodeproj \
             -scheme PigTV \
             -destination "id=${{ steps.tvos_sim.outputs.device_id }}" \
+            -only-testing:PigTVTests \
+            -skip-testing:PigTVTests/PigTVTests/testServerContracts \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM= \
