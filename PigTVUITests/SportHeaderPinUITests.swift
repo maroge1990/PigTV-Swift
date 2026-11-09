@@ -5,6 +5,8 @@ import XCTest
 // page's ScrollView; on the Apple TV and the iPad the ScrollView drew its rails outside its own frame
 // (`.scrollClipDisabled()`), over the header. Scrolling the page must leave the header where it was and nothing drawn
 // over it: its frame is unchanged and the screen's pixels across the header's row are the same before and after.
+// #264 (option B): once the page has scrolled past the banner, the strip it shrinks to is pinned under the header
+// (`sport.front.strip`); at the top there is none. On iPad and iPhone a tap on the strip goes back to the full hero.
 // Runs on tvOS, iPad and iPhone (portrait) on the offline fixtures.
 final class SportHeaderPinUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
@@ -69,13 +71,16 @@ final class SportHeaderPinUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["sport.front"].waitForExistence(timeout: 15), "the page")
         Thread.sleep(forTimeInterval: 1.5)
         let before = title.frame
-        // The header's row: the title's height plus a little above and below it (the pig and the scores chip are as tall).
-        let row = before.insetBy(dx: 0, dy: -6)
+        // The header's row: the title's own height, across the screen (the pig and the scores chip share it). The page
+        // starts a few points below, where its top edge fades in.
+        let row = before
         let pixels = band(app, row)
         attach(app, "263-before-scroll")
+        let strip = app.descendants(matching: .any)["sport.front.strip"]
+        XCTAssertFalse(strip.exists, "#264: no strip while the full banner shows")
 
         #if os(tvOS)
-        for _ in 0..<6 { XCUIRemote.shared.press(.down); Thread.sleep(forTimeInterval: 0.4) }
+        for _ in 0..<10 { XCUIRemote.shared.press(.down); Thread.sleep(forTimeInterval: 0.4) }
         #else
         let page = app.scrollViews.containing(.any, identifier: "sport.front").firstMatch
         page.swipeUp(velocity: .slow)
@@ -91,5 +96,12 @@ final class SportHeaderPinUITests: XCTestCase {
         XCTAssertEqual(after.minX, before.minX, accuracy: 0.5, "the header moved sideways")
         XCTAssertNotNil(pixels)
         XCTAssertEqual(band(app, row), pixels, "something was drawn over the header's row as the page scrolled")
+
+        XCTAssertTrue(strip.waitForExistence(timeout: 5), "#264: the banner shows as the strip once it has scrolled under")
+        XCTAssertGreaterThanOrEqual(strip.frame.minY, after.maxY, "the strip sits under the header")
+        #if os(iOS)
+        strip.tap()
+        XCTAssertTrue(waitUntil(5) { !strip.exists }, "a tap on the strip goes back to the full hero")
+        #endif
     }
 }

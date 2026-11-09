@@ -20,6 +20,9 @@ struct SportFrontTVPage: View {
     @Environment(\.sportPresenter) private var presenter
     /// Down from the tab bar lands on the hero's first button.
     @FocusState private var heroFocused: Bool
+    /// #264: how far the page has scrolled, and the banner's height: past it, the banner shows as the strip.
+    @State private var scrolled: CGFloat = 0
+    @State private var bannerHeight: CGFloat = 0
 
     init(app: AppModel, browse: BrowseModel, open: @escaping (String) -> Void) {
         self.app = app
@@ -31,6 +34,7 @@ struct SportFrontTVPage: View {
 
     /// How far past its sides and bottom the page may draw (#263): more than a focused card grows.
     static let overdraw: CGFloat = 200
+    static let bannerID = "sport.front.banner"
 
     /// Scores, situations and results are hidden when either the answer or the account's preference says so.
     private var hidden: Bool { f1.hidesSpoilers }
@@ -58,7 +62,31 @@ struct SportFrontTVPage: View {
         }
     }
 
+    private var stripShows: Bool {
+        guard let front = model.front, !front.isEmpty else { return false }
+        return SportHeroStrip.shows(scrolled: scrolled, bannerHeight: bannerHeight, stripHeight: SportHeroStripMetrics.height)
+    }
+
     private func scroll(now: Date) -> some View {
+        ScrollViewReader { reader in
+            page(now: now)
+                // #264: once the banner has scrolled under, it shows as the strip, pinned above the rails.
+                .overlay(alignment: .top) {
+                    if stripShows, let front = model.front {
+                        SportHeroStripView(strip: strip(front, now: now)) {
+                            withAnimation { reader.scrollTo(SportFrontTVPage.bannerID, anchor: .top) }
+                        }
+                        #if os(iOS)
+                        .padding(.horizontal, PigSpacing.xl)
+                        #endif
+                        .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.2), value: stripShows)
+        }
+    }
+
+    private func page(now: Date) -> some View {
         ScrollView(.vertical) {
             // D-43: the banner, then the rails 20 pt below it (the television's m is the nearest step)
             VStack(alignment: .leading, spacing: PigSpacing.m) {
@@ -73,6 +101,8 @@ struct SportFrontTVPage: View {
                         emptyState
                     } else {
                         banner(front, now: now)
+                            .id(SportFrontTVPage.bannerID)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bannerHeight = $0 }
                         ForEach(SportFrontLayout.sections(front)) { section in sectionView(section, front: front, now: now) }
                         also(front, now: now)
                     }
@@ -94,12 +124,9 @@ struct SportFrontTVPage: View {
         // TV Guide's grid does, fading out over its first few points.
         .scrollClipDisabled()
         .mask(alignment: .top) {
-            VStack(spacing: 0) {
-                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: PigSpacing.s)
-                Rectangle()
-            }
-            .padding(.horizontal, -SportFrontTVPage.overdraw).padding(.bottom, -SportFrontTVPage.overdraw)
+            SportPageTopMask(reserved: stripShows ? SportHeroStripMetrics.reserved : 0, overdraw: SportFrontTVPage.overdraw)
         }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
         .defaultFocus($heroFocused, true, priority: .userInitiated)
     }
 
@@ -107,9 +134,7 @@ struct SportFrontTVPage: View {
 
     private func banner(_ front: SportFront, now: Date) -> some View {
         let game = model.heroGame
-        let words = game.map { SportFrontLayout.hero($0, in: front, hidden: hidden, now: now, labels: model.labels) }
-            ?? SportBannerHero(kicker: "YOUR SPORTS", live: false, title: "Nothing on right now",
-                               line: "Your sports' next games are below.")
+        let words = heroWords(front, now: now)
         let sport = game.map { SportFrontLayout.sport(of: $0.league, in: front) }
         return SportBanner(hero: words, items: SportFrontLayout.followItems(front, now: now),
                            listTitle: "FOLLOWING · your order, playing now on top",
@@ -125,6 +150,18 @@ struct SportFrontTVPage: View {
                              open: sport.map { name in (label: "Open \(name)", action: { open(name) }) },
                              focus: $heroFocused)
         }
+    }
+
+    private func heroWords(_ front: SportFront, now: Date) -> SportBannerHero {
+        model.heroGame.map { SportFrontLayout.hero($0, in: front, hidden: hidden, now: now, labels: model.labels) }
+            ?? SportBannerHero(kicker: "YOUR SPORTS", live: false, title: "Nothing on right now",
+                               line: "Your sports' next games are below.")
+    }
+
+    /// #264: the banner's words, slim.
+    private func strip(_ front: SportFront, now: Date) -> SportHeroStrip {
+        SportHeroStrip(hero: heroWords(front, now: now), items: SportFrontLayout.followItems(front, now: now),
+                       selected: model.heroFollowIndex)
     }
 
     /// The circuit map for a race (its dark version in dark mode), else the hero team's badge.

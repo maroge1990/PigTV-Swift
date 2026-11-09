@@ -27,6 +27,9 @@ struct SportFrontPhonePage: View {
     /// The preferences every sport page shares: unknown counts as spoiler-free (#192).
     @ObservedObject private var f1: F1PageModel
     @StateObject private var flow = SportRecordFlow()
+    /// #264: how far the page has scrolled, and the carousel's height: past it, the hero shows as the strip.
+    @State private var scrolled: CGFloat = 0
+    @State private var carouselHeight: CGFloat = 0
 
     init(app: AppModel, browse: BrowseModel, open: @escaping (String) -> Void) {
         self.app = app
@@ -53,8 +56,36 @@ struct SportFrontPhonePage: View {
         // #263: the header stays put above the page, as the TV Guide's does; before, it scrolled away with the cards.
         VStack(alignment: .leading, spacing: PigSpacing.m) {
             header
-            page(now: now)
+            ScrollViewReader { reader in
+                page(now: now)
+                    // #264: once the carousel has scrolled under, the hero shows as the strip, pinned above the cards.
+                    .overlay(alignment: .top) {
+                        if stripShows, let front = model.front {
+                            SportHeroStripView(strip: strip(front, now: now)) {
+                                withAnimation { reader.scrollTo(Self.carouselID, anchor: .top) }
+                            }
+                            .padding(.horizontal, SportPhoneMetrics.edge)
+                            .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.2), value: stripShows)
+            }
         }
+    }
+
+    static let carouselID = "sport.front.carousel"
+
+    private var stripShows: Bool {
+        guard let front = model.front, !front.isEmpty else { return false }
+        return SportHeroStrip.shows(scrolled: scrolled, bannerHeight: carouselHeight, stripHeight: SportHeroStripMetrics.height)
+    }
+
+    /// #264: the hero's words, slim (the carousel's first card is the hero's follow).
+    private func strip(_ front: SportFront, now: Date) -> SportHeroStrip {
+        let words = model.heroGame.map { SportFrontLayout.hero($0, in: front, hidden: hidden, now: now, labels: model.labels) }
+            ?? SportBannerHero(kicker: "YOUR SPORTS", live: false, title: "Nothing on right now",
+                               line: "Your sports' next games are below.")
+        return SportHeroStrip(hero: words, items: SportFrontLayout.followItems(front, now: now), selected: model.heroFollowIndex)
     }
 
     private func page(now: Date) -> some View {
@@ -77,6 +108,8 @@ struct SportFrontPhonePage: View {
                             .accessibilityIdentifier("sport.front.empty")
                     } else {
                         carousel(front, now: now)
+                            .id(Self.carouselID)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { carouselHeight = $0 }
                         ForEach(SportPhoneLayout.groups(front, hidden: hidden, now: now, labels: model.labels)) { group in
                             groupView(group, front: front, now: now)
                         }
@@ -97,6 +130,8 @@ struct SportFrontPhonePage: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
+        .mask(alignment: .top) { SportPageTopMask(reserved: stripShows ? SportHeroStripMetrics.reserved : 0) }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
     }
 
     /// #226: the one page header every tab draws (PigPageHeader), the scores chip trailing.

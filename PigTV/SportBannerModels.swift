@@ -109,3 +109,29 @@ nonisolated enum SportLabels {
         }
     }
 }
+
+/// #264 (Mark, 9 Nov 2026, option B): the slim strip the front page's banner becomes once the page scrolls past it,
+/// pinned under the header while the rails scroll beneath: the hero's game (its kicker's live dot, title and line,
+/// spoiler-free already applied) and the other follows' next games. Pure (tests `SportHeroStripTests`).
+nonisolated struct SportHeroStrip: Equatable, Sendable {
+    static let othersShown = 3
+
+    let live: Bool
+    let title: String
+    let line: String
+    /// "Oscar Piastri Race · Sat 2:27 pm  ·  Arsenal Sat 11:30 pm": up to three other follows; nil with none.
+    let others: String?
+
+    init(hero: SportBannerHero, items: [SportBannerItem], selected: Int?) {
+        live = hero.live
+        title = hero.title
+        line = hero.line
+        let rest = items.indices.filter { $0 != selected }.prefix(Self.othersShown).map { "\(items[$0].title) \(items[$0].trailing)" }
+        others = rest.isEmpty ? nil : rest.joined(separator: "  ·  ")
+    }
+
+    /// The strip shows once the banner has scrolled under it: `scrolled` past the banner's height less the strip's.
+    static func shows(scrolled: CGFloat, bannerHeight: CGFloat, stripHeight: CGFloat) -> Bool {
+        bannerHeight > 0 && scrolled > bannerHeight - stripHeight
+    }
+}
