@@ -69,11 +69,16 @@ final class SportHeaderPinUITests: XCTestCase {
             .matching(NSPredicate(format: "label == %@", "Sport")).firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 15), "the Sport front page's header")
         XCTAssertTrue(app.descendants(matching: .any)["sport.front"].waitForExistence(timeout: 15), "the page")
+        #if os(tvOS)
+        // Focus off the tab bar first (the page does not scroll for it), so the tab's glow is the same in both shots.
+        XCUIRemote.shared.press(.down)
+        #endif
         Thread.sleep(forTimeInterval: 1.5)
         let before = title.frame
-        // The header's row: the title's own height, across the screen (the pig and the scores chip share it). The page
-        // starts a few points below, where its top edge fades in.
-        let row = before
+        // The header's row: 20 points through the middle of the title, across the screen (the pig and the scores chip
+        // share it). The title's frame is taller than its words: above them is the tab bar's focus glow, below them the
+        // page's faded top edge, and both change as focus moves.
+        let row = CGRect(x: before.minX, y: before.midY - 10, width: before.width, height: 20)
         let pixels = band(app, row)
         attach(app, "263-before-scroll")
         let strip = app.descendants(matching: .any)["sport.front.strip"]
@@ -102,6 +107,20 @@ final class SportHeaderPinUITests: XCTestCase {
         #if os(iOS)
         strip.tap()
         XCTAssertTrue(waitUntil(5) { !strip.exists }, "a tap on the strip goes back to the full hero")
+        #else
+        // Codex (Apple 190 round 1, medium): back up the rails, every focused control sits below the strip while it
+        // shows, never beneath it; at the top the full hero is back.
+        let focused = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
+        for step in 0..<12 {
+            XCUIRemote.shared.press(.up)
+            Thread.sleep(forTimeInterval: 0.6)
+            if strip.exists, focused.exists {
+                XCTAssertGreaterThanOrEqual(focused.frame.minY, strip.frame.maxY - 0.5,
+                                            "step \(step): \(focused.identifier) is beneath the strip")
+            }
+            if !strip.exists { break }
+        }
+        XCTAssertFalse(strip.exists, "up from the rails comes back to the full hero")
         #endif
     }
 }

@@ -68,21 +68,23 @@ struct SportFrontTVPage: View {
     }
 
     private func scroll(now: Date) -> some View {
+        // #264: once the banner has scrolled under, it shows as the strip, pinned above the rails. The strip takes its
+        // own room above the ScrollView (not drawn over it), so the page's visible area, and tvOS's focus scrolling with
+        // it, ends where the strip begins: a focused card is never beneath it (Codex, Apple 190 round 1, medium).
         ScrollViewReader { reader in
-            page(now: now)
-                // #264: once the banner has scrolled under, it shows as the strip, pinned above the rails.
-                .overlay(alignment: .top) {
-                    if stripShows, let front = model.front {
-                        SportHeroStripView(strip: strip(front, now: now)) {
-                            withAnimation { reader.scrollTo(SportFrontTVPage.bannerID, anchor: .top) }
-                        }
-                        #if os(iOS)
-                        .padding(.horizontal, PigSpacing.xl)
-                        #endif
-                        .transition(.opacity)
+            VStack(alignment: .leading, spacing: SportHeroStripMetrics.gap) {
+                if stripShows, let front = model.front {
+                    SportHeroStripView(strip: strip(front, now: now)) {
+                        withAnimation { reader.scrollTo(SportFrontTVPage.bannerID, anchor: .top) }
                     }
+                    #if os(iOS)
+                    .padding(.horizontal, PigSpacing.xl)
+                    #endif
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                .animation(.easeOut(duration: 0.2), value: stripShows)
+                page(now: now)
+            }
+            .animation(.easeOut(duration: 0.2), value: stripShows)
         }
     }
 
@@ -124,7 +126,7 @@ struct SportFrontTVPage: View {
         // TV Guide's grid does, fading out over its first few points.
         .scrollClipDisabled()
         .mask(alignment: .top) {
-            SportPageTopMask(reserved: stripShows ? SportHeroStripMetrics.reserved : 0, overdraw: SportFrontTVPage.overdraw)
+            SportPageTopMask(overdraw: SportFrontTVPage.overdraw)
         }
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
         .defaultFocus($heroFocused, true, priority: .userInitiated)

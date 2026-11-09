@@ -56,19 +56,19 @@ struct SportFrontPhonePage: View {
         // #263: the header stays put above the page, as the TV Guide's does; before, it scrolled away with the cards.
         VStack(alignment: .leading, spacing: PigSpacing.m) {
             header
+            // #264: the strip takes its own room above the page (see SportFrontTVPage.scroll).
             ScrollViewReader { reader in
-                page(now: now)
-                    // #264: once the carousel has scrolled under, the hero shows as the strip, pinned above the cards.
-                    .overlay(alignment: .top) {
-                        if stripShows, let front = model.front {
-                            SportHeroStripView(strip: strip(front, now: now)) {
-                                withAnimation { reader.scrollTo(Self.carouselID, anchor: .top) }
-                            }
-                            .padding(.horizontal, SportPhoneMetrics.edge)
-                            .transition(.opacity)
+                VStack(alignment: .leading, spacing: SportHeroStripMetrics.gap) {
+                    if stripShows, let front = model.front {
+                        SportHeroStripView(strip: strip(front, now: now)) {
+                            withAnimation { reader.scrollTo(Self.carouselID, anchor: .top) }
                         }
+                        .padding(.horizontal, SportPhoneMetrics.edge)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    .animation(.easeOut(duration: 0.2), value: stripShows)
+                    page(now: now)
+                }
+                .animation(.easeOut(duration: 0.2), value: stripShows)
             }
         }
     }
@@ -130,7 +130,6 @@ struct SportFrontPhonePage: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
-        .mask(alignment: .top) { SportPageTopMask(reserved: stripShows ? SportHeroStripMetrics.reserved : 0) }
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
     }
 

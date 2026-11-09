@@ -251,11 +251,11 @@ struct GuideQualityBadge: View {
     var body: some View {
         Text(quality.rawValue)
             #if os(tvOS)
-            .font(.system(size: 18, weight: .bold)).monospaced()
+            .font(.system(size: PigType.caption, weight: .bold)).monospaced()
             #else
             .font(.caption2.weight(.bold)).monospaced()
             #endif
-            .padding(.horizontal, PigSpacing.xs).padding(.vertical, 1)
+            .padding(.horizontal, PigSpacing.xs).padding(.vertical, PigSpacing.xxs)
             .foregroundStyle(quality == .uhd ? Color.pigOnAccent : Color.secondary)
             .background(quality == .uhd ? Color.pigAccent : Color.clear, in: Capsule())
             .overlay { Capsule().strokeBorder(quality == .uhd ? Color.clear : Color.secondary.opacity(0.5), lineWidth: 1) }
