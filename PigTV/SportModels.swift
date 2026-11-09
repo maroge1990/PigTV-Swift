@@ -11,7 +11,24 @@ import Foundation
 
 /// "UHD" | "HD" | "SD"; anything else decodes as nil.
 nonisolated enum SportQuality: String, Sendable, Equatable {
-    case uhd = "UHD", hd = "HD", sd = "SD"
+    // #265 (server 0502): FHD is its own label (before, the server counted it as HD).
+    case uhd = "UHD", fhd = "FHD", hd = "HD", sd = "SD"
+
+    /// What VoiceOver says.
+    var spoken: String {
+        switch self {
+        case .uhd: "Ultra HD"
+        case .fhd: "Full HD"
+        case .hd: "HD"
+        case .sd: "Standard definition"
+        }
+    }
+
+    /// C-X (#265): the label a guide or channel row carries, "UHD" / "FHD" / "HD" / "SD"; anything else is none.
+    init?(label: String?) {
+        guard let label, let value = SportQuality(rawValue: label.uppercased()) else { return nil }
+        self = value
+    }
 }
 
 /// One channel showing an event.

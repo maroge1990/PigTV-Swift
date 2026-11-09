@@ -135,6 +135,7 @@ private struct OnNowRowView: View {
                         HStack(spacing: PigSpacing.s) {
                             Text(channel.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             if let number { ChannelNumberText(number: number, font: .caption2) }
+                            if let quality = model.guideQuality(of: channel) { GuideQualityBadge(quality: quality) }
                             if model.isFlaky(channel) {
                                 Circle().fill(Color.pigWarning).frame(width: 8, height: 8)
                                     .accessibilityLabel("Unreliable channel")

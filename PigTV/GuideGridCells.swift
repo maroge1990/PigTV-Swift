@@ -84,9 +84,14 @@ struct GuideGridTileView: View {
     let flaky: Bool
     let recording: Bool
     let focused: Bool
+    /// #265: UHD or SD only (`BrowseModel.guideQuality`).
+    var quality: SportQuality? = nil
 
     var body: some View {
         ChannelTile(name: channel.name, logo: logo, client: client)
+            .overlay(alignment: .bottomTrailing) {
+                if let quality { GuideQualityBadge(quality: quality).padding(PigSpacing.xs) }
+            }
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: PigSpacing.xs) {
                     if flaky { Circle().fill(Color.pigWarning).frame(width: 12, height: 12) }
@@ -148,6 +153,7 @@ final class GuideGridTileCell: UICollectionViewCell {
         var logo: String?
         var flaky: Bool
         var recording: Bool
+        var quality: SportQuality? = nil
     }
     var info: Info? {
         didSet { if info != oldValue { setNeedsUpdateConfiguration() } }
@@ -167,11 +173,12 @@ final class GuideGridTileCell: UICollectionViewCell {
         let client = client
         contentConfiguration = UIHostingConfiguration {
             GuideGridTileView(channel: channel, logo: info.logo, client: client,
-                              flaky: info.flaky, recording: info.recording, focused: state.isFocused || state.isHighlighted)
+                              flaky: info.flaky, recording: info.recording, focused: state.isFocused || state.isHighlighted,
+                              quality: info.quality)
         }
         .margins(.all, 0)
         accessibilityLabel = info.number.map { "\($0) \(channel.name)" } ?? channel.name
-        accessibilityValue = [info.flaky ? "Unreliable channel" : nil, info.recording ? "Recording now" : nil]
+        accessibilityValue = [info.quality?.spoken, info.flaky ? "Unreliable channel" : nil, info.recording ? "Recording now" : nil]
             .compactMap { $0 }.joined(separator: ", ")
     }
 }
@@ -235,5 +242,25 @@ final class GuideGridTimeHeader: UIView {
     /// Follows the grid's contentOffset.x.
     func follow(offsetX: CGFloat) {
         strip.frame = CGRect(x: -offsetX, y: 0, width: 1, height: bounds.height)
+    }
+}
+
+/// #265: the guide's quality badge, smaller than a picker's: UHD in pink, SD faint and outlined.
+struct GuideQualityBadge: View {
+    let quality: SportQuality
+    var body: some View {
+        Text(quality.rawValue)
+            #if os(tvOS)
+            .font(.system(size: 18, weight: .bold)).monospaced()
+            #else
+            .font(.caption2.weight(.bold)).monospaced()
+            #endif
+            .padding(.horizontal, PigSpacing.xs).padding(.vertical, 1)
+            .foregroundStyle(quality == .uhd ? Color.pigOnAccent : Color.secondary)
+            .background(quality == .uhd ? Color.pigAccent : Color.clear, in: Capsule())
+            .overlay { Capsule().strokeBorder(quality == .uhd ? Color.clear : Color.secondary.opacity(0.5), lineWidth: 1) }
+            .opacity(quality == .sd ? 0.8 : 1)
+            .accessibilityHidden(true)
+            .accessibilityIdentifier("guide.quality.\(quality.rawValue)")
     }
 }

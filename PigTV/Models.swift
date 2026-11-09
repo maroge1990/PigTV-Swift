@@ -36,6 +36,8 @@ struct ServerInfo: Decodable {
         // server 0139 lists keep the provider's order). C-G: rows carry `health`.
         let channelNumbers: Bool?
         let channelHealth: Bool?
+        // C-X (server 0502, #265): guide and channel rows carry `quality` ("UHD", "FHD", "HD", "SD" or null).
+        var channelQuality: Bool? = nil
         // C-I (server 0147): `GET sports/events` (the Sport tab and Home's
         // "Sport now & next"). C-H's `sportCategories` is no longer read.
         var sportsEvents: Bool? = nil

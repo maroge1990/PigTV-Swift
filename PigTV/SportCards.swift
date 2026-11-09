@@ -137,6 +137,6 @@ struct QualityBadge: View {
             .foregroundStyle(quality == .uhd ? Color.pigOnAccent : Color.secondary)
             .background(quality == .uhd ? Color.pigAccent : Color.clear, in: Capsule())
             .overlay { Capsule().strokeBorder(quality == .uhd ? Color.clear : Color.secondary.opacity(0.6), lineWidth: 1.5) }
-            .accessibilityLabel(quality == .uhd ? "Ultra HD" : quality == .hd ? "HD" : "Standard definition")
+            .accessibilityLabel(quality.spoken)
     }
 }

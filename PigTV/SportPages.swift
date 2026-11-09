@@ -219,7 +219,7 @@ struct SportChannelRow: View {
     private var accessibilityLabel: String {
         let text = ended ? "Not on now on \(channel.name)" : playsNow ? "Watch on \(channel.name)"
             : scheduled ? "Recording scheduled on \(channel.name)" : "Record or watch \(channel.name) when it starts"
-        return text + (channel.quality.map { ", \($0.rawValue)" } ?? "")
+        return text + (channel.quality.map { ", \($0.spoken)" } ?? "")
     }
 }
 

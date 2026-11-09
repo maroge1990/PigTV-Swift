@@ -444,7 +444,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
 
     /// A4: does a row draw the same as before (its programmes and the tile's own fields)?
     private static func sameContent(_ a: GuideChannel, _ b: GuideChannel) -> Bool {
-        a.programmes == b.programmes && a.name == b.name && a.logo == b.logo && a.number == b.number && a.health == b.health
+        a.programmes == b.programmes && a.name == b.name && a.logo == b.logo && a.number == b.number && a.health == b.health && a.quality == b.quality
     }
 
     /// A4: the visible cells of `sections` show their rows' current data, and the layout (a changed
@@ -751,7 +751,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             tile.client = model?.client
             tile.info = .init(channelID: channel.id, number: model?.number(for: channel).map { String($0) },
                               logo: logo, flaky: model?.isFlaky(channel) ?? false,
-                              recording: recording.contains(channel.name))
+                              recording: recording.contains(channel.name), quality: model?.guideQuality(of: channel))
         } else if let cell = cell as? GuideGridProgrammeCell {
             let programme = programme(indexPath)
             let live = programme?.isLive(at: clock) ?? false

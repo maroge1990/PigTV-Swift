@@ -231,7 +231,7 @@ nonisolated enum RecordPlan {
 extension BrowseModel {
     /// A guide programme on its channel: Record, or Change recording when it is scheduled.
     func recordRequest(channel: GuideChannel, programme: GuideProgramme) -> RecordRequest {
-        RecordRequest(title: programme.title, airings: [.init(channel: channel, programme: programme)],
+        RecordRequest(title: programme.title, airings: [.init(channel: channel, programme: programme, quality: quality(of: channel))],
                       schedule: activeSchedule(channel: channel, programme: programme))
     }
 
@@ -628,7 +628,7 @@ struct RecordPage: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                .accessibilityLabel("\(option.channel.name), \(detail)\(option.quality.map { ", \($0.rawValue)" } ?? "")")
+                .accessibilityLabel("\(option.channel.name), \(detail)\(option.quality.map { ", \($0.spoken)" } ?? "")")
                 .accessibilityAddTraits(on ? .isSelected : [])
                 .accessibilityIdentifier("record.on.\(index)")
             }

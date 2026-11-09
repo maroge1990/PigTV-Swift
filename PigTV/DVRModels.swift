@@ -33,18 +33,20 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     var number: Int? = nil
     // C-G (server flag `channelHealth`): "ok", "flaky" or nil.
     var health: String? = nil
+    // C-X (server flag `channelQuality`, #265): "UHD", "FHD", "HD", "SD" or nil, from the channel's name.
+    var quality: String? = nil
     var id: String { "\(sourceId):\(rawID)" }
     var numberText: String? { number.map { String($0) } }
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId, number, health
+        case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId, number, health, quality
     }
     init(rawID: String, sourceId: Int, name: String, logo: String?, category: String?,
          programmes: [GuideProgramme], tvgId: String? = nil, stableId: String? = nil,
-         number: Int? = nil, health: String? = nil) {
+         number: Int? = nil, health: String? = nil, quality: String? = nil) {
         self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.logo = logo
         self.category = category; self.programmes = programmes; self.tvgId = tvgId; self.stableId = stableId
-        self.number = number; self.health = health
+        self.number = number; self.health = health; self.quality = quality
     }
     // Decoding is synthesised from CodingKeys; the server strips the small-caps
     // badge from names at ingest (0099).
@@ -57,7 +59,7 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     // place; everything else about the row (identity, logo, number…) stays.
     func withProgrammes(_ programmes: [GuideProgramme]) -> GuideChannel {
         GuideChannel(rawID: rawID, sourceId: sourceId, name: name, logo: logo, category: category,
-                    programmes: programmes, tvgId: tvgId, stableId: stableId, number: number, health: health)
+                    programmes: programmes, tvgId: tvgId, stableId: stableId, number: number, health: health, quality: quality)
     }
 }
 

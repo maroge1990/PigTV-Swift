@@ -415,6 +415,15 @@ final class BrowseModel: ObservableObject {
     func isFlaky(_ channel: GuideChannel) -> Bool {
         client.info?.features.channelHealth == true && channel.health == "flaky"
     }
+    // C-X (#265, Mark 9 Nov 2026): a channel's picture quality, with `channelQuality` (an older server, or a stale
+    // cache, has none). The record page shows any label; the guide's channel column only the two that tell you
+    // something (`guideQuality`): UHD, and SD as a warning. Plain HD is nearly every channel, so it shows nothing.
+    func quality(of channel: GuideChannel) -> SportQuality? {
+        client.info?.features.channelQuality == true ? SportQuality(label: channel.quality) : nil
+    }
+    func guideQuality(of channel: GuideChannel) -> SportQuality? {
+        quality(of: channel).flatMap { $0 == .uhd || $0 == .sd ? $0 : nil }
+    }
     // Prefer the playlist logo; fall back to the EPG icon like the web guide.
     func logo(for channel: GuideChannel) -> String? {
         logo(current: channel.logo, tvgID: channel.tvgId, name: channel.name)
