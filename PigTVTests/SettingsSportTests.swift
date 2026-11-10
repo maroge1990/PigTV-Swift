@@ -6,12 +6,13 @@ private final class PreferencesRoutes: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     nonisolated(unsafe) static var stored = #"{"avoidSpoilers":false,"scoreDelaySeconds":30,"revision":3}"#
     nonisolated(unsafe) static var putStatus = 200
+    nonisolated(unsafe) static var getStatus = 200
     nonisolated(unsafe) static var puts: [String] = []
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.lock.lock()
-        var status = 200
+        var status = request.httpMethod == "GET" ? Self.getStatus : 200
         if request.httpMethod == "PUT" {
             let body = request.httpBody ?? request.httpBodyStream.map { stream -> Data in
                 stream.open(); defer { stream.close() }
@@ -42,6 +43,7 @@ final class SettingsSportTests: XCTestCase {
     private func setting() throws -> ScoreDelaySetting {
         PreferencesRoutes.stored = #"{"avoidSpoilers":false,"scoreDelaySeconds":30,"revision":3}"#
         PreferencesRoutes.putStatus = 200
+        PreferencesRoutes.getStatus = 200
         PreferencesRoutes.puts = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PreferencesRoutes.self]
@@ -50,6 +52,29 @@ final class SettingsSportTests: XCTestCase {
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
                                session: URLSession(configuration: configuration), info: info)
         return ScoreDelaySetting(client: client)
+    }
+
+    /// Review M1 (build 193): a server with its score collector off answers 404: no Score delay row and no error; any other
+    /// failure shows the row with its error; a 200 shows the row with the delay.
+    func testA404HidesTheDelayRowAndOtherFailuresShowTheError() async throws {
+        let ok = try setting()
+        await ok.load()
+        XCTAssertTrue(ok.shown)
+        XCTAssertEqual(ok.preferences?.scoreDelaySeconds, 30)
+        XCTAssertEqual(ok.message, "")
+
+        let off = try setting()
+        PreferencesRoutes.getStatus = 404
+        await off.load()
+        XCTAssertFalse(off.shown, "scores off: no Score delay on this server")
+        XCTAssertNil(off.preferences)
+        XCTAssertEqual(off.message, "", "not an error")
+
+        let broken = try setting()
+        PreferencesRoutes.getStatus = 500
+        await broken.load()
+        XCTAssertTrue(broken.shown)
+        XCTAssertEqual(broken.message, "The score delay could not be loaded.")
     }
 
     func testTheDelayStepsInTensWithinZeroToThreeHundred() {

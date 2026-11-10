@@ -25,6 +25,8 @@ final class ScoreDelaySetting: ObservableObject {
     @Published private(set) var preferences: SportsPreferences?
     @Published private(set) var saving = false
     @Published private(set) var message = ""
+    /// False once the server answered 404: it keeps no score delay (its score collector is off), so there is no row.
+    @Published private(set) var shown = true
     let client: APIClient
     @Published private var fixture = false
 
@@ -48,6 +50,7 @@ final class ScoreDelaySetting: ObservableObject {
     func load() async {
         guard !fixture, !saving else { return }
         do { preferences = try await client.request("sports/preferences") }
+        catch where error as? PigTVError == .http(404) { shown = false }
         catch { if !UserMessage.isCancellation(error) && preferences == nil { message = "The score delay could not be loaded." } }
     }
 
