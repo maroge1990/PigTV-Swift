@@ -471,6 +471,16 @@ nonisolated enum SportFrontLayout {
         return game.competitors.indices.filter { matches(game.competitors[$0].name, names: names) }
     }
 
+    /// The sides a game card stars. #279 (Apple 202): on the television a followed card has no outline, so a followed
+    /// two-sided game whose followed side cannot be told (a server before 0493 sends no `followedSides`, and the follow
+    /// matched an alias the names here miss) stars its first line rather than nothing. Touch keeps its outline instead.
+    static func cardStars(_ game: SportsGame, names: [String], firstWhenUnknown: Bool) -> (sides: [Int], unknown: Bool) {
+        guard game.followed == true else { return ([], false) }
+        let sides = followedSides(game, names: names)
+        guard sides.isEmpty, firstWhenUnknown, !game.competitors.isEmpty else { return (sides, false) }
+        return ([0], true)
+    }
+
     private static func matches(_ competitor: String, names: [String]) -> Bool {
         let name = competitor.lowercased()
         return names.map { $0.lowercased() }.contains { $0 == name || $0.hasSuffix(" " + name) || name.hasSuffix(" " + $0) }

@@ -19,7 +19,7 @@ import UIKit
 //   hosting controller) and the tab bar controller's other loaded children,
 //   when a page enters the window (`PageBackdropPainter`, placed behind each
 //   tab's page by `pigPageBackdrop()`), before it is first drawn;
-// - the guide grid's UIKit controller and collection view are clear (brand 1.6) over the page's SwiftUI background
+// - the guide grid's UIKit controller and collection view are clear over the page's SwiftUI background
 //   (PigPageBackground: the same opaque canvas plus the corner bloom), so the grid shows that canvas too;
 // - the tab bar's own background (TabBarStyle).
 

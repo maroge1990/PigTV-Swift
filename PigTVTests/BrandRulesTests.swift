@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 
-/// The Pig brand kit (1.7.0) rules the source can be checked for (maroge1990/PigTV#190): colours by role from the
+/// The Pig brand kit's (PigBrand guide 1.8.1, tokens 1.7.0) rules the source can be checked for (maroge1990/PigTV#190): colours by role from the
 /// catalog (§4), playback panels from 82 % black and the rose live dot (§7), corner radii from the shared `PigRadius`
 /// scale (§6), and the kit's lockup files instead of a pig and wordmark put together by hand (§3). It reads the files in
 /// `PigTV/` from the checkout, so it runs on the simulator with no app state.
@@ -93,7 +93,7 @@ final class BrandRulesTests: XCTestCase {
         }
     }
 
-    // §5 (brand 1.6): every tab page sits on the canvas with the corner bloom.
+    // §5: every tab page sits on the canvas with the corner bloom.
     func testEveryTabRootDrawsThePageCanvas() throws {
         for name in Self.tabRootFiles {
             let text = try String(contentsOf: Self.sources.appendingPathComponent(name), encoding: .utf8)

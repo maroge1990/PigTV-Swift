@@ -1,7 +1,7 @@
 import XCTest
 
 #if os(tvOS)
-// The branded start-up view (brand 1.6; PIGTV_UI_TEST_SCREEN=splash keeps it on screen): the canvas, the pig with its
+// The branded start-up view (PIGTV_UI_TEST_SCREEN=splash keeps it on screen): the canvas, the pig with its
 // halo, the wordmark fading in and the halo breathing. The fixture never ends start-up, so the view must stay up through
 // a whole breathing half-cycle (4 s); its slow-start progress indicator appears after two seconds.
 final class BrandSplashUITests: XCTestCase {

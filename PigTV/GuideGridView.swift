@@ -124,7 +124,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Brand 1.6: clear over the page's SwiftUI background (`pigPageBackdrop()` in GuideView: opaque canvas plus the
+        // Clear over the page's SwiftUI background (`pigPageBackdrop()` in GuideView: opaque canvas plus the
         // corner bloom), so the grid shows the same canvas as every other page. Build 32 had painted it the flat page
         // colour; the SwiftUI background behind it is opaque and fades with the page, so tab switches stay veil-free
         // (see PageBackdrop.swift).

@@ -1,6 +1,6 @@
 import SwiftUI
 
-// The branded start-up view (Pig family brand 1.7): the canvas colour, the PigTV pig with a static halo and, once the
+// The branded start-up view (Pig family brand): the canvas colour, the PigTV pig with a static halo and, once the
 // kit's stacked lockup has faded in over the pig, the name. The halo then breathes into a bloom and back (8 s cycle, 4 s each way) while the view is
 // visible. The pig, the name and the layout never move or scale. Geometry and colours come from `BrandLayout`, which
 // Tools/render-launch.swift also uses to draw the launch image, so this view's first frame (halo at full opacity, no

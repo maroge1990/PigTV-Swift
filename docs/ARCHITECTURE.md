@@ -514,13 +514,14 @@ How this client applies it:
 
 ## Branding implementation
 
-The rules are in the Pig family PigBrand kit (`~/code/PigBrand`; guide 1.8.0, token files 1.7.0) and the server's
+The rules are in the Pig family PigBrand kit (`~/code/PigBrand`; guide 1.8.1, token files 1.7.0) and the server's
 [`docs/DESIGN.md`](https://github.com/maroge1990/PigTV/blob/main/docs/DESIGN.md); this is how the client takes them in.
 
 The "Spotlight" look (plum plate, `#FF2E94` halo, generated bitmaps, `Tools/make-brand-assets.swift`) is **retired**. Every brand image
 now comes from the kit (`../PigBrand`, product `assets/products/pigtv`; rules in its `docs/integration.md` "Apple and Apple TV" and
 `docs/pig-family-brand-guide.md` §8 and §10). The app uses the **PigTV product pig** (pig-shaped screen) everywhere.
 **Sync:** `sh Tools/sync-brand.sh [path to PigBrand]` (default `../PigBrand`; idempotent, running it twice changes nothing).
+Against kit 1.8.1 it changes nothing (checked 11 Nov 2026, Apple 202): the app's Apple TV icon is the kit's source as of 1.8.1.
 It copies `mark.svg` → `PigLogo.imageset` (vector), `lockup-horizontal-*/lockup-stacked-*.svg` → `LockupHorizontal`/`LockupStacked.imageset`
 (vector, any + dark; drawn by `PigLockup`, never rebuilt from a pig and the wordmark), the kit's PigColors status colours, the kit's
 `AppleTV/dark` brandassets → `App Icon & Top Shelf Image.brandassets` (tvOS icon + Top Shelf; one appearance only, asset names are shared),

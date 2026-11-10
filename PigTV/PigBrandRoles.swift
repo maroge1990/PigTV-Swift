@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Shared brand roles that are not colours in the catalog (Pig family brand 1.7.0). Colours are roles in
+// Shared brand roles that are not colours in the catalog (PigBrand guide 1.8.1, tokens 1.7.0). Colours are roles in
 // Assets.xcassets (Color.pigCanvas, .pigBorder, .pigDanger, .pigMediaPanel, ...); BrandRulesTests keeps typed-in colours
 // and literal radii out of the views.
 

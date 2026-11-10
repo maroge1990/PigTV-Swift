@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copies the Pig family brand kit (PigBrand: guide 1.8.0, token files 1.7.0) into the app and renders the launch image. Idempotent: running it twice
+# Copies the Pig family brand kit (PigBrand: guide 1.8.1, token files 1.7.0) into the app and renders the launch image. Idempotent: running it twice
 # changes nothing. There is no brand generator any more; every brand image comes from the kit.
 #
 #   sh Tools/sync-brand.sh [path to PigBrand]     # default ../PigBrand (~/code/PigBrand)

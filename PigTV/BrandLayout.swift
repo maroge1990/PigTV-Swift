@@ -1,5 +1,5 @@
 // Hand-maintained: the shared numbers for the launch screen, the splash, the in-app canvas and the identity halo
-// (Pig family brand 1.7.0). Tools/render-launch.swift is compiled together with this file to draw the LaunchBrand
+// (PigBrand guide 1.8.1, tokens 1.7.0). Tools/render-launch.swift is compiled together with this file to draw the LaunchBrand
 // images, and the SwiftUI views read the same values, so the launch screen and the splash's first frame agree.
 // Colour and stop values come from PigBrand/tokens/pig-radiance.css (the `radiatingLight` tokens).
 

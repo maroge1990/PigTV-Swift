@@ -139,6 +139,28 @@ final class SportFrontLayoutTests: XCTestCase {
         XCTAssertEqual(SportFrontLayout.followedSides(both, names: ["ARI", "SEA"]), [0, 1], "both starred")
     }
 
+    /// #279 (Apple 202): a server before 0493 sends no `followedSides`; a follow it matched by an alias ("ARI") is not
+    /// among the names, so the television's card (no outline there) stars its first line instead of showing nothing.
+    func testAFollowedGameWithNoKnownSideStarsItsFirstLineOnTheTelevision() throws {
+        let card = """
+        {"id":"espn:football/nfl:401873048","league":"NFL","title":"Seattle Seahawks v Arizona Cardinals","start":0,"end":null,
+         "session":null,"circuit":null,"format":null,"status":"scheduled","freshness":"fresh","progress":{},"scores":null,
+         "situation":null,"breakLabel":null,"availability":"listed","broadcastStatus":"scheduled","channels":[],"events":[],
+         "canWatch":false,"followed":true,
+         "competitors":[{"id":"26","name":"Seattle Seahawks","logo":null},{"id":"22","name":"Arizona Cardinals","logo":null}]}
+        """
+        let game = try JSONDecoder().decode(SportsGame.self, from: Data(card.utf8))
+        XCTAssertEqual(SportFrontLayout.followedSides(game, names: ["ARI"]), [], "no side can be told")
+        let tv = SportFrontLayout.cardStars(game, names: ["ARI"], firstWhenUnknown: true)
+        XCTAssertEqual(tv.sides, [0])
+        XCTAssertTrue(tv.unknown)
+        XCTAssertEqual(SportFrontLayout.cardStars(game, names: ["ARI"], firstWhenUnknown: false).sides, [], "touch: the outline marks it")
+        XCTAssertEqual(SportFrontLayout.cardStars(game, names: ["Arizona Cardinals"], firstWhenUnknown: true).sides, [1])
+        var notFollowed = game
+        notFollowed.followed = false
+        XCTAssertEqual(SportFrontLayout.cardStars(notFollowed, names: ["ARI"], firstWhenUnknown: true).sides, [])
+    }
+
     func testTheEmptyStatePointsAtSettingsWithFollows() {
         XCTAssertTrue(SportFrontText.followHelp(settings: true).contains("Settings › Sport"))
         XCTAssertTrue(SportFrontText.followHelp(settings: false).contains("web app"))

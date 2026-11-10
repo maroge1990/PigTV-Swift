@@ -145,7 +145,7 @@ struct GuideFilterStyle: ButtonStyle {
     }
 }
 
-/// The in-app canvas (brand 1.6): the canvas colour with one rose radial gradient from the top leading corner
+/// The in-app canvas: the canvas colour with one rose radial gradient from the top leading corner
 /// (mirrored for right-to-left layouts), fading out by 0.62 of the canvas diagonal. Plain canvas with Reduce
 /// Transparency. Cards, bars and controls sit opaque above it. `PageBackdrop` paints the same gradient into UIKit
 /// containers' layers, so a UIKit-hosted screen shows this canvas too (see PageBackdrop.swift).

@@ -302,14 +302,18 @@ struct SportGameCard: View {
 
     private func teams(_ drawn: SportFrontText.Drawn) -> some View {
         // 176 Codex round 1 (high): every followed side is starred (both, when both teams are followed).
-        let stars = SportFrontLayout.followedSides(game, names: front.follows.map(\.name))
+        #if os(tvOS)
+        let stars = SportFrontLayout.cardStars(game, names: front.follows.map(\.name), firstWhenUnknown: true)
+        #else
+        let stars = SportFrontLayout.cardStars(game, names: front.follows.map(\.name), firstWhenUnknown: false)
+        #endif
         return ForEach(Array(game.competitors.prefix(2).enumerated()), id: \.offset) { index, team in
             HStack(spacing: PigSpacing.s) {
                 SportBadge(name: team.name, logo: team.cachedLogo, league: game.league, client: client,
                            size: SportCardMetrics.badge)
-                if game.followed == true && stars.contains(index) {
+                if stars.sides.contains(index) {
                     Image(systemName: "star.fill").font(SportCardMetrics.small).foregroundStyle(Color.pigAccentText)
-                        .accessibilityLabel("Your team")
+                        .accessibilityLabel(stars.unknown ? "Following" : "Your team")
                 }
                 Text(team.name).font(SportCardMetrics.team).lineLimit(1)
                 Spacer(minLength: 6)
