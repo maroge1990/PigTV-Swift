@@ -76,4 +76,19 @@ final class SportBannerTests: XCTestCase {
         XCTAssertEqual(info.mapDark, "/api/logo/md?size=3840")
         XCTAssertNil(try JSONDecoder().decode(F1CircuitInfo.self, from: Data(#"{"map":"/api/logo/m","mapDark":""}"#.utf8)).mapDark)
     }
+
+    #if os(tvOS)
+    /// Review of 198-200 (M2): a focused Following row grew 4 pt each side, and with its 4 pt ring needed 8 pt, but the
+    /// list leaves 6: the ring was cut left and right. Lift plus ring must fit the room on every side.
+    @MainActor
+    func testAFocusedListRowsRingFitsInsideTheList() {
+        let width = SportBannerMetrics.listWidth - SportBannerMetrics.listInset - 2 * SportBannerMetrics.focusRoom
+        let scale = PigFocusLift.listRow.scale(forWidth: width)
+        let sideways = (scale - 1) * width / 2 + PigFocus.ringOutset
+        let upDown = (scale - 1) * SportBannerMetrics.row / 2 + PigFocus.ringOutset
+        XCTAssertLessThanOrEqual(sideways, SportBannerMetrics.focusRoom, "left and right")
+        XCTAssertLessThanOrEqual(upDown, SportBannerMetrics.focusRoom, "top and bottom")
+        XCTAssertLessThan(SportBannerMetrics.focusRoom, SportBannerMetrics.rowGap, "a row outside the window never shows")
+    }
+    #endif
 }

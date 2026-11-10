@@ -47,7 +47,7 @@ struct GuideGridProgrammeView: View {
             .opacity(finished ? 0.4 : 1)
             // Brand 1.8: the shared focus treatment, outside the cell's clip (the cell stops clipping while focused, and
             // the ring sits in the 8 pt gap to its neighbours).
-            .pigFocus(focused, in: shape, lift: .cell)
+            .pigFocusWhenFocused(focused, in: shape, lift: .cell)
             #else
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .clipShape(Rectangle())
@@ -109,7 +109,7 @@ struct GuideGridTileView: View {
                 .padding(PigSpacing.xs)
             }
             #if os(tvOS)
-            .pigFocus(focused, in: RoundedRectangle(cornerRadius: PigRadius.compact), lift: .cell)
+            .pigFocusWhenFocused(focused, in: RoundedRectangle(cornerRadius: PigRadius.compact), lift: .cell)
             #else
             .overlay { RoundedRectangle(cornerRadius: PigRadius.compact).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             #endif

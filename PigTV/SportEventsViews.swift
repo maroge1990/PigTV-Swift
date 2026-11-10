@@ -278,6 +278,7 @@ struct SportEventsContent: View {
             }
             .padding(SportPageMetrics.padding)
             .frame(width: SportEventsMetrics.matchWidth, alignment: .topLeading)
+            .sportFollowedCard(followed)
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
         .accessibilityIdentifier("sport.tennis.match.\(match.id)")
@@ -436,6 +437,7 @@ struct SportEventsContent: View {
             .padding(SportPageMetrics.padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: SportPageMetrics.radius, style: .continuous))
+            .sportFollowedCard(true)
         }
         .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: SportPageMetrics.radius))
         .accessibilityElement(children: .combine)

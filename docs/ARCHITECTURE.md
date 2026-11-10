@@ -336,7 +336,7 @@ controls are not used for live play.
   (`SportFrontModel.select`, the C-R hero rule unchanged; a long press on a row offers its sport's page). Below, a section
   per sport (`SportFrontLayout.sections`: rails grouped by C-U's `sport`, in the rails' order) with a header button
   ("Football ›", `sport.rail.header.<sport>`) and its leagues' rails of `SportGameCard`s (334 × 132; a followed team is
-  marked by its star alone, brand 1.8). Sports with no rail: "Also in your sports" buttons
+  marked by its star alone on the television and by the pink outline and star on touch, brand 1.8). Sports with no rail: "Also in your sports" buttons
   (`sport.also.<sport>`). The iPad (regular width) draws this page too (D-44).
 - **iPhone front page (`SportFrontPhonePage`, D-44, R5-Front-iPhone, Apple 139)**: the header (pig, "Sport", a "Scores
   shown / hidden" chip), a 212 pt carousel of `follows[]` in the order sent (#215: playing now, then soonest; one card
@@ -556,7 +556,9 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
   fill (`PigFocus.fill`, accent 22 %; the primary keeps its rose). Apple's `hoverEffect(.lift/.highlight)` does run inside these
   styles on tvOS 27 but its glass rim covered the ring (simulator, 11 Nov 2026), so the lift is drawn. A guide cell stops
   clipping only while focused, so its ring shows in the 8 pt gap. `BrandRulesTests` fails on a tvOS style that draws focus
-  itself, and on `focusEffectDisabled` outside the two players. Followed sport cards carry the star only.
+  itself, and on `focusEffectDisabled` outside the two players. On the television followed sport cards carry the star
+  only (touch keeps the pink outline). On touch the shared styles keep their pre-1.8 keyboard-focus ring (an `#else` in
+  each). The guide's cells carry the focus modifier only while focused (`pigFocusWhenFocused`).
 - **Television text is 23 pt or more (brand 1.8 §15, #279, Apple 199):** `PigType.caption`, `kicker` and `secondary` are
   23 on tvOS (touch unchanged) and keep their rank by weight, colour and case; the player's tuning card and channel rows,
   the guide's time line and time header are 23 too. A scale factor goes through `pigMinimumScale(_:size:)`, which never

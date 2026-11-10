@@ -19,11 +19,19 @@ private struct PigFocusSurface<S: InsettableShape>: ViewModifier {
     var restingFill: Color? = nil
     var lift: PigFocusLift
     func body(content: Content) -> some View {
+        #if os(tvOS)
         content
             .pigTarget()
             .foregroundStyle(.primary)
             .background(drawSurface ? (focused ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
             .pigFocus(focused, in: shape, lift: lift)
+        #else
+        // Touch (keyboard focus on iPad): the look before brand 1.8, a pink ring inside the shape over the focus fill.
+        content
+            .foregroundStyle(.primary)
+            .background(drawSurface ? (focused ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
+            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
+        #endif
     }
 }
 
@@ -78,11 +86,20 @@ struct PigMenuRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let on = focused || configuration.isPressed
         let shape = RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous)
+        #if os(tvOS)
         configuration.label
             .pigTarget()
             .foregroundStyle(Color.pigText)
             .background(on ? PigFocus.fill : .clear, in: shape)
             .pigFocus(focused, in: shape, lift: .row)
+        #else
+        configuration.label
+            .foregroundStyle(Color.pigText)
+            .background(on ? PigFocus.fill : .clear, in: shape)
+            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
+            .scaleEffect(focused ? 1.03 : 1)
+            .animation(.easeOut(duration: 0.12), value: focused)
+        #endif
     }
 }
 
@@ -104,7 +121,13 @@ struct PigPrimaryButtonStyle: ButtonStyle {
             .pigTarget()
             .foregroundStyle(Color.pigOnAccent)
             .background(Color.pigAccent, in: Capsule())
+            #if os(tvOS)
             .pigFocus(focused, in: Capsule(), lift: .control)
+            #else
+            .overlay { Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigFocus.clearance).allowsHitTesting(false) }
+            .scaleEffect(focused ? 1.04 : 1)
+            .animation(.easeOut(duration: 0.12), value: focused)
+            #endif
     }
 }
 
@@ -133,14 +156,25 @@ struct GuideFilterStyle: ButtonStyle {
             .foregroundStyle(selected ? Color.pigAccentText : Color.pigText)
             .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             .pigTarget()
+            #if os(tvOS)
             .background(focused ? PigFocus.fill : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
+            #else
+            .background(selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
+            #endif
             .overlay(alignment: .bottom) {
                 if selected {
                     Capsule().fill(Color.pigAccent).frame(width: 26, height: 3)
                         .padding(.bottom, PigSpacing.xs).allowsHitTesting(false).accessibilityHidden(true)
                 }
             }
+            #if os(tvOS)
             .pigFocus(focused, in: Capsule(), lift: .control)
+            #else
+            .overlay {
+                Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigFocus.clearance)
+                    .allowsHitTesting(false)
+            }
+            #endif
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

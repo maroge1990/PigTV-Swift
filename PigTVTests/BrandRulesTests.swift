@@ -195,6 +195,10 @@ final class BrandRulesTests: XCTestCase {
                 found.append(tv.line(style.offset))
             }
             found += Self.handDrawnFocus(in: tv.code).map { tv.line($0) }
+            // The surface that the secondary and surface styles share must itself go through the shared treatment.
+            if let surface = Self.block(after: #"struct\s+PigFocusSurface\b"#, in: tv.code), !surface.body.contains(".pigFocus(") {
+                found.append(tv.line(surface.offset))
+            }
         }
         report(found, "a tvOS focus look drawn outside the shared treatment (use .pigFocus(_:in:lift:) and PigFocus.fill)")
     }
@@ -470,7 +474,9 @@ final class BrandRulesTests: XCTestCase {
     /// follows focus.
     static func handDrawnFocus(in text: String) -> [Int] {
         let patterns = [#"\b(focused|isFocused|lit)\s*\?\s*Color\.pigAccent\b"#, #"\.scaleEffect\([^)\n]*\b(focused|isFocused)\b"#,
-                        #"\.shadow\([^\n]*\b(focused|isFocused)\b"#]
+                        #"\.shadow\([^\n]*\b(focused|isFocused)\b"#,
+                        // a ring shown by fading it in on focus (PigFocusModifier's own way, allowed only in PigFocus.swift)
+                        #"\.opacity\(\s*(focused|isFocused)\s*\?"#]
         return patterns.flatMap { pattern in
             try! NSRegularExpression(pattern: pattern).matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
                 Range($0.range, in: text).map { text.distance(from: text.startIndex, to: $0.lowerBound) }
@@ -489,6 +495,7 @@ final class BrandRulesTests: XCTestCase {
         XCTAssertEqual(Self.handDrawnFocus(in: ".overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }").count, 1)
         XCTAssertEqual(Self.handDrawnFocus(in: ".scaleEffect(focused ? 1.03 : 1)").count, 1)
         XCTAssertEqual(Self.handDrawnFocus(in: ".background(focused ? PigFocus.fill : Color.pigRaised)").count, 0)
+        XCTAssertEqual(Self.handDrawnFocus(in: "shape.strokeBorder(Color.pigAccent, lineWidth: 3).opacity(focused ? 1 : 0)").count, 1)
     }
 
     static func spacingLiterals(in text: String) -> [String] {

@@ -38,8 +38,8 @@ nonisolated enum PigFocusLift {
     case row
     /// The TV Guide's packed cells: no scale, the shadow only.
     case cell
-    /// Rows of a short list that clips (the Sport banner's): the row lift with a tight shadow, so the ring, tint and
-    /// shadow stay inside the list's 6 pt of room.
+    /// Rows of a short list that clips (the Sport banner's): a 1 pt lift and a tight shadow, so the ring (4 pt), lift and
+    /// shadow stay inside the list's 6 pt of room on every side (SportBannerTests).
     case listRow
 
     /// Wider than this, an item is a full-width row whatever its kind.
@@ -60,7 +60,8 @@ nonisolated enum PigFocusLift {
         switch self {
         case .card: 6
         case .control: 6
-        case .row, .listRow: 4
+        case .row: 4
+        case .listRow: 1
         case .cell: 0
         }
     }
@@ -113,6 +114,14 @@ private struct PigFocusModifier<S: InsettableShape>: ViewModifier {
 }
 
 extension View {
+    /// `pigFocus` for views rebuilt on every state change (the TV Guide's UIKit cells): an unfocused cell carries no
+    /// focus modifier at all, so the many unfocused cells pay nothing; only the focused one does (no animation is lost:
+    /// the hosting configuration rebuilds the cell anyway).
+    @ViewBuilder
+    func pigFocusWhenFocused<S: InsettableShape>(_ focused: Bool, in shape: S, lift: PigFocusLift) -> some View {
+        if focused { pigFocus(true, in: shape, lift: lift) } else { self }
+    }
+
     /// At least `PigFocus.minTarget` in both dimensions on the television (content centred); nothing on touch. A focus
     /// style applies it before drawing its surface, so the surface and the ring cover the whole target.
     @ViewBuilder

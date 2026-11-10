@@ -181,9 +181,14 @@ struct ProgrammeMenuCard: View {
         VStack(alignment: .leading, spacing: PigSpacing.xs) {
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text(subject.title).font(Self.titleFont).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                #if os(tvOS)
                 // #279: at 23 pt on the television the channel and times can need a second line.
                 Text(subject.subtitle).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary)
                     .monospacedDigit().lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                #else
+                Text(subject.subtitle).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary)
+                    .monospacedDigit().lineLimit(1)
+                #endif
             }
             .padding(.horizontal, PigSpacing.s).padding(.bottom, PigSpacing.s)
             .accessibilityElement(children: .combine)

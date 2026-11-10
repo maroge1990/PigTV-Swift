@@ -272,6 +272,7 @@ struct SportGameCard: View {
             .frame(width: SportCardMetrics.width, alignment: .leading)
             .frame(minHeight: SportCardMetrics.height, alignment: .topLeading)
             .overlay {
+                #if os(tvOS)
                 // Another game on now: a thin live outline. Your team is marked by its star alone (brand 1.8, #279: the
                 // pink outline it had read as focus).
                 if live && !followed {
@@ -279,6 +280,14 @@ struct SportGameCard: View {
                         .strokeBorder(Color.pigDanger.opacity(0.8), lineWidth: 2)
                         .accessibilityHidden(true)
                 }
+                #else
+                // Your team: the pink outline (D-43); another game on now: a thin live outline.
+                if followed || live {
+                    RoundedRectangle(cornerRadius: SportCardMetrics.radius, style: .continuous)
+                        .strokeBorder(followed ? Color.pigAccent : Color.pigDanger.opacity(0.8), lineWidth: followed ? 3 : 2)
+                        .accessibilityHidden(true)
+                }
+                #endif
             }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportCardMetrics.radius))
