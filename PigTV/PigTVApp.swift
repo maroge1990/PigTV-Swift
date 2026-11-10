@@ -52,10 +52,6 @@ struct PigTVApp: App {
             GuideTestScreen()
         } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
-        } else if ["sport", "sport-empty", "sport-dashboard", "sport-legacy-pages"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
-            HomeTestScreen(firstRun: false, initialTab: "sport",
-                           noSport: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-empty",
-                           legacyPages: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "sport-legacy-pages")
         } else if ["tab-guide", "tab-recordings"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             // The library fixture inside the tab bar, opened on that tab (design checks).
             HomeTestScreen(firstRun: false, initialTab: String((ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").dropFirst(4)))
@@ -210,16 +206,19 @@ private struct SportFrontTestScreen: View {
 }
 
 // The offline library (build 28): PIGTV_UI_TEST_SCREEN=home (favourites, sport, recordings, logos) or home-empty
-// (the first-run state), on the app's opening tab (Sport; #216 retired Home, the name stays).
-// C-I (build 30): PIGTV_UI_TEST_SCREEN=sport opens the Sport tab on the same
-// data (NFL, AFL, F1 and NRL events); sport-empty shows its empty state.
+// (the first-run state), on the app's opening tab (Sport; #216 retired Home, the name stays). The Sport tab is the front
+// page on the server's own answer: PIGTV_UI_TEST_FRONT_JSON (base64) when given, else the source tree's
+// PigTVTests/Fixtures/sport-front-0381.json (the simulator reads the Mac's files; elsewhere the page shows its error state).
 private struct HomeTestScreen: View {
     let firstRun: Bool
     var initialTab: String? = nil
-    var noSport = false
-    /// #243: sportPages without sportFront (the legacy Sport tab and its links), the F1 fixture's weekend to open.
-    var legacyPages = false
     static let presentsPlayer = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_PLAY"] == "1"
+    static let front: SportFront? = {
+        let data = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_JSON"].flatMap { Data(base64Encoded: $0) }
+            ?? (try? Data(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("PigTVTests/Fixtures/sport-front-0381.json")))
+        return data.flatMap { try? JSONDecoder().decode(SportFront.self, from: $0) }
+    }()
     @StateObject private var model = AppModel()
     var body: some View {
         LibraryView(model: model, initialTab: initialTab)
@@ -229,11 +228,8 @@ private struct HomeTestScreen: View {
             // The Undo toast, as ContentView shows it over the tabs (Apple 122).
             .overlay(alignment: .bottom) { UndoToast(presenter: model.presenter) }
             .task {
-                model.injectHomeFixture(firstRun: firstRun, legacyPages: legacyPages)
-                if legacyPages, let browse = model.browse {
-                    browse.f1Page.setFixture(F1PageFixtures.page(live: false, guide: browse.guide))
-                    browse.nflPage.setFixture(NFLPage(available: false))
-                }
+                model.injectHomeFixture(firstRun: firstRun)
+                if let front = Self.front { model.browse?.sportFront.setFixture(front) }
                 if initialTab == "recordings", let browse = model.browse { GuideFixtures.addSchedules(to: browse) }
                 // Apple 122: PIGTV_UI_TEST_UNDO=1 opens on a recording just deleted, its Undo toast held on screen.
                 if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_UNDO"] == "1", let browse = model.browse,
@@ -241,8 +237,7 @@ private struct HomeTestScreen: View {
                     model.presenter.sleep = { _ in try await Task.sleep(for: .seconds(600)) }
                     browse.deleteWithUndo(film, presenter: model.presenter)
                 }
-                if noSport { model.browse?.sport.setFixture([]) }
-                // PIGTV_UI_TEST_DASHBOARD_PLAY=1: a dashboard Watch reaches the real player, whose resolve goes to a
+                // PIGTV_UI_TEST_DASHBOARD_PLAY=1: a play reaches the real player, whose resolve goes to a
                 // non-routable TEST-NET address, so it stays on the tuning card (as player-tuning does).
                 if Self.presentsPlayer, let address = try? ServerAddress("http://192.0.2.1:3000") {
                     model.configureClientForTesting(APIClient(address: address, token: "fixture", info: model.serverInfo))

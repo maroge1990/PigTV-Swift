@@ -265,7 +265,7 @@ struct LibrarySettings: View {
         case .sport:
             if let browse = model.browse {
                 SportSettingsPage(model: browse.sportFollows, title: item.title, showsTitle: !compact, me: model.user?.username,
-                                  frontFollows: browse.sportFrontEnabled ? browse.sportFront.front?.follows ?? [] : [])
+                                  frontFollows: browse.sportFront.front?.follows ?? [])
             }
         case .account:
             SettingsAccountPage(model: model, showsTitle: !compact) { if !isTab { dismiss() } }

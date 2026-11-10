@@ -2,68 +2,36 @@ import Foundation
 import Combine
 
 /// C-I: the next 72 hours of sport events (`GET sports/events?hours=72`;
-/// build 32, a whole weekend: an older server clamps it silently),
-/// kept fresh every 60 s while a Sport surface (the Sport tab or Home's
-/// "Sport now & next") is on screen. One per signed-in session, owned by
-/// BrowseModel; used only when the server advertises `sportsEvents`.
+/// an older server clamps it silently). The Guide's "Watch on…" reads them.
+/// One per signed-in session, owned by BrowseModel.
 @MainActor
 final class SportModel: ObservableObject {
     static let hours = 72
-    static let refreshInterval: Duration = .seconds(60)
 
-    @Published private(set) var events: [SportEvent] = [] { didSet { eventsVersion &+= 1 } }
-    /// Everything the screens draw, built together: the buckets, the league
-    /// chips and each league's filtered rows, at a whole-minute clock. It is
-    /// republished only when events change or the minute turns (see
-    /// `advance(to:)`), so a screen appearing, or a 60 s tick inside the same
-    /// minute, re-renders nothing (audit R04/R05).
-    @Published private(set) var snapshot = SportSnapshot(clock: SportRows.minute(Date()))
-    /// True once one load has finished (the empty state waits for it).
+    @Published private(set) var events: [SportEvent] = []
+    /// True once one load has finished.
     @Published private(set) var loaded = false
     @Published private(set) var error: String?
     /// Set by the offline fixtures: no requests.
     var isFixture = false
     let client: APIClient
     private var inFlight: Task<Void, Never>?
-    /// Surfaces currently keeping the data fresh (Home and Sport can both be
-    /// alive in a TabView); one refresh per interval is enough.
-    private var lastLoad: Date?
-    /// Bumped whenever `events` changes; `builtVersion` is the one the
-    /// snapshot was built from.
-    private var eventsVersion = 0
-    private var builtVersion = -1
 
     init(client: APIClient) { self.client = client }
 
-    /// The time the rows are drawn at: the start of the current minute.
-    var clock: Date { snapshot.clock }
-    var buckets: SportBuckets { snapshot.buckets }
-    var live: [SportEvent] { buckets.live }
-    var soon: [SportEvent] { buckets.soon }
-    var later: [SportEvent] { buckets.later }
-    var tomorrow: [SportEvent] { buckets.tomorrow }
-    var days: [SportDay] { buckets.days }
-    var replays: [SportEvent] { buckets.replays }
-    var leagues: [String] { snapshot.leagues }
-    var leagueCounts: [String: Int] { snapshot.leagueCounts }
+    /// On now (start ≤ now < end), replays left out, by start time.
+    var live: [SportEvent] { upcoming { $0.start <= $1 } }
+    /// Starting within the next hour, replays left out, by start time.
+    var soon: [SportEvent] {
+        upcoming { $0.start > $1 && $0.start <= $1.addingTimeInterval(SportRows.soonWindow) }
+    }
 
-    /// The rows for one league chip (nil: All), precomputed with the
-    /// snapshot rather than filtered on every render.
-    func rows(league: String?) -> SportBuckets { snapshot.rows(league: league) }
-
-    /// Rebuilds the snapshot for `now`, but only when the events changed or
-    /// the minute turned: bucket boundaries, "in 12 min" and the progress bars
-    /// all move on whole minutes, so nothing finer needs a republish. The
-    /// work is pure (`SportRows.snapshot`) and a few hundred events cost well
-    /// under a millisecond, so it stays on the main actor rather than racing
-    /// a generation check (measured in `SportTests`).
-    func advance(to now: Date) {
-        let minute = SportRows.minute(now)
-        guard builtVersion != eventsVersion || minute != snapshot.clock else { return }
-        let sp = PigTVSignpost.begin("SportBuckets"); defer { PigTVSignpost.end("SportBuckets", sp) }
-        let new = SportRows.snapshot(events, now: minute)
-        builtVersion = eventsVersion
-        if new != snapshot { snapshot = new }
+    private func upcoming(_ include: (SportEvent, Date) -> Bool) -> [SportEvent] {
+        let now = Date()
+        return events.enumerated()
+            .filter { !$0.element.isReplay && $0.element.end > now && include($0.element, now) }
+            .sorted { ($0.element.startTime, $0.offset) < ($1.element.startTime, $1.offset) }
+            .map(\.element)
     }
 
     /// Fetches the events. Concurrent callers share one request; an older
@@ -71,7 +39,6 @@ final class SportModel: ObservableObject {
     func load() async {
         let sp = PigTVSignpost.begin("SportLoad"); defer { PigTVSignpost.end("SportLoad", sp) }
         if let inFlight { await inFlight.value; return }
-        let now = Date()
         guard !isFixture else { loaded = true; return }
         let task = Task { [weak self] in
             guard let self else { return }
@@ -86,58 +53,18 @@ final class SportModel: ObservableObject {
                     if !self.events.isEmpty { self.events = [] }
                 } else { self.error = UserMessage.text(for: error) }
             }
-            self.advance(to: now)
             self.loaded = true
-            self.lastLoad = Date()
         }
         inFlight = task
         await task.value
         inFlight = nil
     }
 
-    /// Loads now (unless another surface just did), then every 60 s until
-    /// the calling task is cancelled (the surface went away).
-    func keepFresh() async {
-        if let lastLoad, Date().timeIntervalSince(lastLoad) < 30 {
-            advance(to: Date())
-        } else {
-            await load()
-        }
-        while !Task.isCancelled {
-            do { try await Task.sleep(for: Self.refreshInterval) } catch { return }
-            if let lastLoad, Date().timeIntervalSince(lastLoad) < 30 {
-                advance(to: Date())
-                continue
-            }
-            await load()
-        }
-    }
-
     #if DEBUG
     func setFixture(_ events: [SportEvent]) {
         isFixture = true
         self.events = events
-        advance(to: Date())
         loaded = true
     }
     #endif
-}
-
-/// A counter that moves when the logos a Sport card could draw may have
-/// changed (the guide gained channels, the artwork index arrived). Cards take
-/// it as plain input instead of observing `BrowseModel`, which publishes
-/// ~25 properties (guide pages, recordings, favourites, busy flags) that
-/// have nothing to do with a card (audit R04). Debounced, since the guide
-/// pages in many times while it loads.
-@MainActor
-final class SportLogoRevision: ObservableObject {
-    @Published private(set) var value = 0
-    private var cancellable: AnyCancellable?
-
-    init(following browse: BrowseModel) {
-        cancellable = Publishers.Merge(browse.guideStore.$guide.dropFirst().map { _ in () },
-                                       browse.artwork.$artworkIndex.dropFirst().map { _ in () })
-            .debounce(for: .milliseconds(400), scheduler: DispatchQueue.main)
-            .sink { [weak self] in self?.value += 1 }
-    }
 }

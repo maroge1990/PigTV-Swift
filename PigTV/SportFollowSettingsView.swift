@@ -116,7 +116,7 @@ struct SportSettingsSection: View {
             if let follows = model.follows {
                 HStack(alignment: .top, spacing: PigSpacing.s) {
                     spoilerRow(follows.spoilerFree)
-                    if delay.available { delayRow }
+                    delayRow
                 }
                 .focusSection()
                 yourSportsHeading.padding(.top, PigSpacing.xs)
@@ -133,7 +133,7 @@ struct SportSettingsSection: View {
         if let follows = model.follows {
             Section {
                 spoilerRow(follows.spoilerFree)
-                if delay.available { delayRow }
+                delayRow
             }
             Section {
                 // #256: Edit order, then drag a sport by its handle (each sport's page keeps Move up / Move down).

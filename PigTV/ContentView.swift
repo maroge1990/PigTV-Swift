@@ -84,7 +84,6 @@ struct ContentView: View {
             browse.replayPendingRemovals()
             await AppFreshness.run { await AppFreshness.refresh(browse) }
         }
-        .environment(\.channelWarmer, model.warmer)
         // A4.1: Top Shelf items open pigtv://play.
         .onOpenURL { model.open($0) }
         .alert("PigTV", isPresented: Binding(

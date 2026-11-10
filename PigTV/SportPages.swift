@@ -1,7 +1,7 @@
 import SwiftUI
 import Combine
 
-// An event's pages (split out of SportView.swift in build 39): the screen-level presenter that owns
+// An event's pages: the screen-level presenter that owns
 // them, the details page and the channel picker.
 
 enum SportPage: String, Sendable {

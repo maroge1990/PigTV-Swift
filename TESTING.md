@@ -24,21 +24,22 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
   code gets a test here.**
   Why it exists and how it is built (from the retired blueprint, build 28):
   - **Real-playback harness (build 28, `PigTVTests/RealPlaybackTests.swift`, `PigTVTests/Support/`).** Two crashes reached the TV because no test played a stream through the app's own code. `LocalHTTPServer` is an in-process HTTP/1.1 server (Network.framework `NWListener` on 127.0.0.1, random port; one request per connection, `Range` → 206, every request recorded). `FakePigTVServer` puts a minimal PigTV API on it: `POST playback/resolve` (a configurable decision; by default session `s<n>` → `/api/transcode/s<n>/master.m3u8` with `info.fps = 25/1`), the HLS fixture under `/api/transcode/<session>/…` (a session named `pq…` serves a `VIDEO-RANGE=PQ` master), `GET playback/conflict` → `null`, `client-event`/`conflict/decline`/`DELETE playback/<id>` → success; `client()` returns an `APIClient` with `clientEvents` advertised. The fixture (`PigTVTests/Fixtures/HLS`, ~280 KB, command in `fixture-README.txt`) is 6 s of ffmpeg `testsrc2` + sine, H.264 Main 320×180 25 fps + AAC-LC, three 2 s fMP4 segments, `stream.m3u8`, and `master.m3u8` mirroring the server's `buildMasterPlaylist` (FRAME-RATE, VIDEO-RANGE=SDR). Tests: a real start reaches `ready` within 3 s, AVPlayer `.playing` with `.readyToPlay` and a moving clock, the play-start event (from the `timeControlStatus` KVO observer), release on stop; a decision without fps (background asset criteria); **-11868 for real**: the tvOS simulator refuses the PQ variant, the item-status KVO observer reports it and the model plays the same session's `stream.m3u8` with no new resolve (skips itself if a simulator ever plays PQ); the 'fmt?' fallback (synthetic failure, then a real release, second resolve with `audioEncode: true` and real playback); channel switching releases before the next resolve; a recording (C-E HLS answer, fake markers) plays in `RecordingPlayerModel` and its periodic time observer sees the 1–2 s break. **New playback code gets a harness test.**
-- `ChannelWarmerTests` (audit R11, predictive warming): the warm policy with a hand-moved clock (off by default, dwell, one in flight, cancel on
-  background/real play start, the player's previous-or-next choice, the 60 s refresh); `RealPlaybackTests` warm cases use the fake server's
-  `/api/playback/warm` (a focused live Sport event warms with resolve's body, the play adopts it and play-start carries `warm`).
+- `ChannelWarmerTests` (audit R11, predictive warming): the player's warm policy with a hand-moved clock (off by default, dwell, one in
+  flight, cancel on background/real play start, the player's previous-or-next choice, the 60 s refresh); `RealPlaybackTests` warm cases use
+  the fake server's `/api/playback/warm` (the player's next channel warms with resolve's body, a zap there adopts it and play-start carries
+  `warm`).
 - `ProviderFailoverTests` (build 36, multi-provider client): C-J provider on resolve and in the stream info line, C-K reminders (once per
   local day, never during playback, hidden without the flag, auto-dismiss), the renewed recovery allowance with an injected clock.
 - Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a
   slice and advances `guideLoadedUntil`, ends cleanly when a slice is empty, a failed page is retried before it surfaces,
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,
   `ObservationTests` (audit R05: a guide page does not publish the recordings/favourites stores and vice versa, `HomeModel` publishes nothing for equal inputs and changes for a same-id status change; it also appends a per-screen publish count to `/tmp/pigtv-observation.txt`), `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `PlayerTimeMathTests`,
-  `DisplayModeTests`, `StreamInfoTests`, `SportRowsTests`/`SportModelTests` in `SportTests.swift` (buckets, days over 72 h, replays, tolerant decoding, the model against
-  the fake server; build 33: `playsChannelNow`), `TopShelfTests` and `TopShelfCardTests`
+  `DisplayModeTests`, `StreamInfoTests`, `SportTests.swift` (`SportRowsTests`: text, `playsChannelNow`, tolerant
+  decoding; `SportModelTests`: the model against the fake server, `live`/`soon`; `SportsGameTests`: the game labels the front page draws), `TopShelfTests` and `TopShelfCardTests`
   (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).
 
 **UI tests (`PigTVUITests`, tvOS).** Two tiers in `Tools/test.sh`: **push** (regression: `GuideGridNavigationUITests`,
-`SportUITests`, `RecordingsUITests`, `TabSwitchUITests`, and any new suite) and **visual** (screenshots and
+`RecordingsUITests`, `TabSwitchUITests`, and any new suite) and **visual** (screenshots and
 appearance: `BrandDepthUITests`, `TabFlashUITests`, `BrandSplashUITests`, `TopShelfCardsUITests`, `PigTVUITests`,
 `PigTVUITestsLaunchTests`). `BrandDepthUITests`' two player checks need `Tools/generate-brand-review-media.sh` (ffmpeg); the
 visual tier runs it when ffmpeg is installed, and they skip otherwise.
@@ -65,8 +66,6 @@ runs from the Mac's real clone, not an rsync copy. CI checks out the server's `t
 - `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all four tabs.
 - `TouchLayoutUITests` (build 46, iOS only, skips on tvOS): the iPhone Guide's Search is icon-only; the touch player has no
   TV Guide button (needs the review movie from `Tools/generate-brand-review-media.sh`).
-- `SportUITests`: chips → first card, long press → channel picker, an upcoming event → its page; build 33: an upcoming
-  event's secondary channel offers Record/Watch when it starts instead of tuning immediately.
 - `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, no switch may stall over `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms) on both laps (a one-lap spike of a loaded simulator is reported, not failed; 26 Oct), and after each switch Down must move focus into the tab's content.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
 - `BrandRulesTests` (unit): no typed-in colours, system red/yellow, greys, sub-82 % playback panels or literal radii in `PigTV/`
@@ -100,14 +99,16 @@ data, not the real feed.
 
 | Variable | Values |
 |---|---|
-| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `sport` · `sport-empty` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `recording-game` (a game's View recording) · `recordings` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` (Sign in's tiles) · `signin-server` (its server step) · `pairing` · `sport-event` · `sport-channels` |
+| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `recording-game` (a game's View recording) · `recordings` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` (Sign in's tiles) · `signin-server` (its server step) · `pairing` · `sport-event` · `sport-channels` |
 | `PIGTV_UI_TEST_APPEARANCE` | `light` or `dark` (the tvOS simulator has no `simctl ui appearance`) |
 | `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the library and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
 | `PIGTV_UI_TEST_MEDIA` | A local movie file the `player` fixture plays |
-| `PIGTV_UI_TEST_HOME_SCROLL`, `PIGTV_UI_TEST_SPORT_SCROLL` | A shelf or section title to scroll into view (e.g. `Sport now & next`, `Replays`) |
+| `PIGTV_UI_TEST_HOME_SCROLL` | A shelf or section title to scroll into view |
 | `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens with Scheduled pushed |
 | `PIGTV_UI_TEST_SETTINGS_PAGE` | `sport` · `account` · `appearance` · `labs` · `diagnostics` · `about`: the Settings page shown beside the menu (with `settings` or `settings-sport`) |
 | `PIGTV_UI_TEST_UNDO` | `1` (with `tab-recordings`): a recording just deleted, its Undo toast held on screen |
+| `PIGTV_UI_TEST_FRONT_JSON` | The Sport front page's answer, base64 (with `front`, `home` or `tab-*`); without it `home` and `tab-*` read `PigTVTests/Fixtures/sport-front-0381.json` from the source tree |
+| `PIGTV_UI_TEST_DASHBOARD_PLAY` | `1` (with `home` or `tab-*`): a play reaches the real player, which stays tuning (TEST-NET resolve; `OutsidePlayUITests`) |
 | `PIGTV_UI_TEST_CLASH` | `1`: the Recordings fixture adds two schedules that clash; one loses (`beatenBy`) and offers "Record this one instead" (#12) |
 | `PIGTV_UI_TEST_FRONT_F1` | `1` (with `front`): the Motorsport page embeds the F1 fixture's weekend |
 | `PIGTV_UI_TEST_TABPROBE` | `1`: measure the longest stall after each tab switch (`debug.tabSwitch`) |
@@ -126,7 +127,7 @@ What to note for a device run, and on-device diagnostics, are in the server's
 The simulator cannot say how the tabs and playback feel; the device can. Audit R03 added signposts (`PigTV/PigTVSignpost.swift`,
 subsystem = the bundle id, category **Responsiveness**) so Instruments shows each stage.
 - **Measurement (R03).** `PigTVSignpost` (subsystem = bundle id, category "Responsiveness"): `TabSwitch`, `TabFirstFrame`,
-  `GuideLoad`/`GuidePage`/`GuideExtend`, `SportLoad`/`SportBuckets`, `HomeRebuild`, `RecordingsLoad`, `Live*` and
+  `GuideLoad`/`GuidePage`/`GuideExtend`, `SportLoad`, `HomeRebuild`, `RecordingsLoad`, `Live*` and
   `Recording*` playback stages, `LogoDecoded`. Device profiling: `TESTING.md` → "Measuring on the Apple TV".
 
 1. Build **Release** to the Apple TV from Xcode (Product → Profile, or Run with the Release configuration).
@@ -136,7 +137,7 @@ subsystem = the bundle id, category **Responsiveness**) so Instruments shows eac
 3. Read off:
    - `TabSwitch` (tab-bar selection → the new tab's first content; the end label names it), `TabFirstFrame` (→ its first frame;
      focus stays in the bar during a switch, so this stands in for "focus ready"). Target: p95 under 250 ms.
-   - Model work behind them: `GuideLoad`, `GuidePage`, `GuideExtend`, `SportLoad`, `SportBuckets`, `HomeRebuild`, `RecordingsLoad`
+   - Model work behind them: `GuideLoad`, `GuidePage`, `GuideExtend`, `SportLoad`, `HomeRebuild`, `RecordingsLoad`
      (a long one on the main thread is the stall).
    - Live play: events `LiveResolveRequest` → `LiveResolveResponse` → `LiveItemCreated` → `LiveReadyToPlay` → `LivePlaying`;
      recording: `RecordingPlaybackRequest` → `RecordingItemCreated` → `RecordingReadyToPlay` → `RecordingPlaying`. The gaps between
@@ -154,54 +155,6 @@ PIGTV_TABSWITCH_BUDGET_MS=250 xcodebuild test -project PigTV.xcodeproj -scheme P
 
 (If the variable does not reach the test runner on your Xcode, set `TEST_RUNNER_PIGTV_TABSWITCH_BUDGET_MS=250` instead.)
 
-
-### Sports dashboard preview (59)
-
-The DEBUG-only `PIGTV_UI_TEST_SCREEN=sport-dashboard` fixture is an offline acceptance slate for seven sport families
-and all ten follows. Use `PIGTV_UI_TEST_SPOILERS=hidden` for hidden scores, plus `PIGTV_UI_TEST_APPEARANCE=light|dark`.
-No real source/provider is contacted; preview watch/record/rule actions are disabled. Missing logos intentionally show
-name fallbacks. Sport chips filter the illustrated shelves; production canonical league chips request rolling 72h data.
-
-`SportsDashboardUITests` checks hidden accessible text, remote long press, equal same-sport card dimensions and absence
-of repeated sport headings; light/revealed and dark/hidden screenshots are attached. `SportsDashboardTests` covers all
-families, terminal/transit expiry, background late responses, account identity, revision conflicts and separate users.
-`RealPlaybackTests/testDashboardRevalidatesThenUsesOrdinaryResolveAndReleases` uses the bundled HLS fixture only.
-
-The fixture is not device/source acceptance. Mark's real-device checks and server pilot/review gates are in
-`../PigTV/docs/evidence/2026-10-29-sports-0316-continuation/README.md`.
-
-## Sports dashboard refinement fixtures (build 61)
-
-`SportsDashboardTests` covers strict recording identities (including duplicate names, renamed/reordered channels,
-legacy missing fields), visible revision conflicts and the existing account/delay/action lifecycle. The tvOS dashboard
-UI suite checks compact family geometry/content, direct Hold Select without a primary Watch, normal short Select,
-and preset focus during a delayed synthetic save. Mobile dashboard checks remain in the iOS UI suite.
-
-These additional DEBUG launch options require `PIGTV_UI_TEST_SCREEN=sport-dashboard`; previews have no real actions:
-
-| Variable | Values |
-|---|---|
-| `PIGTV_UI_TEST_DASHBOARD_LEAGUE` | One canonical league, to inspect its family without scrolling all shelves |
-| `PIGTV_UI_TEST_DASHBOARD_WATCHABLE` | `1`: first invented AFL card offers Watch; the fixture still refuses acquisition |
-| `PIGTV_UI_TEST_SAVE_DELAY_MS` | `0`–`5000`: hold a synthetic settings save to check mounted controls/focus |
-| `PIGTV_UI_TEST_DASHBOARD_PLAY` | `1`: the fixture is served through the real load/hide/revalidation path; the first AFL card has a second channel and Watch reaches the real player, which stays tuning (TEST-NET resolve) |
-| `PIGTV_UI_TEST_DASHBOARD_LATENCY_MS` | `0`–`5000` (default 400): the served fixture's simulated round trip, with `PIGTV_UI_TEST_DASHBOARD_PLAY` |
-
-`SportsDashboardViewTests` (build 61 review fixes) hosts the real `SportsDashboardView` in a window on a real model against
-`LocalHTTPServer`, with the scene phase and the selected tab under the test's control: details and reappearance never
-clear the shelves, one polling loop under details (meaningful on iOS, where details are a sheet: run it on the iPad
-too), `.inactive` keeps details and scores, a hidden tab makes no request on foreground, and a page first shown while
-inactive starts polling once active.
-
-They do not query a real server or provider. Physical remote feel and consolidated cross-platform acceptance remain
-Mark's checks in the server's `sports-tvos-refinements` handoff.
-
-Codex round 1 on build 62 (`SportsDashboardTests`): Watch, Record and "Watch when it starts" associate the selected
-stable channel with its own C-I airing, aged through every request (two channels, only the selected one expiring in
-transit); a record title whose preference revision changed while C-I was read is refused, and the sheet keeps the
-snapshot's revision; a scheduled watch sleeps until the selected broadcast's start, re-arming (at most
-`SportsDashboardModel.maxRearms` times) while the server still places it in the future. The served UI fixture
-(`PIGTV_UI_TEST_DASHBOARD_PLAY`) answers C-I from the same games (`SportsDashboardFixtures.guide`).
 
 The recording harness waits for both AVPlayer's raw playing/ready state and RecordingPlayerModel's published
 `hasPlayed` before asserting playback. KVO publishes through a MainActor hop, so raw engine state is not proof that

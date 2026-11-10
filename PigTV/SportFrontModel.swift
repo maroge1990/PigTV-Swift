@@ -1,8 +1,8 @@
 import Foundation
 import Combine
 
-/// C-R (#21, D-39): the Sport front page's data and its hero. One per signed-in session, owned by BrowseModel; used only
-/// when the server advertises `sportFront`. Loaded when the page opens, then every 20 s while a game is under way or
+/// C-R (#21, D-39): the Sport front page's data and its hero (the Sport tab). One per signed-in session, owned by
+/// BrowseModel. Loaded when the page opens, then every 20 s while a game is under way or
 /// within an hour of its start (#261) and every 60 s otherwise, while the page is on screen.
 @MainActor
 final class SportFrontModel: ObservableObject {

@@ -7,15 +7,6 @@ nonisolated struct SportsPreferences: Codable, Equatable, Sendable {
   var revision: Int
 }
 
-nonisolated struct SportsDashboard: Decodable, Sendable {
-  let now: Double
-  let timezone: String
-  let scope: String
-  let preferences: SportsPreferences
-  let games: [SportsGame]
-  let leagues: [String]?
-}
-
 nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   let id: String
   let league: String
@@ -236,27 +227,6 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
       return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
     return nil
-  }
-  /// Use only the fresh response's airing bounds and channel order; no 5-minute early-tune grace.
-  func actionableEvent(at now: Double, channelKey: String? = nil, watch: Bool) -> SportEvent? {
-    guard !terminal else { return nil }
-    let eligible = events.filter { $0.end > now && (watch ? $0.start <= now : true) }
-    guard !watch || canWatch, let airing = eligible.first else { return nil }
-    let selected =
-      channelKey.flatMap { key in channels.first { $0.identityKey == key } }
-      ?? (channelKey == nil ? channels.first : nil)
-    guard let selected else { return nil }
-    let ordered = [selected] + channels.filter { $0.identityKey != selected.identityKey }
-    return SportEvent(
-      id: airing.id, title: title, league: league, startTime: airing.start, endTime: airing.end,
-      channels: ordered)
-  }
-}
-
-/// Covers containing a captured guide title cannot outlive the preferences used to construct it.
-nonisolated enum SportsPresentationPolicy {
-  static func canRender(storedRevision: Int, current: SportsPreferences?) -> Bool {
-    current?.revision == storedRevision
   }
 }
 

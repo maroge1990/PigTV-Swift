@@ -86,8 +86,8 @@ final class ChannelWarmerTests: XCTestCase {
         await settle()
     }
 
-    private func browse(_ warmer: ChannelWarmer, _ target: WarmTarget?, owner: String = "shelf") async {
-        warmer.setBrowseTarget(target, owner: owner)
+    private func player(_ warmer: ChannelWarmer, _ target: WarmTarget?) async {
+        warmer.setPlayerTarget(target)
         await settle()
     }
 
@@ -95,7 +95,7 @@ final class ChannelWarmerTests: XCTestCase {
 
     func testNothingIsSentWhileTheFeatureOrSettingIsOff() async {
         let warmer = makeWarmer(enabled: false)
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(10)
         XCTAssertTrue(sent.isEmpty)
         XCTAssertEqual(clock.sleepers, 0, "not even a dwell is started")
@@ -109,19 +109,19 @@ final class ChannelWarmerTests: XCTestCase {
 
     // MARK: Dwell
 
-    func testDwellIsRespectedAndFocusChurnSendsNothing() async {
+    func testDwellIsRespectedAndARunOfSwitchesSendsNothing() async {
         let warmer = makeWarmer()
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.0)
-        await browse(warmer, b)
+        await player(warmer, b)
         await advance(1.0)
         XCTAssertTrue(sent.isEmpty, "a moved before its dwell ended; b has only had 1 s")
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.0)
-        await browse(warmer, nil)
+        await player(warmer, nil)
         await advance(5)
-        XCTAssertTrue(sent.isEmpty, "focus left before anything settled")
-        await browse(warmer, b)
+        XCTAssertTrue(sent.isEmpty, "the target went before anything settled")
+        await player(warmer, b)
         await advance(1.4)
         XCTAssertTrue(sent.isEmpty)
         await advance(0.2)
@@ -130,28 +130,11 @@ final class ChannelWarmerTests: XCTestCase {
 
     func testTheSameTargetReportedAgainDoesNotRestartTheDwell() async {
         let warmer = makeWarmer()
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.0)
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(0.6)
         XCTAssertEqual(sent, [a])
-    }
-
-    func testBrowsingWarmsOnceAndNeverRefreshes() async {
-        let warmer = makeWarmer()
-        await browse(warmer, a)
-        await advance(1.6)
-        await advance(300)
-        XCTAssertEqual(sent, [a])
-    }
-
-    func testAShelfCannotClearAnotherShelfsTarget() async {
-        let warmer = makeWarmer()
-        await browse(warmer, a, owner: "first")
-        await browse(warmer, b, owner: "second")
-        await browse(warmer, nil, owner: "first") // arrives after the second shelf took focus
-        await advance(1.6)
-        XCTAssertEqual(sent, [b])
     }
 
     // MARK: One at a time, cancellation
@@ -159,11 +142,11 @@ final class ChannelWarmerTests: XCTestCase {
     func testANewTargetCancelsTheRequestInFlight() async {
         hold = true
         let warmer = makeWarmer()
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.6)
         XCTAssertEqual(sent, [a])
         XCTAssertTrue(cancelled.isEmpty)
-        await browse(warmer, b)
+        await player(warmer, b)
         await untilCancelled()
         XCTAssertEqual(cancelled, [a], "the old request is cancelled, not left running")
         await advance(1.6)
@@ -171,12 +154,12 @@ final class ChannelWarmerTests: XCTestCase {
         XCTAssertEqual(warmer.scheduled, b)
     }
 
-    func testFocusMovingOffCancelsTheRequestInFlight() async {
+    func testClearingTheTargetCancelsTheRequestInFlight() async {
         hold = true
         let warmer = makeWarmer()
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.6)
-        await browse(warmer, nil)
+        await player(warmer, nil)
         await untilCancelled()
         XCTAssertEqual(cancelled, [a])
         XCTAssertNil(warmer.scheduled)
@@ -185,19 +168,19 @@ final class ChannelWarmerTests: XCTestCase {
     func testBackgroundingCancelsAndForgetsTheTarget() async {
         hold = true
         let warmer = makeWarmer()
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.6)
         warmer.setActive(false)
         await untilCancelled()
         XCTAssertEqual(cancelled, [a])
         warmer.setActive(true)
         await advance(10)
-        XCTAssertEqual(sent, [a], "coming back does not warm what was focused before")
+        XCTAssertEqual(sent, [a], "coming back does not warm the target from before")
     }
 
     func testBackgroundingDuringTheDwellSendsNothing() async {
         let warmer = makeWarmer()
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.0)
         warmer.setActive(false)
         await advance(5)
@@ -219,7 +202,7 @@ final class ChannelWarmerTests: XCTestCase {
     func testNoWarmWhileARealPlayStartsAndItCancelsOneInFlight() async {
         hold = true
         let warmer = makeWarmer()
-        await browse(warmer, a)
+        await player(warmer, a)
         await advance(1.6)
         let play = UUID()
         warmer.beginStart(play)
@@ -241,9 +224,12 @@ final class ChannelWarmerTests: XCTestCase {
         await advance(5)
         XCTAssertTrue(sent.isEmpty)
         warmer.playerClosed()
-        await browse(warmer, b)
+        await settle()
+        await advance(5)
+        XCTAssertTrue(sent.isEmpty, "a closed player warms nothing")
+        await player(warmer, b)
         await advance(1.6)
-        XCTAssertEqual(sent, [b])
+        XCTAssertEqual(sent, [b], "the next player is not held back by the old start")
     }
 
     // MARK: While watching
@@ -279,15 +265,6 @@ final class ChannelWarmerTests: XCTestCase {
         XCTAssertEqual(sent, [a, b])
     }
 
-    func testThePlayersTargetWinsOverWhatWasFocused() async {
-        let warmer = makeWarmer()
-        await browse(warmer, a)
-        warmer.setPlayerTarget(b)
-        await settle()
-        await advance(1.6)
-        XCTAssertEqual(sent, [b])
-    }
-
     // MARK: The player's choice
 
     private func channel(_ id: String) -> Channel {
@@ -313,26 +290,5 @@ final class ChannelWarmerTests: XCTestCase {
         XCTAssertNil(ChannelWarmer.likelyNext(current: only[0], previous: nil, justSwitched: false, list: []))
         // A current channel outside the list steps to the list's first, as zap does.
         XCTAssertEqual(ChannelWarmer.likelyNext(current: channel("9"), previous: nil, justSwitched: false, list: only)?.id, "1:1")
-    }
-
-    // MARK: Sport focus
-
-    func testOnlyAFocusedLiveEventWarmsItsBestChannel() {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        func event(_ id: String, start: Double, end: Double, kind: SportEventKind = .event, channels: Bool = true) -> SportEvent {
-            SportEvent(id: id, title: id, league: "NFL", startTime: (now.timeIntervalSince1970 + start) * 1000,
-                       endTime: (now.timeIntervalSince1970 + end) * 1000,
-                       channels: channels ? [SportEventChannel(sourceId: 1, rawID: "701", name: "ESPN"),
-                                             SportEventChannel(sourceId: 2, rawID: "88", name: "NFL")] : [], kind: kind)
-        }
-        let events = [event("live", start: -600, end: 600), event("soon", start: 600, end: 1200),
-                      event("replay", start: -600, end: 600, kind: .replay), event("bare", start: -600, end: 600, channels: false)]
-        XCTAssertEqual(SportWarming.target(eventID: "live", in: events, now: now),
-                       WarmTarget(sourceId: 1, channelId: "701", identityKey: "1:701"))
-        XCTAssertNil(SportWarming.target(eventID: "soon", in: events, now: now))
-        XCTAssertNil(SportWarming.target(eventID: "replay", in: events, now: now))
-        XCTAssertNil(SportWarming.target(eventID: "bare", in: events, now: now))
-        XCTAssertNil(SportWarming.target(eventID: "missing", in: events, now: now))
-        XCTAssertNil(SportWarming.target(eventID: nil, in: events, now: now))
     }
 }

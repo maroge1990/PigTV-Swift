@@ -39,14 +39,14 @@ private final class PreferencesRoutes: URLProtocol, @unchecked Sendable {
 /// D-44 batch 6 (Apple 130): Settings › Sport's Score delay (C-O `sports/preferences`) and the logos beside your sports.
 @MainActor
 final class SettingsSportTests: XCTestCase {
-    private func setting(dashboard: Bool = true) throws -> ScoreDelaySetting {
+    private func setting() throws -> ScoreDelaySetting {
         PreferencesRoutes.stored = #"{"avoidSpoilers":false,"scoreDelaySeconds":30,"revision":3}"#
         PreferencesRoutes.putStatus = 200
         PreferencesRoutes.puts = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PreferencesRoutes.self]
         let info = try JSONDecoder().decode(ServerInfo.self, from: Data(
-            #"{"name":"PigTV","version":"3.9.0","build":"0444","apiVersion":1,"features":{"sportsDashboard":\#(dashboard)}}"#.utf8))
+            #"{"name":"PigTV","version":"3.9.0","build":"0444","apiVersion":1,"features":{"sportFront":true}}"#.utf8))
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
                                session: URLSession(configuration: configuration), info: info)
         return ScoreDelaySetting(client: client)
@@ -61,7 +61,6 @@ final class SettingsSportTests: XCTestCase {
 
     func testAStepSavesWithTheRevisionItRead() async throws {
         let delay = try setting()
-        XCTAssertTrue(delay.available)
         await delay.load()
         XCTAssertEqual(delay.preferences?.scoreDelaySeconds, 30)
         await delay.step(10)
@@ -85,13 +84,6 @@ final class SettingsSportTests: XCTestCase {
         XCTAssertEqual(delay.message, "Changed on another device: this is the delay now.")
     }
 
-    func testNoDelayWithoutTheServersDashboard() async throws {
-        let delay = try setting(dashboard: false)
-        XCTAssertFalse(delay.available)
-        await delay.load()
-        XCTAssertNil(delay.preferences)
-    }
-
     func testFollowedNamesTakeTheFrontPagesCachedLogosElseAMonogram() throws {
         let follows = try JSONDecoder().decode([SportFront.Follow].self, from: Data(#"""
         [{"league":"Premier League","name":"Liverpool","logo":"/api/logo/abc","state":"none","sport":"Football"},
@@ -105,14 +97,5 @@ final class SettingsSportTests: XCTestCase {
         let cricket = SportFollows.Entry(sport: "Cricket", leagues: ["Cricket"], teams: ["Australia"])
         XCTAssertEqual(SettingsSportLogos.names(cricket, follows: follows), [.init(name: "Australia", logo: nil)],
                        "an older server's follow matches by league; only same-server cached logos are drawn")
-    }
-
-    /// Apple 134 (Codex batch 6, medium): a default server has the front page (sportFront) and not the legacy dashboard
-    /// flag; it applies the score delay, so Settings › Sport must offer it.
-    func testScoreDelayShowsWithTheFrontPageAlone() {
-        XCTAssertTrue(ScoreDelaySetting.isAvailable(sportFront: true, sportsDashboard: nil), "a default server")
-        XCTAssertTrue(ScoreDelaySetting.isAvailable(sportFront: nil, sportsDashboard: true))
-        XCTAssertFalse(ScoreDelaySetting.isAvailable(sportFront: false, sportsDashboard: false))
-        XCTAssertFalse(ScoreDelaySetting.isAvailable(sportFront: nil, sportsDashboard: nil), "an older server")
     }
 }

@@ -689,39 +689,11 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
-    func testDashboardRevalidatesThenUsesOrdinaryResolveAndReleases() async throws {
-        try requireFixture()
-        let server = try FakePigTVServer(sportEvents: SportsDashboardTests.payloadGuide(),
-                                         sportsDashboard: SportsDashboardTests.payload())
-        defer {server.http.stop()}
-        let client = try server.client(extraFeatures: #""sportsDashboard":true"#)
-        let browse = BrowseModel(client:client)
-        let app = AppModel()
-        app.configureClientForTesting(client,browse:browse)
-        let dashboard = SportsDashboardModel(client:client)
-        _ = await dashboard.load()
-        XCTAssertTrue(server.resolves.isEmpty)
-        XCTAssertTrue(server.warms.isEmpty, "Rendering/focus never probes or warms")
-        let selected = await dashboard.event(gameID:"game",watch:true)
-        let event = try XCTUnwrap(selected)
-        channelKeys += event.channels.map {browse.playable($0).identityKey}
-        app.playSportEvent(event)
-        let playback = try XCTUnwrap(app.playback)
-        playback.start()
-        try await waitFor("dashboard channel playing") {isPlaying(playback)}
-        XCTAssertEqual(server.http.requests(path:"/api/sports/dashboard").count,2)
-        XCTAssertEqual(server.resolveBodies().first?["channelId"] as? String,"pos_7")
-        XCTAssertEqual(server.resolveBodies().first?["force"] as? Bool,false)
-        await app.endPlayback(playback)
-        XCTAssertEqual(server.http.requests(path:"/api/playback/s1",method:"DELETE").count,1)
-    }
-
-    /// R11: with warming on, a live Sport event that holds focus warms its best
-    /// channel with exactly the body resolve sends; playing it then adopts the
-    /// warm stream, and the play-start event carries `warm`. While watching,
-    /// the next channel up is warmed too, and none of it happens with the
-    /// setting off.
-    func testFocusedSportEventWarmsThenPlayAdoptsIt() async throws {
+    /// R11: with warming on, the player warms the channel its remote is most
+    /// likely to go to (the next one up) with exactly the body resolve sends,
+    /// once its own start is over; zapping there then adopts the warm stream,
+    /// and that play-start event carries `warm`.
+    func testThePlayersNextChannelIsWarmedThenAZapAdoptsIt() async throws {
         try requireFixture()
         let server = try FakePigTVServer(warm: .json(#"{"warm":true,"ttlSec":90,"refreshed":false}"#))
         let client = try server.client(warmingEnabled: true)
@@ -732,34 +704,33 @@ final class RealPlaybackTests: XCTestCase {
         let event = try XCTUnwrap(browse.sport.live.first)
         channelKeys += event.channels.map { browse.playable($0).identityKey }
 
-        // Focus churn first: three cards in quick succession send nothing.
-        let target = try XCTUnwrap(SportWarming.target(eventID: event.id, in: browse.sport.live, now: Date()))
-        app.warmer.setBrowseTarget(WarmTarget(sourceId: 9, channelId: "x", identityKey: "9:x"), owner: "shelf")
-        try await Task.sleep(for: .milliseconds(300))
-        app.warmer.setBrowseTarget(target, owner: "shelf")
-        try await waitFor("the warm request after the dwell") { server.warms.count == 1 }
+        app.playSportEvent(event)
+        let first = try XCTUnwrap(app.playback)
+        first.start()
+        try await waitFor("the best channel playing") { isPlaying(first) }
+        XCTAssertEqual(first.channel.id, "1:701")
+
+        // Watching 701: the next one up (702) is warmed after the dwell, once the start is over.
+        try await waitFor("the next channel warmed") { server.warms.count == 1 }
         let warmBody = try XCTUnwrap(server.warmBodies().first)
-        XCTAssertEqual(warmBody["channelId"] as? String, "701")
+        XCTAssertEqual(warmBody["channelId"] as? String, "702")
         XCTAssertEqual(warmBody["sourceId"] as? Int, 1)
         XCTAssertEqual(warmBody["force"] as? Bool, false)
         XCTAssertNil(warmBody["audioEncode"])
-        XCTAssertTrue(server.resolves.isEmpty, "warming is not resolving")
+        XCTAssertEqual(server.resolves.count, 1, "warming is not resolving")
 
-        app.playSportEvent(event)
-        let playback = try XCTUnwrap(app.playback)
-        playback.start()
-        try await waitFor("the best channel playing") { isPlaying(playback) }
-        let resolveBody = try XCTUnwrap(server.resolveBodies().first)
+        app.zap(1)
+        let second = try XCTUnwrap(app.playback)
+        XCTAssertEqual(second.channel.id, "1:702")
+        second.start()
+        try await waitFor("the next channel playing") { isPlaying(second) }
+        let resolveBody = try XCTUnwrap(server.resolveBodies().last)
         XCTAssertEqual(NSDictionary(dictionary: resolveBody), NSDictionary(dictionary: warmBody),
                        "the warm request is the body resolve would send")
-        XCTAssertTrue(playback.warmAdopted, "the decision was marked warm")
-        try await waitFor("play-start") { !server.clientEventBodies("play-start").isEmpty }
-        XCTAssertEqual(server.clientEventBodies("play-start").first?["warm"] as? Bool, true)
-
-        // Watching 701: the next one up (702) is warmed after the dwell, once the start is over.
-        try await waitFor("the next channel warmed") { server.warmBodies().contains { $0["channelId"] as? String == "702" } }
-        XCTAssertEqual(server.warms.count, 2)
-        await app.endPlayback(playback)
+        XCTAssertTrue(second.warmAdopted, "the decision was marked warm")
+        try await waitFor("play-start") { server.clientEventBodies("play-start").count >= 2 }
+        XCTAssertEqual(server.clientEventBodies("play-start").last?["warm"] as? Bool, true)
+        await app.endPlayback(second)
         server.http.stop()
     }
 
@@ -767,13 +738,9 @@ final class RealPlaybackTests: XCTestCase {
     func testNothingIsWarmedWithTheSettingOff() async throws {
         let server = try FakePigTVServer(warm: .json(#"{"warm":true}"#))
         let client = try server.client(warmingEnabled: false)
-        let browse = BrowseModel(client: client)
         let app = AppModel()
-        app.configureClientForTesting(client, browse: browse)
-        await browse.sport.load()
-        let event = try XCTUnwrap(browse.sport.live.first)
-        let target = try XCTUnwrap(SportWarming.target(eventID: event.id, in: browse.sport.live, now: Date()))
-        app.warmer.setBrowseTarget(target, owner: "shelf")
+        app.configureClientForTesting(client)
+        app.warmer.setPlayerTarget(WarmTarget(sourceId: 1, channelId: "701", identityKey: "1:701"))
         try await Task.sleep(for: .seconds(2.2))
         XCTAssertTrue(server.warms.isEmpty)
         server.http.stop()

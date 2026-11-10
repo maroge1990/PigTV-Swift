@@ -4,18 +4,19 @@ import SwiftUI
 
 /// Audit R11: predictive channel warming, client side. When the server can
 /// warm (`features.warming`) and its admin turned "Warm the next channel" on
-/// (`warmingEnabled`), the app asks it to start the stream of the channel the
-/// viewer is likely to play next, so that play's resolve adopts a stream that
-/// is already running. The owner chose a cautious policy:
+/// (`warmingEnabled`), the player asks it to start the stream of the channel
+/// its remote's up/down or "Last channel" is likely to go to next, so that
+/// play's resolve adopts a stream that is already running. Browsing and focus
+/// never warm anything. The owner chose a cautious policy:
 ///
 /// - one warm channel at a time (a new target replaces, and cancels, the old);
 /// - only while the app is active and no real play is mid-start;
-/// - a target must hold for `dwell` first, so focus churn sends nothing;
+/// - a target must hold for `dwell` first, so a quick run of switches sends nothing;
 /// - while watching, the likely channel is re-requested every `refresh`
 ///   (the server's warm stream lives 90 s from its last request);
 /// - fire-and-forget: no errors shown, no retry, failure is a debug log line.
 ///
-/// Callers only report *what is likely* (`setBrowseTarget`, `setPlayerTarget`)
+/// Callers only report *what is likely* (`setPlayerTarget`)
 /// and the app's state (`setActive`, `beginStart`, ...); this type owns the
 /// single in-flight task and the policy. The clock and the request are
 /// injected so the policy is testable without waiting.
@@ -49,11 +50,10 @@ final class ChannelWarmer {
     private(set) var enabled = false
     /// The scene is active (not inactive or backgrounded).
     private(set) var active = true
-    /// The player is on screen: its target wins over browsing, and repeats.
+    /// The player is on screen: only then is anything warmed.
     private(set) var playerOpen = false
     private var starting = Set<UUID>()
     private var playerTarget: WarmTarget?
-    private var browse: (target: WarmTarget, owner: String)?
 
     /// What the running task is for (nil: nothing scheduled).
     private(set) var scheduled: WarmTarget?
@@ -71,40 +71,23 @@ final class ChannelWarmer {
     var isStarting: Bool { !starting.isEmpty }
 
     private var eligible: Bool { enabled && active && !isStarting }
-    private var wanted: (target: WarmTarget, repeats: Bool)? {
-        if playerOpen { return playerTarget.map { ($0, true) } }
-        return browse.map { ($0.target, false) }
-    }
+    private var wanted: WarmTarget? { playerOpen ? playerTarget : nil }
 
     // MARK: Inputs
 
     func setEnabled(_ value: Bool) {
         guard enabled != value else { return }
         enabled = value
-        if !value { playerTarget = nil; browse = nil }
+        if !value { playerTarget = nil }
         reconcile()
     }
 
-    /// Backgrounding cancels everything and forgets what was focused: the
-    /// viewer returns to a fresh screen, and warming never starts by itself.
+    /// Backgrounding cancels everything and forgets the target: warming never
+    /// starts again by itself.
     func setActive(_ value: Bool) {
         guard active != value else { return }
         active = value
-        if !value { playerTarget = nil; browse = nil }
-        reconcile()
-    }
-
-    /// Sport / Home focus. `target` is the focused live channel, or nil when
-    /// focus left it; a nil only clears what the same `owner` set, because
-    /// two shelves report in an unspecified order when focus moves between them.
-    func setBrowseTarget(_ target: WarmTarget?, owner: String) {
-        if let target {
-            guard browse?.target != target || browse?.owner != owner else { return }
-            browse = (target, owner)
-        } else {
-            guard browse?.owner == owner else { return }
-            browse = nil
-        }
+        if !value { playerTarget = nil }
         reconcile()
     }
 
@@ -113,7 +96,6 @@ final class ChannelWarmer {
     func setPlayerTarget(_ target: WarmTarget?) {
         playerOpen = true
         playerTarget = target
-        browse = nil
         reconcile()
     }
 
@@ -139,27 +121,26 @@ final class ChannelWarmer {
     // MARK: Policy
 
     /// Brings the single task in line with the inputs. Unchanged target,
-    /// unchanged task: focus onChange handlers may repeat themselves freely.
+    /// unchanged task: callers may repeat themselves freely.
     private func reconcile() {
         let want = eligible ? wanted : nil
-        if want?.target == scheduled, task != nil || want == nil { return }
+        if want == scheduled, task != nil || want == nil { return }
         task?.cancel()
         task = nil
-        scheduled = want?.target
+        scheduled = want
         guard let want else { return }
-        let repeats = want.repeats
-        task = Task { [weak self] in await self?.run(want.target, repeats: repeats) }
+        task = Task { [weak self] in await self?.run(want) }
     }
 
-    private func run(_ target: WarmTarget, repeats: Bool) async {
+    private func run(_ target: WarmTarget) async {
         do {
             try await sleep(dwell)
             while !Task.isCancelled {
                 // Re-checked after every wait: the inputs may have moved on
                 // in a way that cancel() has not reached yet.
-                guard eligible, wanted?.target == target else { return }
+                guard eligible, wanted == target else { return }
                 let warmed = await send(target)
-                guard warmed, repeats, !Task.isCancelled else {
+                guard warmed, !Task.isCancelled else {
                     if !warmed { Self.log.debug("warm: not warmed (nothing free, off, or failed)") }
                     return
                 }
@@ -181,17 +162,5 @@ final class ChannelWarmer {
         let index = list.firstIndex { $0.id == current.id } ?? -1
         let next = list[(index + 1) % list.count]
         return next.id == current.id ? nil : next
-    }
-}
-
-private struct ChannelWarmerKey: EnvironmentKey {
-    static let defaultValue: ChannelWarmer? = nil
-}
-
-extension EnvironmentValues {
-    /// The app's warmer; nil in previews and fixtures that never warm.
-    var channelWarmer: ChannelWarmer? {
-        get { self[ChannelWarmerKey.self] }
-        set { self[ChannelWarmerKey.self] = newValue }
     }
 }

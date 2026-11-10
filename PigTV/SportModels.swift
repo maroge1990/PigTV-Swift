@@ -178,154 +178,11 @@ private extension KeyedDecodingContainer {
     }
 }
 
-/// What the Sport tab and Home draw, in time order.
-nonisolated struct SportBuckets: Equatable, Sendable {
-    /// On now (start ≤ now < end).
-    var live: [SportEvent] = []
-    /// Starting within the next hour.
-    var soon: [SportEvent] = []
-    /// Later today (the device's calendar day), after the next hour.
-    var later: [SportEvent] = []
-    /// Build 32 (72 h horizon): tomorrow, after the next hour.
-    var tomorrow: [SportEvent] = []
-    /// Build 32: each later day in the window ("Saturday", "Sunday"), in order.
-    var days: [SportDay] = []
-    /// Build 31: replays (`kind == "replay"`) that have not ended: on now
-    /// first, then by start. Never in the buckets above or on Home.
-    var replays: [SportEvent] = []
-
-    /// Every event and replay (the league chips count and filter them all).
-    var all: [SportEvent] { live + soon + later + tomorrow + days.flatMap(\.events) + replays }
-    var isEmpty: Bool { all.isEmpty }
-}
-
-/// Build 32: one day's events after tomorrow, titled with its weekday.
-nonisolated struct SportDay: Equatable, Sendable {
-    /// The day's start in the device's calendar.
-    var day: Date
-    /// "Saturday".
-    var title: String
-    var events: [SportEvent]
-}
-
-/// Everything the Sport tab draws, built once per (events, minute): the
-/// buckets, the chips and each league's filtered rows. Equatable so an
-/// unchanged rebuild is not republished.
-nonisolated struct SportSnapshot: Equatable, Sendable {
-    /// The start of the minute the rows were built at.
-    var clock: Date
-    var buckets = SportBuckets()
-    var leagues: [String] = []
-    var leagueCounts: [String: Int] = [:]
-    var byLeague: [String: SportBuckets] = [:]
-
-    func rows(league: String?) -> SportBuckets {
-        guard let league else { return buckets }
-        return byLeague[league] ?? SportRows.filter(buckets, league: league)
-    }
-}
-
 nonisolated enum SportRows {
-    /// The start of `date`'s minute: the granularity the rows are drawn at.
-    static func minute(_ date: Date) -> Date {
-        Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60)
-    }
-
-    /// The buckets plus the chips and per-league rows, from one pass.
-    static func snapshot(_ events: [SportEvent], now: Date, calendar: Calendar = .current) -> SportSnapshot {
-        let buckets = buckets(events, now: now, calendar: calendar)
-        let all = buckets.all
-        let leagues = leagues(all)
-        var byLeague: [String: SportBuckets] = [:]
-        for league in leagues { byLeague[league] = filter(buckets, league: league) }
-        return SportSnapshot(clock: now, buckets: buckets, leagues: leagues, leagueCounts: leagueCounts(all),
-                             byLeague: byLeague)
-    }
-
-    /// "Starting soon" looks this far ahead.
+    /// `SportModel.soon` looks this far ahead.
     static let soonWindow: TimeInterval = 3600
     /// "Watch when it starts" just plays when the event is this close.
     static let watchNowWindow: TimeInterval = 300
-    static let homeLimit = 20
-
-    /// Live, soon, later today, tomorrow and each later day (the device's
-    /// calendar days), each by start time (ties keep the server's order);
-    /// replays on their own, on now first; ended ones are dropped.
-    static func buckets(_ events: [SportEvent], now: Date, soonWindow: TimeInterval = soonWindow,
-                        calendar: Calendar = .current) -> SportBuckets {
-        let ordered = events.enumerated().sorted { ($0.element.startTime, $0.offset) < ($1.element.startTime, $1.offset) }.map(\.element)
-        var result = SportBuckets()
-        let horizon = now.addingTimeInterval(soonWindow)
-        let today = calendar.startOfDay(for: now)
-        var upcomingReplays: [SportEvent] = []
-        for event in ordered where event.end > now {
-            if event.isReplay {
-                if event.start <= now { result.replays.append(event) } else { upcomingReplays.append(event) }
-                continue
-            }
-            if event.start <= now { result.live.append(event); continue }
-            if event.start <= horizon { result.soon.append(event); continue }
-            let day = calendar.startOfDay(for: event.start)
-            switch calendar.dateComponents([.day], from: today, to: day).day ?? 0 {
-            case ...0: result.later.append(event)
-            case 1: result.tomorrow.append(event)
-            default:
-                if let index = result.days.firstIndex(where: { $0.day == day }) {
-                    result.days[index].events.append(event)
-                } else {
-                    result.days.append(SportDay(day: day, title: weekday(day, calendar: calendar), events: [event]))
-                }
-            }
-        }
-        result.days.sort { $0.day < $1.day }
-        result.replays += upcomingReplays
-        return result
-    }
-
-    /// "Saturday" in the calendar's time zone and the user's language.
-    static func weekday(_ date: Date, calendar: Calendar = .current) -> String {
-        var style = Date.FormatStyle(date: .omitted, time: .omitted).weekday(.wide)
-        style.calendar = calendar
-        style.timeZone = calendar.timeZone
-        return date.formatted(style)
-    }
-
-    /// Distinct leagues, most events first (ties: first seen first).
-    static func leagues(_ events: [SportEvent]) -> [String] {
-        var counts: [String: Int] = [:]
-        var order: [String] = []
-        for event in events {
-            if counts[event.league] == nil { order.append(event.league) }
-            counts[event.league, default: 0] += 1
-        }
-        return order.enumerated().sorted { (-(counts[$0.element] ?? 0), $0.offset) < (-(counts[$1.element] ?? 0), $1.offset) }.map(\.element)
-    }
-
-    /// Event counts by league (for chip badges).
-    static func leagueCounts(_ events: [SportEvent]) -> [String: Int] {
-        var counts: [String: Int] = [:]
-        for event in events {
-            counts[event.league, default: 0] += 1
-        }
-        return counts
-    }
-
-    /// Only one league's events (nil: all).
-    static func filter(_ buckets: SportBuckets, league: String?) -> SportBuckets {
-        guard let league else { return buckets }
-        let days = buckets.days.map { SportDay(day: $0.day, title: $0.title, events: $0.events.filter { $0.league == league }) }
-        return SportBuckets(live: buckets.live.filter { $0.league == league },
-                            soon: buckets.soon.filter { $0.league == league },
-                            later: buckets.later.filter { $0.league == league },
-                            tomorrow: buckets.tomorrow.filter { $0.league == league },
-                            days: days.filter { !$0.events.isEmpty },
-                            replays: buckets.replays.filter { $0.league == league })
-    }
-
-    /// Home's "Sport now & next": live events, then those within the hour.
-    static func nowAndNext(_ buckets: SportBuckets, limit: Int = homeLimit) -> [SportEvent] {
-        Array((buckets.live + buckets.soon).prefix(limit))
-    }
 
     /// 0…1 through the event.
     static func progress(_ event: SportEvent, now: Date) -> Double {
@@ -371,13 +228,6 @@ nonisolated enum SportRows {
         }
         let seconds = event.start.timeIntervalSince(now)
         return "\(event.start.formatted(time)) · in \(span(seconds))"
-    }
-
-    /// "+2 more channels" (nil with one channel).
-    static func moreChannels(_ event: SportEvent) -> String? {
-        let extra = event.channels.count - 1
-        guard extra > 0 else { return nil }
-        return extra == 1 ? "+1 more channel" : "+\(extra) more channels"
     }
 
     /// Build 33: whether choosing a channel for this event plays it at

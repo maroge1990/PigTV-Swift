@@ -96,7 +96,7 @@ controls are not used for live play.
   preview, built from the same items; the iPad strip's … opens the card.
   **The record page (Apple 114, `RecordPage.swift`, R5-Record-*)** replaces `RecordSheet` and every Sport recording
   dialog ("Record on which channel?", "Record every game of"): one centred card on the page canvas, presented through
-  `AppPresenter.record(RecordRequest)` (the Sports dashboard's own cover hosts it inside that cover). A `RecordRequest`
+  `AppPresenter.record(RecordRequest)`. A `RecordRequest`
   is a guide programme on its channel (`BrowseModel.recordRequest(channel:programme:)`) or a Sport event with its card
   (`recordRequest(event:game:)`: every channel not yet ended, best first, each on its own airing; the card's `id` as
   `gameId`, its two teams and cached logos, the followed side, the league's sport). What, When it stops and Record on
@@ -290,27 +290,23 @@ controls are not used for live play.
 
 ## Sport
 
-- **Sport (C-I, build 30; server 0147–0149, flag `sportsEvents`).** Without the flag (or on an older server) there is no Sport tab and no Home row. **Data:** `SportModels.swift` decodes `GET sports/events?hours=12` (**72 since build 32**, below) tolerantly (`SportEventsResponse`/`SportEvent`/`SportEventChannel`; `LossyList` drops events or channels that do not decode, events without channels are dropped, ids may be numbers, a missing league reads "Sport", `quality` is `SportQuality` UHD/HD/SD case-insensitively and anything else nil; times are **milliseconds**). `SportModel` (`SportModel.swift`, one per session, `BrowseModel.sport`, lazy) loads it; `keepFresh()` loads and then refreshes every 60 s while a Sport surface (the tab, or Home when the flag is on) is on screen (tasks cancel on disappear; two surfaces share one request per 30 s), a 404 means no events. Pure helpers `SportRows`: `buckets` (live: start ≤ now < end; soon: starting within 60 min; later: the rest; ended dropped; each by start), `leagues` (distinct, most events first), `filter`, `nowAndNext` (live then soon, max 20), `progress`, `startsIn`/`endsIn` ("starts in 12 min", "ends in 40 min"), `timing` ("Live · ends in 40 min" / "8:30 pm · in 25 min"), `moreChannels`, `laterTitle` ("Later today" or "Later"). **Tab** (`SportView.swift`; tvOS Home · TV Guide · Sport · Recordings · Settings; iPad and iPhone too — five tabs fit the iPhone bar): header, league chips (All + leagues with counts, `GuideFilterStyle`; a vanished league falls back to All), then shelves "On now", "Starting soon", "Later today" of `SportEventCard`s; empty state points to the web app's Settings → Sports. Focus: the chip row and each shelf are focus sections with `defaultFocus(…, priority: .userInitiated)` — Down from the tab bar lands on the current chip, entering a shelf lands on its first (live/soonest) card. **Card** (`HomeCardButtonStyle`: pink outline, lift): league (uppercase, tracked, pink), title (2 lines reserved), timing, progress bar (kept invisible when upcoming so cards line up; the LIVE badge likewise), the best channel's `ChannelLogoTile` and name, "+2 more channels". **Select:** live → `AppModel.playSportEvent` (best channel = `channels[0]` via `BrowseModel.playable`, zap list = the event's channels; switches when already playing); upcoming → `SportEventDetails` (hero, **Watch <channel> when it starts** — plays at once within 5 min, else `AppModel.watchWhenStarts` holds a `PendingWatch` that plays at the start while the app stays foregrounded, shown as a banner with Cancel on the Sport tab and Home, cancelled on background and sign-out; **Record** → the shared `RecordSheet` on `BrowseModel.recordingRow` (the event as the only programme on its best channel, so `schedule` sends its times); the channel list). **Long press / touch and hold** (`contextMenu`): Choose a channel (`SportChannelPicker`: logo, name, muted number, UHD/HD/SD badge, "Recommended" on the first; play on select), Watch on <best> (live), Event details. Every page is a `detailCover` and playback waits for `onDismiss` (the player cannot present over a cover). **Home:** "Sport now & next" (`SportShelf` with a trailing **See all sport** card that switches to the Sport tab); hidden when empty. **Fixtures:** `PIGTV_UI_TEST_SCREEN=sport` (the Home fixture plus seven NFL/AFL/F1/NRL events on its sport channels: three live, one on three channels, three within the hour, one later; `GuideFixtures.sportEvents`) · `sport-empty` · `sport-event` · `sport-channels`; Home's shelf via `home` + `PIGTV_UI_TEST_HOME_SCROLL="Sport now & next"`. **Tests:** `SportRowsTests`, `SportModelTests` (FakePigTVServer's new `GET /api/sports/events`, a realistic answer with malformed bits), the harness test `testSelectingASportEventPlaysItsBestChannel` (resolve for the best channel, AVPlayer really playing), `SportUITests` (chips → first card, long press → picker, upcoming → page). Screenshots `docs/evidence/2026-09-25-b30-*.jpg` (tvOS dark/light, focused card, long-press menu, picker, event page, empty state, Home row; iPad dark/light and event page). The server's `APPLE_CLIENT_ROUTES` already lists `GET /api/sports/events`.
-  **Build 32 — 72 hours (Mark: a whole weekend of AFL/NFL).** `SportModel.hours = 72` (`sports/events?hours=72`; the
-  server raises its clamp to 72 in parallel, an older one clamps silently). Sections by the device's calendar day
-  (`SportRows.buckets(_:now:calendar:)`): On now · Starting soon (next 60 min) · **Later today** · **Tomorrow** · one per
-  later weekday (`SportBuckets.days`, `SportDay` titled "Sunday") · Replays last. League chips count and filter the whole
-  window (a day with none of the league's events is dropped). Cards not starting today read **"Sat 1:30 pm"**
-  (`SportRows.timing`); today keeps "8:30 pm · in 25 min". Home's "Sport now & next" is unchanged (live + 60 min).
-  `laterTitle` is gone. The fixture adds two events tomorrow and two the day after
-  (`docs/evidence/2026-09-26-b32-sport-days-dark.jpg`); test `testDaySectionsOverSeventyTwoHours` (UTC calendar).
-- **Sport channel choice (build 33; Mark, live testing: a secondary channel on an upcoming event tuned immediately instead of
-  offering to record).** `SportRows.playsChannelNow(_:now:)` is the one rule the event page's primary action, its channel
-  list and the long-press picker all share: live, or starting within `watchNowWindow` (5 min), plays on select; otherwise
-  select opens a `confirmationDialog` — **Record on `<channel>`** (skipped if already scheduled there) and **Watch
-  `<channel>` when it starts** — rather than another full-screen cover for the choice itself (tvOS's known stacked-cover
-  focus bug, §8); Record still opens `RecordSheet` as a cover, same as the page's own Record button already did.
-  `SportChannelRow` shows "Recording scheduled" and a play/record/alarm icon per row. `SportChannelList` (shared by
-  `SportEventDetails` and `SportChannelPicker`) owns this; `SportChannelPicker` and `SportEventTile.contextMenu`'s "Choose a
-  channel" now take `app`/`clock` instead of a bare `choose` closure. Tests: `testPlaysChannelNowMatchesLiveAndTheWatchNowWindow`;
-  UI test `testUpcomingEventSecondaryChannelOffersRecordOrWatchInsteadOfTuning`.
-
-- **Sport replays (build 31; Mark: "I don't mind replays being there, I miss games often, just should be its own section").** The server's `sports/events` now also lists replays of identifiable games with `kind: "event" | "replay"`; `SportEvent.kind` (`SportEventKind`) decodes it case-insensitively, and an absent, unknown or non-string `kind` reads as an event. `SportRows.buckets` puts replays that have not ended in `SportBuckets.replays` (on now first, then by start) and never in live/soon/later, so Home's "Sport now & next" (`nowAndNext`) and the On now / Starting soon / Later sections never show them; `all` includes them, so the league chips count and filter them (`filter` covers `replays`). The Sport tab adds a **Replays** section after Later today; the card shows a grey **REPLAY** badge (with `arrow.counterclockwise`) in place of LIVE and "On now · ends in …" when it is on. Selecting behaves as for events: on now → plays its best channel (`playSportEvent`), upcoming → the event page (Watch when it starts, Record). Fixture: two replays ("Packers v Jets · Week 2" on now, "AFL Grand Final 2025" later) in `GuideFixtures.sportEvents`; `PIGTV_UI_TEST_SPORT_SCROLL=<section>` scrolls the Sport tab for screenshots. Tests `testReplaysAreTheirOwnBucket`, `testKindDecodesTolerantly`. Screenshots `docs/evidence/2026-09-25-b31-sport-replays-tv-{dark,light}.jpg`.
+- **The Sport tab is the front page (C-R, `SportFrontView`), always.** `SportsLandingView` draws it whatever the server's
+  flags say; a server without `sports/front` gets the page's own error or empty state. The tab itself shows only with
+  `sportsEvents`.
+- **Sport events (C-I; flag `sportsEvents`).** `SportModels.swift` decodes `GET sports/events?hours=72` tolerantly
+  (`SportEventsResponse`/`SportEvent`/`SportEventChannel`; `LossyList` drops events or channels that do not decode, events
+  without channels are dropped, ids may be numbers, a missing league reads "Sport", `quality` is `SportQuality` UHD/HD/SD
+  case-insensitively and anything else nil, `kind` is `event` or `replay` with anything else an event; times are
+  **milliseconds**). `SportModel` (`BrowseModel.sport`, one per session) loads it (a 404 means no events); the Guide's
+  "Watch on…" reads `events`, and `live`/`soon` are plain filters over them (replays left out). Pure helpers `SportRows`:
+  `progress`, `startsIn`/`endsIn`, `timing` ("Live · ends in 40 min" / "8:30 pm · in 25 min" / "Sat 1:30 pm").
+- **Sport channel choice.** `SportRows.channelAction`/`playsChannelNow` is the one rule the event page's primary action,
+  its channel list and the channel picker share: live, or starting within `watchNowWindow` (5 min), plays on select;
+  otherwise select offers **Record on `<channel>`** and **Watch `<channel>` when it starts** (`AppModel.watchWhenStarts`
+  holds a `PendingWatch` that plays at the start while the app stays foregrounded; cancelled on background and sign-out).
+  `SportChannelList` (shared by `SportEventDetails` and `SportChannelPicker`, owned by the screen's `SportPresenter`)
+  draws it. Fixtures `sport-event` · `sport-channels`; tests `SportTests.swift`, the harness test
+  `testSelectingASportEventPlaysItsBestChannel`.
 
 ### Sport pages: Formula 1 (C-P, builds 74–75)
 
@@ -395,8 +391,7 @@ controls are not used for live play.
 - **Settings › Sport** (`SportSettingsSection`, `SettingsSport.swift`): Hide scores and Score delay side by side (a Form
   section on iOS), then the followed sports in order (leagues, the first two followed names with the cached `/api/logo/`
   logo the loaded C-R front page gives each, `SettingsSportLogos`, else a monogram `SportBadge`), suggestions, Add a sport.
-  Score delay (`ScoreDelaySetting`) is C-O's `sports/preferences` `scoreDelaySeconds`, drawn only with the server's
-  `sportsDashboard` flag: −10 / +10 within 0–300, sent with the revision read; a refused save reads it again and says so.
+  Score delay (`ScoreDelaySetting`) is C-O's `sports/preferences` `scoreDelaySeconds`, always drawn: −10 / +10 within 0–300, sent with the revision read; a refused save reads it again and says so.
 - **Sign in** (`SignInView.swift`, `OnboardingView`): the stacked lockup, then step 1, the server's address, whose Continue
   reaches `/api/info` (`AppModel.checkServer`), and step 2, the server as a chip (a check once reached) with Change and two
   tiles: Pair with browser (recommended, the one rose primary, focused; left out when the server said it cannot pair) and
@@ -423,58 +418,6 @@ controls are not used for live play.
   `sportFollows.lastCopy.<CacheScope digest>`): offline it is shown read-only. Fixture `PIGTV_UI_TEST_SCREEN=settings-sport`
   (`SportFollowFixtures`); tests `SportFollowLogicTests`, `SportFollowSettingsModelTests`, `SportSettingsUITests`.
 
-### Live now dashboard (C-O, builds 59–63)
-
-The client's consumption of C-O, including the Apple 59–63 notes, is written down once in the server's
-[`docs/CLIENT-CONTRACT.md`](https://github.com/maroge1990/PigTV/blob/main/docs/CLIENT-CONTRACT.md) › C-O. The dashboard
-is gated (`sportsDashboard` off) until the sport rebuild
-([maroge1990/PigTV#21](https://github.com/maroge1990/PigTV/issues/21)); per-channel airing times are
-[#20](https://github.com/maroge1990/PigTV/issues/20).
-
-`SportsLandingView` owns an ephemeral `SportsDashboardModel` per authenticated BrowseModel identity. A negotiated
-`sportsDashboard` flag opens shelves; absent/404 keeps ordinary Sports. Home remains C-I. Canonical league filters
-fetch the server's rolling 72h scope, including configured team follows; empty follows remain named with server 0316.
-No score/preference disk cache. A response publishes preferences and whole delayed game data together; no local game
-clock ticks or raw final-state overrides. Visible dashboard/details/settings refresh every 20s; background/resume,
-failed fetch, scope change and preference save hide old data first. Generation checks reject late callbacks; a 409
-re-reads and requires a fresh choice. Paired devices use the authenticated account ID.
-
-Seven progress families render only present fields. Cached `/api/logo/` assets use existing artwork/name fallback.
-Status labels distinguish confirmed LIVE from guide ON TV NOW and UPCOMING/break/final/stale/buffering. Compact cards
-omit “Total points,” show current game progress OR start time, and put availability icons in the top corner. VoiceOver
-and details retain explicit meanings, separate from labelled recording indicators. Shelf cards retain identity/order through
-updates, pin a neutral expired-focus placeholder, and reserve equal sizes within each sport. The shelf header names
-the sport; cards show status without repeating it. Details retain league context.
-
-Every watch/channel/record/rule action re-fetches the projection. Use only current eligible airing bounds, server
-preferred channel order, and selected stable channel identity. A monotonic round-trip bound applies to airing eligibility
-only, refusing responses that expired in transit. Displayed delayed score state does not advance. Upcoming watch
-revalidates on wake and cancels on background. Guard account replacement before actions; close details before opening
-playback or a recording sheet. A recording sheet's captured title is masked whenever its preference revision is no
-longer validated, before dismissal. All dashboard details/accessibility use projected fields, never raw C-I aliases.
-
-`PIGTV_UI_TEST_SCREEN=sport-dashboard` is an invented DEBUG-only edge preview with playback/recording disabled;
-`PIGTV_UI_TEST_SPOILERS=hidden` and `PIGTV_UI_TEST_APPEARANCE=light|dark` show privacy/appearance variants. Unit/API tests
-cover account/conflict/offline/resume/expiry semantics; UI tests cover accessible hiding, remote long press and uniform
-cards. Actual two-device <=30s sync, focus, source transitions, iPhone/iPad layout and all sport edge cases require
-Mark's device acceptance. Web 0317 is implemented locally; SD-0313-L2 unknown-format cricket and SD-0313-L3 authorized pilot remain open.
-
-Recording/rule actions re-read C-I event associations to use the selected stable channel's own airing window, while
-keeping only the safe C-O projected title. An independent visible activity task refreshes existing recording marks
-through `loadRecordingsIfStale` so badges update without a Home/Guide visit and do not hold up preference/score polling.
-No new recording endpoint, recording writer or playback-engine change is part of this dashboard batch.
-
-Build 60 measures the dashboard viewport; compact/regular mobile cards target 300/360pt (480pt at accessibility sizes),
-capped by available width, while tvOS retains 380pt. Scaled card height is uniform per sport. ViewThatFits stacks
-navigation controls, mobile covers use 20pt padding, and visible options carry neutral event-specific accessibility
-labels. The iPad baseline regression fails on 59's fixed 264pt width. Shared models/actions and C-I navigation remain.
-
-Build 61 dashboard activity marks decode optional source/item/stable schedule identities, keeping a separate key set
-from ordinary Guide's name-based markers. tvOS uses scaled fixed heights by league family (320/372/352/304pt) and a
-one-row channel/recording footer. Hold Select opens existing current details/actions directly; focus shows a reserved
-hint. Preset controls keep only ephemeral preference drafts while saving and retain focusable identities. Every UI
-write supplies its visible revision; a newer polled revision requires another choice. No recording writer changes.
-
 ## Concurrency (Swift 6)
 
 - **Swift 6 (A4.5, build 22; reverted in build 23; back for good in build 28):** the app and Top Shelf targets build in the Swift 6 language mode. **Build 28 callback audit:** every AVFoundation/KVO/notification callback is explicitly `@Sendable` (nonisolated) — `PlaybackModel`'s item-status and `timeControlStatus` KVO handlers, its failed-to-play-to-end and stalled notifications, the Start over seek completion, `RecordingPlayerModel`'s status KVO — and hops to the main actor with `Task { @MainActor in … }`; only where the queue is guaranteed main (`addPeriodicTimeObserver(queue: .main)` in the recording player, `TabBarStyle`'s `queue: .main` focus notification) is `MainActor.assumeIsolated` used. The URLSession delegates (`NoRedirects`, `ArtworkRedirects`) are `nonisolated` (URLSession calls them on its own queue; with the default main-actor isolation a redirect would have trapped). UIKit delegates, `DispatchQueue.main.async` and the display link run on main. The real-playback harness runs these KVO/notification/time-observer paths for real (including the recording player's periodic observer and a real -11868 status failure) and passes under Swift 6. Build 22's notes: The switch needed nine small changes, none behavioural: pure value types/helpers marked `nonisolated` (`ServerAddress`, `Labs`, `Category`, `PlayerTimeMath`, `StreamStats`, `StreamInfoFormat`); `GuideGridAttributes.isEqual` `nonisolated` with `leadingClip` `nonisolated(unsafe)` (NSObject's `isEqual` is nonisolated; UIKit uses attributes on the main thread); (`PlaybackModel.loadDisplayCriteria` was removed in build 27, see below). New code should keep pure helpers `nonisolated` so the Swift 5 test targets can call them.
@@ -499,17 +442,12 @@ From the 3 Oct audit (`../PigTV/docs/archive/audit-2026-10-03/ROADMAP.md`) and t
   `ArtworkStore`, `ScheduleMarks` (republished only when the sets change) and `ActionState`. The old `BrowseModel` properties
   forward to them, so **each view lists the stores it observes in its `init`**: a view that reads `model.guide` without
   observing `guideStore` never updates. Home draws from `HomeModel`, which publishes only a different `HomeContent`.
-  `.whileVisible` (`WhileVisible.swift`) runs Home's minute loop, the Guide's clocks and refresh and Sport's `keepFresh` only
-  while on screen. Background recordings refreshes are `quietly:`. `ObservationTests` counts publishes per screen.
+  `.whileVisible` (`WhileVisible.swift`) runs Home's minute loop and the Guide's clocks and refresh only while on screen. Background recordings refreshes are `quietly:`. `ObservationTests` counts publishes per screen.
 - **The first TV Guide visit doesn't stall (R03).** The shell shows first and the grid is made a frame later (`gridReady`,
   `NextFrame`); programme lists are ordered off the main actor (`GuideGridStore.orderedLists`); rows are revealed 0–2, 0–5,
   then all (`GuideGridLayout.revealedRows`); tvOS skips the header's `ViewThatFits`. `GuideGridStore` keys its lists by
   `GuideGridRevision` (`guideProgrammesVersion` + `guideLoadedAt`), so a same-shape EPG correction is not served stale.
   Simulator, 1,000 channels: first visit ~170–180 ms (was 0.5–1.6 s).
-- **Sport is proportional to the screen (R04).** Lazy page and shelves; each card is an `Equatable` view of plain values
-  (`SportCardInput`) that observes no model; logos follow a debounced `SportLogoRevision`; details and the channel picker are
-  owned by the screen (`SportPresenter`, `.sportPages`) so a recycled cell can't close an open page; `SportModel` publishes one
-  `SportSnapshot`, rebuilt only when events change or the minute turns.
 - **Caches are per server and account (R14).** Guide cache `Caches/PigTVGuide/guide-v2-<sha256(v2|server|user)>.json`, deleted
   on sign-out or when another session replaces it (`retirePrivateCaches()`). Artwork keyed by canonical absolute URL (token
   removed); one fetch per logo in flight; decoded cache 32 MB; disk `PigTVArtwork-v2/` LRU 50 MB / 30 days; responses over
@@ -517,10 +455,10 @@ From the 3 Oct audit (`../PigTV/docs/archive/audit-2026-10-03/ROADMAP.md`) and t
 - **Recordings** start without waiting for break markers (loaded beside playback with a 3 s budget, applied on arrival;
   "Loading recording…" until actually playing). "Preparing for playback…" shows while the server's background preparation
   (`native_status` pending/preparing) runs. Resume positions are per login with server 0207 (`recordingPositions`).
-- **Warming the next channel (R11; the server's switch, off by default).** `ChannelWarmer`: one target at a time after 1.5 s
-  of settled focus: while watching, the channel channel-up/down would most likely go to (the previous one after a switch,
-  else the next), refreshed every 60 s; a focused live Sport card (`event.best`); Home's hero while Watch has focus. Never
-  Guide focus; cancelled by a real play's start, a new target, leaving or backgrounding; silent on 204 and errors. A play that
+- **Warming the next channel (R11; the server's switch, off by default).** `ChannelWarmer`: only while the player is open,
+  one target at a time after 1.5 s settled: the channel channel-up/down would most likely go to (the previous one after a
+  switch, else the next), refreshed every 60 s. Browsing and focus never warm anything. Cancelled by a real play's start, a
+  new target, closing the player or backgrounding; silent on 204 and errors. A play that
   adopts a warm stream sends `warm: true` on `play-start`.
 
 ## Using the server contract

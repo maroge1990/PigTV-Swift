@@ -612,13 +612,11 @@ final class AppModel: ObservableObject {
     /// `cricket`: and the Cricket page (C-S).
     /// `pageLeagues`, `events`: the C-T leagues and the C-V pages (D-43 sport pages, PIGTV_UI_TEST_PAGES_JSON).
     func injectHomeFixture(firstRun: Bool = false, sportFront: Bool = false, cricket: Bool = false, sportFollows: Bool = false,
-                           pageLeagues: [String] = [], events: Bool = false, legacyPages: Bool = false) {
+                           pageLeagues: [String] = [], events: Bool = false) {
         let leagues = (try? JSONSerialization.data(withJSONObject: pageLeagues)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         let front = (sportFront ? #","sportFront":true,"sportPages":true,"sportPageNfl":true"# : "") + (cricket ? #","sportPageCricket":true"# : "")
             + (sportFollows ? #","sportFollows":true,"recordingRules":true"# : "")
             + (pageLeagues.isEmpty ? "" : #","sportPageLeagues":"# + leagues) + (events ? #","sportPageEvents":true"# : "")
-            // #243: the pages without the front page (sportFront off): the legacy Sport tab with its links
-            + (legacyPages ? #","sportPages":true,"sportPageNfl":true,"sportPageCricket":true"# : "")
         guard let address = try? ServerAddress("http://127.0.0.1:3000"),
               let info = try? JSONDecoder().decode(ServerInfo.self, from: Data((#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true"# + front + "}}").utf8)) else { return }
         let client = APIClient(address: address, token: "fixture", info: info, accountID: 1)

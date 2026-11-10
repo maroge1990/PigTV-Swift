@@ -540,10 +540,8 @@ final class BrowseModel: ObservableObject {
 
     // MARK: Sport (C-I)
 
-    /// Sport events, only used with the server's `sportsEvents` flag.
+    /// Sport events (the Guide's "Watch on…").
     private(set) lazy var sport = SportModel(client: client)
-    /// Moves when a Sport card's logo may have changed (see `SportLogoRevision`).
-    private(set) lazy var sportLogos = SportLogoRevision(following: self)
     var sportEnabled: Bool { client.info?.features.sportsEvents == true }
     /// C-P (#21): the Formula 1 page, only with the server's `sportPages` flag.
     private(set) lazy var f1Page = F1PageModel(client: client)
@@ -560,11 +558,10 @@ final class BrowseModel: ObservableObject {
     /// C-V (#197, D-43): the tennis, golf, UFC, IndyCar and NASCAR pages, only with the server's `sportPageEvents` flag.
     private(set) lazy var eventPages = SportEventsPageModel(client: client)
     var eventPagesEnabled: Bool { client.info?.features.sportPageEvents == true }
-    /// C-R (#21, D-39): the Sport front page, only with the server's `sportFront` flag.
+    /// C-R (#21, D-39): the Sport front page (the Sport tab).
     private(set) lazy var sportFront = SportFrontModel(client: client)
     /// #214: the Sport tab's pushed sport pages (the tab bar returns it to the front page).
     private(set) lazy var sportNavigation = SportNavigation()
-    var sportFrontEnabled: Bool { client.info?.features.sportFront == true }
     /// C-U (#200): Settings › Sport, only with the server's `sportFollows` flag. A spoiler-free change saved there makes
     /// the sport pages (whose preferences the F1 page model holds) ask for the choice again.
     private(set) lazy var sportFollows: SportFollowSettingsModel = {
