@@ -557,6 +557,10 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
   shrinks television text under `PigType.minimum`. Guide cells: the time line above one title line cut with an ellipsis
   (row pitch 80). The Sport banner lists three 56 pt rows on the television (`SportBannerWindow.visible`), four on touch.
   `BrandRulesTests` reads the tvOS values from the source and fails on any under 23.
+- **Television focus targets are 56 x 56 pt or more (brand 1.8 §15, #279, Apple 200):** every focus style applies
+  `pigTarget()` (`PigFocus.minTarget`) before drawing its surface, so chips, secondary and primary buttons, menu rows and
+  the score-delay steppers (now buttons with their own `pigSurface` on the raised tile) are at least 56 pt. A row inside
+  a sport list card is not a focus stop (the card is). `BrandRulesTests` fails on a focus style without the minimum.
 - **Roles, not literals (#190, kit §4–§7):** colours are catalog roles (`Color.pig*`); playback uses the kit's `media` tokens as
   `PigMediaAccent` (rose `#EF7AAE`, the live dot), `PigMediaPanel` (black 82 %, every panel over video), `PigMediaSolidPanel` (`#15111A`,
   the Reduce Transparency fallback), `PigMediaCanvas`/`PigMediaText`; shadows use `PigShadow` (the kit's glass shadow colours). These and

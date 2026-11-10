@@ -319,6 +319,7 @@ private struct SignInTileStyle: ButtonStyle {
         let lit = focused || configuration.isPressed
         configuration.label
             .padding(SignInMetrics.tilePadding)
+            .pigTarget()
             .foregroundStyle(primary ? Color.pigOnAccent : Color.pigText)
             .background(primary ? Color.pigAccent : lit ? PigFocus.fill : Color.pigRaised, in: shape)
             #if os(tvOS)

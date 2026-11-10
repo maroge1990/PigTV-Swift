@@ -249,12 +249,18 @@ struct SportSettingsSection: View {
         let seconds = delay.preferences?.scoreDelaySeconds
         let less = Button { Task { await delay.step(-ScoreDelay.step) } } label: {
             Text("−10").font(SettingsSportType.stepper).monospacedDigit().fontDesign(.rounded)
+                #if os(tvOS)
+                .padding(.horizontal, PigSpacing.m)
+                #endif
         }
         .disabled(seconds == nil || seconds == ScoreDelay.range.lowerBound || delay.saving)
         .accessibilityLabel("Ten seconds less")
         .accessibilityIdentifier("settings.sport.delay.less")
         let more = Button { Task { await delay.step(ScoreDelay.step) } } label: {
             Text("+10").font(SettingsSportType.stepper).monospacedDigit().fontDesign(.rounded)
+                #if os(tvOS)
+                .padding(.horizontal, PigSpacing.m)
+                #endif
         }
         .disabled(seconds == nil || seconds == ScoreDelay.range.upperBound || delay.saving)
         .accessibilityLabel("Ten seconds more")
@@ -271,9 +277,10 @@ struct SportSettingsSection: View {
                     .foregroundStyle(Color.pigSecondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            less.buttonStyle(PigSurfaceButtonStyle())
+            // #279: two real buttons, 56 pt or more with their own surface on the raised tile.
+            less.buttonStyle(PigSurfaceButtonStyle(restingFill: .pigSurface))
             value
-            more.buttonStyle(PigSurfaceButtonStyle())
+            more.buttonStyle(PigSurfaceButtonStyle(restingFill: .pigSurface))
         }
         .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
         .frame(maxWidth: .infinity, minHeight: SettingsSportMetrics.tileHeight, alignment: .leading)

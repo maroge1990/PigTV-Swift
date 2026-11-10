@@ -463,7 +463,7 @@ struct SportEventsContent: View {
                         Text(SportEventsText.alsoLine(event, now: now, spoilerFree: hidden)).font(SportPageMetrics.rowDetail.weight(.semibold))
                             .foregroundStyle(.secondary).lineLimit(1)
                     }
-                    .padding(.horizontal, PigSpacing.m).frame(minHeight: SportPageMetrics.row + 14)
+                    .padding(.horizontal, PigSpacing.m).frame(minHeight: max(SportPageMetrics.row + 14, PigFocus.minTarget))
                     .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: 14))

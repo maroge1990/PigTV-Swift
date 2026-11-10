@@ -401,6 +401,7 @@ private struct SettingsMenuRowStyle: ButtonStyle {
         configuration.label
             .padding(SettingsMetrics.rowPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .pigTarget()
             .background(lit ? PigFocus.fill : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: shape)
             .overlay(alignment: .leading) {
                 if selected {

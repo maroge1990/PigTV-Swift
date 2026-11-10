@@ -209,6 +209,30 @@ final class BrandRulesTests: XCTestCase {
         }
     }
 
+    // Brand 1.8 §15 (#279): every focusable control on the television is at least 56 x 56 pt. The shared focus styles
+    // carry the minimum (`pigTarget()`, `PigFocus.minTarget`): a tvOS button style that draws focus through the shared
+    // treatment must apply it too, and the minimum must stay 56. Before Apple 200 chips and the secondary buttons in a
+    // page's action row were about 51 pt high, the primary about 55, the score-delay steppers about 24.
+    func testTelevisionFocusTargetsAreAtLeastFiftySixPoints() throws {
+        let files = try sourceFiles()
+        let focus = try XCTUnwrap(files.first { $0.file == "PigFocus.swift" })
+        let tvFocus = Self.tvOSCode(focus.code)
+        let minimum = Self.sizeConstants(in: tvFocus).first { $0.name == "minTarget" }
+        XCTAssertGreaterThanOrEqual(minimum?.value ?? 0, 56, "PigFocus.minTarget on the television")
+        var found: [Line] = []
+        for file in files where file.file != "PigFocus.swift" {
+            let tv = SourceFile(file: file.file, code: Self.tvOSCode(file.code))
+            for style in Self.buttonStyles(in: tv.code)
+            where style.body.contains(".pigFocus(") && !style.body.contains(".pigTarget()") {
+                found.append(tv.line(style.offset))
+            }
+            if let surface = Self.block(after: #"struct\s+PigFocusSurface\b"#, in: tv.code), !surface.body.contains(".pigTarget()") {
+                found.append(tv.line(surface.offset))
+            }
+        }
+        report(found, "a tvOS focus style without the 56 pt minimum (apply .pigTarget() before its surface)")
+    }
+
     /// The smallest text the television draws (brand 1.8 §15).
     private static let tvMinimumText: Double = 23
 

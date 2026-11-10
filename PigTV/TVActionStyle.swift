@@ -16,11 +16,13 @@ private struct PigFocusSurface<S: InsettableShape>: ViewModifier {
     var scheme: ColorScheme
     var shape: S
     var drawSurface: Bool = true
+    var restingFill: Color? = nil
     var lift: PigFocusLift
     func body(content: Content) -> some View {
         content
+            .pigTarget()
             .foregroundStyle(.primary)
-            .background(drawSurface ? (focused ? PigFocus.fill : Color.guideCell(scheme)) : .clear, in: shape)
+            .background(drawSurface ? (focused ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
             .pigFocus(focused, in: shape, lift: lift)
     }
 }
@@ -57,13 +59,15 @@ struct PigSurfaceButtonStyle: ButtonStyle {
     var cornerRadius: CGFloat = PigRadius.compact
     /// How far it lifts when focused (a full-width row lifts less on its own: `PigFocusLift.scale(forWidth:)`).
     var lift: PigFocusLift = .card
+    /// The surface at rest (nil: the guide cell's), for a control on a raised tile that needs its own visible surface.
+    var restingFill: Color? = nil
     @Environment(\.isFocused) private var focused
     @Environment(\.colorScheme) private var scheme
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .modifier(PigFocusSurface(focused: focused, scheme: scheme, shape: RoundedRectangle(cornerRadius: cornerRadius),
-                                      drawSurface: drawSurface, lift: lift))
+                                      drawSurface: drawSurface, restingFill: restingFill, lift: lift))
     }
 }
 
@@ -75,6 +79,7 @@ struct PigMenuRowStyle: ButtonStyle {
         let on = focused || configuration.isPressed
         let shape = RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous)
         configuration.label
+            .pigTarget()
             .foregroundStyle(Color.pigText)
             .background(on ? PigFocus.fill : .clear, in: shape)
             .pigFocus(focused, in: shape, lift: .row)
@@ -96,6 +101,7 @@ struct PigPrimaryButtonStyle: ButtonStyle {
             .font(.headline)
             .padding(.horizontal, PigSpacing.xl).padding(.vertical, PigSpacing.l)
             #endif
+            .pigTarget()
             .foregroundStyle(Color.pigOnAccent)
             .background(Color.pigAccent, in: Capsule())
             .pigFocus(focused, in: Capsule(), lift: .control)
@@ -126,6 +132,7 @@ struct GuideFilterStyle: ButtonStyle {
             .font(GuideTypography.body)
             .foregroundStyle(selected ? Color.pigAccentText : Color.pigText)
             .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
+            .pigTarget()
             .background(focused ? PigFocus.fill : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
             .overlay(alignment: .bottom) {
                 if selected {

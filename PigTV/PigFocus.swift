@@ -16,6 +16,13 @@ enum PigFocus {
     /// The focus fill (kit `derived.focusFill`): accent at 22 % over the resting fill.
     static let fillOpacity: Double = 0.22
     static var fill: Color { Color.pigAccent.opacity(fillOpacity) }
+    /// Brand 1.8 §15 (#279, Apple 200): every focusable control on the television is at least 56 x 56 pt. Touch has its
+    /// own (system) minimums, so 0 there.
+    #if os(tvOS)
+    static let minTarget: CGFloat = 56
+    #else
+    static let minTarget: CGFloat = 0
+    #endif
 }
 
 /// How far a focused item lifts. Ring, tint, timing and Reduce Motion are the same for every kind; only the lift
@@ -106,6 +113,17 @@ private struct PigFocusModifier<S: InsettableShape>: ViewModifier {
 }
 
 extension View {
+    /// At least `PigFocus.minTarget` in both dimensions on the television (content centred); nothing on touch. A focus
+    /// style applies it before drawing its surface, so the surface and the ring cover the whole target.
+    @ViewBuilder
+    func pigTarget() -> some View {
+        #if os(tvOS)
+        frame(minWidth: PigFocus.minTarget, minHeight: PigFocus.minTarget)
+        #else
+        self
+        #endif
+    }
+
     /// The shared focus treatment (tvOS): lift, the accent ring outside `shape`, and the animation. The caller fills its
     /// own background with `PigFocus.fill` when focused (the primary action keeps its accent fill). On touch it draws
     /// nothing: the touch styles keep their own pressed looks.
