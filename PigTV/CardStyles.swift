@@ -1,25 +1,7 @@
 import SwiftUI
 
-// The card focus style, the card badge and the tvOS focus section, shared by the Sport cards and Recordings (they
-// were Home's until Home was retired, #216).
-
-/// A card's focus: the app's pink outline and translucent pink fill, plus the tvOS lift (scale and shadow).
-struct PigCardButtonStyle: ButtonStyle {
-    @Environment(\.isFocused) private var focused
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous)
-        configuration.label
-            .foregroundStyle(.primary)
-            .background(focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme), in: shape)
-            .clipShape(shape)
-            .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3) }
-            .scaleEffect(focused && !reduceMotion ? 1.07 : (configuration.isPressed ? 0.98 : 1))
-            .shadow(color: Color.pigShadow.opacity(focused ? (scheme == .dark ? 0.6 : 0.25) : 0), radius: focused ? 26 : 0, y: focused ? 16 : 0)
-            .animation(.easeOut(duration: 0.18), value: focused)
-    }
-}
+// The card badge and the tvOS focus section, shared by the Sport cards and Recordings (they were Home's until Home was
+// retired, #216). Cards take focus through the shared treatment (PigFocus.swift).
 
 /// A small capsule label on a card ("LIVE", "in 12 min", "REC").
 struct CardBadge: View {

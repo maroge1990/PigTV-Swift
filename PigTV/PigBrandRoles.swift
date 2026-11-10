@@ -50,8 +50,6 @@ nonisolated enum PigSpacing {
     /// by full-screen chrome drawn over video, which has no safe-area layout of its own.
     static let tvSafeSide: CGFloat = 90
     static let tvSafeTop: CGFloat = 60
-    /// How far a focus ring is drawn outside its control (`.padding(-PigSpacing.ringOutset)`).
-    static let ringOutset: CGFloat = 6
 }
 
 /// Type sizes by role (maroge1990/PigTV#243). The television's sizes are the twenty sizes the views used, merged where

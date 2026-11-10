@@ -41,10 +41,18 @@ struct GuideGridProgrammeView: View {
             .offset(x: shift)
             .padding(.horizontal, PigSpacing.s)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .background(focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme), in: shape)
+            .background(focused ? PigFocus.fill : Color.guideCell(scheme), in: shape)
+            #if os(tvOS)
+            .clipShape(Rectangle())
+            .opacity(finished ? 0.4 : 1)
+            // Brand 1.8: the shared focus treatment, outside the cell's clip (the cell stops clipping while focused, and
+            // the ring sits in the 8 pt gap to its neighbours).
+            .pigFocus(focused, in: shape, lift: .cell)
+            #else
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .clipShape(Rectangle())
             .opacity(finished ? 0.4 : 1)
+            #endif
     }
 
     @ViewBuilder private var content: some View {
@@ -76,7 +84,7 @@ struct GuideGridProgrammeView: View {
 }
 
 /// The pinned channel tile: GuideView's ChannelTile with the recording and
-/// unreliable-channel dots and the pink focus outline.
+/// unreliable-channel dots and the shared focus treatment (tvOS).
 struct GuideGridTileView: View {
     let channel: GuideChannel
     let logo: String?
@@ -99,7 +107,11 @@ struct GuideGridTileView: View {
                 }
                 .padding(PigSpacing.xs)
             }
+            #if os(tvOS)
+            .pigFocus(focused, in: RoundedRectangle(cornerRadius: PigRadius.compact), lift: .cell)
+            #else
             .overlay { RoundedRectangle(cornerRadius: PigRadius.compact).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
+            #endif
     }
 }
 
@@ -135,6 +147,12 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
 
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info else { contentConfiguration = nil; return }
+        #if os(tvOS)
+        // Brand 1.8: only the focused cell stops clipping, so its ring (outside the cell) shows; its content still clips
+        // itself (GuideGridProgrammeView's clipShape), so a title sliding under the channel column never draws over it.
+        clipsToBounds = !state.isFocused
+        contentView.clipsToBounds = !state.isFocused
+        #endif
         contentConfiguration = UIHostingConfiguration {
             // Touch (iPad): the pressed cell takes the focus look.
             GuideGridProgrammeView(info: info, focused: state.isFocused || state.isHighlighted, clip: clip)

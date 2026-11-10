@@ -9,18 +9,19 @@ extension Color {
     // The rose over video (kit §7) is the catalog's PigMediaAccent (Color.pigMediaAccent).
 }
 
-// The shared focus treatment: bright pink outline + translucent pink fill.
-private struct PigFocusSurface: ViewModifier {
+// A tvOS surface with the shared focus treatment (PigFocus.swift): the kit's focus fill over the resting fill, the
+// outside ring and the lift.
+private struct PigFocusSurface<S: InsettableShape>: ViewModifier {
     var focused: Bool
     var scheme: ColorScheme
-    var shape: AnyShape
+    var shape: S
     var drawSurface: Bool = true
+    var lift: PigFocusLift
     func body(content: Content) -> some View {
         content
             .foregroundStyle(.primary)
-            .background(drawSurface ? (focused ? Color.pigAccent.opacity(0.22) : Color.guideCell(scheme)) : .clear,
-                        in: shape)
-            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
+            .background(drawSurface ? (focused ? PigFocus.fill : Color.guideCell(scheme)) : .clear, in: shape)
+            .pigFocus(focused, in: shape, lift: lift)
     }
 }
 
@@ -35,7 +36,7 @@ struct PigSecondaryButtonStyle: ButtonStyle {
         #if os(tvOS)
         configuration.label
             .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
-            .modifier(PigFocusSurface(focused: focused, scheme: scheme, shape: AnyShape(Capsule())))
+            .modifier(PigFocusSurface(focused: focused, scheme: scheme, shape: Capsule(), lift: .control))
         #else
         configuration.label
             .font(.subheadline.weight(.semibold))
@@ -54,18 +55,20 @@ struct PigSecondaryButtonStyle: ButtonStyle {
 struct PigSurfaceButtonStyle: ButtonStyle {
     var drawSurface = true
     var cornerRadius: CGFloat = PigRadius.compact
+    /// How far it lifts when focused (a full-width row lifts less on its own: `PigFocusLift.scale(forWidth:)`).
+    var lift: PigFocusLift = .card
     @Environment(\.isFocused) private var focused
     @Environment(\.colorScheme) private var scheme
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .modifier(PigFocusSurface(focused: focused, scheme: scheme,
-                                      shape: AnyShape(RoundedRectangle(cornerRadius: cornerRadius)), drawSurface: drawSurface))
+            .modifier(PigFocusSurface(focused: focused, scheme: scheme, shape: RoundedRectangle(cornerRadius: cornerRadius),
+                                      drawSurface: drawSurface, lift: lift))
     }
 }
 
 /// D-44 (Apple 107): a row of the long-press menu: nothing drawn until focused (tvOS) or pressed (touch), then the shared
-/// focus look, a pink ring over a 22 % pink fill.
+/// focus look (PigFocus.swift).
 struct PigMenuRowStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
     func makeBody(configuration: Configuration) -> some View {
@@ -73,14 +76,13 @@ struct PigMenuRowStyle: ButtonStyle {
         let shape = RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous)
         configuration.label
             .foregroundStyle(Color.pigText)
-            .background(on ? Color.pigAccent.opacity(0.22) : .clear, in: shape)
-            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
-            .scaleEffect(focused ? 1.03 : 1)
-            .animation(.easeOut(duration: 0.12), value: focused)
+            .background(on ? PigFocus.fill : .clear, in: shape)
+            .pigFocus(focused, in: shape, lift: .row)
     }
 }
 
-// Primary action: appearance-specific label contrast, separate focus ring and existing lift.
+// Primary action: appearance-specific label contrast. Focused (tvOS), it keeps its accent fill and takes the shared lift
+// and outside ring (PigFocus.swift).
 struct PigPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
     func makeBody(configuration: Configuration) -> some View {
@@ -96,9 +98,7 @@ struct PigPrimaryButtonStyle: ButtonStyle {
             #endif
             .foregroundStyle(Color.pigOnAccent)
             .background(Color.pigAccent, in: Capsule())
-            .overlay { Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigSpacing.ringOutset).allowsHitTesting(false) }
-            .scaleEffect(focused ? 1.04 : 1)
-            .animation(.easeOut(duration: 0.12), value: focused)
+            .pigFocus(focused, in: Capsule(), lift: .control)
     }
 }
 
@@ -116,7 +116,8 @@ extension View {
     }
 }
 
-// Selection persists as an inset bar and tint; focus is an independent outer ring.
+// Selection persists as an inset bar and tint; focus is the shared treatment (PigFocus.swift), so a focused chosen chip
+// shows both.
 struct GuideFilterStyle: ButtonStyle {
     var selected = false
     @Environment(\.isFocused) private var focused
@@ -125,17 +126,14 @@ struct GuideFilterStyle: ButtonStyle {
             .font(GuideTypography.body)
             .foregroundStyle(selected ? Color.pigAccentText : Color.pigText)
             .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-            .background(selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
+            .background(focused ? PigFocus.fill : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
             .overlay(alignment: .bottom) {
                 if selected {
                     Capsule().fill(Color.pigAccent).frame(width: 26, height: 3)
                         .padding(.bottom, PigSpacing.xs).allowsHitTesting(false).accessibilityHidden(true)
                 }
             }
-            .overlay {
-                Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigSpacing.ringOutset)
-                    .allowsHitTesting(false)
-            }
+            .pigFocus(focused, in: Capsule(), lift: .control)
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

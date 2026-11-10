@@ -44,7 +44,7 @@ controls are not used for live play.
 
 - **Tab bar (build 27, tvOS, `TabBarStyle.swift`).** Mark: the selected tab, once focus moved into the page, was pink text on the system's light grey pill. tvOS draws the focused pill and the selected-unfocused pill from the same `UITabBarAppearance.selectionIndicatorTintColor` (checked by screenshot: setting it solid pink hid the pink selected text; faint made the focused pill faint), and moving focus along the bar selects the tab, so the two never coexist. `TabBarStyle.apply()` (from `PigTVApp.init`) sets `UITabBar.appearance()` and watches `UIFocusSystem.didUpdateNotification`: focus in the bar → solid pink pill, white text and icon (`item.focused`); focus in the page → selected tab pink text over a faint pink pill (22 % dark / 12 % light), others system colours; in light mode the bar is near-white (`backgroundColor` 85 % white) instead of mid grey. The guide fixture honours `PIGTV_UI_TEST_APPEARANCE=light|dark` (`simctl ui appearance` is unsupported on the tvOS runtime), which is how both modes were checked.
 
-- **Home (builds 28–101) is retired (#216, D-44, Apple 102).** No "TV" tab: Favourites on now is the TV Guide's Favourites filter, Recently watched and the "Continue watching" hero were dropped. Its card style (`PigCardButtonStyle`), `CardBadge` and `tvFocusSection` live in `CardStyles.swift`; its minute and foreground refresh moved to the app root (`AppFreshness`, below). The offline library fixture keeps the name `PIGTV_UI_TEST_SCREEN=home` and opens on Sport.
+- **Home (builds 28–101) is retired (#216, D-44, Apple 102).** No "TV" tab: Favourites on now is the TV Guide's Favourites filter, Recently watched and the "Continue watching" hero were dropped. Its `CardBadge` and `tvFocusSection` live in `CardStyles.swift` (its card style went with brand 1.8's one focus treatment, `PigFocus.swift`); its minute and foreground refresh moved to the app root (`AppFreshness`, below). The offline library fixture keeps the name `PIGTV_UI_TEST_SCREEN=home` and opens on Sport.
 
 - **Tab switch flash (build 32, `PageBackdrop.swift`).** Mark saw a white flash moving between the top tabs on device. SwiftUI's
   tvOS `TabView` is a `UIKitTabBarController` whose switch slides and cross-fades the two pages; every UIKit layer behind them
@@ -335,8 +335,8 @@ controls are not used for live play.
 - **Front page (tvOS, `SportFrontTVPage`)**: no tiles. The banner's list is `follows[]`, selecting one flips the hero
   (`SportFrontModel.select`, the C-R hero rule unchanged; a long press on a row offers its sport's page). Below, a section
   per sport (`SportFrontLayout.sections`: rails grouped by C-U's `sport`, in the rails' order) with a header button
-  ("Football ›", `sport.rail.header.<sport>`) and its leagues' rails of `SportGameCard`s (334 × 132; a followed team's
-  card has the pink outline and its team a star). Sports with no rail: "Also in your sports" buttons
+  ("Football ›", `sport.rail.header.<sport>`) and its leagues' rails of `SportGameCard`s (334 × 132; a followed team is
+  marked by its star alone, brand 1.8). Sports with no rail: "Also in your sports" buttons
   (`sport.also.<sport>`). The iPad (regular width) draws this page too (D-44).
 - **iPhone front page (`SportFrontPhonePage`, D-44, R5-Front-iPhone, Apple 139)**: the header (pig, "Sport", a "Scores
   shown / hidden" chip), a 212 pt carousel of `follows[]` in the order sent (#215: playing now, then soonest; one card
@@ -543,6 +543,14 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
   `PageBackdrop` stay flat canvas behind it.
 - **Onboarding/sign-in:** the stacked lockup (`PigLockup(trimmedToInk:)`, pig 130 pt on the TV, 96 pt on iOS, centred). Radiance never sits behind forms: `PigIdentityBackdrop` is a
   static halo behind the lockup's pig only, over the page canvas.
+- **Apple TV focus (brand 1.8 §6/§15, #279, Apple 198):** one treatment, `pigFocus(_:in:lift:)` in `PigFocus.swift`, used by
+  every tvOS button style (secondary, surface, primary, chips, menu rows, Settings menu, sign-in tiles) and the guide grid's
+  cells: a drawn lift (scale, capped in points per edge by `PigFocusLift`, plus a shadow; 0.15 s; no scale or animation under
+  Reduce Motion), the accent ring outside the control (outer edge `PigFocus.ringOutset` 4 pt, `ringWidth` 3 pt), and the focus
+  fill (`PigFocus.fill`, accent 22 %; the primary keeps its rose). Apple's `hoverEffect(.lift/.highlight)` does run inside these
+  styles on tvOS 27 but its glass rim covered the ring (simulator, 11 Nov 2026), so the lift is drawn. A guide cell stops
+  clipping only while focused, so its ring shows in the 8 pt gap. `BrandRulesTests` fails on a tvOS style that draws focus
+  itself, and on `focusEffectDisabled` outside the two players. Followed sport cards carry the star only.
 - **Roles, not literals (#190, kit §4–§7):** colours are catalog roles (`Color.pig*`); playback uses the kit's `media` tokens as
   `PigMediaAccent` (rose `#EF7AAE`, the live dot), `PigMediaPanel` (black 82 %, every panel over video), `PigMediaSolidPanel` (`#15111A`,
   the Reduce Transparency fallback), `PigMediaCanvas`/`PigMediaText`; shadows use `PigShadow` (the kit's glass shadow colours). These and

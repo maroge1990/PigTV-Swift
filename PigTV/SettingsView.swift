@@ -389,8 +389,8 @@ private struct SettingsMenuLabel: View {
     }
 }
 
-/// A row of the split view's menu: selected, 14 % pink with a short bar at its leading edge; focused (tvOS) or pressed,
-/// the shared focus look (a pink ring over 22 % pink).
+/// A row of the split view's menu: selected, 14 % pink with a short bar at its leading edge; focused (tvOS), the shared
+/// focus treatment (PigFocus.swift); pressed (touch), 22 % pink.
 private struct SettingsMenuRowStyle: ButtonStyle {
     let selected: Bool
     @Environment(\.isFocused) private var focused
@@ -401,18 +401,18 @@ private struct SettingsMenuRowStyle: ButtonStyle {
         configuration.label
             .padding(SettingsMetrics.rowPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(lit ? Color.pigAccent.opacity(0.22) : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: shape)
+            .background(lit ? PigFocus.fill : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: shape)
             .overlay(alignment: .leading) {
                 if selected {
                     Capsule().fill(Color.pigAccent).frame(width: SettingsMetrics.barWidth, height: 26)
                         .padding(.leading, PigSpacing.xs).allowsHitTesting(false).accessibilityHidden(true)
                 }
             }
-            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .contentShape(shape)
             #if os(tvOS)
-            .scaleEffect(focused ? 1.03 : 1)
-            .animation(.easeOut(duration: 0.12), value: focused)
+            .pigFocus(focused, in: shape, lift: .row)
+            #else
+            .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             #endif
     }
 }

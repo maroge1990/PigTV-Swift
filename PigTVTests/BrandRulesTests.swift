@@ -178,6 +178,37 @@ final class BrandRulesTests: XCTestCase {
         report(try sourceLines().filter { matches(#"\bTVActionStyle\b"#, $0.text) }, "TVActionStyle is PigSecondaryButtonStyle now")
     }
 
+    /// The only files that turn the system focus effect off: the players draw their own cursor over video (their buttons
+    /// are one blank, focused surface that takes the remote's moves).
+    private static let focusEffectAllowlist: Set<String> = ["CustomPlayer.swift", "RecordingPlayer.swift"]
+
+    // Brand 1.8 §6 and §15 (maroge1990/PigTV#279): on Apple TV a focused item lifts and carries the accent ring outside
+    // its edge, one way everywhere. Every tvOS button style that reads focus draws it through the shared treatment
+    // (`pigFocus`, PigFocus.swift), and no tvOS code draws a focus ring, fill, scale or shadow of its own. Before build
+    // 198 nine styles each drew focus their own way (a ring inside or outside, a scale or none, no Reduce Motion).
+    func testTVFocusGoesThroughTheSharedTreatment() throws {
+        var found: [Line] = []
+        for file in try sourceFiles() where file.file != "PigFocus.swift" {
+            let tv = SourceFile(file: file.file, code: Self.tvOSCode(file.code))
+            for style in Self.buttonStyles(in: tv.code) where style.body.contains("isFocused")
+                && !style.body.contains(".pigFocus(") && !style.body.contains("PigFocusSurface(") {
+                found.append(tv.line(style.offset))
+            }
+            found += Self.handDrawnFocus(in: tv.code).map { tv.line($0) }
+        }
+        report(found, "a tvOS focus look drawn outside the shared treatment (use .pigFocus(_:in:lift:) and PigFocus.fill)")
+    }
+
+    // Brand 1.8 §15: the system effect is never switched off, except by the players (their cursor is drawn).
+    func testOnlyThePlayersTurnOffTheSystemFocusEffect() throws {
+        report(try sourceLines().filter {
+            !Self.focusEffectAllowlist.contains($0.file) && matches(#"\.(focusEffectDisabled|hoverEffectDisabled)\("#, $0.text)
+        }, "the system focus effect switched off outside the players")
+        for name in Self.focusEffectAllowlist {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: Self.sources.appendingPathComponent(name).path), "\(name) is allowlisted but gone")
+        }
+    }
+
     // #243: one tagline, one field style and current copy on every platform (the 6 Nov audit found "Welcome to PigTV" on
     // touch beside the television's tagline, the system's black rounded field on touch, and an empty Sport page sending
     // the viewer to Home, which #216 retired).
@@ -264,6 +295,79 @@ final class BrandRulesTests: XCTestCase {
         return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
             Range($0.range, in: text).map { text.distance(from: text.startIndex, to: $0.lowerBound) }
         }
+    }
+
+    /// The code compiled for tvOS: lines in an `#if os(iOS)` (or `!os(tvOS)`) branch, or in the `#else` of an
+    /// `#if os(tvOS)`, are blanked, and so are the directives; line breaks are kept, so offsets map back to lines. Other
+    /// conditions (DEBUG, canImport) count as compiled.
+    static func tvOSCode(_ text: String) -> String {
+        // Per open #if: is this branch compiled for tvOS; was an earlier branch an os(tvOS) one; are the branches os checks.
+        var stack: [(active: Bool, tvTaken: Bool, osGroup: Bool)] = []
+        func tvCondition(_ condition: String) -> (active: Bool, isOS: Bool, tv: Bool) {
+            let c = condition.replacingOccurrences(of: " ", with: "")
+            if c == "os(tvOS)" { return (true, true, true) }
+            if c == "!os(tvOS)" || c == "os(iOS)" || (c.contains("os(iOS)") && !c.contains("tvOS")) { return (false, true, false) }
+            return (true, false, false)
+        }
+        var out: [String] = []
+        for raw in text.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#if ") || line == "#if" {
+                let t = tvCondition(String(line.dropFirst(3)))
+                stack.append((t.active, t.tv, t.isOS)); out.append(""); continue
+            }
+            if line.hasPrefix("#elseif"), let top = stack.popLast() {
+                let t = tvCondition(String(line.dropFirst(7)))
+                stack.append((!top.tvTaken && t.active, top.tvTaken || t.tv, top.osGroup || t.isOS)); out.append(""); continue
+            }
+            if line.hasPrefix("#else"), let top = stack.popLast() {
+                stack.append((top.osGroup ? !top.tvTaken : true, top.tvTaken, top.osGroup)); out.append(""); continue
+            }
+            if line.hasPrefix("#endif") { _ = stack.popLast(); out.append(""); continue }
+            out.append(stack.allSatisfy(\.active) ? raw : "")
+        }
+        return out.joined(separator: "\n")
+    }
+
+    /// Each `struct …: ButtonStyle` (or PrimitiveButtonStyle) with its body (to the matching brace) and offset.
+    static func buttonStyles(in text: String) -> [(name: String, body: String, offset: Int)] {
+        let regex = try! NSRegularExpression(pattern: #"struct\s+(\w+)[^{]*:\s*[^{]*\b(Primitive)?ButtonStyle\b[^{]*\{"#)
+        let chars = Array(text)
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { m in
+            guard let whole = Range(m.range, in: text), let name = Range(m.range(at: 1), in: text) else { return nil }
+            let start = text.distance(from: text.startIndex, to: whole.upperBound)
+            var depth = 1, end = start
+            while end < chars.count, depth > 0 {
+                if chars[end] == "{" { depth += 1 } else if chars[end] == "}" { depth -= 1 }
+                end += 1
+            }
+            return (String(text[name]), String(chars[start..<end]), text.distance(from: text.startIndex, to: whole.lowerBound))
+        }
+    }
+
+    /// Offsets of a focus look drawn by hand: the accent chosen on focus (a ring or a fill), or a scale or shadow that
+    /// follows focus.
+    static func handDrawnFocus(in text: String) -> [Int] {
+        let patterns = [#"\b(focused|isFocused|lit)\s*\?\s*Color\.pigAccent\b"#, #"\.scaleEffect\([^)\n]*\b(focused|isFocused)\b"#,
+                        #"\.shadow\([^\n]*\b(focused|isFocused)\b"#]
+        return patterns.flatMap { pattern in
+            try! NSRegularExpression(pattern: pattern).matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+                Range($0.range, in: text).map { text.distance(from: text.startIndex, to: $0.lowerBound) }
+            }
+        }.sorted()
+    }
+
+    func testFocusParsers() {
+        let tv = Self.tvOSCode("a\n#if os(tvOS)\nb\n#else\nc\n#endif\n#if os(iOS)\nd\n#elseif os(tvOS)\ne\n#endif\n#if DEBUG\nf\n#else\ng\n#endif")
+        XCTAssertEqual(tv.components(separatedBy: "\n").filter { !$0.isEmpty }, ["a", "b", "e", "f", "g"])
+        XCTAssertEqual(tv.components(separatedBy: "\n").count, 16, "line breaks are kept")
+        let styles = Self.buttonStyles(in: "private struct X: ButtonStyle {\n  var a = { 1 }\n  func f() {}\n}\nstruct Y: View {}")
+        XCTAssertEqual(styles.map(\.name), ["X"])
+        XCTAssertTrue(styles[0].body.contains("func f()"))
+        XCTAssertFalse(styles[0].body.contains("struct Y"))
+        XCTAssertEqual(Self.handDrawnFocus(in: ".overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }").count, 1)
+        XCTAssertEqual(Self.handDrawnFocus(in: ".scaleEffect(focused ? 1.03 : 1)").count, 1)
+        XCTAssertEqual(Self.handDrawnFocus(in: ".background(focused ? PigFocus.fill : Color.pigRaised)").count, 0)
     }
 
     static func spacingLiterals(in text: String) -> [String] {

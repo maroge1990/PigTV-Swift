@@ -3,7 +3,7 @@ import SwiftUI
 // D-43 (1 Nov, mock-up V2-League-1): a fixture league under its sport page's banner, the NFL (C-Q) and any C-T league:
 // the rounds to switch between (the last and the current; the next once C-T sends it), the round as a three-column
 // grid of game cards, and the standings on the right (Division / Conference / Overall where the league has them, else
-// one table). A followed team has the star and its card the pink outline; its row the pink tint. Spoiler-free hides
+// one table). A followed team has the star (its card no outline: brand 1.8, #279); its row the pink tint. Spoiler-free hides
 // scores, records, the live situation and the standings (rules: SportFixtureModels.swift).
 
 nonisolated enum SportFixtureMetrics {
@@ -223,7 +223,6 @@ struct SportFixtureContent: View {
             }
             .padding(SportPageMetrics.padding)
             .frame(maxWidth: .infinity, minHeight: SportFixtureMetrics.cardHeight, alignment: .topLeading)
-            .sportFollowedCard(game.followed)
             .overlay {
                 if game.ongoing && !game.followed {
                     RoundedRectangle(cornerRadius: SportPageMetrics.radius, style: .continuous)

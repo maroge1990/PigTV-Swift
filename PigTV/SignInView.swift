@@ -307,7 +307,8 @@ private struct SignInTile: View {
     }
 }
 
-/// A sign-in tile: the recommended one is the screen's one rose primary; focused (tvOS) or pressed, the pink ring.
+/// A sign-in tile: the recommended one is the screen's one rose primary. Focused (tvOS), the shared focus treatment
+/// (PigFocus.swift; the primary keeps its rose fill); pressed (touch), the pink fill and a small press.
 private struct SignInTileStyle: ButtonStyle {
     let primary: Bool
     @Environment(\.isFocused) private var focused
@@ -319,11 +320,16 @@ private struct SignInTileStyle: ButtonStyle {
         configuration.label
             .padding(SignInMetrics.tilePadding)
             .foregroundStyle(primary ? Color.pigOnAccent : Color.pigText)
-            .background(primary ? Color.pigAccent : lit ? Color.pigAccent.opacity(0.22) : Color.pigRaised, in: shape)
-            .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigSpacing.ringOutset).allowsHitTesting(false) }
+            .background(primary ? Color.pigAccent : lit ? PigFocus.fill : Color.pigRaised, in: shape)
+            #if os(tvOS)
+            .pigFocus(focused, in: shape, lift: .card)
+            .opacity(enabled ? 1 : 0.5)
+            #else
+            .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigFocus.clearance).allowsHitTesting(false) }
             .scaleEffect(focused ? 1.03 : configuration.isPressed ? 0.98 : 1)
             .opacity(enabled ? 1 : 0.5)
             .animation(.easeOut(duration: 0.12), value: focused)
+            #endif
     }
 }
 

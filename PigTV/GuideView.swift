@@ -847,9 +847,9 @@ private struct CategoryContentFade: ViewModifier {
                     .frame(width: width)
                     // The focus ring extends 4 pt outside the chip. Fade only
                     // horizontally; keep its top/bottom inside the mask.
-                    .padding(.vertical, -PigSpacing.ringOutset)
+                    .padding(.vertical, -PigFocus.clearance)
                     .offset(x: -origin)
-                } else { Color.pigMediaCanvas.padding(.vertical, -PigSpacing.ringOutset) }
+                } else { Color.pigMediaCanvas.padding(.vertical, -PigFocus.clearance) }
             }
     }
 }

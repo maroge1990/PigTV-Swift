@@ -3,8 +3,8 @@ import Combine
 
 // D-43 (1 Nov): what the Apple TV front page and the sport pages share below and inside the banner: a game card (the
 // mock-up's 334 × 132: two team rows with badges and scores, or a session's kicker and title, then the state and the
-// channel), the hero's buttons, and Record's channel choice (#204). A followed team's card has the pink outline and its
-// team a star; spoiler-free hides scores and situations (`SportFrontText.drawn`). Every play started here keeps the
+// channel), the hero's buttons, and Record's channel choice (#204). A followed team is marked by its star alone (brand
+// 1.8); spoiler-free hides scores and situations (`SportFrontText.drawn`). Every play started here keeps the
 // front page's origin ("sport-front").
 
 enum SportCardMetrics {
@@ -272,10 +272,11 @@ struct SportGameCard: View {
             .frame(width: SportCardMetrics.width, alignment: .leading)
             .frame(minHeight: SportCardMetrics.height, alignment: .topLeading)
             .overlay {
-                // Your team: the pink outline (D-43); another game on now: a thin live outline.
-                if followed || live {
+                // Another game on now: a thin live outline. Your team is marked by its star alone (brand 1.8, #279: the
+                // pink outline it had read as focus).
+                if live && !followed {
                     RoundedRectangle(cornerRadius: SportCardMetrics.radius, style: .continuous)
-                        .strokeBorder(followed ? Color.pigAccent : Color.pigDanger.opacity(0.8), lineWidth: followed ? 3 : 2)
+                        .strokeBorder(Color.pigDanger.opacity(0.8), lineWidth: 2)
                         .accessibilityHidden(true)
                 }
             }

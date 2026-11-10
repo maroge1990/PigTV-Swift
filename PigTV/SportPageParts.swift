@@ -1,8 +1,8 @@
 import SwiftUI
 
 // D-43 (1 Nov): what every sport page's content under the banner shares: its type sizes, a list card (a title, a note
-// and rows), the "hidden while spoiler-free" note, and a followed name's pink tint and star (rows) or pink outline
-// (cards). Brand tokens only.
+// and rows), the "hidden while spoiler-free" note, and a followed name's pink tint and star (rows) or its star
+// alone (cards). Brand tokens only.
 
 enum SportPageMetrics {
     #if os(tvOS)
@@ -95,16 +95,6 @@ extension View {
         padding(.horizontal, 8)
             .background(followed ? Color.pigAccent.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 10))
             .accessibilityValue(followed ? "Following" : "")
-    }
-
-    /// A followed name's card: the pink outline.
-    func sportFollowedCard(_ followed: Bool, radius: CGFloat = SportPageMetrics.radius) -> some View {
-        overlay {
-            if followed {
-                RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Color.pigAccent, lineWidth: 3)
-                    .accessibilityHidden(true)
-            }
-        }
     }
 }
 
