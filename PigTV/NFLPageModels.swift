@@ -64,7 +64,6 @@ nonisolated struct NFLGame: Decodable, Equatable, Identifiable, Sendable {
     struct Situation: Decodable, Equatable, Sendable {
         var downDistance: String?
         var possession: String?
-        var redZone: Bool?
     }
     var id: String
     /// Milliseconds since 1970.
@@ -138,11 +137,6 @@ nonisolated enum NFLPageText {
         /// (rank shown, row): the seed in the conference view, the place otherwise.
         var rows: [(rank: Int, row: NFLDivision.Row)]
         static func == (a: Self, b: Self) -> Bool { a.title == b.title && a.rows.map(\.rank) == b.rows.map(\.rank) && a.rows.map(\.row) == b.rows.map(\.row) }
-    }
-
-    /// The week the page opens on: the current one (else the last).
-    static func openingWeek(_ page: NFLPage) -> Int? {
-        (page.weeks.first(where: \.current) ?? page.weeks.last)?.number
     }
 
     /// A team's short name ("Packers"), else its abbreviation.
@@ -253,7 +247,7 @@ nonisolated enum NFLPageText {
         return out
     }
 
-    /// An action's words, the same in the game's menu and on the followed team's card.
+    /// An action's words in the game's menu.
     static func label(_ action: Action) -> String {
         func time(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
         switch action {
@@ -265,32 +259,5 @@ nonisolated enum NFLPageText {
         case .cancelWatchAt(let at): return "Don't watch at \(time(at))"
         case .record: return "Record"
         }
-    }
-
-    /// The SF Symbol beside a play action on the team card.
-    static func symbol(_ action: Action) -> String {
-        switch action {
-        case .cancelKickOff, .cancelWatchAt: return "xmark"
-        case .watchAtKickOff, .watchAt: return "bell"
-        case .watch, .watchLive: return "play.fill"
-        case .record: return "record.circle"
-        }
-    }
-
-    /// #187: the followed team's card names the play action its game actually offers (never "Watch live" for a game
-    /// its channel shows later); nil when there is nothing to play.
-    static func teamCardWatch(_ game: NFLGame, in page: NFLPage, now: Date, pendingEventID: String?) -> Action? {
-        actions(game, in: page, now: now, pendingEventID: pendingEventID).first { $0 != .record }
-    }
-
-    /// The followed team's last and next games across the weeks the page has.
-    static func lastAndNext(_ page: NFLPage, team: String) -> (last: NFLGame?, next: NFLGame?) {
-        let mine = page.weeks.flatMap(\.games).filter { $0.home.abbr == team || $0.away.abbr == team }.sorted { $0.startTime < $1.startTime }
-        return (mine.last { $0.status == .done }, mine.first { $0.status != .done })
-    }
-
-    /// Every team, by name, to offer to follow (never in standings order: that would give records away).
-    static func followable(_ page: NFLPage) -> [NFLTeam] {
-        page.teams.values.sorted { ($0.full ?? $0.abbr) < ($1.full ?? $1.abbr) }
     }
 }

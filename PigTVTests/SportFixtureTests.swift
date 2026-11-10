@@ -13,9 +13,13 @@ final class SportFixtureTests: XCTestCase {
     // Now a football row (P W D L GD Pts) leaves its name at least 120 pt (a followed row, with its star), and the games
     // keep two cards of at least 300 pt on an 11-inch iPad in landscape (1194 pt, 32 pt margins, a 24 pt gap).
     func testTheIPadStandingsLeaveTheNameRoomAndTheGamesTheirScores() {
-        XCTAssertLessThan(SportFixtureMetrics.touchTableBefore.nameRoom(values: 6), 0, "the cause: the row was wider than the table")
         let table = SportFixtureMetrics.touchTable
-        XCTAssertGreaterThanOrEqual(table.nameRoom(values: 6), 120)
+        // A row's name room: the width less the rank, badge, star, six values at their least, the gaps between them all
+        // and the spacer's least.
+        let values: CGFloat = 6
+        let room = table.width - table.inset
+            - (table.rankWidth + table.badge + table.star + values * table.valueWidth + (values + 4) * table.spacing + 4)
+        XCTAssertGreaterThanOrEqual(room, 120)
         let card = (1194 - 2 * 32 - 24 - table.width - 14) / 2
         XCTAssertGreaterThanOrEqual(card, 300, "each game card \(card) pt")
         XCTAssertEqual(SportFixtureMetrics.tvTable.width, 680, "Apple TV unchanged")

@@ -557,11 +557,9 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertEqual(app.previousChannel?.id, c.id, "Returning is itself a switch, so it updates the memory in turn")
     }
 
-    func testServerLogoFallbackSkipsArtworkIndexRequestsAndWaitingIsNotRecording() async throws {
+    func testAWaitingScheduleIsNotRecording() async throws {
         let server = SyntheticServer { _, _, _ in .init(status: 500, json: "{}") }
         let browse = BrowseModel(client: try client(server, modern: true))
-        await browse.loadArtworkIndex()
-        XCTAssertTrue(server.captured.isEmpty)
         browse.schedules = try JSONDecoder().decode([ScheduledRecording].self, from: Data(#"[{"id":7,"title":"Show","channel_name":"Synthetic","program_start":1000,"program_end":3000,"status":"waiting"}]"#.utf8))
         XCTAssertTrue(browse.recordingChannels.isEmpty)
         XCTAssertEqual(browse.scheduledKeys.count, 1)

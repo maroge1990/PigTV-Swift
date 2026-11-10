@@ -302,9 +302,6 @@ final class AppModel: ObservableObject {
         return filter != "all" && filter != "favourites"
     }
 
-    /// Tests: the categories load after a restore, finished.
-    func categoriesLoaded() async { await categoriesTask?.value }
-
     // MARK: Deep links (A4.1 Top Shelf)
 
     /// A play link that arrived before sign-in was restored (a cold launch
@@ -607,11 +604,11 @@ final class AppModel: ObservableObject {
     }
 
     // Offline Home fixture (PIGTV_UI_TEST_SCREEN=home): the guide fixture
-    // plus favourites, history, recordings, sport events and logos.
+    // plus favourites, recordings, sport events and logos.
     /// `sportFront`: the server also has the Sport front page (C-R; PIGTV_UI_TEST_SCREEN=front).
     /// `cricket`: and the Cricket page (C-S).
     /// `pageLeagues`, `events`: the C-T leagues and the C-V pages (D-43 sport pages, PIGTV_UI_TEST_PAGES_JSON).
-    func injectHomeFixture(firstRun: Bool = false, sportFront: Bool = false, cricket: Bool = false, sportFollows: Bool = false,
+    func injectHomeFixture(sportFront: Bool = false, cricket: Bool = false, sportFollows: Bool = false,
                            pageLeagues: [String] = [], events: Bool = false) {
         let leagues = (try? JSONSerialization.data(withJSONObject: pageLeagues)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         let front = (sportFront ? #","sportFront":true,"sportPages":true,"sportPageNfl":true"# : "") + (cricket ? #","sportPageCricket":true"# : "")
@@ -623,18 +620,15 @@ final class AppModel: ObservableObject {
         let model = BrowseModel(client: client, accountID: 1)
         model.isFixture = true
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(logos: true), to: GuideFixtures.requestedCount)
-        if !firstRun {
-            model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
-            model.recent = GuideFixtures.recent(from: model.guide).map(model.asChannel)
-            model.recordings = GuideFixtures.recordings(client: client)
-        }
+        model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
+        model.recordings = GuideFixtures.recordings(client: client)
         GuideFixtures.preloadLogos()
         let sportFixture: [SportEvent]
-        if !firstRun, let countStr = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPORT_EVENTS"],
+        if let countStr = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPORT_EVENTS"],
            let count = Int(countStr), count > 0 {
             sportFixture = GuideFixtures.largeSportEvents(from: model.guide, count: count)
         } else {
-            sportFixture = firstRun ? [] : GuideFixtures.sportEvents(from: model.guide)
+            sportFixture = GuideFixtures.sportEvents(from: model.guide)
         }
         model.sport.setFixture(sportFixture)
         browse = model

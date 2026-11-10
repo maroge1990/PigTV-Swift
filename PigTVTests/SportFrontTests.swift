@@ -187,22 +187,7 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(m.interval, SportFrontModel.refreshInterval, "60 s with nothing on")
     }
 
-    func testTheTilesWords() throws {
-        let f = try front()
-        let now = Date(timeIntervalSince1970: f.now / 1000)
-        XCTAssertEqual(SportFrontText.tileLine(f.sports[1], in: f, now: now), "1 live")
-        XCTAssertEqual(SportFrontText.tileLine(f.sports[3], in: f, now: now), "Nothing scheduled")
-        let race = SportFrontText.tileLine(f.sports[0], in: f, now: now)
-        XCTAssertFalse(race.isEmpty || race == "Nothing scheduled" || race.hasSuffix("live"), race)
-        let live = try front { json in
-            var sports = json["sports"] as? [[String: Any]] ?? []
-            sports[0]["live"] = 1
-            sports[0]["line"] = "live"
-            json["sports"] = sports
-            Self.set(&json, game: Self.race, status: "live")
-        }
-        XCTAssertEqual(SportFrontText.tileLine(live.sports[0], in: live, now: now), "Race live")
-        XCTAssertEqual(SportFrontText.followLine(f.follows[1], in: f, now: now), "Live · Packers v Bears")
+    func testTheMonogram() {
         XCTAssertEqual(SportFrontText.monogram("Green Bay Packers"), "GP")
         XCTAssertEqual(SportFrontText.monogram("Bears"), "B")
     }
@@ -231,9 +216,6 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(more.follows.map(\.name), ["Celtics", "Oscar Piastri", "Green Bay Packers", "Lakers", "Collingwood", "Chicago Bears"])
         XCTAssertEqual(SportFrontLayout.followItems(more, now: Date(timeIntervalSince1970: f.now / 1000)).map(\.title),
                        ["Celtics", "Oscar Piastri", "Green Bay Packers", "Lakers", "Collingwood", "Chicago Bears"])
-        let now = Date(timeIntervalSince1970: f.now / 1000)
-        XCTAssertEqual(SportFrontText.followLine(more.follows[4], in: more, now: now), "Nothing in the next three days")
-        XCTAssertEqual(SportFrontText.shortWhen(more.follows[4], now: now), "—")
     }
 
     func testANewlyLiveFollowClearsAFlip() throws {
@@ -346,15 +328,6 @@ final class SportFrontTests: XCTestCase {
         XCTAssertEqual(choices.map(\.name), ["ESPN HD", "Fox Footy"], "every channel still to air it, best first")
         XCTAssertEqual(choices.map { event.programme(on: $0).startTime }, [1793413062249, 1793416662249], "each on its own start")
         XCTAssertEqual(choices.map { event.programme(on: $0).endTime }, [1793424762249, 1793428362249], "and its own end")
-        var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "Australia/Melbourne"))
-        let label = SportFrontText.recordChoiceLabel(event, on: choices[1], now: now, calendar: utc)
-        XCTAssertTrue(label.hasPrefix("Fox Footy · "), label)
-        let start = event.start(on: choices[1]).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: utc.timeZone))
-        let end = event.end(on: choices[1]).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: utc.timeZone))
-        XCTAssertTrue(label.contains(start) && label.hasSuffix(end), "Fox Footy's own times: \(label)")
-        XCTAssertFalse(label.contains(event.end(on: choices[0]).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: utc.timeZone))),
-                       "not the best channel's")
         // One channel: just that one (the sheet opens at once).
         let single = try XCTUnwrap(SportFrontText.event(try XCTUnwrap(try front().game(Self.chiefs))))
         XCTAssertEqual(SportFrontText.recordChoices(single, now: now).map(\.name), ["ESPN HD"])

@@ -46,13 +46,6 @@ struct RetryBanner: View {
     }
 }
 
-enum GuideMetrics {
-    // The single guide spacing: between the logo tile and the first cell,
-    // between cells in a row, and between rows.
-    static let gap: CGFloat = 8
-    static var inset: CGFloat { gap / 2 }
-}
-
 enum GuideTypography {
     static var body: Font {
         #if os(tvOS)

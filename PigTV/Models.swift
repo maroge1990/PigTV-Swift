@@ -22,16 +22,13 @@ struct ServerInfo: Decodable {
         let library: Bool?
         let devicePairing: Bool?
         let viewerConflict: Bool?
-        let epgLogoFallback: Bool?
         let clientEvents: Bool?
-        let scheduledWaiting: Bool?
         let recordingPlaybackPolling: Bool?
         let playbackTerminalStatus: Bool?
         // A1.1: additive guide-refresh contract. Older servers lack these and
         // the client keeps today's offset-paged, always-download behaviour.
         let guideCursor: Bool?
         let guideVersion: Bool?
-        let logoCache: Bool?
         // C-A: rows carry a persistent channel `number`, a label only (since
         // server 0139 lists keep the provider's order). C-G: rows carry `health`.
         let channelNumbers: Bool?
@@ -48,8 +45,6 @@ struct ServerInfo: Decodable {
         var sportPageNfl: Bool? = nil
         // C-S (server 0383, #21): `GET sports/pages/cricket`, the Cricket page.
         var sportPageCricket: Bool? = nil
-        // C-R (server 0381, #21, D-39): `GET sports/front`, the Sport front page, and `sports`/`teams` in the preferences.
-        var sportFront: Bool? = nil
         // C-U (server 0391, #193, D-41; Apple #200): per-account follows (`sports/follows`, `catalog`, `names`,
         // `suggestions`): Settings › Sport.
         var sportFollows: Bool? = nil
@@ -79,8 +74,6 @@ struct ServerInfo: Decodable {
         var recordingRules: Bool? = nil
         // C-M `game` / C-R `recordWhenListed` (server 0466, #234): Record on a game the guide does not list yet.
         var recordGameRules: Bool? = nil
-        // C-N (server 0220, R6): recording and schedule rows carry `image`.
-        var recordingArtwork: Bool? = nil
     }
 
     /// A flag sent as a list of names (`sportPageLeagues`); anything else reads as none, never failing `/api/info`.
@@ -175,13 +168,6 @@ struct Channel: Decodable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case rawID = "id", sourceId, name, logo, category, now, next, stableId, number, unavailable
     }
-}
-
-struct ChannelPage: Decodable {
-    let total: Int
-    let limit: Int
-    let offset: Int
-    let channels: [Channel]
 }
 
 struct PlaybackDecision: Decodable {
@@ -374,7 +360,6 @@ struct ResolveBody: Encodable {
 /// R11: the 200 answer of `POST playback/warm` (a 204 means nothing was warmed).
 nonisolated struct WarmResult: Decodable, Equatable, Sendable {
     let warm: Bool
-    var ttlSec: Int? = nil
     var refreshed: Bool? = nil
 }
 
@@ -470,8 +455,6 @@ struct PlaybackConflict: Decodable {
     let title: String?
     let channelName: String?
     let endsAt: Double?
-    let streamId: String?
-    let lastActiveSec: Double?
 
     var recording: RecordingConflict? {
         guard type == "recording-in-progress", let scheduleId, let title, let channelName, let endsAt else { return nil }

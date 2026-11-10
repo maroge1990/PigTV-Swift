@@ -267,7 +267,6 @@ struct SportChannelList: View {
     /// draws the EPG logo fallback.
     let browse: BrowseModel
     @ObservedObject private var marks: ScheduleMarks
-    @ObservedObject private var artwork: ArtworkStore
     let clock: Date
     /// Closes the covering page, then runs the action (playback or a wait).
     let play: (@escaping () -> Void) -> Void
@@ -278,7 +277,6 @@ struct SportChannelList: View {
         self.app = app
         self.browse = browse
         _marks = ObservedObject(wrappedValue: browse.marks)
-        _artwork = ObservedObject(wrappedValue: browse.artwork)
         self.clock = clock
         self.play = play
     }
@@ -332,7 +330,6 @@ struct SportEventDetails: View {
     let browse: BrowseModel
     @ObservedObject private var marks: ScheduleMarks
     @ObservedObject private var actions: ActionState
-    @ObservedObject private var artwork: ArtworkStore
     /// Closes the page, then runs the action (playback).
     let play: (@escaping () -> Void) -> Void
 
@@ -342,7 +339,6 @@ struct SportEventDetails: View {
         self.browse = browse
         _marks = ObservedObject(wrappedValue: browse.marks)
         _actions = ObservedObject(wrappedValue: browse.actions)
-        _artwork = ObservedObject(wrappedValue: browse.artwork)
         self.play = play
     }
     private enum Control: Hashable { case watch }

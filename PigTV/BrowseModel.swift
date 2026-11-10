@@ -9,7 +9,6 @@ final class BrowseModel: ObservableObject {
     let guideStore = GuideStore()
     let recordingStore = RecordingsStore()
     let library = LibraryStore()
-    let artwork = ArtworkStore()
     let actions = ActionState()
     let marks: ScheduleMarks
 
@@ -31,13 +30,11 @@ final class BrowseModel: ObservableObject {
     var favourites: [Channel] { get { library.favourites } set { library.favourites = newValue } }
     var favouritesBusy: Bool { get { library.favouritesBusy } set { library.favouritesBusy = newValue } }
     var favouritesError: String? { get { library.favouritesError } set { library.favouritesError = newValue } }
-    var recent: [Channel] { get { library.recent } set { library.recent = newValue } }
     var mutationBusy: Bool { get { actions.mutationBusy } set { actions.change(\.mutationBusy, to: newValue) } }
     var actionMessage: String? { get { actions.actionMessage } set { actions.change(\.actionMessage, to: newValue) } }
     /// #148: the clash the last successful schedule() found (nil when none), for callers that word their own notice.
     private(set) var scheduleClash: String?
     var actionError: String? { get { actions.actionError } set { actions.change(\.actionError, to: newValue) } }
-    var artworkIndex: EPGArtworkIndex { artwork.artworkIndex }
     var scheduledKeys: Set<String> { marks.scheduledKeys }
     var recordingChannels: Set<String> { marks.recordingChannels }
     private var initialGuideLoad: Task<Void, Never>?
@@ -60,8 +57,6 @@ final class BrowseModel: ObservableObject {
     private var guideCacheVersion: String?
     private var loadingVersion: String?
     private var guidePrefetch: Task<Void, Never>?
-    private var artworkBusy = false
-    private var artworkLoaded = false
     // Set during a refresh: the visible guide is kept until the first new page
     // arrives, then replaced, so a background refresh never blanks the grid.
     private var replacePending = false
@@ -372,28 +367,6 @@ final class BrowseModel: ObservableObject {
         await loadGuide(reset: true, keepVisible: true)
     }
 
-    func loadArtworkIndex() async {
-        guard client.info?.features.epgLogoFallback != true, !artworkBusy, !artworkLoaded else { return }
-        // Build 31: after a failure, try again at most every 10 minutes
-        // (the Guide asked on every appearance).
-        guard !isFresh("artwork", maxAge: 600) else { return }
-        lastLoads["artwork"] = Date()
-        artworkBusy = true
-        if artwork.artworkError != nil { artwork.artworkError = nil }
-        defer { artworkBusy = false }
-        do {
-            let sources: [EPGSourceSummary] = try await client.request("sources")
-            var index = EPGArtworkIndex()
-            var failed = false
-            for source in sources where source.enabled && ["epg", "xtream"].contains(source.type) {
-                do { index.append(try await client.epgArtwork(sourceID: source.id).channels) }
-                catch { failed = true }
-            }
-            artwork.artworkIndex = index
-            artworkLoaded = !failed
-            if failed { artwork.artworkError = "Some EPG channel artwork could not be loaded." }
-        } catch { artwork.artworkError = "Channel artwork is temporarily unavailable." }
-    }
     func guideChannel(id: String) -> GuideChannel? {
         guideStore.channel(id: id)
     }
@@ -424,16 +397,12 @@ final class BrowseModel: ObservableObject {
     func guideQuality(of channel: GuideChannel) -> SportQuality? {
         quality(of: channel).flatMap { $0 == .uhd || $0 == .sd ? $0 : nil }
     }
-    // Prefer the playlist logo; fall back to the EPG icon like the web guide.
-    func logo(for channel: GuideChannel) -> String? {
-        logo(current: channel.logo, tvgID: channel.tvgId, name: channel.name)
-    }
-    func logo(for channel: Channel) -> String? {
-        logo(current: channel.logo, tvgID: nil, name: channel.name)
-    }
-    private func logo(current: String?, tvgID: String?, name: String) -> String? {
-        if let current = current?.trimmingCharacters(in: .whitespacesAndNewlines), !current.isEmpty { return current }
-        return artworkIndex.logo(tvgID: tvgID, name: name)
+    // The row's own logo, or nil when it has none.
+    func logo(for channel: GuideChannel) -> String? { logo(current: channel.logo) }
+    func logo(for channel: Channel) -> String? { logo(current: channel.logo) }
+    private func logo(current: String?) -> String? {
+        guard let current = current?.trimmingCharacters(in: .whitespacesAndNewlines), !current.isEmpty else { return nil }
+        return current
     }
 
     // MARK: Loads that screens repeat on appear (build 31)
@@ -467,11 +436,6 @@ final class BrowseModel: ObservableObject {
     func loadFavouritesIfStale(maxAge: TimeInterval = appearMaxAge) async {
         guard !isFresh("favourites", maxAge: maxAge) else { return }
         await loadFavourites()
-    }
-
-    func loadRecentIfStale(maxAge: TimeInterval = appearMaxAge) async {
-        guard !isFresh("recent", maxAge: maxAge) else { return }
-        await loadRecent()
     }
 
     /// `quietly`: a refresh nobody asked for (Home's minute loop, the Guide's
@@ -514,20 +478,6 @@ final class BrowseModel: ObservableObject {
             exportTopShelf()
         }
         catch { favouritesError = UserMessage.text(for: error) }
-    }
-
-    /// Home: what this user watched last (server `library/recent`). An
-    /// older server without the route (404) simply has no history.
-    func loadRecent() async {
-        lastLoads["recent"] = Date()
-        do {
-            let rows: [Channel] = try await client.request("library/recent",
-                query: [URLQueryItem(name: "limit", value: "20")])
-            let available = rows.filter { $0.unavailable != true }
-            if available != recent { recent = available }
-        } catch {
-            if error as? PigTVError == .http(404), !recent.isEmpty { recent = [] }
-        }
     }
 
     /// The guide's row for a channel: by id, else by stable identity (a

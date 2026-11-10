@@ -256,63 +256,6 @@ struct StatusPill: View {
     }
 }
 
-/// The logo's own colours, scaled up, blurred and dimmed (Home's hero wash);
-/// a pink glow without a logo; a plain surface with Reduce Transparency.
-struct LogoWash: View {
-    let logo: String?
-    let client: APIClient?
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    var body: some View {
-        ZStack {
-            Color.pigSurface
-            if !reduceTransparency {
-                if logo != nil {
-                    ChannelArtwork(logo: logo, client: client, fill: true)
-                        .scaleEffect(1.8)
-                        .blur(radius: 90)
-                        .saturation(1.6)
-                        .opacity(scheme == .dark ? 0.75 : 0.45)
-                        .allowsHitTesting(false)
-                } else {
-                    RadialGradient(colors: [Color.pigAccent.opacity(scheme == .dark ? 0.45 : 0.25), .clear],
-                                   center: .topTrailing, startRadius: 40, endRadius: 900)
-                }
-                // The wash fades into the page canvas (its role, both appearances) so text reads over the artwork.
-                LinearGradient(colors: scheme == .dark
-                               ? [Color.pigCanvas.opacity(0.82), Color.pigCanvas.opacity(0.55), Color.pigCanvas.opacity(0.2)]
-                               : [Color.pigCanvas.opacity(0.9), Color.pigCanvas.opacity(0.7), Color.pigCanvas.opacity(0.35)],
-                               startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, Color.pigCanvas.opacity(0.35)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-/// The hero card at the top of a detail page: content over a LogoWash.
-struct DetailHero<Content: View>: View {
-    let logo: String?
-    let client: APIClient?
-    @ViewBuilder var content: Content
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: PigSpacing.m) { content }
-            .padding(DetailMetrics.heroPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background { LogoWash(logo: logo, client: client) }
-            .clipShape(RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: DetailMetrics.radius, style: .continuous)
-                    .strokeBorder(Color.pigBorder, lineWidth: 1)
-            }
-            .shadow(color: Color.pigShadow.opacity(scheme == .dark ? 0.5 : 0.12), radius: 26, y: 14)
-    }
-}
-
 /// The channel's logo tile (the guide's neutral tile, adaptive).
 struct ChannelLogoTile: View {
     let logo: String?
@@ -337,31 +280,6 @@ struct ChannelLogoTile: View {
     }
 }
 
-/// Logo tile, number and name: the channel line at the top of a hero.
-struct ChannelLine: View {
-    let logo: String?
-    let client: APIClient?
-    let name: String
-    let number: Int?
-    var detail: String? = nil
-
-    var body: some View {
-        HStack(spacing: PigSpacing.l) {
-            ChannelLogoTile(logo: logo, client: client, name: name)
-            VStack(alignment: .leading, spacing: PigSpacing.xs) {
-                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
-                    Text(name).lineLimit(1).font(DetailType.channel)
-                    if let number { ChannelNumberText(number: String(number), font: DetailType.meta) }
-                }
-                if let detail {
-                    Text(detail).font(DetailType.meta).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
 /// C-A, build 29: a channel number as small, muted text placed after the
 /// channel's name, never over artwork (Mark: numbers are secondary to him).
 /// `Text(verbatim:)` so it is never locale-grouped.
@@ -383,23 +301,6 @@ struct Eyebrow: View {
     var colour: Color = .pigAccentText
     var body: some View {
         Text(text.uppercased()).font(DetailType.eyebrow).tracking(2.5).foregroundStyle(colour)
-    }
-}
-
-/// A status capsule ("Recording scheduled", "Recorded", "REC").
-struct StatusBadge: View {
-    let text: String
-    var systemImage: String? = nil
-    var colour: Color = .pigAccent
-    var body: some View {
-        HStack(spacing: PigSpacing.s) {
-            if let systemImage { Image(systemName: systemImage) }
-            Text(text)
-        }
-        .font(DetailType.eyebrow)
-        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.xs)
-        .background(colour, in: Capsule())
-        .foregroundStyle(colour == .pigAccent ? Color.pigOnAccent : Color.pigOnStatus)
     }
 }
 

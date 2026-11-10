@@ -18,12 +18,6 @@ nonisolated enum SportFixtureMetrics {
         var star: CGFloat = 14
         /// The list card's and a followed row's padding, both sides.
         var inset: CGFloat
-
-        /// #228: what a row of `values` columns leaves its team name: the width less the rank, badge, star, each value at
-        /// its least, the gaps between them all and the spacer's least. Pure (tests `SportFixtureTests`).
-        func nameRoom(values: Int) -> CGFloat {
-            width - inset - (rankWidth + badge + star + CGFloat(values) * valueWidth + CGFloat(values + 4) * spacing + 4)
-        }
     }
 
     static let tvTable = Table(width: 680, valueWidth: 42, rankWidth: 28, badge: 24, spacing: PigSpacing.s, inset: 2 * 22 + 2 * 8)
@@ -32,8 +26,6 @@ nonisolated enum SportFixtureMetrics {
     // cut to a few letters. The values now take what two or three digits need (a wider one, "137.2", is still drawn
     // whole), the table is 80 pt wider and the game cards give that up.
     static let touchTable = Table(width: 460, valueWidth: 28, rankWidth: 22, badge: 24, spacing: PigSpacing.xs, inset: 2 * 16 + 2 * 8)
-    /// Before Apple 144 (#228's cause).
-    static let touchTableBefore = Table(width: 380, valueWidth: 44, rankWidth: 28, badge: 24, spacing: PigSpacing.s, inset: 2 * 16 + 2 * 8)
 
     #if os(tvOS)
     static let table = tvTable

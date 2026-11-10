@@ -73,7 +73,6 @@ nonisolated enum GuideJump {
 struct GuideSearchPage: View {
     /// Not observed (audit R05): the page reads the guide once per search and the logos.
     let model: BrowseModel
-    @ObservedObject private var artwork: ArtworkStore
     /// The grid can be moved (not the iPhone's upright On now list).
     let canJump: Bool
     /// Jump to… opened the page: focus starts on the selected day, not the search field.
@@ -95,7 +94,6 @@ struct GuideSearchPage: View {
          openChannel: @escaping (GuideChannel) -> Void, openProgramme: @escaping (GuideChannel, GuideProgramme) -> Void,
          showGuide: @escaping (Date) -> Void, pushedFrom: String? = nil) {
         self.model = model
-        _artwork = ObservedObject(wrappedValue: model.artwork)
         _date = State(initialValue: date)
         self.canJump = canJump
         self.startWithJump = startWithJump
@@ -297,14 +295,12 @@ private struct FlowChips: Layout {
 
 private struct SearchResultRow: View {
     let model: BrowseModel
-    @ObservedObject private var artwork: ArtworkStore
     let channel: GuideChannel
     let programme: GuideProgramme
     let action: () -> Void
 
     init(model: BrowseModel, channel: GuideChannel, programme: GuideProgramme, action: @escaping () -> Void) {
         self.model = model
-        _artwork = ObservedObject(wrappedValue: model.artwork)
         self.channel = channel
         self.programme = programme
         self.action = action

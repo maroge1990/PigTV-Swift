@@ -308,7 +308,6 @@ struct RecordPage: View {
     /// Not observed (audit R05): the page draws the action state and the logos.
     let model: BrowseModel
     @ObservedObject private var actions: ActionState
-    @ObservedObject private var artwork: ArtworkStore
     /// The schedules, so Change recording follows its schedule while open (it starts recording, or ends).
     @ObservedObject private var store: RecordingsStore
     let presenter: AppPresenter
@@ -328,7 +327,6 @@ struct RecordPage: View {
     init(model: BrowseModel, presenter: AppPresenter, request: RecordRequest, close: @escaping () -> Void) {
         self.model = model
         _actions = ObservedObject(wrappedValue: model.actions)
-        _artwork = ObservedObject(wrappedValue: model.artwork)
         _store = ObservedObject(wrappedValue: model.recordingStore)
         self.presenter = presenter
         self.request = request

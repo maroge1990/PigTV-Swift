@@ -212,39 +212,6 @@ nonisolated enum SportFrontText {
             : "Choose the sports, teams and drivers you follow in the PigTV web app, under Settings → Sports."
     }
 
-    /// The tile's line: "Race live", "2 live", a start time, "Nothing scheduled".
-    static func tileLine(_ sport: SportFront.Sport, in front: SportFront, now: Date, calendar: Calendar = .current) -> String {
-        if sport.line == "live" || sport.live > 0 {
-            if sport.league == "F1" {
-                let session = front.games.first { $0.league == "F1" && SportFrontHero.ongoing.contains($0.status) }?.session
-                return session.map { $0 == "Race" ? "Race live" : "\($0) live" } ?? "Race live"
-            }
-            return "\(max(sport.live, 1)) live"
-        }
-        if let next = sport.next { return when(date(next.start), now: now, calendar: calendar) }
-        return "Nothing scheduled"
-    }
-
-    /// A follow's line: "Live · Packers v Bears", "Next · Sat 5:30 pm", "Nothing scheduled".
-    static func followLine(_ follow: SportFront.Follow, in front: SportFront, now: Date, calendar: Calendar = .current) -> String {
-        switch follow.state {
-        case "live": return front.game(follow.gameId).map { "Live · \($0.title)" } ?? "Live"
-        case "next":
-            guard let start = follow.start ?? front.game(follow.gameId)?.start else { return "Next" }
-            return "Next · \(when(date(start), now: now, calendar: calendar))"
-        default: return "Nothing in the next three days"
-        }
-    }
-
-    /// A compact row's when: "Live", "5:30 pm", "Sat 5:30 pm", "—".
-    static func shortWhen(_ follow: SportFront.Follow, now: Date, calendar: Calendar = .current) -> String {
-        switch follow.state {
-        case "live": return "Live"
-        case "next": return follow.start.map { when(date($0), now: now, calendar: calendar) } ?? "Next"
-        default: return "—"
-        }
-    }
-
     /// "5:30 pm" today, else "Sat 5:30 pm" (the device's zone, as the sport pages).
     static func when(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
         let time = date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: calendar.timeZone))
@@ -348,14 +315,6 @@ nonisolated enum SportFrontText {
     /// on its own airing (C-I #20); one whose airing has ended is left out.
     static func recordChoices(_ event: SportEvent, now: Date) -> [SportEventChannel] {
         event.channels.filter { SportRows.channelAction(event, on: $0, now: now) != .ended }
-    }
-
-    /// "Fox Footy · 7:30 pm – 10:30 pm" (another day: "Sat 7:30 pm – …"): the channel's own times, under the dialog's
-    /// "Record on which channel?" (short enough for a focused tvOS button).
-    static func recordChoiceLabel(_ event: SportEvent, on channel: SportEventChannel, now: Date,
-                                  calendar: Calendar = .current) -> String {
-        let end = event.end(on: channel).formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: calendar.timeZone))
-        return "\(channel.name) · \(when(event.start(on: channel), now: now, calendar: calendar)) – \(end)"
     }
 
     enum Action: Equatable { case watch, remind, details, none }

@@ -98,14 +98,9 @@ final class RecordingsRowsTests: XCTestCase {
         XCTAssertEqual(rows[0].scheduled_id, 1)
     }
 
-    func testProblemCountsAndTitle() {
+    func testProblemCounts() {
         let schedules = [schedule(1, "failed"), schedule(2, "missed"), schedule(3, "scheduled"), schedule(4, "completed")]
         XCTAssertEqual(RecordingsRows.problemSchedules(schedules).map(\.id), [1, 2])
         XCTAssertEqual(RecordingsRows.failedRecordings([recording(1), recording(2, status: "failed")], schedules: schedules).map(\.id), [2])
-        XCTAssertNil(RecordingsRows.attentionTitle(failedSchedules: 0, missedSchedules: 0, failedRecordings: 0))
-        XCTAssertEqual(RecordingsRows.attentionTitle(failedSchedules: 0, missedSchedules: 0, failedRecordings: 1), "1 recording failed")
-        XCTAssertEqual(RecordingsRows.attentionTitle(failedSchedules: 2, missedSchedules: 0, failedRecordings: 1), "3 recordings failed")
-        XCTAssertEqual(RecordingsRows.attentionTitle(failedSchedules: 1, missedSchedules: 1, failedRecordings: 0), "2 recordings failed or were missed")
-        XCTAssertEqual(RecordingsRows.attentionTitle(failedSchedules: 0, missedSchedules: 1, failedRecordings: 0), "1 recording failed or was missed")
     }
 }

@@ -50,11 +50,11 @@ struct PigTVApp: App {
             SportSettingsTestScreen()
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "guide" {
             GuideTestScreen()
-        } else if ["home", "home-empty"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
-            HomeTestScreen(firstRun: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home-empty")
+        } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "home" {
+            HomeTestScreen()
         } else if ["tab-guide", "tab-recordings"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
             // The library fixture inside the tab bar, opened on that tab (design checks).
-            HomeTestScreen(firstRun: false, initialTab: String((ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").dropFirst(4)))
+            HomeTestScreen(initialTab: String((ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "").dropFirst(4)))
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "splash" {
             BrandSplashView()
         } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "topshelf-cards" {
@@ -205,12 +205,10 @@ private struct SportFrontTestScreen: View {
     }
 }
 
-// The offline library (build 28): PIGTV_UI_TEST_SCREEN=home (favourites, sport, recordings, logos) or home-empty
-// (the first-run state), on the app's opening tab (Sport; #216 retired Home, the name stays). The Sport tab is the front
-// page on the server's own answer: PIGTV_UI_TEST_FRONT_JSON (base64) when given, else the source tree's
+// The offline library (build 28): PIGTV_UI_TEST_SCREEN=home (favourites, sport, recordings, logos), on the app's
+// opening tab (Sport; #216 retired Home, the name stays). The Sport tab is the front page on the server's own answer: PIGTV_UI_TEST_FRONT_JSON (base64) when given, else the source tree's
 // PigTVTests/Fixtures/sport-front-0381.json (the simulator reads the Mac's files; elsewhere the page shows its error state).
 private struct HomeTestScreen: View {
-    let firstRun: Bool
     var initialTab: String? = nil
     static let presentsPlayer = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_PLAY"] == "1"
     static let front: SportFront? = {
@@ -228,15 +226,9 @@ private struct HomeTestScreen: View {
             // The Undo toast, as ContentView shows it over the tabs (Apple 122).
             .overlay(alignment: .bottom) { UndoToast(presenter: model.presenter) }
             .task {
-                model.injectHomeFixture(firstRun: firstRun)
+                model.injectHomeFixture()
                 if let front = Self.front { model.browse?.sportFront.setFixture(front) }
                 if initialTab == "recordings", let browse = model.browse { GuideFixtures.addSchedules(to: browse) }
-                // Apple 122: PIGTV_UI_TEST_UNDO=1 opens on a recording just deleted, its Undo toast held on screen.
-                if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_UNDO"] == "1", let browse = model.browse,
-                   let film = browse.recordings.first(where: { $0.id == 29 }) {
-                    model.presenter.sleep = { _ in try await Task.sleep(for: .seconds(600)) }
-                    browse.deleteWithUndo(film, presenter: model.presenter)
-                }
                 // PIGTV_UI_TEST_DASHBOARD_PLAY=1: a play reaches the real player, whose resolve goes to a
                 // non-routable TEST-NET address, so it stays on the tuning card (as player-tuning does).
                 if Self.presentsPlayer, let address = try? ServerAddress("http://192.0.2.1:3000") {

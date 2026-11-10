@@ -21,7 +21,7 @@ final class NFLPageTests: XCTestCase {
         let p = try page()
         XCTAssertTrue(p.available)
         XCTAssertEqual(p.weeks.map(\.label), ["Week 7", "Week 8"])
-        XCTAssertEqual(NFLPageText.openingWeek(p), 8)
+        XCTAssertEqual(p.weeks.first(where: \.current)?.number, 8)
         XCTAssertEqual(Set(p.weeks[1].byes), ["HOU", "NO", "NYG", "SF"])
         XCTAssertEqual(p.teams.count, 32)
         XCTAssertEqual(p.standings.count, 8)
@@ -60,16 +60,6 @@ final class NFLPageTests: XCTestCase {
         XCTAssertEqual(overall[0].rows.count, 32)
         let shares = overall[0].rows.map { NFLPageText.winShare($0.row) }
         XCTAssertEqual(shares, shares.sorted(by: >))
-    }
-
-    func testFollowingOffersEveryTeamByNameAndLastAndNext() throws {
-        let p = try page()
-        let teams = NFLPageText.followable(p)
-        XCTAssertEqual(teams.count, 32)
-        XCTAssertEqual(teams.first?.full, "Arizona Cardinals", "alphabetical, never in standings order")
-        let (last, next) = NFLPageText.lastAndNext(p, team: "GB")
-        XCTAssertEqual(last?.away.abbr, "CAR", "Thursday's game")
-        XCTAssertNil(next, "Green Bay plays no other game in these two weeks")
     }
 
     func testTheFollowedTeamIsKeptAndSentInThePreferences() throws {
@@ -151,17 +141,8 @@ final class NFLPageRefreshTests: XCTestCase {
         let time = airs.formatted(date: .omitted, time: .shortened)
         XCTAssertEqual(NFLPageText.label(.watchAt(airs)), "Watch at \(time)")
         XCTAssertEqual(NFLPageText.label(.cancelWatchAt(airs)), "Don't watch at \(time)")
-        // The team card names the action actually offered, never "Watch live".
-        let card = try XCTUnwrap(NFLPageText.teamCardWatch(delayed, in: p, now: now, pendingEventID: nil))
-        XCTAssertEqual(NFLPageText.label(card), "Watch at \(time)")
-        XCTAssertEqual(NFLPageText.teamCardWatch(delayed, in: p, now: now, pendingEventID: id), .cancelWatchAt(airs))
-        // Once its channel airs it, Watch live (on the team card too); once that airing has ended, nothing to play.
+        // Once its channel airs it, Watch live.
         XCTAssertEqual(NFLPageText.actions(delayed, in: p, now: airs.addingTimeInterval(60), pendingEventID: nil), [.watchLive, .record])
-        XCTAssertEqual(NFLPageText.teamCardWatch(delayed, in: p, now: airs.addingTimeInterval(60), pendingEventID: nil), .watchLive)
-        XCTAssertNil(NFLPageText.teamCardWatch(delayed, in: p, now: airs.addingTimeInterval(4 * 3600), pendingEventID: nil))
-        // A scheduled game keeps "Watch at kick-off".
-        XCTAssertEqual(NFLPageText.teamCardWatch(ravens, in: p, now: ravens.start.addingTimeInterval(-3 * 3600), pendingEventID: nil),
-                       .watchAtKickOff)
     }
 
     // #205 (Mark, TestFlight 90): the page drew colour discs instead of the team logos the server sends (C-Q

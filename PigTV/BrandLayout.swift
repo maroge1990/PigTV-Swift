@@ -58,11 +58,6 @@ nonisolated enum BrandLayout {
         }
     }
 
-    // MARK: Canvas colours (PigCanvas / LaunchEdge)
-
-    static let canvasLight: (r: Double, g: Double, b: Double) = (251, 248, 250)
-    static let canvasDark: (r: Double, g: Double, b: Double) = (21, 17, 26)
-
     // MARK: Radiance stops
 
     /// The static halo (launch screen, splash, identity halo): radius `haloRadius`.

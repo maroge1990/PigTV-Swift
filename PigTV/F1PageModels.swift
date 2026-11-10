@@ -281,18 +281,6 @@ nonisolated enum F1PageText {
         name.replacingOccurrences(of: "Grand Prix", with: "GP").trimmingCharacters(in: .whitespaces)
     }
 
-    /// "ROUND 21 OF 25", or nil without a round.
-    static func roundLine(_ weekend: F1Weekend) -> String? {
-        guard let round = weekend.round else { return nil }
-        return weekend.rounds.map { "ROUND \(round) OF \($0)" } ?? "ROUND \(round)"
-    }
-
-    /// "Autódromo Hermanos Rodríguez · Mexico City, Mexico" from whatever the feed gave.
-    static func placeLine(_ weekend: F1Weekend) -> String {
-        let place = [weekend.city, weekend.country].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", ")
-        return [weekend.circuit ?? "", place].filter { !$0.isEmpty }.joined(separator: " · ")
-    }
-
     /// The four circuit stats, values never wrapping (DESIGN.md › Sport pages); a missing one says "—".
     static func stats(_ info: F1CircuitInfo?) -> [(label: String, value: String)] {
         [("Length", info?.length ?? "—"), ("Laps", info?.laps.map(String.init) ?? "—"),

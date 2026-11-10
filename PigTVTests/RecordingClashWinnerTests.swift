@@ -49,7 +49,6 @@ final class RecordingClashWinnerTests: XCTestCase {
         let team = try JSONDecoder().decode(RecordingRule.self, from: Data(#"{"id":12,"kind":"team","match":"Collingwood","sport":"Australian Football","createdBy":2,"createdByName":"Mark","enabled":true,"upcoming":1}"#.utf8))
         XCTAssertEqual(team.summary, "Every Collingwood game (Australian Football)")
         XCTAssertEqual(team.setBy, "Set by Mark")
-        XCTAssertEqual(team.createdBy, 2)
         let anonymous = try JSONDecoder().decode(RecordingRule.self, from: Data(#"{"id":13,"kind":"team","match":"Collingwood","sport":"Australian Football","createdBy":null,"createdByName":null}"#.utf8))
         XCTAssertNil(anonymous.setBy)
         let sport = try JSONDecoder().decode(RecordingRule.self, from: Data(#"{"id":4,"kind":"sport","match":"AFL"}"#.utf8))

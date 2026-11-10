@@ -22,7 +22,8 @@ final class F1PageTextTests: XCTestCase {
         XCTAssertTrue(page.available)
         let weekend = try XCTUnwrap(page.weekend)
         XCTAssertEqual(weekend.name, "Mexico City Grand Prix")
-        XCTAssertEqual(F1PageText.roundLine(weekend), "ROUND 21 OF 25")
+        XCTAssertEqual(weekend.round, 21)
+        XCTAssertEqual(weekend.rounds, 25)
         XCTAssertEqual(weekend.phase, .before)
         XCTAssertEqual(weekend.sessions.map(\.id), ["practice 1", "practice 2", "practice 3", "qualifying", "race"])
         XCTAssertEqual(weekend.sessions.map(\.status), Array(repeating: .scheduled, count: 5))
@@ -62,7 +63,7 @@ final class F1PageTextTests: XCTestCase {
         let page = try JSONDecoder().decode(F1Page.self, from: Data(odd.utf8))
         let weekend = try XCTUnwrap(page.weekend)
         XCTAssertEqual(weekend.phase, .before, "an unknown phase reads as before")
-        XCTAssertNil(F1PageText.roundLine(weekend))
+        XCTAssertNil(weekend.round)
         XCTAssertEqual(weekend.sessions.map(\.id), ["practice 2", "race"], "the broken session is dropped; in time order")
         XCTAssertEqual(weekend.sessions[0].status, .scheduled)
         XCTAssertEqual(weekend.sessions[0].channels.map(\.name), ["Seven"])
@@ -89,7 +90,6 @@ final class F1PageTextTests: XCTestCase {
         XCTAssertEqual(F1PageText.focusSession(w, now: now)?.id, "practice 1")
         XCTAssertEqual(w.sessions.map { F1PageText.pill($0, in: w, now: now, spoilerFree: false) }, [.next, .none, .none, .none])
         XCTAssertTrue(F1PageText.headline(w, now: now).hasPrefix("Practice 1 in 14 h · "))
-        XCTAssertEqual(F1PageText.placeLine(w), "Autódromo Hermanos Rodríguez · Mexico City, Mexico")
     }
 
     func testDuringTheWeekendDoneSessionsNameTheirDriverUnlessSpoilerFree() {

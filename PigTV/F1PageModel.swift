@@ -152,24 +152,6 @@ final class F1PageModel: ObservableObject {
         await save(.following, body: FollowBody(following: .init(F1: driver))) { $0.f1Following = driver }
     }
 
-    /// C-Q (#21): the NFL page's followed team (an abbreviation), the household's like the rest. Only with the server's
-    /// `sportPageNfl` flag (an older server refuses the key).
-    func setNFLFollowing(_ team: String?) async {
-        await save(.nflFollowing, body: NFLFollowBody(following: .init(NFL: team))) { $0.nflFollowing = team }
-    }
-
-    private nonisolated struct NFLFollowBody: Encodable, Sendable {
-        nonisolated struct Pages: Encodable, Sendable {
-            let NFL: String?
-            func encode(to encoder: Encoder) throws {
-                var c = encoder.container(keyedBy: Key.self)
-                try c.encode(NFL, forKey: .nfl)
-            }
-            enum Key: String, CodingKey { case nfl = "NFL" }
-        }
-        let following: Pages
-    }
-
     private nonisolated struct SpoilerBody: Encodable, Sendable { let spoilerFree: Bool }
     private nonisolated struct FollowBody: Encodable, Sendable {
         nonisolated struct Pages: Encodable, Sendable {

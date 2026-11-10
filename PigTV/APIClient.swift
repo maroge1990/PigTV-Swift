@@ -431,12 +431,6 @@ final class APIClient {
         let result: GuideVersionResponse = try await request("library/guide/version")
         return result.version
     }
-    func epgArtwork(sourceID: Int) async throws -> EPGArtworkPage {
-        let data = try await send("proxy/epg/\(sourceID)", method: "GET")
-        return try await Task.detached(priority: .utility) {
-            try JSONDecoder().decode(EPGArtworkPage.self, from: data)
-        }.value
-    }
 
     /// C-W (#37): tells the server a live play is paused or resumed. True once the server has it; false on a failure
     /// (the caller tries again); true too for a stream the server no longer has (404: nothing left to tell).

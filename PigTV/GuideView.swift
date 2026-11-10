@@ -227,7 +227,6 @@ struct GuideView: View {
                 // #257: the long-press menu's Watch on… needs the sport events (the Sport tab may not have loaded them).
                 if model.sportEnabled && !model.sport.loaded { await model.sport.load() }
             }
-            .task { await model.loadArtworkIndex() }
             .whileVisible {
                 // Periodic refresh keeps the loaded day current during long sessions.
                 // Counted from the last one, not from each appearance, so

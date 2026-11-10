@@ -30,7 +30,7 @@ private extension BrowseModel {
         [
             "Guide": [guideStore.objectWillChange, library.objectWillChange, marks.objectWillChange],
             "Recordings": [recordingStore.objectWillChange, actions.objectWillChange],
-            "ProgrammeDetails": [recordingStore.objectWillChange, actions.objectWillChange, artwork.objectWillChange],
+            "ProgrammeDetails": [recordingStore.objectWillChange, actions.objectWillChange],
             "SportCards": []
         ]
     }
@@ -54,7 +54,6 @@ final class ObservationTests: XCTestCase {
             "recordings": { [unowned self] _ in self.recordingsJSON },
             "recordings/scheduled": { _ in "[]" },
             "library/favourites": { [unowned self] _ in self.favouritesJSON },
-            "library/recent": { _ in #"[{"id":"a","sourceId":1,"name":"A"}]"# },
             "favorites": { _ in #"{"success":true}"# }
         ]
         let configuration = URLSessionConfiguration.ephemeral
@@ -96,7 +95,7 @@ final class ObservationTests: XCTestCase {
     func testReport() async throws {
         let browse = try makeBrowse()
         report("guide pages (3)", await measure(browse) { await browse.loadGuide(); try? await Task.sleep(for: .milliseconds(300)) })
-        await browse.loadRecordings(); await browse.loadFavourites(); await browse.loadRecent()
+        await browse.loadRecordings(); await browse.loadFavourites()
         report("recordings refresh (unchanged)", await measure(browse) { await browse.loadRecordings() })
         report("recordings refresh (unchanged, quiet)", await measure(browse) { await browse.loadRecordings(quietly: true) })
         recordingsJSON = #"[{"id":1,"title":"News","status":"recording","channel_name":"A"}]"#
@@ -121,7 +120,7 @@ final class ObservationTests: XCTestCase {
         let browse = try makeBrowse()
         var others = 0
         let tokens = [browse.recordingStore.objectWillChange, browse.library.objectWillChange, browse.marks.objectWillChange,
-                      browse.actions.objectWillChange, browse.artwork.objectWillChange].map { $0.sink { others += 1 } }
+                      browse.actions.objectWillChange].map { $0.sink { others += 1 } }
         let guide = await publishes(browse.guideStore.objectWillChange) {
             await browse.loadGuide()
             // Until every page is in (not a fixed wait: a loaded simulator pages slower).
@@ -140,7 +139,6 @@ final class ObservationTests: XCTestCase {
         let guide = await publishes(browse.guideStore.objectWillChange) {
             await browse.loadRecordings()
             await browse.loadFavourites()
-            await browse.loadRecent()
             _ = await browse.setFavourite(Channel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, now: nil, next: nil), true)
         }
         XCTAssertEqual(guide, 0)
@@ -164,10 +162,9 @@ final class ObservationTests: XCTestCase {
         let browse = try makeBrowse()
         await browse.loadRecordings()
         await browse.loadFavourites()
-        await browse.loadRecent()
         let recordings = await publishes(browse.recordingStore.objectWillChange) { await browse.loadRecordings(quietly: true) }
         let marks = await publishes(browse.marks.objectWillChange) { await browse.loadRecordings() }
-        let library = await publishes(browse.library.objectWillChange) { await browse.loadFavourites(); await browse.loadRecent() }
+        let library = await publishes(browse.library.objectWillChange) { await browse.loadFavourites() }
         XCTAssertEqual(recordings, 0)
         XCTAssertEqual(marks, 0, "equal schedules leave the marks alone")
         XCTAssertEqual(library, 0, "the busy and error state of the favourites load is not drawn, so it is not published")

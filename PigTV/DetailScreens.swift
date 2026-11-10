@@ -13,7 +13,6 @@ struct ProgrammeDetails: View {
     let model: BrowseModel
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
-    @ObservedObject private var artwork: ArtworkStore
     @ObservedObject private var library: LibraryStore
     /// The app's presentation layer: the record page, Watch from start, Undo (#49).
     let presenter: AppPresenter
@@ -33,7 +32,6 @@ struct ProgrammeDetails: View {
         self.model = model
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
-        _artwork = ObservedObject(wrappedValue: model.artwork)
         _library = ObservedObject(wrappedValue: model.library)
         self.presenter = presenter
         self.channel = channel

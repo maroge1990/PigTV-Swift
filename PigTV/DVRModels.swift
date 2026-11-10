@@ -138,11 +138,8 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     /// The schedule's padding in minutes (the server's row; the record page's Change recording starts from them).
     var pre_buffer_min: Lenient<Double>? = nil
     var post_buffer_min: Lenient<Double>? = nil
-    /// C-M since 0440 (#217): "event" (stops when its game ends, by the score feed) or "guide"; when it stops (ms, as it
-    /// stands now); recording past the guide end because the game is still on.
+    /// C-M since 0440 (#217): "event" (stops when its game ends, by the score feed) or "guide".
     var endsWith: Lenient<String>? = nil
-    var stopsAt: Lenient<Double>? = nil
-    var overrun: Lenient<Bool>? = nil
     var startEarly: Int? { pre_buffer_min?.value.flatMap { $0.isFinite && $0 >= 0 ? Int($0.rounded()) : nil } }
     var finishLate: Int? { post_buffer_min?.value.flatMap { $0.isFinite && $0 >= 0 ? Int($0.rounded()) : nil } }
     var stopsWithEvent: Bool { endsWith?.value == "event" }
@@ -182,7 +179,6 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     let file_size_bytes: Double?
     let duration_sec: Double?
     let is_partial: Int?
-    let missed_start_ms: Double?
     let ad_detect_status: String?
     let compress_status: String?
     /// The server's background preparation for the Apple client: nil (old
@@ -190,7 +186,6 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     /// kept as given and treated as "nothing to show".
     let native_status: String?
     let native_error: String?
-    let native_attempts: Int?
     /// Server 0207 (`features.recordingPositions`): this login's saved
     /// position in seconds and whether it counts as watched. Absent on older
     /// servers, where the client keeps its own per-device position.
@@ -274,7 +269,6 @@ nonisolated struct RecordingRule: Decodable, Identifiable, Equatable, Sendable {
     var scheduled: Int? = nil
     /// Server 0414 (C-M `team`, "Record every game"): the team's catalogue sport, and who set the rule.
     var sport: String? = nil
-    var createdBy: Int? = nil
     var createdByName: String? = nil
 
     var isOn: Bool { enabled != false }
@@ -343,27 +337,6 @@ nonisolated struct FavouriteBody: Encodable, Sendable {
     let itemType = "channel"
 }
 
-
-// Timeline geometry clips programmes to the requested window. Missing EPG
-// remains a real gap instead of stretching neighbouring programmes over it.
-nonisolated enum GuideGeometry {
-    static func interval(start: Double, end: Double, window: Double, duration: Double) -> (offset: Double, width: Double)? {
-        guard start.isFinite, end.isFinite, window.isFinite, duration.isFinite,
-              duration > 0, end > start else { return nil }
-        let lower = max(start, window)
-        let upper = min(end, window + duration)
-        guard upper > lower else { return nil }
-        return ((lower - window) / duration, (upper - lower) / duration)
-    }
-    // Unclamped position of a programme relative to the window start, in
-    // window widths; the caller clips. Keeps cell widths constant while the
-    // window moves so the grid translates as one piece.
-    static func placement(start: Double, end: Double, window: Double, duration: Double) -> (offset: Double, width: Double)? {
-        guard start.isFinite, end.isFinite, window.isFinite, duration.isFinite,
-              duration > 0, end > start else { return nil }
-        return ((start - window) / duration, (end - start) / duration)
-    }
-}
 
 // The viewport stays short; programme data covers a whole day around it so
 // that moving through the guide never waits on the network.
@@ -471,68 +444,6 @@ nonisolated enum GuideNavigation {
     static func guideStillCovers(cachedVersion: String?, serverVersion: String, window: Date, now: Date) -> Bool {
         guard let cachedVersion, cachedVersion == serverVersion else { return false }
         return window.addingTimeInterval(loadedDuration) > now.addingTimeInterval(12 * 3600)
-    }
-}
-
-nonisolated struct EPGSourceSummary: Decodable, Sendable {
-    let id: Int
-    let type: String
-    let enabled: Bool
-    enum CodingKeys: String, CodingKey { case id, type, enabled }
-    init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        id = try values.decode(Int.self, forKey: .id)
-        type = try values.decode(String.self, forKey: .type)
-        enabled = (try? values.decode(Bool.self, forKey: .enabled)) ?? ((try? values.decode(Int.self, forKey: .enabled)) == 1)
-    }
-}
-nonisolated struct EPGArtworkChannel: Decodable, Sendable {
-    let id: String
-    let name: String
-    let icon: String?
-}
-nonisolated struct EPGArtworkPage: Decodable, Sendable {
-    let channels: [EPGArtworkChannel]
-}
-// Channel artwork looked up the way the web guide does: by EPG channel ID
-// first, then by channel name. Names are normalised so that case, spacing and
-// common decorations ("| HD", "(AU)") do not hide an available icon.
-nonisolated struct EPGArtworkIndex: Sendable {
-    private var byID: [String: String] = [:]
-    private var byName: [String: String] = [:]
-    var count: Int { byID.count }
-    mutating func append(_ channels: [EPGArtworkChannel]) {
-        for channel in channels {
-            guard let icon = channel.icon?.trimmingCharacters(in: .whitespacesAndNewlines), !icon.isEmpty,
-                  icon.lowercased().hasPrefix("http") || icon.hasPrefix("/") else { continue }
-            if byID[channel.id] == nil { byID[channel.id] = icon }
-            for key in [Self.normalise(channel.name), Self.normalise(Self.stripDecorations(channel.name))]
-            where !key.isEmpty && byName[key] == nil {
-                byName[key] = icon
-            }
-        }
-    }
-    func logo(tvgID: String?, name: String) -> String? {
-        if let tvgID, let icon = byID[tvgID] { return icon }
-        let key = Self.normalise(name)
-        if let icon = byName[key] { return icon }
-        // Strip a trailing quality or region tag, e.g. "ABC News HD" -> "ABC News".
-        let stripped = Self.normalise(Self.stripDecorations(name))
-        return stripped == key ? nil : byName[stripped]
-    }
-    static func normalise(_ name: String) -> String {
-        var scalars = String.UnicodeScalarView()
-        for scalar in name.lowercased().unicodeScalars where CharacterSet.alphanumerics.contains(scalar) {
-            scalars.append(scalar)
-        }
-        return String(scalars)
-    }
-    static func stripDecorations(_ name: String) -> String {
-        var result = name
-        for pattern in [#"\s*\(.*?\)"#, #"\s*\[.*?\]"#, #"\s*\|.*$"#, #"\s+(FHD|UHD|4K|HD|SD)\s*$"#] {
-            result = result.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
-        }
-        return result
     }
 }
 

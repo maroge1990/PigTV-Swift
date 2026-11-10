@@ -75,24 +75,14 @@ final class RecordingsStore: ObservableObject {
     var tombstones: [String: Date] = [:]
 }
 
-/// Favourites and Home's history. Nothing draws the load's busy or error
+/// Favourites. Nothing draws the load's busy or error
 /// state, so those are plain properties: a load that finds nothing new
 /// publishes nothing.
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published var favourites: [Channel] = []
-    // Home (build 28): `GET library/recent`, most recent first.
-    @Published var recent: [Channel] = []
     var favouritesBusy = false
     var favouritesError: String?
-}
-
-/// The EPG logo fallback index. It arrives once, late, and only changes
-/// which logo a channel draws.
-@MainActor
-final class ArtworkStore: ObservableObject {
-    @Published var artworkIndex = EPGArtworkIndex()
-    var artworkError: String?
 }
 
 /// Which programmes are scheduled and which channels are recording now,

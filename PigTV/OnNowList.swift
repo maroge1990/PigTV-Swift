@@ -106,10 +106,8 @@ private struct OnNowMenuPreview: View {
 
 private struct OnNowRowView: View {
     let channel: GuideChannel
-    /// Not observed (audit R05): a row draws the EPG logo fallback and
-    /// nothing else that publishes, so only that store is watched.
+    /// Not observed (audit R05): a row draws nothing that publishes.
     let model: BrowseModel
-    @ObservedObject private var artwork: ArtworkStore
     let clock: Date
     let play: () -> Void
     let info: () -> Void
@@ -117,7 +115,6 @@ private struct OnNowRowView: View {
     init(channel: GuideChannel, model: BrowseModel, clock: Date, play: @escaping () -> Void, info: @escaping () -> Void) {
         self.channel = channel
         self.model = model
-        _artwork = ObservedObject(wrappedValue: model.artwork)
         self.clock = clock
         self.play = play
         self.info = info

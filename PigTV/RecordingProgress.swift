@@ -89,14 +89,4 @@ nonisolated enum RecordingsRows {
     static func problemSchedules(_ schedules: [ScheduledRecording]) -> [ScheduledRecording] {
         schedules.filter { ["missed", "failed"].contains($0.status) }
     }
-
-    /// "1 recording failed", "3 recordings failed", or, when some were only
-    /// missed, "2 recordings failed or were missed". Nil when there are none.
-    static func attentionTitle(failedSchedules: Int, missedSchedules: Int, failedRecordings: Int) -> String? {
-        let total = failedSchedules + missedSchedules + failedRecordings
-        guard total > 0 else { return nil }
-        let noun = total == 1 ? "recording" : "recordings"
-        if missedSchedules == 0 { return "\(total) \(noun) failed" }
-        return "\(total) \(noun) failed or \(total == 1 ? "was" : "were") missed"
-    }
 }

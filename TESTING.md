@@ -99,14 +99,13 @@ data, not the real feed.
 
 | Variable | Values |
 |---|---|
-| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `home-empty` (first run) · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `recording-game` (a game's View recording) · `recordings` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` (Sign in's tiles) · `signin-server` (its server step) · `pairing` · `sport-event` · `sport-channels` |
+| `PIGTV_UI_TEST_SCREEN` | `settings` · `settings-sport` (Settings › Sport, C-U) · `guide` · `home` · `topshelf-cards` · `player` · `player-channels` (channel panel open) · `player-tuning` (stays on the tuning card) · `programme` · `programme-later` · `record` · `schedule` · `channel` · `recording` · `recording-game` (a game's View recording) · `recordings` · `search` · `jump` · `unreachable` · `splash` (the branded start-up view) · `onboarding` (Sign in's tiles) · `signin-server` (its server step) · `pairing` · `sport-event` · `sport-channels` |
 | `PIGTV_UI_TEST_APPEARANCE` | `light` or `dark` (the tvOS simulator has no `simctl ui appearance`) |
 | `PIGTV_UI_TEST_CHANNELS` | `<n>`: enlarge the library and Guide fixtures to n channels (e.g. `1000`, for speed tests) |
 | `PIGTV_UI_TEST_MEDIA` | A local movie file the `player` fixture plays |
 | `PIGTV_UI_TEST_HOME_SCROLL` | A shelf or section title to scroll into view |
 | `PIGTV_UI_TEST_RECORDINGS_SECTION` | `scheduled`: Recordings opens with Scheduled pushed |
 | `PIGTV_UI_TEST_SETTINGS_PAGE` | `sport` · `account` · `appearance` · `labs` · `diagnostics` · `about`: the Settings page shown beside the menu (with `settings` or `settings-sport`) |
-| `PIGTV_UI_TEST_UNDO` | `1` (with `tab-recordings`): a recording just deleted, its Undo toast held on screen |
 | `PIGTV_UI_TEST_FRONT_JSON` | The Sport front page's answer, base64 (with `front`, `home` or `tab-*`); without it `home` and `tab-*` read `PigTVTests/Fixtures/sport-front-0381.json` from the source tree |
 | `PIGTV_UI_TEST_DASHBOARD_PLAY` | `1` (with `home` or `tab-*`): a play reaches the real player, which stays tuning (TEST-NET resolve; `OutsidePlayUITests`) |
 | `PIGTV_UI_TEST_CLASH` | `1`: the Recordings fixture adds two schedules that clash; one loses (`beatenBy`) and offers "Record this one instead" (#12) |

@@ -558,10 +558,6 @@ struct SettingsAccountPage: View {
         #if os(tvOS)
         .onChange(of: confirm != nil) { _, open in focus = open ? .stay : .signOut }
         #endif
-        #if DEBUG
-        // The evidence screenshots: PIGTV_UI_TEST_SIGNOUT_CONFIRM=1 opens on the row's confirmation.
-        .onAppear { if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SIGNOUT_CONFIRM"] == "1" { confirm = .signOut } }
-        #endif
     }
 
     private func open(_ reason: SignOutReason) {
