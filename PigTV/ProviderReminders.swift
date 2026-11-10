@@ -1,6 +1,6 @@
 import Foundation
 
-// C-K (server flag `providerReminders`): licence reminders. Pure text and the
+// C-K (`GET providers/reminders`): licence reminders. Pure text and the
 // once-a-day rule live here (unit-tested, no UI); ProviderReminderModel drives
 // the fetch and the banner.
 

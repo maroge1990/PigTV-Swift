@@ -1,8 +1,7 @@
 import Foundation
 
-// Where a recording resumes (server 0207 `features.recordingPositions`).
-// With the feature the server's per-login position wins; without it, or when
-// the request fails, this device's saved position is used (build 47: keyed by server, account and
+// Where a recording resumes: the server's per-login position; when that
+// request fails, this device's saved position (build 47: keyed by server, account and
 // recording - Recording.localResumeKey; never the old `pigtv.resume.<id>`). Before
 // playback the viewer is asked: "Resume from H:MM:SS" or "Start over".
 
@@ -13,19 +12,17 @@ nonisolated struct RecordingPosition: Decodable, Equatable, Sendable {
 }
 
 nonisolated enum RecordingResume {
-    /// The position and watched flag to consider: the server's answer when the
-    /// feature is on and it answered, else the local key (never watched).
-    static func source(featureOn: Bool, server: RecordingPosition?, local: Double) -> (position: Double, watched: Bool) {
-        if featureOn, let server { return (server.position_sec ?? 0, server.watched ?? false) }
+    /// The position and watched flag to consider: the server's answer when it
+    /// answered, else the local key (never watched).
+    static func source(server: RecordingPosition?, local: Double) -> (position: Double, watched: Bool) {
+        if let server { return (server.position_sec ?? 0, server.watched ?? false) }
         return (local, false)
     }
 
     /// Seconds to offer "Resume from", or nil to just play from the start.
-    /// Needs more than 10 s in and not watched; a local position within 30 s
-    /// of the end is not offered (the old rule).
-    static func prompt(position: Double, watched: Bool, duration: Double?, featureOn: Bool) -> Double? {
+    /// Needs more than 10 s in and not watched.
+    static func prompt(position: Double, watched: Bool) -> Double? {
         guard position.isFinite, position > 10, !watched else { return nil }
-        if !featureOn, let duration, duration > 0, position >= duration - 30 { return nil }
         return position
     }
 

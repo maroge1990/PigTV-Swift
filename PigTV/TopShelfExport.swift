@@ -72,7 +72,7 @@ extension BrowseModel {
                     .filter { $0.endTime > $0.startTime }
                     .map { TopShelfSnapshot.Slot(title: $0.title, start: $0.start, end: $0.end) }
                 return TopShelfSnapshot.Entry(id: favourite.rawID, sourceId: favourite.sourceId, name: favourite.name,
-                                              number: showsChannelNumbers ? favourite.number : nil,
+                                              number: favourite.number,
                                               logo: absoluteLogo(logo(for: favourite)), programmes: slots)
             }
             return TopShelfSnapshot(kind: "favourites", channels: Array(entries), savedAt: now)

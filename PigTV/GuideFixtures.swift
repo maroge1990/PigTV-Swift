@@ -214,7 +214,7 @@ enum GuideFixtures {
         model.schedules += (try? JSONDecoder().decode([ScheduledRecording].self, from: Data(json.utf8))) ?? []
     }
 
-    static func recordings(client: APIClient) -> [Recording] {
+    static func recordings() -> [Recording] {
         let now = Date().timeIntervalSince1970 * 1000
         let hour = 3_600_000.0
         let rows = [
@@ -227,11 +227,6 @@ enum GuideFixtures {
             #"{"id":25,"title":"Late Movie","channel_name":"HBO","channel_logo":"\#(logoKey(6))","started_at":\#(now - 100 * hour),"status":"failed","native_error":"The recording could not be prepared."}"#,
             // Apple 119: a game ("A v B"), drawn with its two teams' badges.
             #"{"id":24,"title":"AFL: Collingwood v Carlton","channel_name":"Fox Footy 504","started_at":\#(now - 26 * hour),"status":"completed","duration_sec":9000,"file_size_bytes":5153960755}"#]
-        // The fixture server has no `recordingPositions`, so progress comes
-        // from this device's saved positions (as on an older server).
-        for (id, seconds) in [(30, 600.0), (29, 4100.0), (28, 3290.0)] {
-            if let key = client.localResumeKey(id) { UserDefaults.standard.set(seconds, forKey: key) }
-        }
         return rows.compactMap { try? JSONDecoder().decode(Recording.self, from: Data($0.utf8)) }
     }
 

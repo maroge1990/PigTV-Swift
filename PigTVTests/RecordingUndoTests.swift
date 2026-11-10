@@ -281,7 +281,7 @@ final class RecordingUndoTests: XCTestCase {
             }
         }
         defer { http.stop() }
-        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0446","apiVersion":1,"features":{"recordingRules":true}}"#.utf8))
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0503","apiVersion":1,"features":{"recordingRules":true}}"#.utf8))
         let model = BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: info, accountID: 1), accountID: 1)
         model.removalLog = PendingRemovalLog(defaults: defaults)
         let removed = try JSONDecoder().decode([RecordingRule].self, from: Data(rule.utf8))[0]

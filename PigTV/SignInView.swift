@@ -161,18 +161,16 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: SignInMetrics.cardSpacing) {
             StepHeading(number: 2, title: "How to sign in", active: true)
             let tiles = Group {
-                if model.checkedInfo?.features.devicePairing != false {
-                    Button { model.startPairing() } label: {
-                        SignInTile(systemImage: "qrcode", title: "Pair with browser", detail: SignInMetrics.pairDetail,
-                                   recommended: true)
-                    }
-                    .buttonStyle(SignInTileStyle(primary: true))
-                    #if os(tvOS)
-                    .focused($focus, equals: .pair)
-                    #endif
-                    .disabled(model.authBusy || model.serverText.isEmpty)
-                    .accessibilityIdentifier("signin.pair")
+                Button { model.startPairing() } label: {
+                    SignInTile(systemImage: "qrcode", title: "Pair with browser", detail: SignInMetrics.pairDetail,
+                               recommended: true)
                 }
+                .buttonStyle(SignInTileStyle(primary: true))
+                #if os(tvOS)
+                .focused($focus, equals: .pair)
+                #endif
+                .disabled(model.authBusy || model.serverText.isEmpty)
+                .accessibilityIdentifier("signin.pair")
                 Button { go(.password) } label: {
                     SignInTile(systemImage: "person.crop.circle", title: "Username and password",
                                detail: SignInMetrics.passwordDetail, recommended: false)

@@ -46,7 +46,7 @@ final class SettingsSportTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PreferencesRoutes.self]
         let info = try JSONDecoder().decode(ServerInfo.self, from: Data(
-            #"{"name":"PigTV","version":"3.9.0","build":"0444","apiVersion":1,"features":{"sportFront":true}}"#.utf8))
+            #"{"name":"PigTV","version":"3.9.0","build":"0503","apiVersion":1,"features":{"sportFront":true}}"#.utf8))
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
                                session: URLSession(configuration: configuration), info: info)
         return ScoreDelaySetting(client: client)

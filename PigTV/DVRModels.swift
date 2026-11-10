@@ -29,9 +29,9 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     var tvgId: String? = nil
     // Server 0097: reorder-stable identity (see Channel.stableId). Additive.
     var stableId: String? = nil
-    // C-A (server flag `channelNumbers`): persistent channel number, or nil.
+    // C-A: persistent channel number, or nil.
     var number: Int? = nil
-    // C-G (server flag `channelHealth`): "ok", "flaky" or nil.
+    // C-G: "ok", "flaky" or nil.
     var health: String? = nil
     // C-X (server flag `channelQuality`, #265): "UHD", "FHD", "HD", "SD" or nil, from the channel's name.
     var quality: String? = nil
@@ -66,8 +66,7 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
 nonisolated struct GuidePage: Decodable, Sendable {
     let total: Int
     let channels: [GuideChannel]
-    // A1.1: cursor paging (server flag `guideCursor`). Absent/null on the last
-    // page, and always absent from an older server, which keeps limit/offset.
+    // A1.1: cursor paging. Absent/null on the last page.
     var nextCursor: String? = nil
 }
 
@@ -165,7 +164,7 @@ nonisolated struct GuideCache: Codable, Sendable {
     let window: Date
     let channels: [GuideChannel]
     // A1.1: the server's guide version at the time this snapshot completed
-    // (server flag `guideVersion`). Decoded tolerantly so a cache file written
+    // (`library/guide/version`). Decoded tolerantly so a cache file written
     // before this field existed still loads, just without a fast-path check.
     var version: String? = nil
 }
@@ -186,9 +185,8 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     /// kept as given and treated as "nothing to show".
     let native_status: String?
     let native_error: String?
-    /// Server 0207 (`features.recordingPositions`): this login's saved
-    /// position in seconds and whether it counts as watched. Absent on older
-    /// servers, where the client keeps its own per-device position.
+    /// Server 0207: this login's saved position in seconds and whether it
+    /// counts as watched.
     var position_sec: Double? = nil
     var watched: Bool? = nil
     /// The channel's logo URL as stored with the recording (the poster tile).
@@ -438,7 +436,7 @@ nonisolated enum GuideNavigation {
     // with backoff before the caller gives up: 3 attempts (the original plus
     // these 2 waits) across roughly 20 s.
     static let guidePageRetryDelays: [TimeInterval] = [8, 12]
-    // A1.1: true when a cheap version check (server flag `guideVersion`) shows
+    // A1.1: true when a cheap version check (`library/guide/version`) shows
     // the already-loaded guide is still current and its loaded window still
     // covers at least the next 12 hours, so a full re-download can be skipped.
     static func guideStillCovers(cachedVersion: String?, serverVersion: String, window: Date, now: Date) -> Bool {

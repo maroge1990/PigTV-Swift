@@ -361,10 +361,8 @@ struct TouchPlayerChrome: View {
             }
             PlayerCircleButton(icon: "chevron.down", label: "Previous channel", size: 44) { touch(); app.zap(-1) }
             PlayerCircleButton(icon: "chevron.up", label: "Next channel", size: 44) { touch(); app.zap(1) }
-            if browse.showsChannelNumbers {
-                PlayerPillButton(title: "Go to number", icon: "number", iconOnly: !regular, accessibility: "Go to channel number") {
-                    touch(); enterNumber()
-                }
+            PlayerPillButton(title: "Go to number", icon: "number", iconOnly: !regular, accessibility: "Go to channel number") {
+                touch(); enterNumber()
             }
         }
         .disabled(busy)

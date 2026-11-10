@@ -745,7 +745,6 @@ struct GuideView: View {
     private func menuSubject(_ channel: GuideChannel, _ programme: GuideProgramme?) -> ProgrammeMenuSubject {
         ProgrammeMenuSubject(channelName: channel.name, programme: programme,
                              recordingStatus: programme.flatMap { model.activeSchedule(channel: channel, programme: $0)?.statusWord },
-                             rulesAvailable: model.rulesAvailable,
                              canWatchFromStart: programme.flatMap { model.recordingInProgress(channel: channel, programme: $0) } != nil,
                              isFavourite: model.isFavourite(asChannel(channel)),
                              watchOnChannels: liveEvent(channel, programme).map { WatchOn.onAir($0, now: Date()).channels.count } ?? 0)

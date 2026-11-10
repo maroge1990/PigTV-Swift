@@ -384,15 +384,10 @@ enum ContractChecks {
         try expect(categorised.matches(Category(rawID: "News", sourceId: 2, name: "News & Sport", channelCount: 1)), "Category filter accepts the raw ID")
         try expect(!categorised.matches(Category(rawID: "News", sourceId: 3, name: "News", channelCount: 1)), "Category filter is source-qualified")
 
-        // A1.1: additive guide-refresh flags, and their absence on an older server.
-        let a11Info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"guideCursor":true,"guideVersion":true,"logoCache":true}}"#.utf8))
-        try expect(a11Info.features.guideCursor == true && a11Info.features.guideVersion == true, "A1.1 flags must decode when present")
-        try expect(old.features.guideCursor == nil && old.features.guideVersion == nil, "An older server without these flags must decode as absent, not false")
-
         let cursoredPage = try JSONDecoder().decode(GuidePage.self, from: Data(#"{"total":1,"channels":[],"nextCursor":"page-2"}"#.utf8))
         try expect(cursoredPage.nextCursor == "page-2", "A cursor page must decode nextCursor")
         let lastPage = try JSONDecoder().decode(GuidePage.self, from: Data(#"{"total":1,"channels":[]}"#.utf8))
-        try expect(lastPage.nextCursor == nil, "A page without nextCursor (older server, or the last page) must decode as nil")
+        try expect(lastPage.nextCursor == nil, "A page without nextCursor (the last page) must decode as nil")
 
         let versionedCache = try JSONDecoder().decode(GuideCache.self, from: Data(#"{"savedAt":0,"window":0,"channels":[],"version":"v7"}"#.utf8))
         try expect(versionedCache.version == "v7", "A cache snapshot must decode its saved guide version")
@@ -409,15 +404,13 @@ enum ContractChecks {
         try expect(!GuideNavigation.guideStillCovers(cachedVersion: "v1", serverVersion: "v1", window: barelyShortWindow, now: refDate), "A matching version with insufficient coverage must still reload")
 
         try expect(fixtureAPI.artworkRequest("javascript:alert(1)") == nil, "Non-HTTP icons never become requests")
-        // Server features are optional; behaviour is capability-gated.
-        let modernInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0094","display":"v3.7.0 · build 0094","apiVersion":1,"features":{"library":true,"playbackResolve":true,"viewerConflict":true,"epgLogoFallback":true,"clientEvents":true,"scheduledWaiting":true,"recordingPlaybackPolling":true,"playbackTerminalStatus":true}}"#.utf8))
-        try expect(modernInfo.identity == "v3.7.0 · build 0094", "Settings must retain server display/build")
-        try expect(info.features.recordingPlaybackPolling == nil && info.build == nil, "Legacy info must remain compatible")
+        let modernInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0503","display":"v3.9.0 · build 0503","apiVersion":1,"features":{"library":true,"playbackResolve":true,"viewerConflict":true,"epgLogoFallback":true,"clientEvents":true,"scheduledWaiting":true,"recordingPlaybackPolling":true,"playbackTerminalStatus":true}}"#.utf8))
+        try expect(modernInfo.identity == "v3.9.0 · build 0503", "Settings must retain server display/build")
+        try expect(info.build == nil, "Info without a build must remain compatible")
         // Build 39: an older server's tuner flags (timeshift, recordingHls) are ignored.
         let tunerInfo = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.8.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"timeshift":true,"recordingHls":true}}"#.utf8))
         try expect(tunerInfo.features.library == true, "Info with the old tuner flags still decodes")
         let modern = APIClient(address: address, token: "fixture-token", session: URLSession(configuration: configuration), info: modernInfo)
-        try expect(modern.info?.features.playbackTerminalStatus == true, "Authenticated client retains capabilities")
         FixtureProtocol.responseStatus = 200
         FixtureProtocol.responseData = Data(#"{"status":"taken-over"}"#.utf8)
         let takenOver = await modern.sessionWasTakenOver("session123")
@@ -429,12 +422,7 @@ enum ContractChecks {
         try expect(!ordinaryExpiry, "Ordinary expiry keeps C2 recovery available")
         FixtureProtocol.responseStatus = 404
         let missingRoute = await modern.sessionWasTakenOver("session123")
-        try expect(!missingRoute, "A missing terminal-status route keeps legacy recovery available")
-        FixtureProtocol.responseStatus = 200
-        let legacyRequests = FixtureProtocol.requestCount
-        let legacyStatus = await fixtureAPI.sessionWasTakenOver("session123")
-        try expect(!legacyStatus, "A missing feature flag must not call terminal status")
-        try expect(FixtureProtocol.requestCount == legacyRequests, "Legacy terminal status is fully feature-gated")
+        try expect(!missingRoute, "A missing terminal-status route keeps the one-time recovery available")
         FixtureProtocol.responseStatus = 409
         FixtureProtocol.responseData = Data(#"{"error":"Provider stream is in use","conflict":{"type":"viewer-in-progress","streamId":"abc123","lastActiveSec":4,"message":"Another device is watching."}}"#.utf8)
         do { let _: PlaybackDecision = try await modern.request("playback/resolve", method: "POST", body: request); throw CheckFailure(description: "Viewer conflict must throw") }
@@ -497,8 +485,6 @@ enum ContractChecks {
         try expect(prepared.container == "mp4" && delays == [3] && preparingCount == 1, "202 waits then returns ready MP4")
         try expect(FixtureProtocol.requestCount == beforePoll + 2, "Preparation polls exactly as needed")
         try expect(FixtureProtocol.capturedRequest?.url?.query == "async=1", "Async query must be encoded separately")
-        let _: RecordingPlayback = try await fixtureAPI.recordingPlayback(id: 12)
-        try expect(FixtureProtocol.capturedRequest?.url?.query == nil, "Older servers retain the blocking request")
 
         FixtureProtocol.responseStatus = 202
         FixtureProtocol.responseData = Data(#"{"status":"preparing"}"#.utf8)
@@ -562,9 +548,6 @@ enum ContractChecks {
         try expect(waiting.canCancel && waiting.statusLabel == "Waiting — someone is watching", "Waiting schedule is explained and cancellable")
         FixtureProtocol.responseStatus = 204
         FixtureProtocol.responseData = Data()
-        let beforeEvent = FixtureProtocol.requestCount
-        await fixtureAPI.reportPlaybackEvent(PlaybackEvent(event: "play-start"))
-        try expect(FixtureProtocol.requestCount == beforeEvent, "Missing clientEvents flag disables diagnostics")
         await modern.reportPlaybackEvent(PlaybackEvent(event: "play-start"))
         try expect(FixtureProtocol.capturedRequest?.url?.path == "/api/playback/client-event", "Diagnostics use the documented endpoint")
         try expect(FixtureProtocol.capturedRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token", "Diagnostics retain device authentication")
@@ -596,10 +579,10 @@ enum ContractChecks {
         let oddProvider = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"direct","url":"/api/proxy/stream?x=1","provider":{"id":"x","role":5}}"#.utf8))
         try expect(oddProvider.provider == nil, "C-J: a malformed provider never fails the resolve")
         let flags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"providers":true,"providerReminders":true}}"#.utf8))
-        try expect(flags.features.providers == true && flags.features.providerReminders == true, "C-J/C-K flags decode")
-        try expect(old.features.providers == nil && old.features.providerReminders == nil, "C-J/C-K flags are absent on an older server")
+        try expect(flags.features.providers == true, "C-J flag decodes")
+        try expect(old.features.providers == nil, "C-J flag is absent on an older server")
 
-        // C-K: reminders (flag `providerReminders`).
+        // C-K: reminders (`GET providers/reminders`).
         let reminders = try ProviderReminder.list(from: Data(#"[{"id":2,"name":"Trex","expiresAt":1774829300000,"daysLeft":3},{"id":3,"name":"","expiresAt":1},{"name":"Dream4K","expiresAt":1774000000000,"daysLeft":-4},{"id":9}]"#.utf8))
         try expect(reminders.map(\.name) == ["Trex", "Dream4K"], "C-K: reminders decode, malformed items are dropped")
         let none = try ProviderReminder.list(from: Data("[]".utf8))
@@ -624,14 +607,12 @@ enum ContractChecks {
         try expect(!schedule.shownToday(now: noon.addingTimeInterval(86_400), timeZone: utc), "C-K: back the next local day")
         reminderDefaults.removePersistentDomain(forName: "pigtv.contract.reminders")
 
-        // R11: predictive warming (server 0198). Both fields must be present and true; an older server reads as off.
+        // R11: predictive warming runs only when the admin's setting is present and true.
         let warmOn = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.1.0","apiVersion":1,"warmingEnabled":true,"features":{"library":true,"playbackResolve":true,"warming":true}}"#.utf8))
-        try expect(warmOn.features.warming == true && warmOn.warmingEnabled == true && warmOn.warmingActive, "R11: warming flags decode and switch it on")
+        try expect(warmOn.warmingEnabled == true && warmOn.warmingActive, "R11: the setting decodes and switches it on")
         let warmSettingOff = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.1.0","apiVersion":1,"warmingEnabled":false,"features":{"library":true,"playbackResolve":true,"warming":true}}"#.utf8))
-        try expect(warmSettingOff.features.warming == true && !warmSettingOff.warmingActive, "R11: supported but switched off in the admin: off")
-        let warmNoFeature = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.1.0","apiVersion":1,"warmingEnabled":true,"features":{"library":true,"playbackResolve":true}}"#.utf8))
-        try expect(!warmNoFeature.warmingActive, "R11: a setting without the feature is off")
-        try expect(old.features.warming == nil && old.warmingEnabled == nil && !old.warmingActive, "R11: an older server reads as warming off")
+        try expect(!warmSettingOff.warmingActive, "R11: switched off in the admin: off")
+        try expect(old.warmingEnabled == nil && !old.warmingActive, "R11: no setting reads as warming off")
         let cold = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","info":{"fps":"25/1"}}"#.utf8))
         try expect(cold.warm == nil, "R11: a resolve without warm is a cold start")
         let warmed = try JSONDecoder().decode(PlaybackDecision.self, from: Data(#"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","warm":true,"info":{"fps":"25/1","warm":true}}"#.utf8))
@@ -709,32 +690,27 @@ enum ContractChecks {
         let offerNow = Date(timeIntervalSince1970: 1_800_000_000)
         try expect(waitingFront.games.count == 3 && waitingFront.games[1].recordWhenListed?.ruleId == 12 && waitingFront.games[2].recordWhenListed?.ruleId == nil,
                    "C-R: recordWhenListed, a malformed one never drops the card")
-        try expect(SportFutureRecord.offer(waitingFront.games[0], now: offerNow, serverCan: true) == .record
-                   && SportFutureRecord.offer(waitingFront.games[1], now: offerNow, serverCan: true) == .cancel(ruleId: 12)
-                   && SportFutureRecord.offer(waitingFront.games[0], now: offerNow, serverCan: false) == nil
-                   && SportFutureRecord.offer(waitingFront.games[0], now: Date(timeIntervalSince1970: 4_200_000_000), serverCan: true) == nil,
-                   "#234: a future game with no listing offers Record when it's listed (or Don't record it); never on an older server, never once it has started")
+        try expect(SportFutureRecord.offer(waitingFront.games[0], now: offerNow) == .record
+                   && SportFutureRecord.offer(waitingFront.games[1], now: offerNow) == .cancel(ruleId: 12)
+                   && SportFutureRecord.offer(waitingFront.games[0], now: Date(timeIntervalSince1970: 4_200_000_000)) == nil,
+                   "#234: a future game with no listing offers Record when it's listed (or Don't record it); never once it has started")
         // Apple 154 (152 Codex round 1, medium): this device's answer changes the card at once, before the next refresh.
-        try expect(SportFutureRecord.offer(waitingFront.games[0], now: offerNow, serverCan: true, answered: .init(basis: nil, rule: 31)) == .cancel(ruleId: 31)
-                   && SportFutureRecord.offer(waitingFront.games[1], now: offerNow, serverCan: true, answered: .init(basis: 12, rule: nil)) == .record
+        try expect(SportFutureRecord.offer(waitingFront.games[0], now: offerNow, answered: .init(basis: nil, rule: 31)) == .cancel(ruleId: 31)
+                   && SportFutureRecord.offer(waitingFront.games[1], now: offerNow, answered: .init(basis: 12, rule: nil)) == .record
                    && SportFutureRecord.waiting(waitingFront.games[1], answered: nil) == 12
                    && SportFutureRecord.waiting(waitingFront.games[1], answered: .init(basis: 12, rule: nil)) == nil,
                    "#234: after Record, Don't record it at once; after Don't record it, Record again")
         // Apple 155 (152 Codex round 2): a refreshed card that says something else (rule 12, recreated elsewhere after this
         // device added 31) is newer than this device's answer.
-        try expect(SportFutureRecord.offer(waitingFront.games[1], now: offerNow, serverCan: true, answered: .init(basis: nil, rule: 31)) == .cancel(ruleId: 12),
+        try expect(SportFutureRecord.offer(waitingFront.games[1], now: offerNow, answered: .init(basis: nil, rule: 31)) == .cancel(ruleId: 12),
                    "#234: the server's newer rule wins over an answer given before it")
-        let gameFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"recordGameRules":true}}"#.utf8))
-        try expect(gameFlags.features.recordGameRules == true, "#234: the server's recordGameRules")
         // #47 (server 0474): the fallback /api/info (a feature check failed): no or null version, only the base flags.
-        for body in [#"{"name":"PigTV","version":null,"build":"0474","display":null,"apiVersion":1,"features":{"library":true,"playbackResolve":true,"guide":true,"devicePairing":true}}"#,
+        for body in [#"{"name":"PigTV","version":null,"build":"0503","display":null,"apiVersion":1,"features":{"library":true,"playbackResolve":true,"guide":true,"devicePairing":true}}"#,
                      #"{"name":"PigTV","build":null,"display":null,"apiVersion":1,"features":{"library":true,"playbackResolve":true,"guide":true,"devicePairing":true}}"#] {
             let fallback = try JSONDecoder().decode(ServerInfo.self, from: Data(body.utf8))
             try fallback.validate()
-            try expect(fallback.features.livePause == nil && !fallback.identity.isEmpty, "#47: the fallback decodes, validates, and turns nothing optional on")
+            try expect(fallback.features.sportsEvents == nil && !fallback.identity.isEmpty, "#47: the fallback decodes, validates, and turns no optional flag on")
         }
-        let pauseFlags = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7","apiVersion":1,"features":{"livePause":true}}"#.utf8))
-        try expect(pauseFlags.features.livePause == true, "#37: the server's livePause (C-W)")
         let gameBody = String(decoding: try JSONEncoder().encode(RuleBody(kind: "game", match: "Cardinals at Seahawks", gameId: "espn:football/nfl:9")), as: UTF8.self)
         try expect(gameBody.contains(#""gameId":"espn:football\/nfl:9""#) || gameBody.contains(#""gameId":"espn:football/nfl:9""#), "#234: the rule body carries gameId")
         let prefs = try JSONDecoder().decode(SportPagePreferences.self, from: Data(#"{"spoilerFree":true,"sports":["F1","NFL"],"teams":{"NFL":["Green Bay Packers"],"F1":["Oscar Piastri"]},"following":{"F1":"Oscar Piastri","NFL":"Green Bay Packers"}}"#.utf8))

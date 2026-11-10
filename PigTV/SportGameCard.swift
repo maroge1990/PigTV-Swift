@@ -70,14 +70,14 @@ final class SportRecordFlow: ObservableObject {
     /// `team`: the follow the menu is for (#49), so "Record every <team> game" is that team's.
     func menuItems(_ event: SportEvent, game: SportsGame?, team: String? = nil, now: Date = Date()) -> [ProgrammeMenuItem] {
         guard let browse = app?.browse else { return [] }
-        return Self.menuItems(browse.recordRequest(event: event, game: game, team: team, now: now), rulesAvailable: browse.rulesAvailable, now: now)
+        return Self.menuItems(browse.recordRequest(event: event, game: game, team: team, now: now), now: now)
     }
 
     /// Pure; tested (SportRecordMenuTests).
-    nonisolated static func menuItems(_ request: RecordRequest?, rulesAvailable: Bool, now: Date) -> [ProgrammeMenuItem] {
+    nonisolated static func menuItems(_ request: RecordRequest?, now: Date) -> [ProgrammeMenuItem] {
         guard let request, let first = request.airings.first else { return [] }
         let subject = ProgrammeMenuSubject(channelName: first.channel.name, programme: first.programme,
-                                           recordingStatus: request.schedule?.statusWord, rulesAvailable: rulesAvailable,
+                                           recordingStatus: request.schedule?.statusWord,
                                            everyGameTeam: request.everyGameTeam, isGame: true)
         return ProgrammeMenu.items(subject, now: now).filter(\.isRecordSection)
     }

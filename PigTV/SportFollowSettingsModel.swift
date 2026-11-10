@@ -53,8 +53,8 @@ final class SportFollowSettingsModel: ObservableObject {
     @Published private(set) var ruleBusy: Set<String> = []
 
     var canEdit: Bool { follows != nil && !offline }
-    /// The server can keep recording rules (C-M), so "Record every game" is offered.
-    var rulesAvailable: Bool { isFixture ? fixtureRules : client.info?.features.recordingRules == true }
+    /// "Record every game" is offered (C-M recording rules; a fixture says whether).
+    var rulesAvailable: Bool { isFixture ? fixtureRules : true }
     /// After a save that changed the spoiler-free switch: the sport pages forget their copy of it.
     var onSpoilerFreeChange: (@MainActor () -> Void)?
 

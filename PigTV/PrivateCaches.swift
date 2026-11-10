@@ -25,7 +25,7 @@ nonisolated struct CacheScope: Equatable, Sendable {
     }
 }
 
-/// A1 (build 47): this device's saved recording positions (`RecordingProgress.swift`) are private
+/// A1 (build 47): this device's saved recording positions (the player's fallback when the server's cannot be read) are private
 /// per server and account too: recording ids are per server, so a key without both let one login's
 /// position resume another's recording with the same id.
 nonisolated extension Recording {

@@ -108,7 +108,7 @@ final class ProviderFailoverTests: XCTestCase {
     func testReminderShownOncePerLocalDay() async throws {
         let start = Date(timeIntervalSince1970: 1_774_000_000) // 2026-03-20 09:46 UTC
         let server = try FakePigTVServer(reminders: remindersJSON(expiresAt: start.timeIntervalSince1970 * 1000 + 3 * 86_400_000))
-        let client = try server.client(extraFeatures: #""providerReminders":true"#)
+        let client = try server.client()
         let (reminders, clock) = model(clock: start)
         await reminders.check(client: client, playing: { false })
         let text = try XCTUnwrap(reminders.message)
@@ -136,7 +136,7 @@ final class ProviderFailoverTests: XCTestCase {
     func testReminderNeverShowsDuringPlaybackAndComesAfter() async throws {
         let start = Date(timeIntervalSince1970: 1_774_000_000)
         let server = try FakePigTVServer(reminders: remindersJSON(expiresAt: start.timeIntervalSince1970 * 1000 + 86_400_000))
-        let client = try server.client(extraFeatures: #""providerReminders":true"#)
+        let client = try server.client()
         let (reminders, _) = model(clock: start)
         await reminders.check(client: client, playing: { true })
         XCTAssertNil(reminders.message)
@@ -147,26 +147,20 @@ final class ProviderFailoverTests: XCTestCase {
         server.http.stop()
     }
 
-    func testReminderHiddenWithoutTheFlagAndWhenNothingIsDue() async throws {
+    func testReminderHiddenWithoutAClientAndWhenNothingIsDue() async throws {
         let start = Date(timeIntervalSince1970: 1_774_000_000)
-        let due = remindersJSON(expiresAt: start.timeIntervalSince1970 * 1000)
-        let server = try FakePigTVServer(reminders: due)
         let (reminders, _) = model(clock: start)
-        await reminders.check(client: try server.client(), playing: { false }) // no flag
-        XCTAssertNil(reminders.message)
-        XCTAssertTrue(server.http.requests(path: "/api/providers/reminders", method: "GET").isEmpty)
         await reminders.check(client: nil, playing: { false })
         XCTAssertNil(reminders.message)
-        server.http.stop()
-        // Flag on, empty answer: nothing shown and the day is not used up.
+        // An empty answer: nothing shown and the day is not used up.
         let empty = try FakePigTVServer(reminders: "[]")
-        await reminders.check(client: try empty.client(extraFeatures: #""providerReminders":true"#), playing: { false })
+        await reminders.check(client: try empty.client(), playing: { false })
         XCTAssertNil(reminders.message)
         XCTAssertFalse(ProviderReminderSchedule(defaults: defaults).shownToday(now: start, timeZone: utc))
         empty.http.stop()
         // A failing request (404 from the fake) is silent.
         let failing = try FakePigTVServer()
-        await reminders.check(client: try failing.client(extraFeatures: #""providerReminders":true"#), playing: { false })
+        await reminders.check(client: try failing.client(), playing: { false })
         XCTAssertNil(reminders.message)
         failing.http.stop()
     }
@@ -175,7 +169,7 @@ final class ProviderFailoverTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 1_774_000_000)
         let server = try FakePigTVServer(reminders: remindersJSON(expiresAt: start.timeIntervalSince1970 * 1000 - 2 * 86_400_000))
         let (reminders, _) = model(clock: start, autoDismiss: .milliseconds(150))
-        await reminders.check(client: try server.client(extraFeatures: #""providerReminders":true"#), playing: { false })
+        await reminders.check(client: try server.client(), playing: { false })
         XCTAssertTrue(try XCTUnwrap(reminders.message).hasPrefix("Trex expired on "))
         try await waitFor("auto-dismiss") { reminders.message == nil }
         server.http.stop()

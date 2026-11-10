@@ -37,40 +37,25 @@ final class RecordingsRowsTests: XCTestCase {
         XCTAssertLessThan(RecordingsRows.busyRefresh, RecordingsRows.idleRefresh)
     }
 
-    func testServerValuesWinWhenTheFeatureIsOn() {
+    func testServerValuesGiveTheProgress() {
         let item = recording(1, position: 900, watched: false)
-        let progress = item.progress(serverPositions: true) { _ in 3000 }
+        let progress = item.progress()
         XCTAssertEqual(progress.fraction ?? 0, 0.25, accuracy: 0.0001)
         XCTAssertFalse(progress.watched)
     }
 
     func testServerWatchedHasNoFraction() {
         let item = recording(1, position: 900, watched: true)
-        XCTAssertEqual(item.progress(serverPositions: true) { _ in 0 }, RecordingProgress(fraction: nil, watched: true))
+        XCTAssertEqual(item.progress(), RecordingProgress(fraction: nil, watched: true))
     }
 
-    func testServerModeIgnoresTheLocalKey() {
-        let item = recording(1)
-        XCTAssertEqual(item.progress(serverPositions: true) { _ in 1800 }, .none)
-    }
-
-    func testLocalKeyIsUsedWithoutTheFeature() {
-        let item = recording(7, position: 3000, watched: true) // server fields ignored
-        let progress = item.progress(serverPositions: false) { $0 == 7 ? 1800 : 0 }
-        XCTAssertEqual(progress.fraction ?? 0, 0.5, accuracy: 0.0001)
-        XCTAssertFalse(progress.watched)
-    }
-
-    func testLocalPositionNearTheEndCountsAsWatchedAndTinyOnesAsNothing() {
-        let item = recording(7)
-        XCTAssertEqual(item.progress(serverPositions: false) { _ in 3590 }, RecordingProgress(fraction: nil, watched: true))
-        XCTAssertEqual(item.progress(serverPositions: false) { _ in 5 }, .none)
-        XCTAssertEqual(item.progress(serverPositions: false) { _ in 0 }, .none)
+    func testNoServerPositionIsNoProgress() {
+        XCTAssertEqual(recording(1).progress(), .none)
     }
 
     func testOnlyCompletedRecordingsHaveProgress() {
         let live = recording(2, status: "recording", position: 900)
-        XCTAssertEqual(live.progress(serverPositions: true) { _ in 0 }, .none)
+        XCTAssertEqual(live.progress(), .none)
     }
 
     func testContinueWatchingKeepsPartlyWatchedNewestFirst() {
@@ -80,7 +65,7 @@ final class RecordingsRowsTests: XCTestCase {
         let untouched = recording(4, started: 800)
         let live = recording(5, status: "recording", started: 950, position: 600)
         let list = RecordingsRows.continueWatching([old, watched, untouched, new, live]) {
-            $0.progress(serverPositions: true) { _ in 0 }
+            $0.progress()
         }
         XCTAssertEqual(list.map(\.id), [2, 1])
     }

@@ -107,11 +107,6 @@ struct RecordingView: View {
     private var progress: RecordingProgress { model.progress(for: item) }
     private var teams: [RecordTeam]? { RecordingTeams.match(title: item.title, games: model.sportFront.front?.games ?? []) }
 
-    /// C-L: still recording, and the server can play it from its start.
-    private var canWatchFromStart: Bool {
-        item.canWatchFromStart && model.client.info?.features.recordingWatchLive == true
-    }
-
     private var compact: Bool {
         #if os(iOS)
         sizeClass == .compact
@@ -230,7 +225,7 @@ struct RecordingView: View {
         if item.isPreparingForPlayback {
             Text("Preparing for playback…").font(ViewMetrics.detail).foregroundStyle(.secondary)
         } else if item.playLabel == nil {
-            Text(canWatchFromStart ? "Still recording: watch it from the start while the rest records."
+            Text(item.canWatchFromStart ? "Still recording: watch it from the start while the rest records."
                  : "Playback is available once the recording has finished.").font(ViewMetrics.detail).foregroundStyle(.secondary)
         }
     }
@@ -254,7 +249,7 @@ struct RecordingView: View {
             .pigPrimaryButton()
             .focused($playFocused)
             .accessibilityIdentifier("recording.play")
-        } else if canWatchFromStart {
+        } else if item.canWatchFromStart {
             Button { playing = RecordingPlay(recording: item, fromStart: true) } label: {
                 Label("Watch from start", systemImage: "play.fill").frame(maxWidth: compact ? .infinity : nil)
             }

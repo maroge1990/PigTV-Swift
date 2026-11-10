@@ -121,7 +121,6 @@ struct ScheduledPage: View {
         ScheduledRows.attention(recordings: model.recordings, schedules: model.schedules, hidden: hidden)
     }
     private var rules: [RecordingRule] { ScheduledRows.rules(store.rules, hidden: hidden) }
-    private var showsRules: Bool { model.rulesAvailable || !rules.isEmpty }
 
     private var compact: Bool {
         #if os(iOS)
@@ -142,10 +141,8 @@ struct ScheduledPage: View {
                     VStack(alignment: .leading, spacing: PigSpacing.s) {
                         comingUp
                         HStack(spacing: PigSpacing.s) {
-                            if showsRules {
-                                ScheduledTile(title: "Recording rules", detail: "\(ScheduledRows.rulesSummary(rules)) ›",
-                                              warning: false, route: .rules)
-                            }
+                            ScheduledTile(title: "Recording rules", detail: "\(ScheduledRows.rulesSummary(rules)) ›",
+                                          warning: false, route: .rules)
                             ScheduledTile(title: "Needs attention", detail: "\(ScheduledRows.attentionSummary(attention)) ›",
                                           warning: !attention.isEmpty, route: .attention)
                         }
@@ -154,7 +151,7 @@ struct ScheduledPage: View {
                     HStack(alignment: .top, spacing: ScheduledMetrics.columnGap) {
                         comingUp.frame(maxWidth: .infinity, alignment: .leading).tvFocusSection()
                         VStack(alignment: .leading, spacing: PigSpacing.xl) {
-                            if showsRules { rulesSection }
+                            rulesSection
                             attentionSection
                         }
                         .frame(width: ScheduledMetrics.sideWidth, alignment: .leading)

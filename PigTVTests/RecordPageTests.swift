@@ -30,15 +30,14 @@ final class RecordPageTests: XCTestCase {
 
     func testWhatOffersThisOneThenTheRules() {
         let guide = RecordRequest(title: "Four Corners", airings: [.init(channel: channel(), programme: programme())])
-        XCTAssertEqual(RecordPlan.whats(guide, rulesAvailable: true), [.this, .everyNewEpisode, .everyEpisode])
-        XCTAssertEqual(RecordPlan.whats(guide, rulesAvailable: false), [.this], "no rules without the server's rules")
-        XCTAssertEqual(RecordPlan.whats(game(), rulesAvailable: true), [.this, .everyTeam("Liverpool"), .everyLeague("EPL")],
+        XCTAssertEqual(RecordPlan.whats(guide), [.this, .everyNewEpisode, .everyEpisode])
+        XCTAssertEqual(RecordPlan.whats(game()), [.this, .everyTeam("Liverpool"), .everyLeague("EPL")],
                        "the followed team, then the league")
-        XCTAssertEqual(RecordPlan.whats(game(followed: nil), rulesAvailable: true),
+        XCTAssertEqual(RecordPlan.whats(game(followed: nil)),
                        [.this, .everyTeam("Liverpool"), .everyTeam("Man City"), .everyLeague("EPL")], "no follow: each side")
         var changing = game()
         changing.schedule = try? schedule(#"{"id":4,"title":"Liverpool v Man City","program_start":1,"program_end":2,"status":"scheduled"}"#)
-        XCTAssertEqual(RecordPlan.whats(changing, rulesAvailable: true), [], "Change recording is one schedule")
+        XCTAssertEqual(RecordPlan.whats(changing), [], "Change recording is one schedule")
         XCTAssertEqual(RecordPlan.label(.everyLeague("EPL"), request: game(), leagueLabel: "Premier League", now: now).title,
                        "Every Premier League game")
         XCTAssertEqual(RecordPlan.primaryTitle(.this, request: game()), "Record game")
@@ -232,16 +231,16 @@ extension RecordPageTests {
         for card in cards.prefix(2) {
             let request = try XCTUnwrap(browse.recordRequest(event: event, game: game, team: card.team, now: at))
             XCTAssertEqual(request.everyGameTeam, card.team)
-            let items = SportRecordFlow.menuItems(request, rulesAvailable: true, now: at)
+            let items = SportRecordFlow.menuItems(request, now: at)
             XCTAssertTrue(items.contains { $0.title == "Record every \(card.team) game" }, items.map(\.title).joined(separator: ", "))
-            XCTAssertEqual(RecordPlan.whats(request, rulesAvailable: true), [.this, .everyTeam(card.team), .everyLeague("EPL")])
+            XCTAssertEqual(RecordPlan.whats(request), [.this, .everyTeam(card.team), .everyLeague("EPL")])
         }
         let unnamed = try XCTUnwrap(browse.recordRequest(event: event, game: game, now: at))
         XCTAssertNil(unnamed.followedTeam)
         XCTAssertEqual(unnamed.followedTeams, ["Liverpool", "Man City"])
         XCTAssertNil(unnamed.everyGameTeam, "no guess between two followed sides")
-        XCTAssertFalse(SportRecordFlow.menuItems(unnamed, rulesAvailable: true, now: at).contains { $0.id == "recordEvery" })
-        XCTAssertEqual(RecordPlan.whats(unnamed, rulesAvailable: true),
+        XCTAssertFalse(SportRecordFlow.menuItems(unnamed, now: at).contains { $0.id == "recordEvery" })
+        XCTAssertEqual(RecordPlan.whats(unnamed),
                        [.this, .everyTeam("Liverpool"), .everyTeam("Man City"), .everyLeague("EPL")])
         let rows = SportPhoneLayout.groups(front, hidden: false, now: at)[0].rows
         XCTAssertEqual(rows[0].sides.map(\.followed), [true, true], "both sides starred")
@@ -266,8 +265,8 @@ extension RecordPageTests {
         let request = try XCTUnwrap(browse.recordRequest(event: event, game: game, team: card.team, now: at))
         XCTAssertNil(request.followedTeam)
         XCTAssertNil(request.everyGameTeam)
-        XCTAssertFalse(SportRecordFlow.menuItems(request, rulesAvailable: true, now: at).contains { $0.id == "recordEvery" })
-        XCTAssertFalse(RecordPlan.whats(request, rulesAvailable: true).contains {
+        XCTAssertFalse(SportRecordFlow.menuItems(request, now: at).contains { $0.id == "recordEvery" })
+        XCTAssertFalse(RecordPlan.whats(request).contains {
             if case .everyTeam = $0 { return true } else { return false }
         })
     }

@@ -45,8 +45,6 @@ final class RecordingPlayerModel: ObservableObject {
     var markersBudget: Duration = .seconds(3)
     private var lastSkipped: Int?
     private var generation = UUID()
-    /// Server 0207: positions are saved to and read from the server.
-    private var positionsOn: Bool { client.info?.features.recordingPositions == true }
     private var lastServerSave: Double?
     /// C-L: play a recording that is still being made from its start (its
     /// live HLS playlist), switching to the finished file when that goes.
@@ -112,9 +110,9 @@ final class RecordingPlayerModel: ObservableObject {
         let generation = UUID()
         self.generation = generation
         resumePrompt = nil
-        let client = client, id = recording.id, featureOn = positionsOn
-        let positionTask = Task { featureOn ? await client.recordingPosition(id: id) : nil }
-        let watchLive = (fromStart || fromLive) && client.info?.features.recordingWatchLive == true
+        let client = client, id = recording.id
+        let positionTask = Task { await client.recordingPosition(id: id) }
+        let watchLive = fromStart || fromLive
         startupTask = Task { [self] in
             defer { preparing = false; startupTask = nil }
             do {
@@ -169,22 +167,20 @@ final class RecordingPlayerModel: ObservableObject {
                 }
                 player.replaceCurrentItem(with: item)
                 PigTVSignpost.eventWhenPlaying("RecordingPlaying", player)
-                // Where to resume: the server's position (0207) or this
-                // device's key; the viewer chooses before anything plays.
+                // Where to resume: the server's position or (when that request
+                // failed) this device's key; the viewer chooses before anything plays.
                 if let at = continueAt {
                     // Carrying on from the live playlist (or "from start"): no question.
                     continueAt = nil
                     await beginPlayback(resumeAt: at > 1 ? at : nil, generation: generation)
                     return
                 }
-                let featureOn = positionsOn
-                let server = featureOn ? await positionTask.value : nil
+                let server = await positionTask.value
                 try Task.checkCancellation()
                 guard !stopped, error == nil else { return }
                 let local = resumeKey.map { UserDefaults.standard.double(forKey: $0) } ?? 0
-                let known = RecordingResume.source(featureOn: featureOn, server: server, local: local)
-                if let at = RecordingResume.prompt(position: known.position, watched: known.watched,
-                                                   duration: recording.duration_sec, featureOn: featureOn) {
+                let known = RecordingResume.source(server: server, local: local)
+                if let at = RecordingResume.prompt(position: known.position, watched: known.watched) {
                     resumePrompt = at
                     ready = true
                     return
@@ -318,12 +314,11 @@ final class RecordingPlayerModel: ObservableObject {
         player.play()
     }
 
-    /// Saves the current time (local key and, with 0207, the server). Never 0.
+    /// Saves the current time (local key and the server). Never 0.
     private func savePositionNow() {
         guard let seconds = player.currentItem?.currentTime().seconds, RecordingResume.shouldSave(seconds) else { return }
         saveLocal(seconds)
         lastServerSave = seconds
-        guard positionsOn else { return }
         let client = client, id = recording.id
         Task { await client.saveRecordingPosition(id: id, seconds: seconds) }
     }
@@ -351,7 +346,7 @@ final class RecordingPlayerModel: ObservableObject {
         guard canRetry, !stopped, startupTask == nil else { return }
         liveRestarts = 0
         watchingLive = false
-        if let final = clearPlayer(), positionsOn {
+        if let final = clearPlayer() {
             let client = client, id = recording.id
             Task { await client.saveRecordingPosition(id: id, seconds: final) }
         }
@@ -363,7 +358,7 @@ final class RecordingPlayerModel: ObservableObject {
     private func tick(_ seconds: Double) {
         guard seconds.isFinite else { return }
         if Int(seconds) % 5 == 0 { saveLocal(seconds) }
-        if positionsOn, RecordingResume.dueForPeriodicSave(now: seconds, lastSaved: lastServerSave) {
+        if RecordingResume.dueForPeriodicSave(now: seconds, lastSaved: lastServerSave) {
             lastServerSave = seconds
             let client = client, id = recording.id
             Task { await client.saveRecordingPosition(id: id, seconds: seconds) }
@@ -446,7 +441,7 @@ final class RecordingPlayerModel: ObservableObject {
         pending?.cancel()
         let final = clearPlayer()
         await pending?.value
-        if positionsOn, let final { await client.saveRecordingPosition(id: recording.id, seconds: final) }
+        if let final { await client.saveRecordingPosition(id: recording.id, seconds: final) }
         await Task.detached(priority: .utility) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }.value

@@ -101,7 +101,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private var pauseWanted: (session: String, paused: Bool)?
     private var pauseSent: (session: String, paused: Bool)?
     private var pauseSender: Task<Void, Never>?
-    private var livePauseSupported: Bool { client.info?.features.livePause == true }
     private var conflictTask: Task<Void, Never>?
     /// #239: false while the app is not the active scene (ContentView sets it): the conflict poll then asks the server
     /// nothing until the app is active again, instead of every 5 s from the background.
@@ -632,8 +631,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// warns 2 minutes before the end; the resume tells it too, and goes to live (or starts again) when the paused point
     /// has gone. `now` for tests.
     func livePauseChanged(paused: Bool, now: Date = Date()) {
-        // Apple 157 (156 Codex round 1, medium): only a server that keeps a paused play's stream (C-W) gets any of this.
-        guard livePauseSupported else { return }
         if paused {
             guard itemPlayed, pausedAt == nil else { return }
             pausedAt = now

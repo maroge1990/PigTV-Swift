@@ -82,36 +82,23 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
-    /// #37 (C-W): a viewer's pause tells the server (it keeps the stream up to 30 minutes), and so does playing again;
-    /// a server without `livePause` is never asked, and its pause is not timed (Apple 157, 156 Codex round 1, medium).
+    /// #37 (C-W): a viewer's pause tells the server (it keeps the stream up to 30 minutes), and so does playing again.
     func testAPausedLivePlayTellsTheServerAndSoDoesTheResume() async throws {
         try requireFixture()
-        for flag in [true, false] {
-            let server = try FakePigTVServer(livePause: .init { _, _ in .json(#"{"pausedUntil":1}"#) })
-            let playback = PlaybackModel(channel: channel(), client: try server.client(extraFeatures: flag ? #""livePause":true"# : ""),
-                                         programmes: programmes())
-            playback.start()
-            try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
-            playback.player.pause()
-            if flag {
-                try await waitFor("the pause seen") { playback.isLivePaused }
-            } else {
-                try await Task.sleep(for: .milliseconds(500))
-                XCTAssertFalse(playback.isLivePaused, "an older server's pause is not timed")
-            }
-            playback.player.play()
-            try await waitFor("the resume seen") { !playback.isLivePaused && self.isPlaying(playback) }
-            try await Task.sleep(for: .milliseconds(300))
-            let asked = server.http.requests(path: "/api/playback/s1/pause").map { String(decoding: $0.body, as: UTF8.self) }
-            if flag {
-                // The pause, then the resume, first (CI's slow runner can see the 6 s fixture pause again on its own).
-                XCTAssertEqual(Array(asked.prefix(2)), [#"{"paused":true}"#, #"{"paused":false}"#], "pause, then resume")
-            } else {
-                XCTAssertTrue(asked.isEmpty, "an older server is never asked")
-            }
-            _ = await playback.stop()
-            server.http.stop()
-        }
+        let server = try FakePigTVServer(livePause: .init { _, _ in .json(#"{"pausedUntil":1}"#) })
+        let playback = PlaybackModel(channel: channel(), client: try server.client(), programmes: programmes())
+        playback.start()
+        try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
+        playback.player.pause()
+        try await waitFor("the pause seen") { playback.isLivePaused }
+        playback.player.play()
+        try await waitFor("the resume seen") { !playback.isLivePaused && self.isPlaying(playback) }
+        try await Task.sleep(for: .milliseconds(300))
+        let asked = server.http.requests(path: "/api/playback/s1/pause").map { String(decoding: $0.body, as: UTF8.self) }
+        // The pause, then the resume, first (CI's slow runner can see the 6 s fixture pause again on its own).
+        XCTAssertEqual(Array(asked.prefix(2)), [#"{"paused":true}"#, #"{"paused":false}"#], "pause, then resume")
+        _ = await playback.stop()
+        server.http.stop()
     }
 
     /// #36 (Apple 174): the play-start says where its start went: the answer, ready to play, the first picture (and the
@@ -191,7 +178,7 @@ final class RealPlaybackTests: XCTestCase {
             if n == 1 { answer.delay = 1.5 }
             return answer
         })
-        let playback = PlaybackModel(channel: channel(), client: try server.client(extraFeatures: #""livePause":true"#), programmes: programmes())
+        let playback = PlaybackModel(channel: channel(), client: try server.client(), programmes: programmes())
         playback.start()
         try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
         playback.player.pause()
@@ -214,7 +201,7 @@ final class RealPlaybackTests: XCTestCase {
             bodies.value.append(body)
             return n == 2 ? .json(#"{"error":"busy"}"#, status: 500) : .json(#"{"pausedUntil":null}"#)
         })
-        let playback = PlaybackModel(channel: channel(), client: try server.client(extraFeatures: #""livePause":true"#), programmes: programmes())
+        let playback = PlaybackModel(channel: channel(), client: try server.client(), programmes: programmes())
         playback.start()
         try await waitFor("playing", timeout: 12) { self.isPlaying(playback) && playback.hasPlayed }
         playback.player.pause()
@@ -496,26 +483,25 @@ final class RealPlaybackTests: XCTestCase {
 
     private static let liveWatch = #"{"url":"/api/recordings/4243/master.m3u8","container":"hls","recording":true,"videoRange":"SDR","fps":"25/1","durationSec":6}"#
 
-    /// A1 (build 47): with server positions on and the position request failing (the fake has
+    /// A1 (build 47): with the position request failing (the fake has
     /// no route: 404), the local fallback is this server and account's only. Another account's
     /// saved position for the same recording id is never offered; this account's is.
     func testLocalResumeFallbackIsScopedToTheAccount() async throws {
         try requireFixture()
         let server = try FakePigTVServer()
-        let positions = #""recordingPositions":true"#
-        let mine = try XCTUnwrap(try server.client(extraFeatures: positions, accountID: 1).localResumeKey(4242))
-        let theirs = try XCTUnwrap(try server.client(extraFeatures: positions, accountID: 2).localResumeKey(4242))
+        let mine = try XCTUnwrap(try server.client(accountID: 1).localResumeKey(4242))
+        let theirs = try XCTUnwrap(try server.client(accountID: 2).localResumeKey(4242))
         UserDefaults.standard.set(600.0, forKey: mine)
         UserDefaults.standard.removeObject(forKey: theirs)
         defer { [mine, theirs].forEach(UserDefaults.standard.removeObject(forKey:)) }
 
-        let other = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client(extraFeatures: positions, accountID: 2))
+        let other = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client(accountID: 2))
         other.start()
         try await waitFor("the other account's recording to play", timeout: 8) { other.hasPlayed }
         XCTAssertNil(other.resumePrompt, "another account's position is not offered")
         await other.stop()
 
-        let own = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client(extraFeatures: positions, accountID: 1))
+        let own = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client(accountID: 1))
         own.start()
         try await waitFor("the resume question", timeout: 8) { own.resumePrompt != nil }
         XCTAssertEqual(own.resumePrompt, 600)
@@ -542,7 +528,7 @@ final class RealPlaybackTests: XCTestCase {
         UserDefaults.standard.set(3.0, forKey: Self.resumeKey(server, 4243))
         defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(),
-                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
+                                            client: try server.client(), fromStart: true)
         playback.start()
         try await waitFor("the live recording to play", timeout: 12) { playback.hasPlayed }
         XCTAssertNil(playback.resumePrompt, "from the start means no resume question")
@@ -568,7 +554,7 @@ final class RealPlaybackTests: XCTestCase {
         UserDefaults.standard.set(3.0, forKey: Self.resumeKey(server, 4243))
         defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(),
-                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromLive: true)
+                                            client: try server.client(), fromLive: true)
         playback.start()
         try await waitFor("the live recording to play", timeout: 12) { playback.hasPlayed }
         XCTAssertNil(playback.resumePrompt, "joining live is not a resume question")
@@ -590,7 +576,7 @@ final class RealPlaybackTests: XCTestCase {
                 .json(#"{"url":"/api/recordings/4243/\#(name).m3u8","container":"hls","recording":true,"videoRange":"SDR","fps":"25/1","durationSec":90}"#)
             })
             let playback = RecordingPlayerModel(recording: try inProgressRecording(),
-                                                client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromLive: true)
+                                                client: try server.client(), fromLive: true)
             playback.start()
             try await waitFor("\(name) to play", timeout: 20) { playback.hasPlayed }
             XCTAssertGreaterThan(playback.player.currentTime().seconds, 55, "\(name): near the live edge, not the start")
@@ -608,7 +594,7 @@ final class RealPlaybackTests: XCTestCase {
         UserDefaults.standard.set(3.0, forKey: Self.resumeKey(server, 4243))
         defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(),
-                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
+                                            client: try server.client(), fromStart: true)
         playback.start()
         try await waitFor("the finished file to play", timeout: 12) { playback.hasPlayed }
         XCTAssertNil(playback.resumePrompt)
@@ -629,7 +615,7 @@ final class RealPlaybackTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243))
         defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
         let playback = RecordingPlayerModel(recording: try inProgressRecording(),
-                                            client: try server.client(extraFeatures: #""recordingWatchLive":true"#), fromStart: true)
+                                            client: try server.client(), fromStart: true)
         playback.start()
         try await waitFor("the live recording to play", timeout: 12) { playback.hasPlayed }
         XCTAssertTrue(playback.watchingLive)
@@ -641,22 +627,6 @@ final class RealPlaybackTests: XCTestCase {
         XCTAssertFalse(playback.watchingLive)
         XCTAssertNil(playback.resumePrompt, "carrying on is not a resume question")
         XCTAssertNil(playback.error)
-        await playback.stop()
-        server.http.stop()
-    }
-
-    /// An older server (no `recordingWatchLive`): the ordinary playback route,
-    /// and the watch route is never called.
-    func testWithoutTheFlagFromStartUsesThePlaybackRoute() async throws {
-        try requireFixture()
-        let server = try FakePigTVServer(watch: { _ in .json(Self.liveWatch) })
-        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243))
-        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
-        let playback = RecordingPlayerModel(recording: try inProgressRecording(), client: try server.client(), fromStart: true)
-        playback.start()
-        try await waitFor("the file to play", timeout: 12) { playback.hasPlayed }
-        XCTAssertTrue(server.http.requests(path: "/api/recordings/4243/watch").isEmpty)
-        XCTAssertFalse(playback.watchingLive)
         await playback.stop()
         server.http.stop()
     }

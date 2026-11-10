@@ -298,7 +298,7 @@ private struct DesignTestScreen: View {
         .appPresentations(app.presenter, app: app, browse: app.browse)
         .overlay(alignment: .bottom) { UndoToast(presenter: app.presenter) }
         .task {
-            // The record pages with the server's recording rules (C-M), so What offers them.
+            // The record pages with the server's per-account follows (C-U).
             app.injectHomeFixture(sportFollows: ["record", "record-change", "record-sport"].contains(screen))
             app.serverText = "http://pigtv.local:3000"
             if screen == "pairing" { app.injectPairingReview() }

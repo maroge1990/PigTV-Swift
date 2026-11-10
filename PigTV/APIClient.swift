@@ -276,7 +276,7 @@ final class APIClient {
         return String(text.prefix(300))
     }
 
-    // Poll only when advertised. A terminal error must stop: the next request
+    // Asks with `async=1` and polls the server's 202. A terminal error must stop: the next request
     // after a preparation failure starts a fresh remux on the server.
     @MainActor
     func recordingPlayback(id: Int, timeout: TimeInterval = 600,
@@ -284,7 +284,7 @@ final class APIClient {
                            sleep: (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
                            preparing: () -> Void = {}) async throws -> RecordingPlayback {
         let deadline = now().addingTimeInterval(timeout)
-        let query = info?.features.recordingPlaybackPolling == true ? [URLQueryItem(name: "async", value: "1")] : []
+        let query = [URLQueryItem(name: "async", value: "1")]
         while true {
             try Task.checkCancellation()
             let remaining = deadline.timeIntervalSince(now())
@@ -296,7 +296,7 @@ final class APIClient {
                 guard let playback = try? JSONDecoder().decode(RecordingPlayback.self, from: result.data) else { throw PigTVError.decoding }
                 return playback
             }
-            guard !query.isEmpty, result.status == 202,
+            guard result.status == 202,
                   let pending = try? JSONDecoder().decode(RecordingPreparing.self, from: result.data),
                   pending.status == "preparing" else { throw PigTVError.decoding }
             preparing()
@@ -351,7 +351,6 @@ final class APIClient {
     }
 
     func reportPlaybackEvent(_ event: PlaybackEvent) async {
-        guard info?.features.clientEvents == true else { return }
         var event = event
         if let path = event.path { event.path = (try? playbackURL(path))?.path }
         _ = try? await response("playback/client-event", method: "POST", body: event, timeout: 3)
@@ -424,7 +423,7 @@ final class APIClient {
             try JSONDecoder().decode(GuidePage.self, from: data)
         }.value
     }
-    // A1.1: server flag `guideVersion`. Changes when channel data, visibility,
+    // A1.1: `library/guide/version`. Changes when channel data, visibility,
     // order, logos or EPG change — never merely because time passed.
     private struct GuideVersionResponse: Decodable { let version: String }
     func guideVersion() async throws -> String {
@@ -435,7 +434,7 @@ final class APIClient {
     /// C-W (#37): tells the server a live play is paused or resumed. True once the server has it; false on a failure
     /// (the caller tries again); true too for a stream the server no longer has (404: nothing left to tell).
     func setLivePause(_ sessionID: String, paused: Bool) async -> Bool {
-        guard info?.features.livePause == true, validSessionID(sessionID) else { return true }
+        guard validSessionID(sessionID) else { return true }
         struct Body: Encodable { let paused: Bool }
         struct Answer: Decodable { let pausedUntil: Double? }
         do {
@@ -456,10 +455,10 @@ final class APIClient {
     }
 
     // A displaced HLS player otherwise sees the same 404 as an ordinary
-    // expiry. This check is deliberately best-effort: legacy servers, route
-    // errors and a slow server must retain the existing one-time C2 recovery.
+    // expiry. This check is deliberately best-effort: route errors and a
+    // slow server must retain the existing one-time C2 recovery.
     func sessionWasTakenOver(_ sessionID: String) async -> Bool {
-        guard info?.features.playbackTerminalStatus == true, validSessionID(sessionID) else { return false }
+        guard validSessionID(sessionID) else { return false }
         do {
             let result = try await response("playback/\(sessionID)/terminal-status", timeout: 3)
             let terminal = try JSONDecoder().decode(PlaybackTerminalStatus.self, from: result.data)

@@ -71,13 +71,12 @@ nonisolated enum RecordPlan {
     static let startEarly: [Int?] = [nil, 0, 1, 2, 5, 10]
     static let finishLate: [Int?] = [nil, 0, 2, 5, 10, 15, 30]
 
-    /// The What choices: this one, then the rules (when the server keeps them). A game: every game of the followed team
+    /// The What choices: this one, then the rules. A game: every game of the followed team
     /// (else of each side), then every game of its league. A programme: every new episode, every episode. Change
     /// recording has none (it is one schedule).
-    static func whats(_ request: RecordRequest, rulesAvailable: Bool) -> [What] {
+    static func whats(_ request: RecordRequest) -> [What] {
         guard request.schedule == nil else { return [] }
         var out: [What] = [.this]
-        guard rulesAvailable else { return out }
         if request.isGame || request.league != nil {
             // #49: the team named or the one followed side; both sides when both (or neither) are followed.
             let teams = request.followedTeam.map { [$0] } ?? request.teams.prefix(2).map(\.name)
@@ -388,7 +387,7 @@ struct RecordPage: View {
     private func card(now: Date) -> some View {
         VStack(alignment: .leading, spacing: Metrics.gap) {
             header(now: now)
-            let whats = RecordPlan.whats(request, rulesAvailable: model.rulesAvailable)
+            let whats = RecordPlan.whats(request)
             if !whats.isEmpty { whatSection(whats, now: now) }
             stopSection(now: now)
             if !changing && request.airings.count > 1 { recordOn(now: now) }

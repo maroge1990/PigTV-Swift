@@ -1,18 +1,17 @@
 import XCTest
 @testable import PigTV
 
-// C-A: channel numbers are decoded when present, shown only when the server
-// advertises `channelNumbers`, and iOS "Go to number" looks a number up in the
-// zap list first, then the guide.
+// C-A: channel numbers are decoded when present and shown, and iOS "Go to
+// number" looks a number up in the zap list first, then the guide.
 @MainActor
 final class ChannelNumberTests: XCTestCase {
     private func info(_ features: String) throws -> ServerInfo {
         try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true\#(features)}}"#.utf8))
     }
 
-    private func browse(numbers: Bool) throws -> BrowseModel {
+    private func browse() throws -> BrowseModel {
         let model = BrowseModel(client: APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
-            info: try info(numbers ? #","channelNumbers":true"# : "")))
+            info: try info("")))
         model.guide = [
             GuideChannel(rawID: "a", sourceId: 1, name: "A", logo: nil, category: nil, programmes: [], number: 1),
             GuideChannel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, programmes: [], number: 504),
@@ -28,25 +27,17 @@ final class ChannelNumberTests: XCTestCase {
         let channel = try JSONDecoder().decode(Channel.self, from: Data(#"{"id":"7","sourceId":2,"name":"N","logo":null,"category":null,"now":null,"next":null,"number":1004}"#.utf8))
         XCTAssertEqual(channel.number, 1004)
         XCTAssertEqual(channel.numberText, "1004", "Numbers are never locale-grouped")
-        let modern = try info(#","channelNumbers":true,"channelHealth":true"#)
-        XCTAssertEqual(modern.features.channelNumbers, true)
-        XCTAssertEqual(modern.features.channelHealth, true)
-        let old = try info("")
-        XCTAssertNil(old.features.channelNumbers)
-        XCTAssertNil(old.features.channelHealth)
     }
 
-    func testNumbersAreShownOnlyWithTheFlag() throws {
-        let on = try browse(numbers: true)
+    func testNumbersAreShown() throws {
+        let on = try browse()
         XCTAssertEqual(on.number(for: on.guide[1]), 504)
         XCTAssertEqual(on.asChannel(on.guide[1]).number, 504, "Player channels carry the number")
-        let off = try browse(numbers: false)
-        XCTAssertNil(off.number(for: off.guide[1]), "An older server (or a stale cache) shows no numbers")
-        XCTAssertNil(off.asChannel(off.guide[1]).number)
+        XCTAssertNil(on.number(for: on.guide[2]), "an unnumbered channel shows none")
     }
 
     func testGoToNumberPrefersZapListThenGuide() throws {
-        let browse = try browse(numbers: true)
+        let browse = try browse()
         let app = AppModel()
         app.configureClientForTesting(browse.client, browse: browse)
         let a = browse.asChannel(browse.guide[0])
@@ -67,33 +58,22 @@ final class ChannelNumberTests: XCTestCase {
         XCTAssertFalse(app.goToChannel(numberText: "0"))
         XCTAssertEqual(app.playback?.channel.id, "1:b")
     }
-
-    func testGoToNumberNeedsTheFlagForGuideLookup() throws {
-        let browse = try browse(numbers: false)
-        let app = AppModel()
-        app.configureClientForTesting(browse.client, browse: browse)
-        app.beginPlayback(browse.asChannel(browse.guide[0]))
-        XCTAssertNil(app.channel(number: 504))
-        XCTAssertFalse(app.goToChannel(numberText: "504"))
-    }
 }
 
 // C-G: `health` decodes when present; a channel is marked unreliable only
-// when it is "flaky" and the server advertises `channelHealth`.
+// when it is "flaky".
 @MainActor
 final class ChannelHealthTests: XCTestCase {
-    private func browse(health: Bool) throws -> BrowseModel {
-        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true\#(health ? #","channelHealth":true"# : "")}}"#.utf8))
+    private func browse() throws -> BrowseModel {
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true}}"#.utf8))
         return BrowseModel(client: APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", info: info))
     }
 
-    func testHealthDecodesAndOnlyFlakyIsMarkedWithTheFlag() throws {
+    func testHealthDecodesAndOnlyFlakyIsMarked() throws {
         let page = try JSONDecoder().decode(GuidePage.self, from: Data(#"{"total":4,"channels":[{"id":"a","sourceId":1,"name":"A","programmes":[],"health":"flaky"},{"id":"b","sourceId":1,"name":"B","programmes":[],"health":"ok"},{"id":"c","sourceId":1,"name":"C","programmes":[],"health":null},{"id":"d","sourceId":1,"name":"D","programmes":[]}]}"#.utf8))
         XCTAssertEqual(page.channels.map(\.health), ["flaky", "ok", nil, nil])
-        let on = try browse(health: true)
+        let on = try browse()
         XCTAssertEqual(page.channels.map(on.isFlaky), [true, false, false, false])
-        let off = try browse(health: false)
-        XCTAssertFalse(off.isFlaky(page.channels[0]), "An older server's (or a stale cache's) health is ignored")
     }
 
     func testCachedGuideRoundTripsHealth() throws {

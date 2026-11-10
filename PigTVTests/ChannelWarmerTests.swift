@@ -104,7 +104,7 @@ final class ChannelWarmerTests: XCTestCase {
     func testServerInfoDecidesWhetherWarmingIsOn() throws {
         XCTAssertTrue(try FakePigTVServer.info(warmingEnabled: true).warmingActive)
         XCTAssertFalse(try FakePigTVServer.info(warmingEnabled: false).warmingActive)
-        XCTAssertFalse(try FakePigTVServer.info().warmingActive, "an older server has neither field")
+        XCTAssertFalse(try FakePigTVServer.info().warmingActive, "no setting: off")
     }
 
     // MARK: Dwell

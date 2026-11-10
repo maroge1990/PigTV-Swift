@@ -15,6 +15,8 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 **Unit tests (`PigTVTests`)**
 - `ContractChecks` (via `PigTVTests.swift` and `Tools/test-contracts.sh`): JSON fixtures for every server response the client
   decodes (conflicts, 429, 202 preparing, resolve errors, flags, recordings, HLS recordings, sport events).
+- `MinimumServerTests`: a server below build 0476 is refused with its own text (and on Sign in's Continue); 0476, newer
+  and an unparsed build are accepted (D-53).
 - `PlaybackLifecycleTests`: C2 recovery (one automatic attempt), takeover, terminal status, dismissal, the -11868 and `'fmt?'`
   fallbacks, the AVKit-category crash guard.
 - **`RealPlaybackTests`, the real-playback harness**: `Support/LocalHTTPServer.swift` (an in-process HTTP server on
@@ -29,7 +31,7 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
   the fake server's `/api/playback/warm` (the player's next channel warms with resolve's body, a zap there adopts it and play-start carries
   `warm`).
 - `ProviderFailoverTests` (build 36, multi-provider client): C-J provider on resolve and in the stream info line, C-K reminders (once per
-  local day, never during playback, hidden without the flag, auto-dismiss), the renewed recovery allowance with an injected clock.
+  local day, never during playback, auto-dismiss), the renewed recovery allowance with an injected clock.
 - Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a
   slice and advances `guideLoadedUntil`, ends cleanly when a slice is empty, a failed page is retried before it surfaces,
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,

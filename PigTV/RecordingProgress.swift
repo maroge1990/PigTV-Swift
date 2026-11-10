@@ -1,14 +1,8 @@
 import Foundation
 
 // Resume position and watched state of a recording, in one place for the
-// Recordings page and its cards. With server 0207 (`features.recordingPositions`)
-// the server's per-login values are used; an older server has none (or the
-// request failed), so the player's saved position on this device is the source.
-// A1 (build 47): that key is scoped to the server and account the recording
-// belongs to (`pigtv.resume.<scope>.<id>`), because recording ids are per
-// server: recording 42 on one server or login must never resume another's.
-// The old unscoped `pigtv.resume.<id>` keys cannot say whose they were and are
-// deleted, never read.
+// Recordings page and its cards: the server's per-login values on the
+// recordings list (`position_sec`, `watched`).
 
 nonisolated struct RecordingProgress: Equatable, Sendable {
     /// 0...1 of a partly watched recording, or nil (not started, finished or live).
@@ -18,34 +12,16 @@ nonisolated struct RecordingProgress: Equatable, Sendable {
 }
 
 nonisolated extension Recording {
-    /// `serverPositions`: the server advertises `recordingPositions`. `local`
-    /// reads the saved position (seconds) for an id on this device.
-    func progress(serverPositions: Bool, local: (Int) -> Double) -> RecordingProgress {
+    func progress() -> RecordingProgress {
         guard status == "completed" else { return .none }
-        let position: Double
-        let watched: Bool
-        if serverPositions {
-            position = position_sec ?? 0
-            watched = self.watched ?? false
-        } else {
-            position = local(id)
-            watched = Recording.finished(position: position, duration: duration_sec)
-        }
-        if watched { return RecordingProgress(fraction: nil, watched: true) }
-        return RecordingProgress(fraction: Recording.resumeFraction(position: position, duration: duration_sec), watched: false)
+        if watched ?? false { return RecordingProgress(fraction: nil, watched: true) }
+        return RecordingProgress(fraction: Recording.resumeFraction(position: position_sec ?? 0, duration: duration_sec), watched: false)
     }
 
     /// 0…1 of a recording already watched (the player's resume point), or nil when nothing useful is remembered.
     static func resumeFraction(position: Double, duration: Double?) -> Double? {
         guard let duration, duration > 0, position > 10, position < duration - 30 else { return nil }
         return min(1, position / duration)
-    }
-
-    /// A device-local position within 30 s of the end counts as watched
-    /// (the same margin `resumeFraction` uses to stop resuming).
-    static func finished(position: Double, duration: Double?) -> Bool {
-        guard let duration, duration > 0 else { return false }
-        return position > 10 && position >= duration - 30
     }
 }
 

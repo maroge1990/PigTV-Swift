@@ -42,15 +42,13 @@ final class BrowseModel: ObservableObject {
     var isFixture = false
     let client: APIClient
     private var guideGeneration = UUID()
-    private var guideOffset = 0
-    // A1.1: cursor paging (server flag `guideCursor`) replaces offset when the
-    // server supports it; nil once the last page has arrived.
+    // A1.1: the guide's paging cursor; nil before the first page and once the last has arrived.
     private var guideCursor: String?
     // Ids already appended to `guide` during the current load, kept up to date
     // incrementally instead of being rebuilt from `guide` on every page (that
     // rebuild made paging quadratic in the number of channels).
     private var loadedGuideIds = Set<String>()
-    // The server's guide version (server flag `guideVersion`) tied to the data
+    // The server's guide version (`library/guide/version`) tied to the data
     // currently held in `guide`/on disk. Captured once before a full load
     // starts and committed only when that load completes, so a change to the
     // guide mid-load is never masked by a stale "still fresh" version.
@@ -89,7 +87,6 @@ final class BrowseModel: ObservableObject {
             guidePrefetch?.cancel()
             guidePrefetch = nil
             guideGeneration = UUID()
-            guideOffset = 0
             guideCursor = nil
             loadedGuideIds = []
             replacePending = keepVisible && !guide.isEmpty
@@ -103,7 +100,7 @@ final class BrowseModel: ObservableObject {
             guideEnded = false
             // A1.1: captured once before the load starts and committed only on
             // completion, so a version change mid-load is never masked.
-            loadingVersion = client.info?.features.guideVersion == true ? try? await client.guideVersion() : nil
+            loadingVersion = try? await client.guideVersion()
         } else if guideBusy || !guideHasMore {
             return
         }
@@ -124,23 +121,15 @@ final class BrowseModel: ObservableObject {
 
     private func fetchGuidePage(generation: UUID) async {
         let sp = PigTVSignpost.begin("GuidePage"); defer { PigTVSignpost.end("GuidePage", sp) }
-        // A1.1: cursor paging (server flag `guideCursor`) pages 500 at a time
-        // instead of 50; an older server keeps limit/offset exactly as before.
-        let cursorPaging = client.info?.features.guideCursor == true
-        let isFirstPage = cursorPaging ? guideCursor == nil : guideOffset == 0
-        let offset = guideOffset
+        // A1.1: cursor paging, 500 at a time.
+        let isFirstPage = guideCursor == nil
         let start = window.timeIntervalSince1970 * 1000
         var query = [
             URLQueryItem(name: "start", value: String(Int64(start))),
             URLQueryItem(name: "end", value: String(Int64(start + GuideNavigation.loadedDuration * 1000)))
         ]
-        if cursorPaging {
-            query.append(URLQueryItem(name: "limit", value: "500"))
-            if let guideCursor { query.append(URLQueryItem(name: "cursor", value: guideCursor)) }
-        } else {
-            query.append(URLQueryItem(name: "limit", value: "50"))
-            query.append(URLQueryItem(name: "offset", value: String(offset)))
-        }
+        query.append(URLQueryItem(name: "limit", value: "500"))
+        if let guideCursor { query.append(URLQueryItem(name: "cursor", value: guideCursor)) }
         do {
             let page = try await requestGuidePage(query, generation: generation)
             guard generation == guideGeneration else { return }
@@ -159,13 +148,8 @@ final class BrowseModel: ObservableObject {
             }
             guideTotal = page.total
             fromCache = false
-            if cursorPaging {
-                guideCursor = page.nextCursor
-                guideHasMore = page.nextCursor != nil
-            } else {
-                guideOffset = offset + page.channels.count
-                guideHasMore = !page.channels.isEmpty && guideOffset < page.total
-            }
+            guideCursor = page.nextCursor
+            guideHasMore = page.nextCursor != nil
             if isFirstPage { guideLoadedAt = Date() }
             if !guideHasMore {
                 guideCacheVersion = loadingVersion
@@ -212,7 +196,7 @@ final class BrowseModel: ObservableObject {
 
     /// The guide error banner's Retry: an empty guide (the very first page
     /// never arrived) starts over, otherwise this resumes background paging
-    /// from `guideOffset`/`guideCursor` — wherever it stopped — instead of
+    /// from `guideCursor` — wherever it stopped — instead of
     /// restarting the whole guide.
     func retryGuide() async {
         guideError = nil
@@ -240,7 +224,6 @@ final class BrowseModel: ObservableObject {
         let generation = guideGeneration
         let sliceStart = guideLoadedUntil
         let sliceEnd = sliceStart.addingTimeInterval(GuideNavigation.loadedDuration)
-        let cursorPaging = client.info?.features.guideCursor == true
         let sliceQueryTimes = [
             URLQueryItem(name: "start", value: String(Int64(sliceStart.timeIntervalSince1970 * 1000))),
             URLQueryItem(name: "end", value: String(Int64(sliceEnd.timeIntervalSince1970 * 1000)))
@@ -248,16 +231,10 @@ final class BrowseModel: ObservableObject {
         var merged: [String: [GuideProgramme]] = [:]
         var anyProgrammes = false
         var cursor: String?
-        var offset = 0
         while true {
             var query = sliceQueryTimes
-            if cursorPaging {
-                query.append(URLQueryItem(name: "limit", value: "500"))
-                if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
-            } else {
-                query.append(URLQueryItem(name: "limit", value: "50"))
-                query.append(URLQueryItem(name: "offset", value: String(offset)))
-            }
+            query.append(URLQueryItem(name: "limit", value: "500"))
+            if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
             let page: GuidePage
             do { page = try await requestGuidePage(query, generation: generation) }
             catch { return } // transient: guideLoadedUntil unchanged, retried on the next viewport move
@@ -266,13 +243,8 @@ final class BrowseModel: ObservableObject {
                 merged[channel.id, default: []].append(contentsOf: channel.programmes)
                 anyProgrammes = true
             }
-            if cursorPaging {
-                cursor = page.nextCursor
-                if cursor == nil { break }
-            } else {
-                offset += page.channels.count
-                if page.channels.isEmpty || offset >= page.total { break }
-            }
+            cursor = page.nextCursor
+            if cursor == nil { break }
         }
         guard generation == guideGeneration else { return }
         guard anyProgrammes else { guideEnded = true; return }
@@ -344,12 +316,12 @@ final class BrowseModel: ObservableObject {
         }
     }
 
-    // A1.1: a cheap version check (server flag `guideVersion`) that avoids a
+    // A1.1: a cheap version check (`library/guide/version`) that avoids a
     // full guide download when nothing has changed and the loaded window
     // still covers the near future. Updates freshness state and returns true
     // when it did so; a failed fetch falls back to the normal reload.
     private func tryMarkFreshByVersion(now: Date = Date()) async -> Bool {
-        guard client.info?.features.guideVersion == true, !guide.isEmpty else { return false }
+        guard !guide.isEmpty else { return false }
         guard let serverVersion = try? await client.guideVersion() else { return false }
         guard GuideNavigation.guideStillCovers(cachedVersion: guideCacheVersion, serverVersion: serverVersion,
                                                 window: window, now: now) else { return false }
@@ -378,16 +350,10 @@ final class BrowseModel: ObservableObject {
             logo: logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId,
             number: number(for: channel))
     }
-    // C-A: a channel number is shown only when the server advertises
-    // `channelNumbers` (an older server, or a stale cache, shows none).
-    var showsChannelNumbers: Bool { client.info?.features.channelNumbers == true }
-    func number(for channel: GuideChannel) -> Int? {
-        showsChannelNumbers ? channel.number : nil
-    }
-    // C-G: the guide marks a channel unreliable only with `channelHealth`.
-    func isFlaky(_ channel: GuideChannel) -> Bool {
-        client.info?.features.channelHealth == true && channel.health == "flaky"
-    }
+    // C-A: the channel's number, a label only.
+    func number(for channel: GuideChannel) -> Int? { channel.number }
+    // C-G: the guide marks a channel unreliable from its `health`.
+    func isFlaky(_ channel: GuideChannel) -> Bool { channel.health == "flaky" }
     // C-X (#265, Mark 9 Nov 2026): a channel's picture quality, with `channelQuality` (an older server, or a stale
     // cache, has none). The record page shows any label; the guide's channel column only the two that tell you
     // something (`guideQuality`): UHD, and SD as a warning. Plain HD is nearly every channel, so it shows nothing.
@@ -452,10 +418,8 @@ final class BrowseModel: ObservableObject {
         let began = Date()
         do {
             let loaded: [Recording] = try await client.decodedOffMain("recordings")
-            let query = client.info?.features.scheduleHistory == true
-                ? [URLQueryItem(name: "include", value: "recent")]
-                : []
-            let fetched: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled", query: query)
+            let fetched: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled",
+                                                                                query: [URLQueryItem(name: "include", value: "recent")])
             // Apple 125: nothing the server confirmed removed comes back from a list fetched before (or around) it.
             let stones = recordingStore.tombstones
             let files = loaded.filter { stones[RecordingsHome.key($0)] == nil }
@@ -532,7 +496,7 @@ final class BrowseModel: ObservableObject {
         let row = guideRow(id: channel.id, identityKey: channel.identityKey)
         return Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: logo(for: channel),
                        category: row?.category, now: nil, next: nil, stableId: channel.stableId ?? row?.stableId,
-                       number: showsChannelNumbers ? (channel.number ?? row?.number) : nil)
+                       number: channel.number ?? row?.number)
     }
 
     /// The logo to draw for an event's channel (the event's, else the guide's).
@@ -844,25 +808,14 @@ final class BrowseModel: ObservableObject {
         } catch { actionError = UserMessage.text(for: error) }
     }
 
-    /// Server 0207: saved positions come with the recordings list.
-    var usesServerPositions: Bool { client.info?.features.recordingPositions == true }
-
-    /// Resume fraction and watched state: the server's values when it has
-    /// them, else this device's saved position.
-    func progress(for recording: Recording) -> RecordingProgress {
-        recording.progress(serverPositions: usesServerPositions) {
-            client.localResumeKey($0).map { UserDefaults.standard.double(forKey: $0) } ?? 0
-        }
-    }
+    /// Resume fraction and watched state, from the server's per-login values on the recordings list.
+    func progress(for recording: Recording) -> RecordingProgress { recording.progress() }
 
     func delete(_ item: Recording) async {
         await mutate("recordings/\(item.id)", method: "DELETE", success: "Recording deleted.")
     }
 
     // MARK: C-M recording rules
-
-    /// The server can keep recording rules.
-    var rulesAvailable: Bool { client.info?.features.recordingRules == true }
 
     func loadRules() async throws -> [RecordingRule] {
         try await client.request("recordings/rules")
@@ -873,7 +826,7 @@ final class BrowseModel: ObservableObject {
     /// last one published is dropped (it could hold a rule removed since), and the tombstones are read when an answer
     /// is accepted, not when its request went.
     func reloadRules() async {
-        guard rulesAvailable, !isFixture else { return }
+        guard !isFixture else { return }
         rulesGeneration += 1
         let generation = rulesGeneration
         let began = Date()

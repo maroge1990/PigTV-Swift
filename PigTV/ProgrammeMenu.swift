@@ -91,7 +91,6 @@ nonisolated struct ProgrammeMenuSubject: Equatable, Sendable {
     let programme: GuideProgramme?
     /// The active schedule's state, when this programme is scheduled ("Recording scheduled", "Recording now").
     var recordingStatus: String? = nil
-    var rulesAvailable = false
     /// Sport (Apple 115): the team "Record every <team> game" follows, instead of a series rule; nil: no team rule.
     var everyGameTeam: String? = nil
     /// A Sport card's menu: "Record this game".
@@ -116,10 +115,10 @@ nonisolated enum ProgrammeMenu {
                 items.append(.recordThis(times: programme.timeRange, game: subject.isGame))
             }
             if subject.isGame {
-                if let team = subject.everyGameTeam, subject.rulesAvailable {
+                if let team = subject.everyGameTeam {
                     items.append(.recordEvery(title: "Record every \(team) game", detail: "Every game of the team, never replays"))
                 }
-            } else if subject.rulesAvailable {
+            } else {
                 items.append(.recordEvery(title: "Record every new episode", detail: "\(programme.title) on \(subject.channelName)"))
             }
             items.append(.moreOptions)
@@ -330,8 +329,7 @@ extension BrowseModel {
 
     /// C-L: the recording this programme's schedule is making, when it can be watched from its start.
     func recordingInProgress(channel: GuideChannel, programme: GuideProgramme) -> Recording? {
-        guard client.info?.features.recordingWatchLive == true,
-              let schedule = activeSchedule(channel: channel, programme: programme), schedule.status == "recording" else { return nil }
+        guard let schedule = activeSchedule(channel: channel, programme: programme), schedule.status == "recording" else { return nil }
         return recordings.first { item in
             item.canWatchFromStart && (schedule.recording_id.map { $0 == item.id }
                 ?? (item.channel_name == channel.name && item.title == programme.title))

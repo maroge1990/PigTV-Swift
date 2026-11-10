@@ -181,7 +181,7 @@ struct RecordingsView: View {
                     if let featured {
                         FeaturedRecording(item: featured, progress: model.progress(for: featured),
                                           teams: RecordingTeams.match(title: featured.title, games: games),
-                                          client: model.client, canWatchFromStart: canWatchFromStart(featured),
+                                          client: model.client, canWatchFromStart: featured.canWatchFromStart,
                                           play: { playing = RecordingPlay(recording: featured, fromStart: $0) },
                                           playFromLive: { playing = RecordingPlay(recording: featured, fromLive: true) },
                                           details: { open(featured) },
@@ -229,10 +229,6 @@ struct RecordingsView: View {
         #endif
     }
 
-    private func canWatchFromStart(_ item: Recording) -> Bool {
-        item.canWatchFromStart && model.client.info?.features.recordingWatchLive == true
-    }
-
     // MARK: iPhone
 
     private var all: [Recording] { featured.map { [$0] + cards } ?? cards }
@@ -268,7 +264,7 @@ struct RecordingsView: View {
                     ForEach(all) { item in
                         RecordingStackCard(item: item, progress: model.progress(for: item),
                                            teams: RecordingTeams.match(title: item.title, games: games), client: model.client,
-                                           canWatchFromStart: canWatchFromStart(item),
+                                           canWatchFromStart: item.canWatchFromStart,
                                            play: { playing = RecordingPlay(recording: item, fromStart: $0) },
                                            details: { open(item) })
                             .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, PigSpacing.section)

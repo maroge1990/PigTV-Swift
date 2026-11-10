@@ -104,7 +104,7 @@ final class SportModelTests: XCTestCase {
         let best = browse.playable(try XCTUnwrap(sport.live.first?.best))
         XCTAssertEqual(best.id, "1:701")
         XCTAssertEqual(best.logo, "/api/logo/701")
-        XCTAssertNil(best.number, "numbers only with channelNumbers")
+        XCTAssertEqual(best.number, 701, "the event channel's number")
         // Record: the event is the only programme on its best channel.
         let event = try XCTUnwrap(sport.soon.first)
         let row = browse.recordingRow(event, on: try XCTUnwrap(event.best))

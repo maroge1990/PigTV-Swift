@@ -182,9 +182,6 @@ final class AppModel: ObservableObject {
                 let candidate = APIClient(address: address)
                 let info: ServerInfo = try await candidate.request("info")
                 try info.validate()
-                guard info.features.devicePairing == true else {
-                    throw PigTVError.message("This server does not support device pairing. Use your username and password.")
-                }
                 #if os(tvOS)
                 let platform = "tvOS"
                 #else
@@ -229,9 +226,8 @@ final class AppModel: ObservableObject {
 
     /// D-44 batch 6: Sign in starts at its server step (not the two tiles) after "Use a different server".
     @Published var signInAtServer = false
-    /// Sign in's step 1: the address this session last reached, and what it said (pairing or not).
+    /// Sign in's step 1: the address this session last reached.
     @Published private(set) var checkedServer: String?
-    @Published private(set) var checkedInfo: ServerInfo?
 
     /// Sign in's Continue: reaches the address's `/api/info` before offering the ways to sign in.
     func checkServer() async -> Bool {
@@ -243,7 +239,6 @@ final class AppModel: ObservableObject {
             let info: ServerInfo = try await APIClient(address: address).request("info")
             try info.validate()
             checkedServer = serverText
-            checkedInfo = info
             signInAtServer = false
             return true
         } catch {
@@ -473,10 +468,10 @@ final class AppModel: ObservableObject {
     }
 
     // C-A (iOS "Go to number"): the channel with this number, looked up in the
-    // zap list first, then the whole guide. Only with `channelNumbers`.
+    // zap list first, then the whole guide.
     func channel(number: Int) -> Channel? {
         if let hit = zapList.first(where: { $0.number == number }) { return hit }
-        guard let browse, browse.showsChannelNumbers,
+        guard let browse,
               let row = browse.guide.first(where: { $0.number == number }) else { return nil }
         return browse.asChannel(row)
     }
@@ -612,16 +607,16 @@ final class AppModel: ObservableObject {
                            pageLeagues: [String] = [], events: Bool = false) {
         let leagues = (try? JSONSerialization.data(withJSONObject: pageLeagues)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         let front = (sportFront ? #","sportFront":true,"sportPages":true,"sportPageNfl":true"# : "") + (cricket ? #","sportPageCricket":true"# : "")
-            + (sportFollows ? #","sportFollows":true,"recordingRules":true"# : "")
+            + (sportFollows ? #","sportFollows":true"# : "")
             + (pageLeagues.isEmpty ? "" : #","sportPageLeagues":"# + leagues) + (events ? #","sportPageEvents":true"# : "")
         guard let address = try? ServerAddress("http://127.0.0.1:3000"),
-              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data((#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true,"sportsEvents":true"# + front + "}}").utf8)) else { return }
+              let info = try? JSONDecoder().decode(ServerInfo.self, from: Data((#"{"name":"PigTV","version":"3.9.0","build":"0503","apiVersion":1,"features":{"library":true,"playbackResolve":true,"sportsEvents":true"# + front + "}}").utf8)) else { return }
         let client = APIClient(address: address, token: "fixture", info: info, accountID: 1)
         let model = BrowseModel(client: client, accountID: 1)
         model.isFixture = true
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(logos: true), to: GuideFixtures.requestedCount)
         model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
-        model.recordings = GuideFixtures.recordings(client: client)
+        model.recordings = GuideFixtures.recordings()
         GuideFixtures.preloadLogos()
         let sportFixture: [SportEvent]
         if let countStr = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPORT_EVENTS"],

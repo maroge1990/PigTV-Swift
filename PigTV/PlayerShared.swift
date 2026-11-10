@@ -331,7 +331,7 @@ nonisolated struct PlayerSeekWindow: Equatable, Sendable {
     private static func clamp(_ value: Double) -> Double { value.isFinite ? min(1, max(0, value)) : 0 }
 }
 
-/// #37 (Mark, 30 Oct; C-W): a paused live play keeps its stream up to 30 minutes on a server with `livePause`. The
+/// #37 (Mark, 30 Oct; C-W): a paused live play keeps its stream up to 30 minutes on the server. The
 /// server keeps about 6 minutes of the channel, so a longer pause resumes at live, and past 30 minutes the stream has
 /// gone and the play starts again at live. A warning 2 minutes before the end.
 nonisolated enum LivePause {

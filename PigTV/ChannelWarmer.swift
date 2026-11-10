@@ -2,9 +2,8 @@ import Foundation
 import OSLog
 import SwiftUI
 
-/// Audit R11: predictive channel warming, client side. When the server can
-/// warm (`features.warming`) and its admin turned "Warm the next channel" on
-/// (`warmingEnabled`), the player asks it to start the stream of the channel
+/// Audit R11: predictive channel warming, client side. When the server's
+/// admin turned "Warm the next channel" on (`warmingEnabled`), the player asks it to start the stream of the channel
 /// its remote's up/down or "Last channel" is likely to go to next, so that
 /// play's resolve adopts a stream that is already running. Browsing and focus
 /// never warm anything. The owner chose a cautious policy:

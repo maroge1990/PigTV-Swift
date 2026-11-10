@@ -25,11 +25,10 @@ final class ProviderReminderModel: ObservableObject {
     }
 
     /// Call on launch/sign-in, on foreground and when playback ends. Does
-    /// nothing without the flag, while playing, while a banner is up, or after
+    /// nothing while playing, while a banner is up, or after
     /// today's popup; a failed request is silent.
     func check(client: APIClient?, playing: () -> Bool) async {
-        guard let client, client.info?.features.providerReminders == true,
-              !playing(), message == nil, !checking else { return }
+        guard let client, !playing(), message == nil, !checking else { return }
         let schedule = ProviderReminderSchedule(defaults: defaults)
         guard !schedule.shownToday(now: clock(), timeZone: timeZone) else { return }
         checking = true

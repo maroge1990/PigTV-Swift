@@ -10,29 +10,18 @@ struct ServerInfo: Decodable {
     var identity: String { display ?? (version.map { "v\($0)" } ?? "PigTV") + (build.map { " · build \($0)" } ?? "") }
     let apiVersion: Int
     let features: Features
-    /// Audit R11 (server 0198): the admin's "Warm the next channel" setting.
-    /// Absent on an older server, which reads as off.
+    /// Audit R11: the admin's "Warm the next channel" setting (absent reads as off).
     var warmingEnabled: Bool? = nil
-    /// Predictive warming runs only when the server can do it AND its admin
-    /// turned it on (it is off by default and costs a provider connection).
-    var warmingActive: Bool { features.warming == true && warmingEnabled == true }
+    /// Predictive warming runs only when the server's admin turned it on (it is off by default and costs a provider
+    /// connection).
+    var warmingActive: Bool { warmingEnabled == true }
 
+    /// The flags this app decodes. A flag that is `true` on every server from `minimumBuild` on is not asked for
+    /// (D-53); decoding ignores it.
     struct Features: Decodable {
         let playbackResolve: Bool?
         let library: Bool?
-        let devicePairing: Bool?
         let viewerConflict: Bool?
-        let clientEvents: Bool?
-        let recordingPlaybackPolling: Bool?
-        let playbackTerminalStatus: Bool?
-        // A1.1: additive guide-refresh contract. Older servers lack these and
-        // the client keeps today's offset-paged, always-download behaviour.
-        let guideCursor: Bool?
-        let guideVersion: Bool?
-        // C-A: rows carry a persistent channel `number`, a label only (since
-        // server 0139 lists keep the provider's order). C-G: rows carry `health`.
-        let channelNumbers: Bool?
-        let channelHealth: Bool?
         // C-X (server 0502, #265): guide and channel rows carry `quality` ("UHD", "FHD", "HD", "SD" or null).
         var channelQuality: Bool? = nil
         // C-I (server 0147): `GET sports/events` (the Sport tab and Home's
@@ -52,28 +41,8 @@ struct ServerInfo: Decodable {
         var sportPageLeagues: FeatureList? = nil
         // C-V (server 0428, #197, D-43): `GET sports/pages/events?league=` (tennis, golf, UFC, IndyCar, NASCAR).
         var sportPageEvents: Bool? = nil
-        // Server 0207: per-login recording positions (`GET`/`PUT
-        // recordings/{id}/position`, and `position_sec`/`watched` on list rows).
-        var recordingPositions: Bool? = nil
-        // Server 0156: `GET /api/recordings/scheduled?include=recent` also lists
-        // missed/failed schedules from the last 7 days, each with `error`.
-        let scheduleHistory: Bool?
-        // C-J / C-K (multi-provider failover): `providers` = resolve carries a
-        // `provider` object; `providerReminders` = `GET providers/reminders`.
+        // C-J: `providers` = resolve carries a `provider` object.
         var providers: Bool? = nil
-        var providerReminders: Bool? = nil
-        // R11 (server 0198): `POST playback/warm` exists.
-        var warming: Bool? = nil
-        // C-W (server 0468, #37): `POST playback/{id}/pause`: a paused live play keeps its stream up to 30 minutes.
-        var livePause: Bool? = nil
-        // C-L (server 0218, R3): `GET recordings/{id}/watch`; recording rows
-        // carry `watch_live` (a segmented recording in progress can be played
-        // from its start).
-        var recordingWatchLive: Bool? = nil
-        // C-M (server 0219, R5): `recordings/rules`; schedules carry `rule_id`.
-        var recordingRules: Bool? = nil
-        // C-M `game` / C-R `recordWhenListed` (server 0466, #234): Record on a game the guide does not list yet.
-        var recordGameRules: Bool? = nil
     }
 
     /// A flag sent as a list of names (`sportPageLeagues`); anything else reads as none, never failing `/api/info`.
@@ -85,9 +54,16 @@ struct ServerInfo: Decodable {
         }
     }
 
+    /// D-53: the oldest server build this app works with (production's, 0476).
+    static let minimumBuild = 476
+
     func validate() throws {
         guard apiVersion == 1, features.library == true, features.playbackResolve == true else {
             throw PigTVError.message("This server does not support the library and playback APIs required by this app.")
+        }
+        // A build that does not parse (a development server, the fallback's null) is accepted.
+        if let build, let number = Int(build), number < Self.minimumBuild {
+            throw PigTVError.message("This PigTV server is too old for this app. Update the server, then try again.")
         }
     }
 }
@@ -152,7 +128,7 @@ struct Channel: Decodable, Identifiable, Equatable {
     // `id` is position-based and does not). Additive; may be nil on older
     // servers. Prefer it as a durable local key across launches.
     var stableId: String? = nil
-    // C-A (server flag `channelNumbers`): the channel's persistent number.
+    // C-A: the channel's persistent number.
     // Absent/null on older servers and for an unnumbered channel.
     var number: Int? = nil
     // `library/recent`: a watched channel that no longer exists in the

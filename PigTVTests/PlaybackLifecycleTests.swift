@@ -71,7 +71,7 @@ final class PlaybackLifecycleTests: XCTestCase {
         SyntheticProtocol.server = server
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SyntheticProtocol.self]
-        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0086","apiVersion":1,"features":{"library":true,"playbackResolve":true,"recordingPlaybackPolling":true,"epgLogoFallback":true,"playbackTerminalStatus":true}}"#.utf8))
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.7.0","build":"0503","apiVersion":1,"features":{"library":true,"playbackResolve":true,"recordingPlaybackPolling":true,"epgLogoFallback":true,"playbackTerminalStatus":true}}"#.utf8))
         return APIClient(address: try ServerAddress(address), token: "fixture",
             session: URLSession(configuration: configuration), info: modern ? info : nil)
     }
@@ -415,8 +415,10 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertNotNil(playback.error)
         XCTAssertTrue(playback.canRetry)
         try await Task.sleep(for: .milliseconds(50))
-        // The player's conflict poll may get one request out before the failure stops it; it resolves nothing.
-        XCTAssertEqual(server.captured.map(\.path).filter { $0 != "/api/playback/conflict" }, ["/api/playback/resolve"])
+        // The player's conflict poll may get one request out before the failure stops it, and its diagnostics are posted;
+        // it resolves nothing.
+        XCTAssertEqual(server.captured.map(\.path).filter { !["/api/playback/conflict", "/api/playback/client-event"].contains($0) },
+                       ["/api/playback/resolve"])
         _ = await playback.stop()
     }
 
@@ -513,7 +515,7 @@ final class PlaybackLifecycleTests: XCTestCase {
         let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":12,"title":"Synthetic","status":"completed"}"#.utf8))
         let playback = RecordingPlayerModel(recording: recording, client: try client(server, modern: true))
         playback.start()
-        try await eventually { server.captured.count == 2 }
+        try await eventually { server.captured.contains { $0.path == "/api/recordings/12/playback" } }
         await playback.stop()
         XCTAssertNil(playback.player.currentItem)
         XCTAssertFalse(playback.ready)

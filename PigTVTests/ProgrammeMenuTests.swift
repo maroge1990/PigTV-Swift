@@ -12,7 +12,7 @@ final class ProgrammeMenuTests: XCTestCase {
 
     func testRecordComesFirstThenWatchFromStartDetailsScheduleAndFavourites() {
         let later = programme(2400, 6000)
-        let items = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "ABC TV", programme: later, rulesAvailable: true,
+        let items = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "ABC TV", programme: later,
                                                              canWatchFromStart: true), now: now)
         XCTAssertEqual(items.map(\.title), ["Record this programme", "Record every new episode", "More options…",
                                             "Watch from start", "Programme details", "Channel schedule",
@@ -26,7 +26,7 @@ final class ProgrammeMenuTests: XCTestCase {
     func testAScheduledProgrammeOffersChangeRecording() {
         let live = programme(-600, 3000)
         let items = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Fox Footy", programme: live,
-                                                             recordingStatus: "Recording now", rulesAvailable: true,
+                                                             recordingStatus: "Recording now",
                                                              isFavourite: true), now: now)
         XCTAssertEqual(items.map(\.title), ["Change recording", "Record every new episode", "More options…",
                                             "Programme details", "Channel schedule", "Remove Fox Footy from favourites"])
@@ -37,24 +37,19 @@ final class ProgrammeMenuTests: XCTestCase {
     /// Apple 115: a Sport card's RECORD section: this game, every game of the team, More options….
     func testASportCardRecordsThisGameOrEveryGameOfTheTeam() {
         let later = programme(2400, 9000)
-        let items = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Optus Sport 1", programme: later, rulesAvailable: true,
+        let items = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Optus Sport 1", programme: later,
                                                              everyGameTeam: "Liverpool", isGame: true), now: now)
             .filter(\.isRecordSection)
         XCTAssertEqual(items.map(\.title), ["Record this game", "Record every Liverpool game", "More options…"])
-        let noRules = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Optus Sport 1", programme: later,
-                                                               everyGameTeam: "Liverpool", isGame: true), now: now)
-        XCTAssertFalse(noRules.contains { $0.id == "recordEvery" }, "no team rule without the server's rules")
-        XCTAssertFalse(noRules.map(\.title).contains("Record every new episode"), "never a series rule for a game")
+        let noTeam = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "Optus Sport 1", programme: later, isGame: true), now: now)
+        XCTAssertFalse(noTeam.contains { $0.id == "recordEvery" }, "never a series rule for a game, no team rule without a team")
     }
 
     func testEndedProgrammesAndTilesHaveNoRecordSection() {
-        let ended = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "SBS", programme: programme(-7200, -60),
-                                                             rulesAvailable: true), now: now)
+        let ended = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "SBS", programme: programme(-7200, -60)), now: now)
         XCTAssertEqual(ended.map(\.title), ["Programme details", "Channel schedule", "Add SBS to favourites"])
         let tile = ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "SBS", programme: nil), now: now)
         XCTAssertEqual(tile.map(\.title), ["Channel schedule", "Add SBS to favourites"])
-        XCTAssertFalse(ProgrammeMenu.items(ProgrammeMenuSubject(channelName: "SBS", programme: programme(60, 600)), now: now)
-            .contains { $0.id == "recordEvery" }, "no series item without recording rules")
     }
 
     func testTheCardSitsBesideTheProgrammeAndOnScreen() {

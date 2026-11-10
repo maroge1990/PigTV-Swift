@@ -193,15 +193,12 @@ final class FakePigTVServer: @unchecked Sendable {
         }
     }
 
-    /// Server info advertising client events, so play-start/-end are posted.
-    /// `extraFeatures` is spliced into `features` (e.g. `"providerReminders":true`).
-    /// `warmingEnabled` (R11) adds `features.warming:true` and the top-level
-    /// setting; nil leaves both out, as an older server does.
+    /// Server info for a current server. `extraFeatures` is spliced into `features` (e.g. `"providers":true`).
+    /// `warmingEnabled` (R11) is the admin's top-level setting; nil leaves it out (off).
     @MainActor static func info(extraFeatures: String = "", warmingEnabled: Bool? = nil) throws -> ServerInfo {
-        var extra = extraFeatures.isEmpty ? "" : "," + extraFeatures
-        var top = ""
-        if let warmingEnabled { extra += #","warming":true"#; top = #","warmingEnabled":\#(warmingEnabled)"# }
-        return try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0146","apiVersion":1\#(top),"features":{"library":true,"playbackResolve":true,"clientEvents":true,"viewerConflict":true\#(extra)}}"#.utf8))
+        let extra = extraFeatures.isEmpty ? "" : "," + extraFeatures
+        let top = warmingEnabled.map { #","warmingEnabled":\#($0)"# } ?? ""
+        return try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0503","apiVersion":1\#(top),"features":{"library":true,"playbackResolve":true,"viewerConflict":true\#(extra)}}"#.utf8))
     }
 
     /// An APIClient for this server (token "fixture").

@@ -35,8 +35,8 @@ final class SettingsMenuTests: XCTestCase {
         let two = one + [Labs.Toggle(key: "b", title: "Other", detail: "")]
         XCTAssertEqual(SettingsMenu.labsSummary(two) { $0 == "b" }, "1 on")
         XCTAssertEqual(SettingsMenu.labsSummary(two) { _ in false }, "All off")
-        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0444","apiVersion":1,"features":{}}"#.utf8))
-        XCTAssertEqual(SettingsMenu.aboutSummary(appBuild: "128", server: info), "App 128 · Server 0444")
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9.0","build":"0503","apiVersion":1,"features":{}}"#.utf8))
+        XCTAssertEqual(SettingsMenu.aboutSummary(appBuild: "128", server: info), "App 128 · Server 0503")
         XCTAssertEqual(SettingsMenu.aboutSummary(appBuild: "128", server: nil), "App 128")
     }
 }

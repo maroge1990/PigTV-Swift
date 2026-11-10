@@ -231,8 +231,8 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
 }
 
 /// #234 (Mark, 4 Nov): a future game the guide does not list yet (no channels) can be recorded once it is: what selecting
-/// its card offers. Nil when the card has a channel (its usual Watch / details), is not a two-sided game to come, is
-/// already set to record, or the server cannot (`recordGameRules`).
+/// its card offers. Nil when the card has a channel (its usual Watch / details), is not a two-sided game to come,
+/// or is already set to record.
 nonisolated enum SportFutureRecord {
   enum Offer: Equatable { case record, cancel(ruleId: Int) }
   static let recordTitle = "Record when it's listed"
@@ -244,8 +244,8 @@ nonisolated enum SportFutureRecord {
 
   /// `answered`: this device's own answer, used only while the card still says what it said when answered (Apple 155,
   /// 152 Codex round 2: a refreshed card that says something else is newer, e.g. a rule replaced on another device).
-  static func offer(_ game: SportsGame, now: Date, serverCan: Bool, answered: Answer? = nil) -> Offer? {
-    guard serverCan, game.channels.isEmpty, game.status == "scheduled", game.competitors.count == 2,
+  static func offer(_ game: SportsGame, now: Date, answered: Answer? = nil) -> Offer? {
+    guard game.channels.isEmpty, game.status == "scheduled", game.competitors.count == 2,
           game.recordingMark == nil, game.start > now.timeIntervalSince1970 * 1000 else { return nil }
     if let id = waiting(game, answered: answered) { return .cancel(ruleId: id) }
     return .record

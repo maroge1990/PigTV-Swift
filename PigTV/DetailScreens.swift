@@ -98,7 +98,7 @@ struct ProgrammeDetails: View {
                         } else if programme.end > now {
                             recordButton(primary: !live)
                         }
-                        if programme.end > now && model.rulesAvailable && !ruleAdded {
+                        if programme.end > now && !ruleAdded {
                             // C-M: every airing of this title on this channel.
                             Button("Record series", systemImage: "repeat.circle") {
                                 Task {

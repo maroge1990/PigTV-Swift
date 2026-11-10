@@ -40,10 +40,9 @@ final class SportPresenter: ObservableObject {
     func open(_ event: SportEvent, _ page: SportPage) { presented = SportPresentation(event: event, page: page) }
     func play(_ event: SportEvent) { app.playSportEvent(event, origin: origin) }
 
-    /// #234: what selecting a card without a listing offers, if anything (the server must have `game` rules).
+    /// #234: what selecting a card without a listing offers, if anything.
     func futureOffer(_ game: SportsGame) -> SportFutureRecord.Offer? {
-        SportFutureRecord.offer(game, now: Date(), serverCan: app.browse?.client.info?.features.recordGameRules == true,
-                                answered: futureAnswers[game.id])
+        SportFutureRecord.offer(game, now: Date(), answered: futureAnswers[game.id])
     }
     /// The rule this card waits on, this device's answers first.
     func futureRule(_ game: SportsGame) -> Int? { SportFutureRecord.waiting(game, answered: futureAnswers[game.id]) }
@@ -178,7 +177,7 @@ struct SportChannelRow: View {
                 VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
                         Text(channel.name).font(DetailType.rowTitle).lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
-                        if browse.showsChannelNumbers, let number = channel.number {
+                        if let number = channel.number {
                             // never broken over lines; the name shrinks first (#243: "beIN Sp…" at phone width)
                             ChannelNumberText(number: String(number), font: DetailType.rowDetail).fixedSize()
                         }

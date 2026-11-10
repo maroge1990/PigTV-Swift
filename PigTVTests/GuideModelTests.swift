@@ -1,6 +1,16 @@
 import XCTest
 @testable import PigTV
 
+// A full guide load first asks `library/guide/version`; these fakes answer it 404 (no version) without using up a page.
+private func answerVersionCheck(_ loading: URLProtocol) -> Bool {
+    guard let url = loading.request.url, url.path == "/api/library/guide/version" else { return false }
+    let response = HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+    loading.client?.urlProtocol(loading, didReceive: response, cacheStoragePolicy: .notAllowed)
+    loading.client?.urlProtocol(loading, didLoad: Data("{}".utf8))
+    loading.client?.urlProtocolDidFinishLoading(loading)
+    return true
+}
+
 // A1.1: a cursor-paged guide response, served page by page as `loadGuide`
 // pages through it.
 private final class PagedGuideProtocol: URLProtocol, @unchecked Sendable {
@@ -9,6 +19,7 @@ private final class PagedGuideProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        if answerVersionCheck(self) { return }
         let index = min(Self.callCount, Self.pages.count - 1)
         Self.callCount += 1
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
@@ -29,6 +40,7 @@ private final class FlakyGuideProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        if answerVersionCheck(self) { return }
         let index = min(Self.callCount, Self.outcomes.count - 1)
         Self.callCount += 1
         if let body = Self.outcomes[index] {
