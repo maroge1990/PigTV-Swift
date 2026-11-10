@@ -200,14 +200,14 @@ struct UnreachableView: View {
                                 .accessibilityAddTraits(.isHeader)
                             Text(model.authBusy ? "Trying again…" : RetryCountdown.text(RetryCountdown.remaining(from: started, now: context.date)))
                                 .font(OfflineType.countdown).monospacedDigit().fontDesign(.rounded)
-                                .foregroundStyle(Color("PigSecondary"))
+                                .foregroundStyle(Color.pigSecondary)
                                 .accessibilityIdentifier("offline.countdown")
                         }
                     }
-                    Text(message).font(OfflineType.message).multilineTextAlignment(.center).foregroundStyle(Color("PigSecondary"))
+                    Text(message).font(OfflineType.message).multilineTextAlignment(.center).foregroundStyle(Color.pigSecondary)
                         .frame(maxWidth: OfflineMetrics.messageWidth)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(model.serverText).font(OfflineType.address).fontDesign(.monospaced).foregroundStyle(Color("PigSecondary"))
+                    Text(model.serverText).font(OfflineType.address).fontDesign(.monospaced).foregroundStyle(Color.pigSecondary)
                         .lineLimit(1)
                         .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                         .background(Color.pigRaised, in: Capsule())

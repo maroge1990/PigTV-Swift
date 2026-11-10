@@ -104,7 +104,7 @@ struct OnboardingView: View {
                 .accessibilityIdentifier("signin.address")
                 .onSubmit(continueToMethod)
             Text("The server address only, with its port if needed. HTTP is fine on your home network.")
-                .font(SignInType.hint).foregroundStyle(Color("PigSecondary"))
+                .font(SignInType.hint).foregroundStyle(Color.pigSecondary)
             HStack(spacing: PigSpacing.m) {
                 Button("Continue", systemImage: "arrow.right", action: continueToMethod)
                     .pigPrimaryButton()
@@ -133,7 +133,7 @@ struct OnboardingView: View {
                 StepNumber(number: 1, active: false)
             }
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                Text("SERVER").font(SignInType.eyebrow).tracking(1).foregroundStyle(Color("PigSecondary"))
+                Text("SERVER").font(SignInType.eyebrow).tracking(1).foregroundStyle(Color.pigSecondary)
                 Text(SignInStep.shortAddress(model.serverText)).font(SignInType.chipValue).fontDesign(.monospaced).lineLimit(1)
             }
             Spacer(minLength: 12)
@@ -247,7 +247,7 @@ struct OnboardingView: View {
                 .accessibilityLabel("Pairing code \(pairing.code.map(String.init).joined(separator: " "))")
             Text("Open PigTV in your browser, sign in, then approve this code in Settings → Devices.")
                 .font(SignInType.body)
-            Text("Expires \(pairing.expiry, style: .time)").font(SignInType.hint).foregroundStyle(Color("PigSecondary"))
+            Text("Expires \(pairing.expiry, style: .time)").font(SignInType.hint).foregroundStyle(Color.pigSecondary)
             ProgressView("Waiting for approval…")
             Button("Cancel pairing", systemImage: "xmark") { model.cancelPairing() }
                 .accessibilityIdentifier("signin.cancelPairing")
@@ -266,7 +266,7 @@ private struct StepHeading: View {
     var body: some View {
         HStack(spacing: PigSpacing.s) {
             StepNumber(number: number, active: active)
-            Text(title).font(SignInType.step).foregroundStyle(active ? Color("PigText") : Color("PigSecondary"))
+            Text(title).font(SignInType.step).foregroundStyle(active ? Color.pigText : Color.pigSecondary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Step \(number): \(title)")
@@ -279,7 +279,7 @@ private struct StepNumber: View {
     let active: Bool
     var body: some View {
         Text("\(number)").font(SignInType.stepNumber).monospacedDigit().fontDesign(.rounded)
-            .foregroundStyle(active ? Color.pigOnAccent : Color("PigText"))
+            .foregroundStyle(active ? Color.pigOnAccent : Color.pigText)
             .frame(width: SignInMetrics.disc, height: SignInMetrics.disc)
             .background(active ? Color.pigAccent : Color.pigSurface, in: Circle())
             .accessibilityHidden(true)
@@ -320,7 +320,7 @@ private struct SignInTileStyle: ButtonStyle {
         let lit = focused || configuration.isPressed
         configuration.label
             .padding(SignInMetrics.tilePadding)
-            .foregroundStyle(primary ? Color.pigOnAccent : Color("PigText"))
+            .foregroundStyle(primary ? Color.pigOnAccent : Color.pigText)
             .background(primary ? Color.pigAccent : lit ? Color.pigAccent.opacity(0.22) : Color.pigRaised, in: shape)
             .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigSpacing.ringOutset).allowsHitTesting(false) }
             .scaleEffect(focused ? 1.03 : configuration.isPressed ? 0.98 : 1)

@@ -40,8 +40,8 @@ struct PigSecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.semibold))
             .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
-            .foregroundStyle(Color("PigSecondary"))
-            .background(Color("PigRaised"), in: Capsule())
+            .foregroundStyle(Color.pigSecondary)
+            .background(Color.pigRaised, in: Capsule())
             .overlay { Capsule().strokeBorder(Color.pigBorder, lineWidth: 1) }
             .opacity(configuration.isPressed ? 0.6 : enabled ? 1 : 0.45)
             .contentShape(Capsule())
@@ -72,7 +72,7 @@ struct PigMenuRowStyle: ButtonStyle {
         let on = focused || configuration.isPressed
         let shape = RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous)
         configuration.label
-            .foregroundStyle(Color("PigText"))
+            .foregroundStyle(Color.pigText)
             .background(on ? Color.pigAccent.opacity(0.22) : .clear, in: shape)
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .scaleEffect(focused ? 1.03 : 1)
@@ -123,7 +123,7 @@ struct GuideFilterStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(GuideTypography.body)
-            .foregroundStyle(selected ? Color.pigAccentText : Color("PigText"))
+            .foregroundStyle(selected ? Color.pigAccentText : Color.pigText)
             .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             .background(selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
             .overlay(alignment: .bottom) {

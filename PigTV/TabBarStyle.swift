@@ -20,8 +20,8 @@ enum TabBarStyle {
         let item = UITabBarItemAppearance(style: .stacked)
         item.selected.titleTextAttributes = [.foregroundColor: pink]
         item.selected.iconColor = pink
-        item.focused.titleTextAttributes = [.foregroundColor: UIColor(named: "PigOnAccent")!]
-        item.focused.iconColor = UIColor(named: "PigOnAccent")!
+        item.focused.titleTextAttributes = [.foregroundColor: UIColor(resource: .pigOnAccent)]
+        item.focused.iconColor = UIColor(resource: .pigOnAccent)
         let appearance = UITabBarAppearance()
         appearance.stackedLayoutAppearance = item
         appearance.inlineLayoutAppearance = item
@@ -32,7 +32,7 @@ enum TabBarStyle {
         // Separate the outer navigation capsule from the page in both appearances.
         // Keep the native material, selected pill and focus behaviour intact.
         appearance.backgroundColor = UIColor { traits in
-            UIColor(named: "PigRaised")!.resolvedColor(with: traits)
+            UIColor(resource: .pigRaised).resolvedColor(with: traits)
         }
         return appearance
     }

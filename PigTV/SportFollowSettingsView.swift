@@ -198,13 +198,13 @@ struct SportSettingsSection: View {
 
     private var yourSportsHeading: some View {
         HStack(alignment: .firstTextBaseline, spacing: PigSpacing.m) {
-            Text("Your sports").font(SettingsSportType.heading).foregroundStyle(Color("PigText"))
+            Text("Your sports").font(SettingsSportType.heading).foregroundStyle(Color.pigText)
                 .accessibilityAddTraits(.isHeader)
             #if os(tvOS)
             Text("in your order · select one to change its leagues and teams").font(SettingsSportType.caption)
-                .foregroundStyle(Color("PigSecondary"))
+                .foregroundStyle(Color.pigSecondary)
             #else
-            Text("in your order").font(SettingsSportType.caption).foregroundStyle(Color("PigSecondary"))
+            Text("in your order").font(SettingsSportType.caption).foregroundStyle(Color.pigSecondary)
             #endif
         }
         .textCase(nil)
@@ -217,7 +217,7 @@ struct SportSettingsSection: View {
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text("Hide scores").font(SettingsSportType.tileTitle)
                     Text("Scores and results stay hidden on every device signed in as you.").font(SettingsSportType.tileDetail)
-                        .foregroundStyle(Color("PigSecondary")).fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(Color.pigSecondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
                 SwitchGlyph(on: on)
@@ -268,7 +268,7 @@ struct SportSettingsSection: View {
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text("Score delay").font(SettingsSportType.tileTitle)
                 Text("0–300 seconds. Clocks and scores follow it.").font(SettingsSportType.tileDetail)
-                    .foregroundStyle(Color("PigSecondary")).fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(Color.pigSecondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             less.buttonStyle(PigSurfaceButtonStyle())
@@ -306,7 +306,7 @@ struct SportSettingsSection: View {
             HStack(spacing: PigSpacing.m) {
                 Text(entry.sport).font(SettingsSportType.tileTitle).frame(width: SettingsSportMetrics.nameWidth, alignment: .leading)
                     .lineLimit(1)
-                Text(leagues).font(SettingsSportType.rowDetail).foregroundStyle(Color("PigSecondary")).lineLimit(1)
+                Text(leagues).font(SettingsSportType.rowDetail).foregroundStyle(Color.pigSecondary).lineLimit(1)
                 Spacer(minLength: 12)
                 FollowedNames(names: names, client: model.client)
             }
@@ -372,7 +372,7 @@ private struct FollowedNames: View {
                 }
             }
             if names.count > 2 {
-                Text("+\(names.count - 2)").font(SettingsSportType.follow).monospacedDigit().foregroundStyle(Color("PigSecondary"))
+                Text("+\(names.count - 2)").font(SettingsSportType.follow).monospacedDigit().foregroundStyle(Color.pigSecondary)
             }
         }
         .fixedSize()
@@ -717,7 +717,7 @@ struct SportAddSportScreen: View {
             #else
             Button { choose(sport.sport) } label: {
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                    Text(sport.sport).foregroundStyle(Color("PigText"))
+                    Text(sport.sport).foregroundStyle(Color.pigText)
                     Text(leagues).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
             }

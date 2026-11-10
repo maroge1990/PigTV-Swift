@@ -26,7 +26,7 @@ import UIKit
 extension UIColor {
     /// PigPageBackground's colour: near-black violet in dark appearance, warm paper in light. The UIKit layers behind a page
     /// are flat (no bloom); the SwiftUI page background above them carries the corner bloom.
-    static let pigPage = UIColor(named: "PigCanvas")!
+    static let pigPage = UIColor(resource: .pigCanvas)
 }
 
 @MainActor

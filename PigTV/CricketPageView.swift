@@ -415,7 +415,7 @@ struct CricketPageView: View {
                             Text(CricketPageText.daySub(day, lead: lead, now: now)).font(CricketMetrics.daySub)
                                 .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color.secondary).lineLimit(1)
                         }
-                        .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color("PigText"))
+                        .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color.pigText)
                         .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                         .frame(minWidth: CricketMetrics.dayWidth, alignment: .leading)
                         .background { dayBackground(day.state) }

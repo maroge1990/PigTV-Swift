@@ -197,7 +197,7 @@ struct UndoToast: View {
         if let pending = presenter.pendingUndo {
             HStack(spacing: PigSpacing.l) {
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                    Text(pending.message).font(Self.title).foregroundStyle(Color("PigText")).lineLimit(2)
+                    Text(pending.message).font(Self.title).foregroundStyle(Color.pigText).lineLimit(2)
                     Text(pending.detail ?? "Undo for 10 seconds").font(Self.detail).foregroundStyle(Color.pigSecondary)
                 }
                 .accessibilityElement(children: .combine)

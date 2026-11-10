@@ -177,7 +177,7 @@ struct SportPhoneCarousel: View {
                     Label(SportPhoneCardButtons.record, systemImage: "record.circle").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glass)
-                .tint(Color("PigText"))
+                .tint(Color.pigText)
                 .accessibilityIdentifier("\(identifier).card.record")
             }
             .controlSize(.large)

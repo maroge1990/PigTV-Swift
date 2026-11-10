@@ -302,7 +302,7 @@ struct LibrarySettings: View {
             Button { appearance = value } label: {
                 HStack {
                     Text(value.capitalized)
-                        .foregroundStyle(appearance == value ? Color.pigAccentText : Color("PigText"))
+                        .foregroundStyle(appearance == value ? Color.pigAccentText : Color.pigText)
                     Spacer()
                 }
                 #if os(tvOS)
@@ -374,13 +374,13 @@ private struct SettingsMenuLabel: View {
             Image(systemName: page.systemImage)
                 .font(.system(size: SettingsMetrics.icon * 0.8, weight: .semibold))
                 .frame(width: SettingsMetrics.icon)
-                .foregroundStyle(selected ? Color.pigAccentText : Color("PigSecondary"))
+                .foregroundStyle(selected ? Color.pigAccentText : Color.pigSecondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(page.title).font(SettingsType.menuTitle)
-                    .foregroundStyle(selected ? Color.pigAccentText : Color("PigText"))
+                    .foregroundStyle(selected ? Color.pigAccentText : Color.pigText)
                 Text(summary).font(SettingsType.menuSummary).monospacedDigit()
-                    .foregroundStyle(Color("PigSecondary")).lineLimit(1)
+                    .foregroundStyle(Color.pigSecondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -536,7 +536,7 @@ struct SettingsAccountPage: View {
                 #if os(tvOS)
                 .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
                 #else
-                .foregroundStyle(Color("PigText"))
+                .foregroundStyle(Color.pigText)
                 .listRowBackground(Color.pigRaised)
                 #endif
                 .disabled(model.playbackBusy || confirm != nil)
@@ -549,7 +549,7 @@ struct SettingsAccountPage: View {
                 Text("App \(LibrarySettings.appVersion) (\(LibrarySettings.appBuild))"
                      + (model.serverInfo.map { " · Server \($0.build ?? $0.version ?? "?")" } ?? ""))
                     .font(SettingsType.footnote).fontDesign(.rounded).monospacedDigit()
-                    .foregroundStyle(Color("PigSecondary"))
+                    .foregroundStyle(Color.pigSecondary)
                     #if os(iOS)
                     .listRowBackground(Color.clear)
                     #endif
@@ -596,7 +596,7 @@ struct SettingsAccountPage: View {
             Text(reason == .changeServer
                  ? "To use a different server, sign out first. You will need to pair or sign in again on this device."
                  : "You will need to pair or sign in again on this device.")
-                .font(SettingsType.confirmBody).foregroundStyle(Color("PigSecondary"))
+                .font(SettingsType.confirmBody).foregroundStyle(Color.pigSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: PigSpacing.s) {
                 Button("Stay signed in") { close() }
@@ -725,7 +725,7 @@ struct SettingsRow: View {
         .background(Color.guideCell(scheme), in: RoundedRectangle(cornerRadius: PigRadius.card))
         .accessibilityElement(children: .combine)
         #else
-        LabeledContent(title) { Text(value).fontDesign(monospaced ? .monospaced : nil).foregroundStyle(Color("PigText")) }
+        LabeledContent(title) { Text(value).fontDesign(monospaced ? .monospaced : nil).foregroundStyle(Color.pigText) }
             .listRowBackground(Color.pigRaised)
         #endif
     }

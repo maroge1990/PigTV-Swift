@@ -587,7 +587,7 @@ private struct ComingUpCard: View {
                     Text("Nothing scheduled").font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            .foregroundStyle(Color("PigText"))
+            .foregroundStyle(Color.pigText)
             .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))

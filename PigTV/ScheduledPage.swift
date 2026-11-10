@@ -483,7 +483,7 @@ private struct ScheduledTile: View {
     var body: some View {
         NavigationLink(value: route) {
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                Text(title).font(.subheadline.weight(.bold)).foregroundStyle(Color("PigText"))
+                Text(title).font(.subheadline.weight(.bold)).foregroundStyle(Color.pigText)
                 Text(detail).font(.caption).foregroundStyle(warning ? Color.pigWarning : Color.pigSecondary)
             }
             .padding(PigSpacing.s)

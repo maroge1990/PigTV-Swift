@@ -47,7 +47,7 @@ vector_set LockupStacked lockup-stacked-light.svg lockup-stacked-dark.svg
 rm -rf "$assets/BrandWordmark.imageset"
 
 # Status colours (the kit's PigColors; names match the app's own colour roles).
-for colour in PigSuccess PigWarning PigDanger PigHover; do
+for colour in PigSuccess PigWarning PigDanger; do
     rm -rf "$assets/$colour.colorset"
     cp -R "$kit/tokens/PigColors.xcassets/$colour.colorset" "$assets/$colour.colorset"
 done
