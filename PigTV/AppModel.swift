@@ -56,9 +56,7 @@ final class AppModel: ObservableObject {
     private var authGeneration = UUID()
     private var currentPlayback: PlaybackModel?
 
-    /// A1 (build 47): saved recording positions are scoped to server and account from
-    /// now on; the old unscoped ones cannot be attributed and are deleted, never read.
-    init() { Recording.retireLegacyResumeKeys() }
+    init() {}
     var loggedIn: Bool { user != nil }
 
     func restore() async {
@@ -273,8 +271,6 @@ final class AppModel: ObservableObject {
         cancelHandoff()
         pendingLink = nil
         TopShelfExport.clear()
-        // #216: the retired Home's "Continue watching" memory (builds 28–101), so it does not outlive the session.
-        UserDefaults.standard.removeObject(forKey: Self.legacyLastChannelKey)
         client = nil
         serverInfo = nil
         browse?.retirePrivateCaches()
@@ -317,8 +313,6 @@ final class AppModel: ObservableObject {
     /// other outcome drops it (restore's defer), so a later manual sign-in
     /// never starts playback unexpectedly.
     private var pendingLink: (link: PigTVLink.Play, at: Date)?
-    /// Where builds 28–101 kept the last channel played, for Home's hero (#216 retired it).
-    nonisolated static let legacyLastChannelKey = "pigtv.home.lastChannel"
 
     /// `pigtv://play?…`: plays that channel when signed in; ignored otherwise.
     func open(_ url: URL) {

@@ -103,17 +103,17 @@ extension BrowseModel {
     /// Build 32, tvOS: first renders its card images (TopShelfCards.swift),
     /// so the saved snapshot points at them.
     func exportTopShelf() {
+        // The Top Shelf exists only on tvOS and only its extension reads the snapshot:
+        // elsewhere this does nothing, so the guide scan below never runs.
+        #if os(tvOS)
         guard let snapshot = topShelfSnapshot() else {
             TopShelfLog.logger.notice("export: nothing to save yet (no favourites or guide rows)")
             return
         }
         // A2: under this session's generation; after sign-out it publishes nothing.
         guard topShelfGeneration == TopShelfPublication.shared.current else { return }
-        #if os(tvOS)
         TopShelfCardExport.schedule(snapshot, logoSources: topShelfLogoSources(for: snapshot),
                                     loader: { [weak self] logo in await self?.topShelfLogoImage(logo) }, generation: topShelfGeneration)
-        #else
-        TopShelfExport.save(snapshot, generation: topShelfGeneration)
         #endif
     }
 }
@@ -149,22 +149,7 @@ enum TopShelfExport {
         }
     }
 
-    /// The Siri channel directory older builds wrote (Siri was removed in
-    /// build 37). Deleted at launch and on sign-out so it does not linger.
-    nonisolated static let legacyChannelDirectoryName = "channel-directory.json"
-
-    nonisolated static func removeLegacyChannelDirectory() {
-        Task.detached(priority: .utility) {
-            guard let container = AppGroupStorage.containerURL else { return }
-            for url in [AppGroupStorage.fileURL(legacyChannelDirectoryName, in: container),
-                        container.appendingPathComponent(legacyChannelDirectoryName)] {
-                if let url { try? FileManager.default.removeItem(at: url) }
-            }
-        }
-    }
-
-    /// Signing out removes the snapshot (no channels on the Top Shelf) and
-    /// any leftover Siri channel directory. A2: the session's generation is retired first and its
+    /// Signing out removes the snapshot (no channels on the Top Shelf). A2: the session's generation is retired first and its
     /// card render cancelled, so nothing it still has in flight is written after this. A2-R: the
     /// removal is queued before this returns, so the next session's first export (and the
     /// `lastWritten` it sets) always comes after it and is never removed by it.
@@ -176,15 +161,6 @@ enum TopShelfExport {
             if let url = TopShelfSnapshot.fileURL(in: container) { try? FileManager.default.removeItem(at: url) }
             // Build 32: and the card images.
             TopShelfCards.removeAll(in: container)
-            // And the Siri channel directory older builds wrote.
-            if let url = AppGroupStorage.fileURL(legacyChannelDirectoryName, in: container) { try? FileManager.default.removeItem(at: url) }
-            // Build 29: files an earlier build left in the container's root
-            // (possible on iOS only; tvOS never allowed writing there).
-            if let root = container {
-                for name in [TopShelfSnapshot.fileName, legacyChannelDirectoryName] {
-                    try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
-                }
-            }
             contentChanged()
         }
     }

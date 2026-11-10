@@ -63,10 +63,6 @@ struct ContentView: View {
         .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .task {
-            // Build 37: Siri is gone; remove the channel directory older builds wrote.
-            TopShelfExport.removeLegacyChannelDirectory()
-        }
-        .task {
             // This is a cold-launch handoff only. It has no arbitrary minimum
             // duration and is not replayed when the app returns to foreground.
             await model.restore()

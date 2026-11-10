@@ -38,17 +38,6 @@ nonisolated extension Recording {
         return "pigtv.resume.\(scope).\(id)"
     }
 
-    /// A1: delete the unscoped `pigtv.resume.<id>` keys of builds before 47. Returns how many went.
-    @discardableResult
-    static func retireLegacyResumeKeys(in defaults: UserDefaults = .standard) -> Int {
-        let legacy = defaults.dictionaryRepresentation().keys.filter { key in
-            guard key.hasPrefix("pigtv.resume.") else { return false }
-            let rest = key.dropFirst("pigtv.resume.".count)
-            return !rest.isEmpty && rest.allSatisfy(\.isNumber)
-        }
-        legacy.forEach(defaults.removeObject(forKey:))
-        return legacy.count
-    }
 }
 
 /// One account's guide cache file. Sign-out (or switching server/account)
@@ -67,7 +56,6 @@ nonisolated final class GuideCacheStore: @unchecked Sendable {
 
     init(scope: CacheScope, directory: URL = GuideCacheStore.defaultDirectory) {
         fileURL = directory.appendingPathComponent("guide-v\(CacheScope.schemaVersion)-\(scope.digest).json")
-        Self.removeLegacyFileOnce()
     }
 
     func load() -> Data? {
@@ -90,14 +78,6 @@ nonisolated final class GuideCacheStore: @unchecked Sendable {
         retired = true
         try? FileManager.default.removeItem(at: fileURL)
     }
-
-    /// The old single `pigtv-guide.json` (one file for every server and
-    /// account) is deleted once, the first time any store is created.
-    private static let legacyRemoval: Void = {
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        try? FileManager.default.removeItem(at: base.appendingPathComponent("pigtv-guide.json"))
-    }()
-    private static func removeLegacyFileOnce() { _ = legacyRemoval }
 }
 
 /// Artwork cache keys. The canonical key is the absolute URL the logo

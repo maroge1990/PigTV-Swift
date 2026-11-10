@@ -85,18 +85,6 @@ final class RecordingResumeTests: XCTestCase {
         XCTAssertTrue(key(home, 1)!.hasSuffix(".42"))
     }
 
-    func testLegacyUnscopedKeysAreRetiredAndOthersKept() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "pigtv.tests.resume.\(UUID().uuidString)"))
-        let scoped = try XCTUnwrap(Recording.localResumeKey(42, address: try ServerAddress("http://127.0.0.1:3000"), accountID: 1))
-        defaults.set(900.0, forKey: "pigtv.resume.42")
-        defaults.set(900.0, forKey: scoped)
-        defaults.set(true, forKey: "pigtv.recordings.autoSkip")
-        XCTAssertEqual(Recording.retireLegacyResumeKeys(in: defaults), 1)
-        XCTAssertNil(defaults.object(forKey: "pigtv.resume.42"), "an unscoped position is never read again")
-        XCTAssertEqual(defaults.double(forKey: scoped), 900)
-        XCTAssertTrue(defaults.bool(forKey: "pigtv.recordings.autoSkip"))
-    }
-
     @MainActor
     func testRecordingsProgressReadsOnlyThisAccountsPositions() throws {
         let address = try ServerAddress("http://127.0.0.1:3999")
