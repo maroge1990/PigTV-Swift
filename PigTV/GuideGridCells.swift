@@ -57,7 +57,7 @@ struct GuideGridProgrammeView: View {
 
     @ViewBuilder private var content: some View {
         if let programme = info.programme {
-            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+            VStack(alignment: .leading, spacing: GuideGridMetrics.cellLineSpacing) {
                 HStack(spacing: PigSpacing.s) {
                     if let caption = info.caption { Text(caption).lineLimit(1).layoutPriority(1) }
                     Text(programme.start, style: .time)
@@ -66,7 +66,8 @@ struct GuideGridProgrammeView: View {
                     }
                 }
                 .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(1)
-                Text(programme.title).font(GuideTypography.body).lineLimit(info.caption == nil ? 2 : 1)
+                Text(programme.title).font(GuideTypography.body).lineLimit(GuideGridMetrics.titleLines(caption: info.caption != nil))
+                    .truncationMode(.tail)
                     .foregroundStyle(.primary)
                 if programme.isLive(at: info.clock) {
                     ProgressView(value: min(1, max(0, info.clock.timeIntervalSince(programme.start)
@@ -242,7 +243,7 @@ final class GuideGridTimeHeader: UIView {
         labels = GuideGridMath.headerMarks(origin: origin, duration: duration).map { mark in
             let label = UILabel()
             #if os(tvOS)
-            label.font = Self.roundedMonospacedDigits(ofSize: 20)
+            label.font = Self.roundedMonospacedDigits(ofSize: PigType.secondary)
             #else
             label.font = Self.roundedMonospacedDigits(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize)
             #endif

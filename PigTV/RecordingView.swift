@@ -208,7 +208,7 @@ struct RecordingView: View {
             Text(eyebrow).font(ViewMetrics.eyebrow).tracking(1.2).foregroundStyle(.secondary)
                 .monospacedDigit().fontDesign(.rounded).lineLimit(2)
         }
-        Text(item.title).font(ViewMetrics.title).lineLimit(2).minimumScaleFactor(0.7)
+        Text(item.title).font(ViewMetrics.title).lineLimit(2).pigMinimumScale(0.7, size: PigType.hero)
             .accessibilityAddTraits(.isHeader)
         if let fraction = progress.fraction {
             HStack(spacing: PigSpacing.m) {

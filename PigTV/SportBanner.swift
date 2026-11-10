@@ -3,8 +3,8 @@ import ImageIO
 
 // D-43 (1 Nov, DESIGN.md › Apple TV sport pages): the one banner on the Sport front page and on every sport page. 250 pt
 // high under the app's tabs: the hero on the left (kicker, title, one line, Watch / Record or Remind me, over the faded
-// badge or the F1 circuit map) and, split by a thin line, a list on the right inside the same banner: four items, then
-// a "5 more · …" line; moving focus down scrolls the list inside the banner, which never grows. Selecting an item flips
+// badge or the F1 circuit map) and, split by a thin line, a list on the right inside the same banner: three items on the television (four on
+// touch), then a "5 more · …" line; moving focus down scrolls the list inside the banner, which never grows. Selecting an item flips
 // the hero (front page) or the league (sport page). With one item (one league) the banner runs full width, with no list
 // and no line, and the badge or map moves to the right. The items are drawn in the order given (the server's: the
 // account's order, anything playing now first, C-R since 0427); the banner never re-sorts them. What it draws of a game
@@ -21,9 +21,18 @@ enum SportBannerMetrics {
     static let listWidth: CGFloat = 540
     static let gap: CGFloat = 28
     static let listInset: CGFloat = 24
-    static let row: CGFloat = 36
-    static let rowGap: CGFloat = 6
-    static let rowBadge: CGFloat = 24
+    /// Brand 1.8 §15 (#279): a list row is a 56 pt focus target with 23 pt text.
+    static let row: CGFloat = 56
+    static let rowGap: CGFloat = 8
+    static let rowBadge: CGFloat = 32
+    /// Room around the list's rows inside the list (which clips): a focused row's ring, lift and shadow
+    /// (`PigFocusLift.listRow`) stay visible; less than `rowGap`, so a row outside the window never shows.
+    static let focusRoom: CGFloat = 6
+    /// The list column's own distance from the banner's top and bottom edges.
+    static let listVertical: CGFloat = 8
+    /// The "N more" count sits at the end of the header line (the three rows need the line below them).
+    static let moreInHeader = true
+    static let listSpacing: CGFloat = PigSpacing.xxs
     static let back: CGFloat = 56
     static let kicker: Font = .system(size: PigType.kicker, weight: .bold)
     static let title: Font = .system(size: PigType.pageTitle, weight: .heavy)
@@ -45,6 +54,10 @@ enum SportBannerMetrics {
     static let row: CGFloat = 32
     static let rowGap: CGFloat = 5
     static let rowBadge: CGFloat = 20
+    static let focusRoom: CGFloat = 0
+    static let listVertical: CGFloat = 16
+    static let moreInHeader = false
+    static let listSpacing: CGFloat = rowGap
     static let back: CGFloat = 44
     static let kicker: Font = .caption.weight(.bold)
     static let title: Font = .title.weight(.heavy)
@@ -57,7 +70,7 @@ enum SportBannerMetrics {
     static let wideBadgeSize: CGFloat = 200
     static let map = CGSize(width: 280, height: 150)
     #endif
-    /// Four rows: the list's fixed height.
+    /// The window's rows: the list's fixed height.
     static var listHeight: CGFloat { CGFloat(SportBannerWindow.visible) * row + CGFloat(SportBannerWindow.visible - 1) * rowGap }
 }
 
@@ -87,9 +100,10 @@ struct SportBanner<Actions: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: SportBannerMetrics.gap) {
             heroColumn.frame(maxWidth: .infinity, alignment: .leading)
-            if !fullWidth { list.frame(width: SportBannerMetrics.listWidth) }
+                .padding(.top, SportBannerMetrics.padding.top).padding(.bottom, SportBannerMetrics.padding.bottom)
+            if !fullWidth { list.frame(width: SportBannerMetrics.listWidth).padding(.vertical, SportBannerMetrics.listVertical) }
         }
-        .padding(SportBannerMetrics.padding)
+        .padding(.leading, SportBannerMetrics.padding.leading).padding(.trailing, SportBannerMetrics.padding.trailing)
         .frame(maxWidth: .infinity)
         .frame(height: SportBannerMetrics.height)
         // The backdrop (a 300 pt badge) may be taller than the banner: the banner clips it and never grows.
@@ -125,7 +139,7 @@ struct SportBanner<Actions: View>: View {
                         .accessibilityIdentifier("sport.banner.hero.kicker")
                 }
                 Text(hero.title).font(fullWidth ? SportBannerMetrics.wideTitle : SportBannerMetrics.title)
-                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .lineLimit(1).pigMinimumScale(0.7, size: PigType.pageTitle)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("sport.banner.hero.title")
                 if !hero.line.isEmpty {
@@ -167,16 +181,32 @@ struct SportBanner<Actions: View>: View {
 
     private var list: some View {
         let names = items.map(\.title)
-        return VStack(alignment: .leading, spacing: SportBannerMetrics.rowGap) {
-            Text(listTitle).font(SportBannerMetrics.listTitle).tracking(1.4).foregroundStyle(.secondary).lineLimit(1)
+        return VStack(alignment: .leading, spacing: SportBannerMetrics.listSpacing) {
+            if SportBannerMetrics.moreInHeader {
+                // #279 (Apple 199): one header line, the list's name at the left and the count at the right. The words
+                // after the name ("· your order, playing now on top") and the names after the count do not fit beside
+                // each other at 23 pt; the count is the "more" line's (the names are in Settings › Sport).
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
+                    Text(SportBannerLayout.shortTitle(listTitle)).font(SportBannerMetrics.listTitle).tracking(1.4)
+                        .foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: PigSpacing.s)
+                    Text(window.below > 0 ? "\(window.below) more" : " ").font(SportBannerMetrics.rowTrailing)
+                        .foregroundStyle(.secondary).lineLimit(1)
+                        .accessibilityIdentifier("sport.banner.more")
+                }
+            } else {
+                Text(listTitle).font(SportBannerMetrics.listTitle).tracking(1.4).foregroundStyle(.secondary).lineLimit(1)
+            }
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
                     VStack(spacing: SportBannerMetrics.rowGap) {
                         ForEach(items.indices, id: \.self) { index in row(index).id(index) }
                     }
                 }
+                // Room on every side inside the clipping list, so a focused row's ring is never cut (#279).
+                .contentMargins(SportBannerMetrics.focusRoom, for: .scrollContent)
                 .scrollIndicators(.hidden)
-                .frame(height: SportBannerMetrics.listHeight)
+                .frame(height: SportBannerMetrics.listHeight + 2 * SportBannerMetrics.focusRoom)
                 .accessibilityIdentifier("sport.banner.list")
                 .onChange(of: focusedItem) { _, index in
                     guard let index else { return }
@@ -190,9 +220,11 @@ struct SportBanner<Actions: View>: View {
                     withTransaction(instant) { proxy.scrollTo(moved.start, anchor: .top) }
                 }
             }
-            Text(window.moreLine(names: names) ?? " ").font(SportBannerMetrics.rowTrailing).foregroundStyle(.secondary)
-                .lineLimit(1)
-                .accessibilityIdentifier("sport.banner.more")
+            if !SportBannerMetrics.moreInHeader {
+                Text(window.moreLine(names: names) ?? " ").font(SportBannerMetrics.rowTrailing).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("sport.banner.more")
+            }
         }
         .padding(.leading, SportBannerMetrics.listInset)
         .overlay(alignment: .leading) {
@@ -226,7 +258,7 @@ struct SportBanner<Actions: View>: View {
                 }
             }
         }
-        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact))
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .listRow))
         .focused($focusedItem, equals: index)
         .contextMenu {
             if let second = secondary?(index) {

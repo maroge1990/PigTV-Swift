@@ -8,10 +8,11 @@ import SwiftUI
 enum PlayerMetrics {
     #if os(tvOS)
     static let tuningLogo = CGSize(width: 200, height: 110)
-    static let tuningName: CGFloat = 24, tuningTitle: CGFloat = 32, tuningDetail: CGFloat = 18
-    static let tuningNext: CGFloat = 16, tuningBar: CGFloat = 360, tuningPadding: CGFloat = 48, tuningWidth: CGFloat = 640
+    // Brand 1.8 §15 (#279): no text under 23 pt on the television (rowIcon is a symbol).
+    static let tuningName: CGFloat = 24, tuningTitle: CGFloat = 32, tuningDetail: CGFloat = 23
+    static let tuningNext: CGFloat = 23, tuningBar: CGFloat = 360, tuningPadding: CGFloat = 48, tuningWidth: CGFloat = 720
     static let rowLogo = CGSize(width: 120, height: 66)
-    static let rowName: CGFloat = 20, rowNumber: CGFloat = 16, rowTitle: CGFloat = 24, rowIcon: CGFloat = 16
+    static let rowName: CGFloat = 23, rowNumber: CGFloat = 23, rowTitle: CGFloat = 24, rowIcon: CGFloat = 16
     static let rowPadding = CGSize(width: 16, height: 10), rowRadius = PigRadius.compact, rowBar: CGFloat = 4
     #else
     static let tuningLogo = CGSize(width: 150, height: 84)
@@ -62,7 +63,7 @@ struct LogoTile: View {
                 ChannelArtwork(logo: logo, client: client).padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             } else {
                 Text(name).font(.system(size: PigType.secondary, weight: .semibold)).lineLimit(2)
-                    .multilineTextAlignment(.center).minimumScaleFactor(0.6).padding(PigSpacing.s)
+                    .multilineTextAlignment(.center).pigMinimumScale(0.6, size: PigType.secondary).padding(PigSpacing.s)
             }
         }
     }

@@ -87,18 +87,21 @@ final class SportBannerUITests: XCTestCase {
         XCTAssertFalse(any["sport.rail.header.Tennis"].exists)
         let list = any["sport.banner.list"]
         let more = any["sport.banner.more"]
-        XCTAssertTrue(more.label.hasPrefix("3 more · "), more.label)
+        // #279 (Apple 199): three 56 pt rows on the television (four 36 pt rows before), the count in the header line.
+        let visible = 3, row: CGFloat = 56, gap: CGFloat = 8, room: CGFloat = 6
+        XCTAssertTrue(more.label.hasPrefix("\(7 - visible) more"), more.label)
         // The banner's own frame takes in the list's rows out of view; its fixed list and what sits below it show its height.
         let header = any["sport.rail.header.Football"]
         let below = header.frame.minY
-        XCTAssertEqual(list.frame.height, 4 * 36 + 3 * 6, accuracy: 2, "four rows high")
+        XCTAssertEqual(list.frame.height, CGFloat(visible) * row + CGFloat(visible - 1) * gap + 2 * room, accuracy: 2,
+                       "\(visible) rows high")
         XCTAssertEqual(below - banner.frame.minY, 250 + 20, accuracy: 30, "250 pt, then the rails")
         func onShow(_ index: Int) -> Bool {
             let item = any["sport.banner.item.\(index)"]
             return item.exists && list.frame.intersection(item.frame).height > item.frame.height / 2
         }
-        XCTAssertTrue((0..<4).allSatisfy(onShow), "four items")
-        XCTAssertFalse(onShow(4), "the fifth is below the window")
+        XCTAssertTrue((0..<visible).allSatisfy(onShow), "\(visible) items")
+        XCTAssertFalse(onShow(visible), "the next is below the window")
         attach(app, "d43-front")
 
         // Into the list and down past the fourth: the list scrolls inside the banner, which keeps its height.
@@ -109,9 +112,9 @@ final class SportBannerUITests: XCTestCase {
         XCTAssertEqual(focused(app).identifier, "sport.banner.item.0")
         for _ in 0..<5 { XCUIRemote.shared.press(.down) }
         XCTAssertEqual(focused(app).identifier, "sport.banner.item.5", "focus stays in the list")
-        XCTAssertTrue(waitUntil(3) { onShow(5) && !onShow(0) && !onShow(1) }, "the window scrolled")
+        XCTAssertTrue(waitUntil(3) { onShow(5) && !(0...(5 - visible)).contains(where: onShow) }, "the window scrolled")
         XCTAssertEqual(header.frame.minY, below, accuracy: 1, "the banner never grows")
-        XCTAssertTrue(waitUntil(3) { more.label.hasPrefix("1 more · ") }, more.label)
+        XCTAssertTrue(waitUntil(3) { more.label.hasPrefix("1 more") }, more.label)
         attach(app, "d43-front-list-scrolled")
     }
 

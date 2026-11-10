@@ -198,7 +198,7 @@ struct TopShelfCardView: View {
                 .font(.system(size: PigType.pageTitle, weight: .bold))
                 .foregroundStyle(Color.pigMediaText)
                 .lineLimit(2)
-                .minimumScaleFactor(0.8)
+                .pigMinimumScale(0.8, size: PigType.pageTitle)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: PigSpacing.s) {
                 if content.live {

@@ -272,7 +272,7 @@ struct ChannelLogoTile: View {
                     .padding(.horizontal, size.width * 0.1).padding(.vertical, size.height * 0.12)
             } else {
                 Text(name).font(DetailType.rowDetail.weight(.semibold)).multilineTextAlignment(.center)
-                    .lineLimit(3).minimumScaleFactor(0.6).padding(PigSpacing.s)
+                    .lineLimit(3).pigMinimumScale(0.6, size: PigType.secondary).padding(PigSpacing.s)
             }
         }
         .frame(width: size.width, height: size.height)

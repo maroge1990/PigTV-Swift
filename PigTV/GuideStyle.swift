@@ -24,9 +24,10 @@ struct ChannelTile: View {
                 ChannelArtwork(logo: logo, client: client)
                     .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
             } else {
-                Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(3)
+                // Two lines at 23 pt fill the 72 pt tile on the television (#279); three on touch.
+                Text(name).font(GuideTypography.small.weight(.semibold)).lineLimit(PigType.minimum > 0 ? 2 : 3)
                     .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center).minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.center).pigMinimumScale(0.7, size: PigType.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

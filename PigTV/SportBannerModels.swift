@@ -3,36 +3,44 @@ import Foundation
 // D-43 (1 Nov): the banner's pure parts (the list's window, the full-width rule, what a row and the hero say, the
 // backdrop), Foundation only so the contract checks compile them with the C-R models. The view is SportBanner.swift.
 
-/// The list's window: which four items show, and what the "N more" line says. Pure (tests `SportBannerTests`).
+/// The list's window: which items show, and what the "N more" line says. Pure (tests `SportBannerTests`).
 nonisolated struct SportBannerWindow: Equatable, Sendable {
+    /// Rows on show. The television shows three 56 pt rows of 23 pt text in the 250 pt banner (brand 1.8 §15, #279,
+    /// Apple 199; it showed four 36 pt rows); touch keeps four.
+    #if os(tvOS)
+    static let visible = 3
+    #else
     static let visible = 4
+    #endif
 
     let count: Int
     let start: Int
+    let visible: Int
 
-    init(count: Int, start: Int = 0) {
+    init(count: Int, start: Int = 0, visible: Int = SportBannerWindow.visible) {
+        self.visible = max(1, visible)
         self.count = max(0, count)
-        self.start = min(max(0, start), max(0, self.count - Self.visible))
+        self.start = min(max(0, start), max(0, self.count - self.visible))
     }
 
     /// The items on show.
-    var range: Range<Int> { start..<min(count, start + Self.visible) }
+    var range: Range<Int> { start..<min(count, start + visible) }
     /// How many are below the window.
-    var below: Int { max(0, count - start - Self.visible) }
+    var below: Int { max(0, count - start - visible) }
 
     /// Focus moved to item `index`: the window moves the least that shows it (down one row at a time, up likewise).
     func focusing(_ index: Int) -> SportBannerWindow {
         guard count > 0 else { return self }
         let index = min(max(0, index), count - 1)
-        if index < start { return SportBannerWindow(count: count, start: index) }
-        if index >= start + Self.visible { return SportBannerWindow(count: count, start: index - Self.visible + 1) }
+        if index < start { return SportBannerWindow(count: count, start: index, visible: visible) }
+        if index >= start + visible { return SportBannerWindow(count: count, start: index - visible + 1, visible: visible) }
         return self
     }
 
     /// "5 more · de Minaur, Min Woo Lee, Arsenal …": the items below the window, the first three named; nil with none.
     func moreLine(names: [String]) -> String? {
         guard below > 0 else { return nil }
-        let rest = Array(names.dropFirst(start + Self.visible))
+        let rest = Array(names.dropFirst(start + visible))
         let named = rest.prefix(3).joined(separator: ", ")
         return "\(below) more" + (named.isEmpty ? "" : " · \(named)") + (rest.count > 3 ? " …" : "")
     }
@@ -42,6 +50,11 @@ nonisolated struct SportBannerWindow: Equatable, Sendable {
 /// banner full width, with no list and no line.
 nonisolated enum SportBannerLayout {
     static func fullWidth(itemCount: Int) -> Bool { itemCount <= 1 }
+    /// The list's name without what follows its first " · " ("FOLLOWING · your order, playing now on top" -> "FOLLOWING"),
+    /// for a header line that also holds the "N more" count (#279).
+    static func shortTitle(_ title: String) -> String {
+        title.components(separatedBy: " · ").first ?? title
+    }
 }
 
 /// One row of the banner's list.

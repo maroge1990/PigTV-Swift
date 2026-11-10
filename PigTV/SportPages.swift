@@ -176,7 +176,7 @@ struct SportChannelRow: View {
                                 size: SportMetrics.rowLogo)
                 VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
-                        Text(channel.name).font(DetailType.rowTitle).lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
+                        Text(channel.name).font(DetailType.rowTitle).lineLimit(1).pigMinimumScale(0.75, size: PigType.cardTitle).layoutPriority(1)
                         if let number = channel.number {
                             // never broken over lines; the name shrinks first (#243: "beIN Sp…" at phone width)
                             ChannelNumberText(number: String(number), font: DetailType.rowDetail).fixedSize()

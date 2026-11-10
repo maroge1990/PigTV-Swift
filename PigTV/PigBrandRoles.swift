@@ -55,12 +55,15 @@ nonisolated enum PigSpacing {
 /// Type sizes by role (maroge1990/PigTV#243). The television's sizes are the twenty sizes the views used, merged where
 /// they were within 2 pt; touch sizes follow the system's text styles. Weight and design stay at the call site:
 /// `.font(.system(size: PigType.body, weight: .semibold))`. BrandRulesTests fails on a literal font size outside this file.
+/// Brand 1.8 §15 (#279, Apple 199): no text on the television is under 23 pt, so caption, kicker and secondary are body
+/// size there; they keep their place in the hierarchy by weight, colour (secondary) and case (kicker), not size.
+/// BrandRulesTests fails on a tvOS value under 23.
 nonisolated enum PigType {
     #if os(tvOS)
-    static let caption: CGFloat = 17
+    static let caption: CGFloat = 23
     /// A small uppercase label over a title (ON NOW, YOUR SPORTS).
-    static let kicker: CGFloat = 17
-    static let secondary: CGFloat = 20
+    static let kicker: CGFloat = 23
+    static let secondary: CGFloat = 23
     static let body: CGFloat = 23
     static let cardTitle: CGFloat = 26
     static let sectionTitle: CGFloat = 32
@@ -69,10 +72,13 @@ nonisolated enum PigType {
     static let pageTitle: CGFloat = 46
     /// A banner's title, an empty state's symbol.
     static let hero: CGFloat = 56
-    /// Letters inside a small badge (a league's initials in a 22 pt square).
+    /// Letters inside a small badge (a league's initials in a 22 pt square): artwork, not text (#279), and unused on the
+    /// television today.
     static let micro: CGFloat = 13
     /// A code read across the room (the pairing code).
     static let jumbo: CGFloat = 72
+    /// The smallest text the television draws (brand 1.8 §15).
+    static let minimum: CGFloat = 23
     #else
     static let caption: CGFloat = 12
     static let kicker: CGFloat = 12
@@ -85,6 +91,7 @@ nonisolated enum PigType {
     static let hero: CGFloat = 44
     static let micro: CGFloat = 9
     static let jumbo: CGFloat = 56
+    static let minimum: CGFloat = 0
     #endif
 }
 
@@ -132,5 +139,13 @@ extension Color {
         guard let raw = teamHex?.trimmingCharacters(in: CharacterSet(charactersIn: "# ")), raw.count == 6,
               let value = UInt32(raw, radix: 16) else { return nil }
         self.init(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
+    }
+}
+
+extension View {
+    /// `minimumScaleFactor` for text set at `size` points that never shrinks television text under `PigType.minimum`
+    /// (brand 1.8 §15, #279). On touch `PigType.minimum` is 0, so the factor is used as given.
+    func pigMinimumScale(_ factor: CGFloat, size: CGFloat) -> some View {
+        minimumScaleFactor(size > 0 ? max(factor, PigType.minimum / size) : factor)
     }
 }

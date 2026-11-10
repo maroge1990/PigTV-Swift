@@ -520,7 +520,7 @@ private struct StreamInfoLine: View {
             .font(.system(size: PigType.caption, weight: .medium).monospacedDigit())
             .fontDesign(.rounded)
             .foregroundStyle(.white.opacity(0.8))
-            .lineLimit(1).minimumScaleFactor(0.7)
+            .lineLimit(1).pigMinimumScale(0.7, size: PigType.caption)
             .frame(maxWidth: 1100, alignment: .leading)
             .accessibilityIdentifier("player.streamInfo")
             .task {

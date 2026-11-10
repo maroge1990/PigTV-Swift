@@ -31,6 +31,9 @@ nonisolated enum PigFocusLift {
     case row
     /// The TV Guide's packed cells: no scale, the shadow only.
     case cell
+    /// Rows of a short list that clips (the Sport banner's): the row lift with a tight shadow, so the ring, tint and
+    /// shadow stay inside the list's 6 pt of room.
+    case listRow
 
     /// Wider than this, an item is a full-width row whatever its kind.
     static let wide: CGFloat = 800
@@ -41,7 +44,7 @@ nonisolated enum PigFocusLift {
         switch self {
         case .card: 1.05
         case .control: 1.06
-        case .row: 1.02
+        case .row, .listRow: 1.02
         case .cell: 1
         }
     }
@@ -50,7 +53,7 @@ nonisolated enum PigFocusLift {
         switch self {
         case .card: 6
         case .control: 6
-        case .row: 4
+        case .row, .listRow: 4
         case .cell: 0
         }
     }
@@ -58,12 +61,14 @@ nonisolated enum PigFocusLift {
         switch self {
         case .card, .control: 18
         case .row, .cell: 10
+        case .listRow: 3
         }
     }
     var shadowY: CGFloat {
         switch self {
         case .card, .control: 10
         case .row, .cell: 4
+        case .listRow: 1
         }
     }
 

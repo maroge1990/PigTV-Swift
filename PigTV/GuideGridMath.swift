@@ -11,6 +11,18 @@ import Foundation
 // at the left edge of the timeline (the "viewport") is
 // `origin + contentOffset.x / pointsPerSecond`.
 
+extension GuideGridMetrics {
+    #if os(tvOS)
+    /// Brand 1.8 §15 (#279, owner's choice): the time line at 23 pt above one title line cut with an ellipsis, so the
+    /// 80 pt row pitch (and the number of channels on screen) stays.
+    static let cellLineSpacing: CGFloat = PigSpacing.xxs
+    static func titleLines(caption: Bool) -> Int { 1 }
+    #else
+    static let cellLineSpacing: CGFloat = PigSpacing.xs
+    static func titleLines(caption: Bool) -> Int { caption ? 1 : 2 }
+    #endif
+}
+
 nonisolated struct GuideGridMetrics: Equatable, Sendable {
     // Same numbers as GuideView (R16): row pitch 80, one 8 pt gap everywhere.
     var channelWidth: CGFloat = 176

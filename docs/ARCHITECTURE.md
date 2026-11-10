@@ -551,6 +551,12 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
   styles on tvOS 27 but its glass rim covered the ring (simulator, 11 Nov 2026), so the lift is drawn. A guide cell stops
   clipping only while focused, so its ring shows in the 8 pt gap. `BrandRulesTests` fails on a tvOS style that draws focus
   itself, and on `focusEffectDisabled` outside the two players. Followed sport cards carry the star only.
+- **Television text is 23 pt or more (brand 1.8 §15, #279, Apple 199):** `PigType.caption`, `kicker` and `secondary` are
+  23 on tvOS (touch unchanged) and keep their rank by weight, colour and case; the player's tuning card and channel rows,
+  the guide's time line and time header are 23 too. A scale factor goes through `pigMinimumScale(_:size:)`, which never
+  shrinks television text under `PigType.minimum`. Guide cells: the time line above one title line cut with an ellipsis
+  (row pitch 80). The Sport banner lists three 56 pt rows on the television (`SportBannerWindow.visible`), four on touch.
+  `BrandRulesTests` reads the tvOS values from the source and fails on any under 23.
 - **Roles, not literals (#190, kit §4–§7):** colours are catalog roles (`Color.pig*`); playback uses the kit's `media` tokens as
   `PigMediaAccent` (rose `#EF7AAE`, the live dot), `PigMediaPanel` (black 82 %, every panel over video), `PigMediaSolidPanel` (`#15111A`,
   the Reduce Transparency fallback), `PigMediaCanvas`/`PigMediaText`; shadows use `PigShadow` (the kit's glass shadow colours). These and

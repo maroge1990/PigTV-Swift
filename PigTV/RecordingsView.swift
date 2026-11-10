@@ -323,7 +323,7 @@ struct RecordingArt: View {
             if let teams, teams.count == 2 {
                 HStack(spacing: badge * 0.3) {
                     SportBadge(name: teams[0].name, logo: teams[0].logo, league: "", client: client, size: badge)
-                    Text("v").font(.system(size: badge * 0.3, weight: .heavy)).foregroundStyle(.secondary)
+                    Text("v").font(.system(size: max(PigType.minimum, badge * 0.3), weight: .heavy)).foregroundStyle(.secondary)
                     SportBadge(name: teams[1].name, logo: teams[1].logo, league: "", client: client, size: badge)
                 }
             } else if item.image != nil {
@@ -405,7 +405,7 @@ private struct FeaturedRecording: View {
             VStack(alignment: .leading, spacing: PigSpacing.s) {
                 Text(RecordingsHome.kicker(item, progress: progress, now: Date()))
                     .font(RecordingsMetrics.kicker).tracking(1).foregroundStyle(Color.pigAccentText)
-                Text(item.title).font(RecordingsMetrics.featuredTitle).lineLimit(2).minimumScaleFactor(0.7)
+                Text(item.title).font(RecordingsMetrics.featuredTitle).lineLimit(2).pigMinimumScale(0.7, size: PigType.hero)
                 Text(RecordingsHome.meta(item, progress: progress))
                     .font(RecordingsMetrics.featuredMeta.monospacedDigit()).fontDesign(.rounded).foregroundStyle(.secondary)
                 if item.isPreparingForPlayback {

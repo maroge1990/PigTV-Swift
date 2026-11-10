@@ -209,6 +209,103 @@ final class BrandRulesTests: XCTestCase {
         }
     }
 
+    /// The smallest text the television draws (brand 1.8 §15).
+    private static let tvMinimumText: Double = 23
+
+    /// tvOS type roles allowed under the minimum, each with its reason.
+    private static let smallRoleAllowlist: [String: String] = [
+        "micro": "letters inside a small team or league badge: artwork, not text (#279), and unused on the television",
+    ]
+
+    /// Files allowed a plain `minimumScaleFactor` on the television, each with its reason.
+    private static let scaleAllowlist: [String: String] = [
+        "PigBrandRoles.swift": "defines pigMinimumScale",
+        "SportFrontView.swift": "the initials inside a team badge disc: artwork, not text (#279)",
+    ]
+
+    /// `static let <name>: CGFloat = <number>` in `text`, in order.
+    static func sizeConstants(in text: String) -> [(name: String, value: Double, offset: Int)] {
+        let regex = try! NSRegularExpression(pattern: #"\b(\w+)\s*:\s*CGFloat\s*=\s*([0-9]+(?:\.[0-9]+)?)\b"#)
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { m in
+            guard let name = Range(m.range(at: 1), in: text), let value = Range(m.range(at: 2), in: text),
+                  let whole = Range(m.range, in: text), let number = Double(text[value]) else { return nil }
+            return (String(text[name]), number, text.distance(from: text.startIndex, to: whole.lowerBound))
+        }
+    }
+
+    /// The text between the braces that follow the first match of `pattern` (the opening brace excluded).
+    static func block(after pattern: String, in text: String) -> (body: String, offset: Int)? {
+        guard let hit = text.range(of: pattern, options: .regularExpression),
+              let open = text[hit.upperBound...].firstIndex(of: "{") else { return nil }
+        var depth = 1, end = text.index(after: open)
+        while end < text.endIndex, depth > 0 {
+            if text[end] == "{" { depth += 1 } else if text[end] == "}" { depth -= 1 }
+            end = text.index(after: end)
+        }
+        let start = text.index(after: open)
+        return (String(text[start..<text.index(before: end)]), text.distance(from: text.startIndex, to: start))
+    }
+
+    // Brand 1.8 §15 (maroge1990/PigTV#279): no text on the television is under 23 pt. The tvOS type roles (PigType) and
+    // the player's and guide's own text sizes are read from the tvOS branch of the source; a UIKit `ofSize:` literal
+    // under 23 in tvOS code fails, and so does a `minimumScaleFactor` that is not floored (`pigMinimumScale`). Before
+    // Apple 199 caption and kicker were 17 and secondary 20, the player's tuning card 18 and 16, the guide's time header
+    // a UIKit 20.
+    func testTelevisionTextIsAtLeastTwentyThreePoints() throws {
+        let files = try sourceFiles()
+        var found: [Line] = []
+        let roles = try XCTUnwrap(files.first { $0.file == Self.rolesFile })
+        let tvRoles = SourceFile(file: roles.file, code: Self.tvOSCode(roles.code))
+        let typeBlock = try XCTUnwrap(Self.block(after: #"enum\s+PigType\b"#, in: tvRoles.code), "PigType was not found")
+        let roleSizes = Self.sizeConstants(in: typeBlock.body)
+        XCTAssertGreaterThan(roleSizes.count, 8, "PigType's tvOS roles were not read")
+        found += roleSizes.filter { $0.value < Self.tvMinimumText && Self.smallRoleAllowlist[$0.name] == nil }
+            .map { tvRoles.line(typeBlock.offset + $0.offset) }
+        let player = try XCTUnwrap(files.first { $0.file == "PlayerShared.swift" })
+        let tvPlayer = SourceFile(file: player.file, code: Self.tvOSCode(player.code))
+        let metrics = try XCTUnwrap(Self.block(after: #"enum\s+PlayerMetrics\b"#, in: tvPlayer.code), "PlayerMetrics was not found")
+        let textNames: Set = ["tuningName", "tuningTitle", "tuningDetail", "tuningNext", "rowName", "rowNumber", "rowTitle"]
+        let playerSizes = Self.sizeConstants(in: metrics.body).filter { textNames.contains($0.name) }
+        XCTAssertEqual(Set(playerSizes.map(\.name)), textNames, "the player's text sizes were not all read")
+        found += playerSizes.filter { $0.value < Self.tvMinimumText }.map { tvPlayer.line(metrics.offset + $0.offset) }
+        for file in files {
+            let tv = SourceFile(file: file.file, code: Self.tvOSCode(file.code))
+            found += Self.uiFontSizes(in: tv.code).filter { $0.value < Self.tvMinimumText }.map { tv.line($0.offset) }
+            if Self.scaleAllowlist[file.file] == nil {
+                found += Self.offsets(of: #"\.minimumScaleFactor\("#, in: tv.code).map { tv.line($0) }
+            }
+        }
+        report(found, "television text under \(Int(Self.tvMinimumText)) pt (use PigType's roles, and .pigMinimumScale(_:size:) for a scale factor)")
+        for name in Self.scaleAllowlist.keys {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: Self.sources.appendingPathComponent(name).path), "\(name) is allowlisted but gone")
+        }
+    }
+
+    /// The literal sizes in UIKit `ofSize:` arguments.
+    static func uiFontSizes(in text: String) -> [(value: Double, offset: Int)] {
+        let regex = try! NSRegularExpression(pattern: #"ofSize:\s*([0-9]+(?:\.[0-9]+)?)\b"#)
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { m in
+            guard let value = Range(m.range(at: 1), in: text), let whole = Range(m.range, in: text),
+                  let number = Double(text[value]) else { return nil }
+            return (number, text.distance(from: text.startIndex, to: whole.lowerBound))
+        }
+    }
+
+    static func offsets(of pattern: String, in text: String) -> [Int] {
+        try! NSRegularExpression(pattern: pattern).matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+            Range($0.range, in: text).map { text.distance(from: text.startIndex, to: $0.lowerBound) }
+        }
+    }
+
+    func testTextSizeParsers() {
+        let sizes = Self.sizeConstants(in: "static let caption: CGFloat = 17\n    static let a: CGFloat = 2, b: CGFloat = 23.5")
+        XCTAssertEqual(sizes.map(\.name), ["caption", "a", "b"])
+        XCTAssertEqual(sizes.map(\.value), [17, 2, 23.5])
+        let block = Self.block(after: #"enum\s+X\b"#, in: "enum Y { a }\nenum X {\n  b { c }\n}\nd")
+        XCTAssertEqual(block?.body, "\n  b { c }\n")
+        XCTAssertEqual(Self.uiFontSizes(in: "UIFont.systemFont(ofSize: 20); f(ofSize: PigType.body)").map(\.value), [20])
+    }
+
     // #243: one tagline, one field style and current copy on every platform (the 6 Nov audit found "Welcome to PigTV" on
     // touch beside the television's tagline, the system's black rounded field on touch, and an empty Sport page sending
     // the viewer to Home, which #216 retired).

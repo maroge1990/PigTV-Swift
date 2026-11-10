@@ -240,7 +240,7 @@ struct GuideSearchPage: View {
                 ForEach(0..<24, id: \.self) { hour in
                     Button { date = GuideJump.moving(date, toHour: hour) } label: {
                         Text(GuideJump.moving(Date(), toHour: hour).formatted(.dateTime.hour()))
-                            .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth: .infinity)
+                            .monospacedDigit().lineLimit(1).pigMinimumScale(0.7, size: PigType.body).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(GuideFilterStyle(selected: Calendar.current.component(.hour, from: date) == hour))
                 }

@@ -20,7 +20,7 @@ nonisolated enum SportFixtureMetrics {
         var inset: CGFloat
     }
 
-    static let tvTable = Table(width: 680, valueWidth: 42, rankWidth: 28, badge: 24, spacing: PigSpacing.s, inset: 2 * 22 + 2 * 8)
+    static let tvTable = Table(width: 680, valueWidth: 42, rankWidth: 28, badge: 24, spacing: PigSpacing.m, inset: 2 * 22 + 2 * 8)
     // #228 (Mark, 4 Nov 2026: "a lot of dead space in the standings table"): on iPad the values were held 44 pt wide with
     // 10 pt gaps, wider together than the 380 pt table, so a row overflowed onto the games' scores and the team name was
     // cut to a few letters. The values now take what two or three digits need (a wider one, "137.2", is still drawn
@@ -191,7 +191,7 @@ struct SportFixtureContent: View {
                         SportBadge(name: side.name, logo: side.logo, league: fixture.league, client: browse.client,
                                    size: SportPageMetrics.badge, disc: side.logo == nil ? (side.abbr, side.color) : nil)
                         SportFollowStar(followed: side.followed)
-                        Text(side.name).font(SportPageMetrics.rowName).lineLimit(1).minimumScaleFactor(0.85)
+                        Text(side.name).font(SportPageMetrics.rowName).lineLimit(1).pigMinimumScale(0.85, size: PigType.secondary)
                         if let record = side.record {
                             Text(record).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1).layoutPriority(-1)
                         }
@@ -294,7 +294,7 @@ struct SportFixtureContent: View {
                                size: narrow ? 20 : SportFixtureMetrics.table.badge)
                         .fixedSize()
                     SportFollowStar(followed: row.followed)
-                    Text(row.name).font(SportPageMetrics.rowName).lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)
+                    Text(row.name).font(SportPageMetrics.rowName).lineLimit(1).pigMinimumScale(0.8, size: PigType.secondary).layoutPriority(1)
                     Spacer(minLength: 4)
                     ForEach(Array(row.values.enumerated()), id: \.offset) { _, value in
                         // #211: a value is drawn whole ("4-2-1", "137.2"); the team's name gives way.
