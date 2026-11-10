@@ -5,6 +5,8 @@ import XCTest
 // details, the channel page, Search with Jump to), on the offline guide fixture (PIGTV_UI_TEST_SCREEN=guide; no server).
 final class GuidePagesUITests: XCTestCase {
     private let tile = "Sky Sports Main Event"
+    /// The channel tile's own label: its number, then its name, as a current server's guide reads (the fixture numbers it 501).
+    private let tileLabel = "501 Sky Sports Main Event"
 
     override func setUp() { continueAfterFailure = false }
 
@@ -35,10 +37,10 @@ final class GuidePagesUITests: XCTestCase {
 
     /// Down into the grid, then Right onto a later programme in the first row.
     private func enterFirstRow(_ app: XCUIApplication) {
-        for _ in 0..<8 where focusedLabel(app) != tile && !focusedLabel(app).contains(", ") {
+        for _ in 0..<8 where focusedLabel(app) != tileLabel && !focusedLabel(app).contains(", ") {
             XCUIRemote.shared.press(.down)
         }
-        if focusedLabel(app) == tile { XCUIRemote.shared.press(.right) }
+        if focusedLabel(app) == tileLabel { XCUIRemote.shared.press(.right) }
     }
 
     private func strip(_ app: XCUIApplication) -> XCUIElement {

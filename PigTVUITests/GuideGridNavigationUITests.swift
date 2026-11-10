@@ -6,6 +6,9 @@ import XCTest
 // Covers Left/Right through the day and the Up/Down time-column check.
 final class GuideGridNavigationUITests: XCTestCase {
     private let tile = "Sky Sports Main Event"
+    /// The channel tile's own label: its number, then its name (`GuideGridCells`), as a current server's guide reads; the
+    /// fixture numbers it 501. Programme cells read "<channel>, <title>".
+    private let tileLabel = "501 Sky Sports Main Event"
 
     private func focused(_ app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
@@ -33,10 +36,10 @@ final class GuideGridNavigationUITests: XCTestCase {
     /// Down from the tab bar into the grid, then Right onto a programme in
     /// the first row.
     private func enterFirstRow(_ app: XCUIApplication) {
-        for _ in 0..<8 where focusedLabel(app) != tile && !focusedLabel(app).contains(", ") {
+        for _ in 0..<8 where focusedLabel(app) != tileLabel && !focusedLabel(app).contains(", ") {
             XCUIRemote.shared.press(.down)
         }
-        if focusedLabel(app) == tile { XCUIRemote.shared.press(.right) }
+        if focusedLabel(app) == tileLabel { XCUIRemote.shared.press(.right) }
     }
 
     private func attach(_ app: XCUIApplication, _ name: String) {
@@ -70,7 +73,7 @@ final class GuideGridNavigationUITests: XCTestCase {
             if !back.last!.contains(", ") { break }
         }
         print("New guide Left sequence: \(back) viewport \(viewport(app))")
-        XCTAssertEqual(back.last, tile, "Left did not reach the channel tile: \(back)")
+        XCTAssertEqual(back.last, tileLabel, "Left did not reach the channel tile: \(back)")
         XCTAssertEqual(viewport(app), startViewport, "Left did not return to the live baseline")
     }
 
@@ -150,7 +153,7 @@ final class GuideGridNavigationUITests: XCTestCase {
         // so Left goes straight to the tile without moving the grid.
         let atNow = viewport(app)
         XCUIRemote.shared.press(.left)
-        XCTAssertEqual(focusedLabel(app), tile, "focus after Now was not on the live programme (\(now))")
+        XCTAssertEqual(focusedLabel(app), tileLabel, "focus after Now was not on the live programme (\(now))")
         XCTAssertEqual(viewport(app), atNow)
     }
 
@@ -188,10 +191,10 @@ final class GuideGridNavigationUITests: XCTestCase {
         // Down returns to the grid.
         XCUIRemote.shared.press(.down)
         var path: [String] = []
-        for _ in 0..<4 where !focusedLabel(app).contains(", ") && focusedLabel(app) != tile {
+        for _ in 0..<4 where !focusedLabel(app).contains(", ") && focusedLabel(app) != tileLabel {
             path.append(focusedLabel(app)); XCUIRemote.shared.press(.down)
         }
-        XCTAssertTrue(focusedLabel(app).contains(", ") || focusedLabel(app) == tile, "Down did not reach the grid: \(path)")
+        XCTAssertTrue(focusedLabel(app).contains(", ") || focusedLabel(app) == tileLabel, "Down did not reach the grid: \(path)")
     }
 
     /// Build 33 ("the guide hits a wall moving forward in time"): the fixture's
@@ -291,9 +294,9 @@ final class GuideGridNavigationUITests: XCTestCase {
         let gone = NSPredicate(format: "exists == false")
         wait(for: [expectation(for: gone, evaluatedWith: app.buttons["Show guide"])], timeout: 5)
         let deadline = Date().addingTimeInterval(5)
-        while !(focusedLabel(app).contains(", ") || focusedLabel(app) == tile) && Date() < deadline { usleep(200_000) }
+        while !(focusedLabel(app).contains(", ") || focusedLabel(app) == tileLabel) && Date() < deadline { usleep(200_000) }
         attach(app, "Guide after Show guide")
-        XCTAssertTrue(focusedLabel(app).contains(", ") || focusedLabel(app) == tile,
+        XCTAssertTrue(focusedLabel(app).contains(", ") || focusedLabel(app) == tileLabel,
                       "focus did not return to the grid: \(focusedLabel(app))")
     }
 }
