@@ -2,8 +2,8 @@ import XCTest
 
 #if os(tvOS)
 /// D-44 batch 6 (R5-Settings-TV): Settings is a menu beside its page. Signed in on the offline fixture
-/// (PIGTV_UI_TEST_SCREEN=settings-sport), the menu lists Sport, Account, Appearance, Labs, Diagnostics and About, the page
-/// beside it follows the focused item, and the remote moves from the menu into the page.
+/// (PIGTV_UI_TEST_SCREEN=settings-sport), the menu lists Sport, Account, Appearance, Labs, Diagnostics and About; on the
+/// Apple TV a summary follows the focused item and a press opens its page (#279).
 final class SettingsUITests: XCTestCase {
     private func focused(_ app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
@@ -28,35 +28,71 @@ final class SettingsUITests: XCTestCase {
         return target.hasFocus
     }
 
+    /// Into the menu: Down from the tab bar, Left from the page.
+    private func intoTheMenu(_ app: XCUIApplication) {
+        for _ in 0..<8 where !focused(app).identifier.hasPrefix("settings.menu.") {
+            XCUIRemote.shared.press(focused(app).identifier.hasPrefix("settings.") ? .left : .down)
+            _ = waitUntil(1) { focused(app).identifier.hasPrefix("settings.menu.") }
+        }
+    }
+
+    /// #279 (owner, 11 Nov 2026; Apple 201): a short read-only summary of the section follows focus, the real page opens on a
+    /// press and focus moves into it, and Menu returns to the row it came from. Before 201 the page followed the focus.
     @MainActor
-    func testTheMenuSitsBesideItsPageAndThePageFollowsTheFocus() throws {
+    func testTheSummaryFollowsTheFocusAndAPressOpensThePage() throws {
         continueAfterFailure = false
-        let app = launch()
+        let app = launch(page: "sport")
         let ids = ["sport", "account", "appearance", "labs", "diagnostics", "about"].map { "settings.menu.\($0)" }
         let items = ids.map { app.buttons[$0] }
         XCTAssertTrue(items[0].waitForExistence(timeout: 10), app.debugDescription)
         for item in items { XCTAssertTrue(item.exists, "missing \(item)") }
         let tops = items.map(\.frame.minY)
         XCTAssertEqual(tops, tops.sorted(), "the menu reads Sport, Account, Appearance, Labs, Diagnostics, About")
-        // The Sport page opens beside the menu.
+        // The fixture opened Sport: its page is beside the menu.
         let football = app.buttons["settings.sport.row.Football"]
         XCTAssertTrue(football.waitForExistence(timeout: 10))
         XCTAssertGreaterThan(football.frame.minX, items[0].frame.maxX, "the page is beside the menu, not below it")
-        // Into the menu (Down from the tab bar may land in the page; Left from the page enters the menu), then down to
-        // Account: its page replaces Sport's.
-        for _ in 0..<8 where !focused(app).identifier.hasPrefix("settings.menu.") {
-            XCUIRemote.shared.press(focused(app).identifier.hasPrefix("settings.") ? .left : .down)
-            _ = waitUntil(1) { focused(app).identifier.hasPrefix("settings.menu.") }
-        }
-        XCTAssertTrue(reach(items[1], in: app), "focus never reached Account: \(focused(app).identifier)")
-        let signOut = app.buttons["settings.account.signOut"]
-        XCTAssertTrue(signOut.waitForExistence(timeout: 5), "Account's page did not open")
-        XCTAssertFalse(football.exists)
-        // Right moves into the page.
-        XCUIRemote.shared.press(.right)
-        XCTAssertTrue(waitUntil(5) { focused(app).identifier.hasPrefix("settings.account.") },
-                      "focus never moved into the page: \(focused(app).identifier)")
-        XCTAssertGreaterThan(focused(app).frame.minX, items[1].frame.maxX)
+        intoTheMenu(app)
+        XCTAssertTrue(reach(items[0], in: app, from: .up), "focus never reached Sport: \(focused(app).identifier)")
+        // Down two rows: the summary follows, no page opens and Sport stays the selected row.
+        XCUIRemote.shared.press(.down)
+        XCTAssertTrue(waitUntil(3) { items[1].hasFocus })
+        XCUIRemote.shared.press(.down)
+        XCTAssertTrue(waitUntil(3) { items[2].hasFocus }, "focus: \(focused(app).identifier)")
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertFalse(app.buttons["appearance.dark"].exists, "focus opened Appearance's page")
+        XCTAssertFalse(app.buttons["settings.account.signOut"].exists, "focus opened Account's page on the way")
+        XCTAssertEqual(items[0].value as? String, "Selected", "moving focus never selects")
+        XCTAssertEqual(items[2].value as? String, "")
+        let summary = app.descendants(matching: .any)["settings.summary.appearance"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 3), "no Appearance summary: \(app.debugDescription)")
+        // A press opens the page and focus lands inside it.
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.buttons["appearance.dark"].waitForExistence(timeout: 5), "the press did not open Appearance")
+        XCTAssertTrue(waitUntil(5) { focused(app).identifier.hasPrefix("appearance.") },
+                      "focus did not move into the page: \(focused(app).identifier)")
+        XCTAssertGreaterThan(focused(app).frame.minX, items[2].frame.maxX)
+        XCTAssertEqual(items[2].value as? String, "Selected")
+        // Menu: back to the same row, and its summary again.
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil(5) { items[2].hasFocus }, "Menu did not return to Appearance: \(focused(app).identifier)")
+        XCTAssertTrue(summary.waitForExistence(timeout: 3), "no summary after Menu")
+        XCTAssertTrue(app.tabBars.buttons["Settings"].exists, "Menu left Settings")
+    }
+
+    /// #279: an information page (About in the tab) opens on a press and focus stays on its row.
+    @MainActor
+    func testAnInformationPageOpensAndFocusStaysOnTheMenu() throws {
+        continueAfterFailure = false
+        let app = launch()
+        let about = app.buttons["settings.menu.about"]
+        XCTAssertTrue(about.waitForExistence(timeout: 10), app.debugDescription)
+        intoTheMenu(app)
+        XCTAssertTrue(reach(about, in: app), "focus never reached About: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.descendants(matching: .any)["settings.page"].waitForExistence(timeout: 5), "About did not open")
+        XCTAssertTrue(about.hasFocus, "focus left the menu: \(focused(app).identifier)")
+        XCTAssertEqual(about.value as? String, "Selected")
     }
 
     /// D-44: Sign out is the one action that confirms, and it confirms inside its own row, never in a dialog.

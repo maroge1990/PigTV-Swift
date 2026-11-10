@@ -61,6 +61,16 @@ nonisolated enum SettingsMenu {
         return "\(count(sports, "sport")) · \(count(names, "follow"))"
     }
 
+    /// The Sport section's facts for the television's summary (#279): hidden scores, then each sport with its names.
+    static func sportFacts(_ follows: SportFollows?) -> [String] {
+        guard let follows else { return ["Your sports load when the page opens"] }
+        let sports = follows.sports.prefix(3).map { entry in
+            entry.teams.isEmpty ? entry.sport : "\(entry.sport): \(entry.teams.joined(separator: ", "))"
+        }
+        let rest = follows.sports.count > 3 ? ["and \(follows.sports.count - 3) more"] : []
+        return ["Scores are \(follows.spoilerFree ? "hidden" : "shown")"] + sports + rest
+    }
+
     /// "mark · pigtv.local": the account and the server's host.
     static func accountSummary(user: String?, server: String) -> String {
         let host = URL(string: server)?.host ?? server
@@ -86,6 +96,49 @@ nonisolated enum SettingsMenu {
     private static func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
 }
 
+/// #279 (owner, 11 Nov 2026: "A short read-only summary of the section follows focus; the real page opens on a press and
+/// focus moves into it"): what the Apple TV's Settings shows beside its menu. Pure (`SettingsMenuTests`). Moving focus never
+/// selects (brand 1.8 §15): only a press opens a page.
+nonisolated struct SettingsTVDetail: Equatable, Sendable {
+    enum Shown: Equatable, Sendable { case summary(SettingsPage), page(SettingsPage), nothing }
+
+    /// The page last opened by a press (the selected row).
+    var open: SettingsPage?
+    /// Whether that page is shown: from its press until focus moves to another row or Menu returns from it.
+    var active = false
+
+    /// What the detail area shows with focus on `focused` (a menu row; nil: focus is in the page or outside Settings).
+    func shown(focused: SettingsPage?) -> Shown {
+        if let focused { return active && focused == open ? .page(focused) : .summary(focused) }
+        guard let open else { return .nothing }
+        return active ? .page(open) : .summary(open)
+    }
+
+    /// Focus moved to a menu row (or out of the menu, nil). It never opens or selects anything.
+    mutating func focus(_ focused: SettingsPage?) {
+        if let focused, focused != open { active = false }
+    }
+
+    /// A press on a menu row opens its page.
+    mutating func press(_ page: SettingsPage) {
+        open = page
+        active = true
+    }
+
+    /// Menu from inside the page: back to its row, which shows the summary again.
+    mutating func back() { active = false }
+
+    /// Whether a page has anything to focus (About and Diagnostics are information only: a press opens them and focus
+    /// stays on the menu row).
+    static func takesFocus(_ page: SettingsPage, isTab: Bool) -> Bool {
+        switch page {
+        case .diagnostics: false
+        case .about: !isTab
+        default: true
+        }
+    }
+}
+
 struct LibrarySettings: View {
     @ObservedObject var model: AppModel
     var isTab: Bool = false
@@ -99,6 +152,10 @@ struct LibrarySettings: View {
     @State private var phonePath: [SettingsPage] = []
     #if os(tvOS)
     @FocusState private var focusedPage: SettingsPage?
+    /// #279: the opened page and whether it is shown (the summary follows focus otherwise).
+    @State private var tvDetail = SettingsTVDetail()
+    /// A press asks the opened page's first control to take focus (`settingsFirstFocus()`); 0 once focus is inside.
+    @State private var focusIntoPage = 0
     #endif
 
     private var pages: [SettingsPage] {
@@ -128,10 +185,16 @@ struct LibrarySettings: View {
            pages.contains(named) {
             page = named
             if compact { phonePath = [named] }
+            #if os(tvOS)
+            tvDetail.press(named)
+            #endif
             return
         }
         #endif
         page = SettingsMenu.opening(pages, compact: compact)
+        #if os(tvOS)
+        tvDetail.open = page
+        #endif
     }
 
     @ViewBuilder
@@ -189,9 +252,16 @@ struct LibrarySettings: View {
                 HStack(alignment: .top, spacing: SettingsMetrics.columnSpacing) {
                     menu.frame(width: SettingsMetrics.menuWidth)
                     #if os(tvOS)
-                    detail
+                    tvDetailView
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .focusSection()
+                        .environment(\.settingsFocusIntoPage, focusIntoPage)
+                        // Menu inside an open page: back to its row (focus memory), which shows the summary again.
+                        .onExitCommand {
+                            tvDetail.back()
+                            focusIntoPage = 0
+                            focusedPage = tvDetail.open
+                        }
                     #else
                     NavigationStack {
                         detail
@@ -220,12 +290,12 @@ struct LibrarySettings: View {
         ScrollView {
             VStack(alignment: .leading, spacing: SettingsMetrics.menuSpacing) {
                 ForEach(pages) { item in
-                    Button { page = item } label: {
+                    Button { choose(item) } label: {
                         SettingsMenuLabel(page: item, summary: summary(item), selected: page == item)
                     }
                     .buttonStyle(SettingsMenuRowStyle(selected: page == item))
                     #if os(tvOS)
-                    // The tvOS sidebar: the page follows the focus, as the system Settings does.
+                    // #279: focus shows the section's summary beside the menu; a press opens the page.
                     .focused($focusedPage, equals: item)
                     #endif
                     .accessibilityIdentifier("settings.menu.\(item.rawValue)")
@@ -238,9 +308,54 @@ struct LibrarySettings: View {
         .focusSection()
         // Entering the menu lands on the page shown.
         .defaultFocus($focusedPage, page)
-        .onChange(of: focusedPage) { _, focused in if let focused { page = focused } }
+        .onChange(of: focusedPage) { _, focused in
+            tvDetail.focus(focused)
+            // Focus has left the menu (into the page): the request is done.
+            if focused == nil { focusIntoPage = 0 }
+        }
         #endif
     }
+
+    /// A press on a menu row: the page opens (on the television focus moves into it when it has anything to focus).
+    private func choose(_ item: SettingsPage) {
+        page = item
+        #if os(tvOS)
+        tvDetail.press(item)
+        if SettingsTVDetail.takesFocus(item, isTab: isTab) { focusIntoPage += 1 }
+        #endif
+    }
+
+    #if os(tvOS)
+    /// Beside the menu: the focused section's read-only summary, or the page a press opened.
+    @ViewBuilder
+    private var tvDetailView: some View {
+        switch tvDetail.shown(focused: focusedPage) {
+        case .page(let shown): pageView(shown).id(shown)
+        case .summary(let shown): SettingsSummaryView(page: shown, line: summary(shown), facts: facts(shown))
+        case .nothing: Color.clear
+        }
+    }
+
+    /// Two to five plain facts about a section, from what the app already holds (no request is made for them).
+    private func facts(_ item: SettingsPage) -> [String] {
+        switch item {
+        case .sport:
+            return SettingsMenu.sportFacts(model.browse?.sportFollows.follows)
+        case .account:
+            return [(model.user?.username).map { "Signed in as \($0)" } ?? "Not signed in", "Server \(model.serverText)"]
+        case .appearance:
+            return ["Using \(SettingsMenu.appearanceSummary(appearance)) appearance", "Choices: System, Light, Dark"]
+        case .labs:
+            return Labs.toggles.map { toggle in
+                "\(toggle.title): \((toggle.key == Labs.streamInfo ? streamInfo : Labs.isOn(toggle.key)) ? "On" : "Off")"
+            }
+        case .diagnostics:
+            return ["Whether the Top Shelf snapshot was written", "Whether tvOS asked the Top Shelf extension for it"]
+        case .about:
+            return ["App \(Self.appVersion) (\(Self.appBuild))", "Server \(model.serverInfo?.identity ?? "unknown")"]
+        }
+    }
+    #endif
 
     private func summary(_ item: SettingsPage) -> String {
         switch item {
@@ -275,7 +390,7 @@ struct LibrarySettings: View {
             }
         case .labs:
             SettingsPageBody(title: item.title, showsTitle: !compact) {
-                Section { ForEach(Labs.toggles) { LabsToggleRow(toggle: $0) } }
+                Section { ForEach(Labs.toggles) { LabsToggleRow(toggle: $0).settingsFirstFocus($0.id == Labs.toggles.first?.id) } }
             }
         case .diagnostics:
             SettingsPageBody(title: item.title, showsTitle: !compact) {
@@ -329,6 +444,7 @@ struct LibrarySettings: View {
             #else
             .buttonStyle(PigSurfaceButtonStyle())
             #endif
+            .settingsFirstFocus(value == "system")
             .accessibilityIdentifier("appearance.\(value)")
             .accessibilityValue(appearance == value ? "Selected" : "Not selected")
         }
@@ -361,6 +477,78 @@ nonisolated enum SettingsMetrics {
     static let confirmSpacing: CGFloat = 12
     static let confirmPadding = EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0)
     #endif
+}
+
+/// #279 (Apple TV): the focused section's read-only summary beside the menu: its name, the menu's one line and a few
+/// facts. Nothing in it is focusable; pressing the row opens the page.
+struct SettingsSummaryView: View {
+    let page: SettingsPage
+    let line: String
+    let facts: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
+            HStack(spacing: PigSpacing.m) {
+                Image(systemName: page.systemImage).font(.system(size: PigType.sectionTitle, weight: .semibold))
+                    .foregroundStyle(Color.pigSecondary).accessibilityHidden(true)
+                Text(page.title).font(SettingsType.pageTitle).accessibilityAddTraits(.isHeader)
+            }
+            Text(line).font(SettingsType.menuTitle).foregroundStyle(Color.pigSecondary).lineLimit(2)
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                ForEach(Array(facts.prefix(5).enumerated()), id: \.offset) { _, fact in
+                    Text(fact).font(SettingsType.menuTitle.weight(.regular)).lineLimit(2)
+                }
+            }
+            .padding(.top, PigSpacing.s)
+        }
+        .padding(.horizontal, SettingsMetrics.pagePadding)
+        .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings.summary.\(page.rawValue)")
+    }
+}
+
+private struct SettingsFocusIntoPageKey: EnvironmentKey { static let defaultValue = 0 }
+
+extension EnvironmentValues {
+    /// #279: non-zero while a press on the Apple TV's Settings menu asks the opened page to take focus.
+    var settingsFocusIntoPage: Int {
+        get { self[SettingsFocusIntoPageKey.self] }
+        set { self[SettingsFocusIntoPageKey.self] = newValue }
+    }
+}
+
+/// #279: a Settings page's first control takes focus when a press on the television's menu opens the page (or presses
+/// its row again). Nothing on touch.
+private struct SettingsFirstFocus: ViewModifier {
+    @Environment(\.settingsFocusIntoPage) private var request
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focused($focused)
+            .onAppear { if request > 0 { take() } }
+            .onChange(of: request) { _, now in if now > 0 { take() } }
+    }
+
+    private func take() {
+        Task { @MainActor in
+            await Task.yield()
+            focused = true
+        }
+    }
+}
+
+extension View {
+    /// Marks a Settings page's first control (#279): it takes focus when a press opens the page on the television.
+    @ViewBuilder
+    func settingsFirstFocus(_ isFirst: Bool = true) -> some View {
+        #if os(tvOS)
+        if isFirst { modifier(SettingsFirstFocus()) } else { self }
+        #else
+        self
+        #endif
+    }
 }
 
 /// A menu item: its icon, its name and the one-line summary of its page.
@@ -541,6 +729,7 @@ struct SettingsAccountPage: View {
                 .listRowBackground(Color.pigRaised)
                 #endif
                 .disabled(model.playbackBusy || confirm != nil)
+                .settingsFirstFocus()
                 .accessibilityIdentifier("settings.account.changeServer")
             }
             Section {

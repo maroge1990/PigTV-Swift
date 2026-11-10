@@ -39,4 +39,43 @@ final class SettingsMenuTests: XCTestCase {
         XCTAssertEqual(SettingsMenu.aboutSummary(appBuild: "128", server: info), "App 128 · Server 0503")
         XCTAssertEqual(SettingsMenu.aboutSummary(appBuild: "128", server: nil), "App 128")
     }
+
+    /// #279 (owner, 11 Nov 2026): on the Apple TV the summary follows focus and only a press opens a page. Before Apple 201
+    /// moving focus down the menu opened each page in turn.
+    func testFocusShowsTheSummaryAndOnlyAPressOpensThePage() {
+        var detail = SettingsTVDetail(open: .sport)
+        XCTAssertEqual(detail.shown(focused: nil), .summary(.sport), "nothing pressed yet: the first section's summary")
+        detail.focus(.sport)
+        XCTAssertEqual(detail.shown(focused: .sport), .summary(.sport))
+        detail.focus(.account)
+        detail.focus(.appearance)
+        XCTAssertEqual(detail.open, .sport, "moving focus never selects")
+        XCTAssertEqual(detail.shown(focused: .appearance), .summary(.appearance), "two rows down: that section's summary")
+        detail.press(.appearance)
+        XCTAssertEqual(detail.open, .appearance)
+        XCTAssertEqual(detail.shown(focused: .appearance), .page(.appearance), "a press opens it")
+        detail.focus(nil)
+        XCTAssertEqual(detail.shown(focused: nil), .page(.appearance), "focus inside the page")
+        detail.back()
+        XCTAssertEqual(detail.shown(focused: .appearance), .summary(.appearance), "Menu: back to the row and its summary")
+        XCTAssertEqual(detail.open, .appearance, "the row stays selected")
+        detail.press(.about)
+        detail.focus(.labs)
+        XCTAssertEqual(detail.shown(focused: .labs), .summary(.labs), "another row: its summary; the page closes")
+        XCTAssertEqual(detail.shown(focused: .about), .summary(.about))
+    }
+
+    func testInformationPagesKeepTheFocusOnTheMenu() {
+        XCTAssertFalse(SettingsTVDetail.takesFocus(.diagnostics, isTab: true))
+        XCTAssertFalse(SettingsTVDetail.takesFocus(.about, isTab: true))
+        XCTAssertTrue(SettingsTVDetail.takesFocus(.about, isTab: false), "About's Done outside the tab")
+        for page in [SettingsPage.sport, .account, .appearance, .labs] { XCTAssertTrue(SettingsTVDetail.takesFocus(page, isTab: true)) }
+    }
+
+    func testSportFactsForTheSummary() {
+        let follows = SportFollows(spoilerFree: true, sports: [.init(sport: "Football", leagues: ["EPL"], teams: ["Arsenal", "Liverpool"]),
+                                                              .init(sport: "Cricket", leagues: ["Tests"])])
+        XCTAssertEqual(SettingsMenu.sportFacts(follows), ["Scores are hidden", "Football: Arsenal, Liverpool", "Cricket"])
+        XCTAssertEqual(SettingsMenu.sportFacts(nil), ["Your sports load when the page opens"])
+    }
 }

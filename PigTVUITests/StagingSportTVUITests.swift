@@ -263,10 +263,11 @@ final class StagingSportTVUITests: XCTestCase {
         let settings = app.tabBars.buttons["Settings"]
         XCTAssertTrue(focus(app, on: settings, presses: 8), "no Settings tab: \(focused(app).identifier)")
         press(.select)
-        // D-44 batch 6: Settings is a menu beside its page, and the page follows the focused menu item.
+        // D-44 batch 6: Settings is a menu beside its page; #279 (Apple 201): a press on the menu item opens the page.
         let sportItem = app.buttons["settings.menu.sport"]
         XCTAssertTrue(sportItem.waitForExistence(timeout: 20) && focus(app, on: sportItem, presses: 12),
                       "no Sport item in Settings: \(focused(app).identifier)")
+        press(.select)
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settings.sport.row.'"))
         guard rows.firstMatch.waitForExistence(timeout: 20) else {
             XCTFail("no Sport page in Settings")

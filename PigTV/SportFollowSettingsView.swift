@@ -228,6 +228,7 @@ struct SportSettingsSection: View {
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
         .disabled(!model.canEdit)
+        .settingsFirstFocus()
         .accessibilityIdentifier("settings.sport.spoilerFree")
         .accessibilityValue(on ? "On" : "Off")
         #else

@@ -26,6 +26,8 @@ final class SportSettingsUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "settings-sport"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        // #279 (Apple 201): on the Apple TV a page opens on a press; the fixture opens Sport as a press would.
+        app.launchEnvironment["PIGTV_UI_TEST_SETTINGS_PAGE"] = "sport"
         app.launch()
         let football = app.buttons["settings.sport.row.Football"]
         XCTAssertTrue(football.waitForExistence(timeout: 10), app.debugDescription)
@@ -38,11 +40,13 @@ final class SportSettingsUITests: XCTestCase {
         XCTAssertEqual(spoilers.value as? String, "On")
         XCTAssertTrue(app.buttons["settings.sport.add"].exists, "Add a sport")
 
-        // D-44 batch 6: the Sport page sits beside the Settings menu; from the menu's Sport item, Right enters the page.
+        // D-44 batch 6: the Sport page sits beside the Settings menu; #279 (Apple 201): pressing the menu's Sport item opens
+        // it and moves focus inside.
         var reached = false
         for _ in 0..<14 {
             if football.hasFocus { reached = true; break }
-            XCUIRemote.shared.press(focused(app).identifier.hasPrefix("settings.menu.") ? .right : .down)
+            XCUIRemote.shared.press(focused(app).identifier == "settings.menu.sport" ? .select
+                                    : focused(app).identifier.hasPrefix("settings.menu.") ? .up : .down)
             _ = waitUntil(1) { football.hasFocus }
         }
         XCTAssertTrue(reached, "focus never reached Football: \(focused(app).identifier)")

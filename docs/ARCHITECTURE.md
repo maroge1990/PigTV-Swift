@@ -382,8 +382,13 @@ controls are not used for live play.
   Server 0444"). The iPad (regular width) uses `NavigationSplitView`, the menu in its sidebar and the page in a
   `NavigationStack` beside it; the iPhone (compact) a `NavigationStack` whose list rows push the pages. On tvOS 27
   `NavigationSplitView` inside the tab bar drew only its sidebar, full width, so the TV lays the menu (460 pt) and the
-  page side by side as two focus sections, and the page follows the focused menu item (`defaultFocus` lands on the page
-  shown). The selected item is 14 % pink with a short bar. `PIGTV_UI_TEST_SETTINGS_PAGE` opens a page in the fixtures.
+  page side by side as two focus sections (`defaultFocus` lands on the selected item). Since Apple 201 (#279, the owner's
+  choice; brand 1.8: moving focus never selects) focus shows the section's read-only summary beside the menu
+  (`SettingsSummaryView`: title, the menu's line, a few facts the app already holds; nothing focusable, no request), a
+  press opens the real page and moves focus into it (each page's first control carries `settingsFirstFocus()`, which
+  takes focus when the press asks), and Menu returns to that row and
+  its summary (`SettingsTVDetail`, pure). About (in the tab) and Diagnostics have nothing to focus: a press opens them and
+  focus stays on the row. The selected item is 14 % pink with a short bar. `PIGTV_UI_TEST_SETTINGS_PAGE` opens a page in the fixtures.
 - **Account** (`SettingsAccountPage`): Signed in as, Server, Use a different server, Sign out. Sign out confirms inside its
   own row (D-44's one confirmation, never a dialog): "Sign out of PigTV?" with Stay signed in (the rose primary, focused on
   the TV; Menu does the same) and Sign out. Use a different server opens the same row and then Sign in at its server step

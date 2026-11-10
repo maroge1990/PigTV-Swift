@@ -191,8 +191,9 @@ final class BrandDepthUITests: XCTestCase {
             XCTAssertTrue(app.buttons["scheduled.cancel.90"].waitForExistence(timeout: 3))
             app.terminate()
             let settings = launch("settings", mode)
-            // D-44 batch 6: Diagnostics is its own page beside the menu; the page follows the focused item.
+            // D-44 batch 6: Diagnostics is its own page beside the menu; #279 (Apple 201): a press opens it.
             focus(settings, id: "settings.menu.diagnostics")
+            XCUIRemote.shared.press(.select)
             XCTAssertTrue(settings.staticTexts["Top Shelf extension"].waitForExistence(timeout: 5) || settings.otherElements["settings.page"].exists)
             shot(settings, "settings-diagnostics-\(mode)")
             settings.terminate()
