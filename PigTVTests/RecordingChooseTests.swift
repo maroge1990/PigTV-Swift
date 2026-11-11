@@ -61,6 +61,7 @@ final class RecordingChooseTests: XCTestCase {
         defer { http.stop() }
         let model = try model(http)
         await model.choose(try loser)
-        XCTAssertEqual(model.actionError, UserMessage.text(for: PigTVError.http(500)))
+        // #280: what could not be done, in plain words (was "The server returned HTTP 500. Please try again.").
+        XCTAssertEqual(model.actionError, PageWords.chooseFailed)
     }
 }

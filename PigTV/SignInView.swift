@@ -28,11 +28,20 @@ nonisolated enum SignInStep: Equatable, Sendable {
 
 struct OnboardingView: View {
     @ObservedObject var model: AppModel
-    @State private var step: SignInStep?
+    @State private var step: SignInStep? = OnboardingView.fixtureStep
     #if os(tvOS)
     @FocusState private var focus: SignInFocus?
     private enum SignInFocus: Hashable { case address, pair, password, username }
     #endif
+
+    /// #280: PIGTV_UI_TEST_SIGNIN_STEP=password opens on the password step (with PIGTV_UI_TEST_SIGNIN_ERROR=password, its
+    /// note), DEBUG only.
+    private static var fixtureStep: SignInStep? {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SIGNIN_STEP"] == "password" { return .password }
+        #endif
+        return nil
+    }
 
     private var current: SignInStep { step ?? SignInStep.opening(server: model.serverText, askServer: model.signInAtServer) }
 
@@ -64,6 +73,8 @@ struct OnboardingView: View {
     }
 
     private func go(_ next: SignInStep) {
+        // #280: a note belongs to the attempt that made it; another step starts clean (what was typed stays).
+        if !(model.canRestore && next == .method) { model.signInError = nil }
         withAnimation(.easeOut(duration: 0.15)) { step = next }
         #if os(tvOS)
         Task { @MainActor in
@@ -105,6 +116,7 @@ struct OnboardingView: View {
                 .onSubmit(continueToMethod)
             Text("The server address only, with its port if needed. HTTP is fine on your home network.")
                 .font(SignInType.hint).foregroundStyle(Color.pigSecondary)
+            errorNote
             HStack(spacing: PigSpacing.m) {
                 Button("Continue", systemImage: "arrow.right", action: continueToMethod)
                     .pigPrimaryButton()
@@ -190,8 +202,10 @@ struct OnboardingView: View {
                     .focusSection()
                     #endif
             }
-            if model.canRestore {
-                Button("Retry saved sign-in", systemImage: "arrow.clockwise") { Task { await model.restore() } }
+            errorNote
+            // #280: a saved sign-in that was refused is tried again from its note ("Try again"); without one, it is offered.
+            if model.canRestore && model.signInError == nil {
+                Button("Use saved sign-in", systemImage: "arrow.clockwise") { Task { await model.restore() } }
                     .disabled(model.authBusy)
             }
             if model.authBusy { ProgressView("Connecting…") }
@@ -216,6 +230,7 @@ struct OnboardingView: View {
                 .textContentType(.password)
                 .pigField()
                 .accessibilityIdentifier("signin.passwordField")
+            errorNote
             HStack(spacing: PigSpacing.m) {
                 Button("Sign in", systemImage: "person.crop.circle") { Task { await model.login() } }
                     .pigPrimaryButton()
@@ -238,6 +253,15 @@ struct OnboardingView: View {
         #endif
     }
 
+    /// #280: why the last attempt did not work, on the form (it keeps what was typed).
+    @ViewBuilder
+    private var errorNote: some View {
+        if let failure = model.signInError {
+            SignInErrorNote(failure: failure, retry: model.canRestore ? { Task { await model.restore() } } : nil,
+                            busy: model.authBusy)
+        }
+    }
+
     private func pairingCard(_ pairing: PairStart) -> some View {
         VStack(alignment: .leading, spacing: SignInMetrics.cardSpacing) {
             StepHeading(number: 2, title: "Pair with your browser", active: true)
@@ -253,6 +277,45 @@ struct OnboardingView: View {
         .padding(SignInMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+    }
+}
+
+/// #280: a sign-in that did not work, said where it was tried: what happened and what to check, in plain words (no alert,
+/// no code). A refused saved sign-in offers "Try again".
+struct SignInErrorNote: View {
+    let failure: SignInFailure
+    var retry: (() -> Void)? = nil
+    var busy = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: PigSpacing.m) {
+            Image(systemName: "exclamationmark.triangle").font(SignInType.body.weight(.semibold))
+                .foregroundStyle(Color.pigWarning).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+                Text(failure.title).font(SignInType.body.weight(.semibold))
+                    .accessibilityIdentifier("signin.error.title")
+                Text(failure.check).font(SignInType.hint).foregroundStyle(Color.pigSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("signin.error.check")
+                if let retry {
+                    Button(PageWords.tryAgain, systemImage: "arrow.clockwise", action: retry)
+                        .pigSecondaryButton()
+                        .disabled(busy)
+                        .padding(.top, PigSpacing.xs)
+                        .accessibilityIdentifier("signin.error.retry")
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(PigSpacing.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous)
+                .strokeBorder(Color.pigWarning, lineWidth: PigStateMetrics.noticeBorder).allowsHitTesting(false)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("signin.error")
     }
 }
 

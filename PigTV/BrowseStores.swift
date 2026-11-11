@@ -49,6 +49,9 @@ final class GuideStore: ObservableObject {
     // rows in place: `guide.count`/first/last id do not change, so this is
     // what tells GuideView's row-filter memoisation to recompute.
     @Published var guideProgrammesVersion = 0
+    /// #280 (one retry clock): the app's next freshness pass (AppFreshness), which is what retries a guide that failed;
+    /// published only while it has failed, for the error's countdown.
+    @Published var schedule: RefreshSchedule?
 
     func channel(id: String) -> GuideChannel? {
         if guideIndex == nil {
@@ -65,6 +68,15 @@ final class RecordingsStore: ObservableObject {
     @Published var schedules: [ScheduledRecording] = []
     @Published var recordingsBusy = false
     @Published var recordingsError: String?
+    /// #280: an answer has come since sign-in (until then the page is loading, never "No recordings yet").
+    @Published var loaded = false
+    /// When the list shown was received (the stale notice's time). Not published: it changes with every quiet refresh.
+    var updatedAt: Date?
+    /// #280 (one retry clock): the next request the polling makes (AppFreshness, or the Recordings page's own loop);
+    /// published only while the list has failed.
+    @Published var schedule: RefreshSchedule?
+    /// #280: the rules have answered once (Scheduled shows their shape until then, not "No rules yet").
+    @Published var rulesLoaded = false
     /// C-M (Apple 120): the recording rules Scheduled lists, and why they could not be loaded.
     @Published var rules: [RecordingRule] = []
     @Published var rulesError: String?

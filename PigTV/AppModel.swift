@@ -7,6 +7,9 @@ final class AppModel: ObservableObject {
     @Published var username = ""
     @Published var password = ""
     @Published var error: String?
+    /// #280: why the last sign-in attempt (the server check, a password, pairing or the saved sign-in) did not work, in
+    /// plain words; Sign in shows it on the form (never an alert) and keeps what was typed.
+    @Published var signInError: SignInFailure?
     @Published private(set) var authBusy = false
     @Published private(set) var canRestore = false
     // Saved sign-in exists but the server could not be reached.
@@ -109,13 +112,13 @@ final class AppModel: ObservableObject {
                 // restored, a restart); the sign-in screen offers "Retry saved sign-in", and signing in or pairing
                 // replaces it. Only Sign out deletes it.
                 canRestore = true
-                self.error = "PigTV didn't accept the saved sign-in. Retry it, or sign in or pair again."
+                signInError = SignInFailure.of(error, step: .saved)
             } else if let urlError = error as? URLError {
                 // Server asleep, wrong network or Tailscale down: show a
                 // dedicated screen rather than a generic alert.
                 unreachable = Self.describe(urlError)
             } else {
-                self.error = UserMessage.text(for: error)
+                signInError = SignInFailure.of(error, step: .saved)
             }
         }
     }
@@ -132,6 +135,7 @@ final class AppModel: ObservableObject {
     func login() async {
         guard allowAuthAttempt(), !authBusy else { return }
         cancelPairing()
+        signInError = nil
         authBusy = true
         defer { authBusy = false }
         do {
@@ -142,20 +146,22 @@ final class AppModel: ObservableObject {
             let response: LoginResponse = try await candidate.request("auth/login", method: "POST",
                 body: LoginBody(username: username, password: password))
             try await accept(token: response.token, address: address, info: info, user: response.user)
-        } catch { recordAuthFailure(error) }
+        } catch { recordAuthFailure(error, step: .password) }
     }
 
     private func allowAuthAttempt() -> Bool {
         guard let authRetry, authRetry.server == serverText, authRetry.until > Date() else { return true }
-        error = PigTVError.rateLimited(retryAfterSec: Int(ceil(authRetry.until.timeIntervalSinceNow))).localizedDescription
+        signInError = SignInFailure.of(PigTVError.rateLimited(retryAfterSec: Int(ceil(authRetry.until.timeIntervalSinceNow))),
+                                       step: .password)
         return false
     }
 
-    private func recordAuthFailure(_ failure: Error) {
+    private func recordAuthFailure(_ failure: Error, step: SignInFailure.Step) {
         if case PigTVError.rateLimited(let seconds) = failure {
             authRetry = (serverText, Date().addingTimeInterval(Double(seconds)))
         }
-        error = failure.localizedDescription
+        // #280: on the form, in plain words (was the system's text in an alert).
+        signInError = SignInFailure.of(failure, step: step)
     }
 
     private func accept(token: String, address: ServerAddress, info: ServerInfo, user: User? = nil) async throws {
@@ -176,12 +182,14 @@ final class AppModel: ObservableObject {
         pairing = nil
         canRestore = false
         error = nil
+        signInError = nil
         await loadCategories()
     }
 
     func startPairing() {
         guard allowAuthAttempt(), !authBusy else { return }
         cancelPairing()
+        signInError = nil
         let generation = authGeneration
         authBusy = true
         pairingTask = Task {
@@ -220,7 +228,7 @@ final class AppModel: ObservableObject {
                 }
                 throw PigTVError.message("The pairing code expired. Request another code.")
             } catch {
-                if generation == authGeneration, !Task.isCancelled { recordAuthFailure(error) }
+                if generation == authGeneration, !Task.isCancelled { recordAuthFailure(error, step: .pairing) }
             }
         }
     }
@@ -242,6 +250,7 @@ final class AppModel: ObservableObject {
     func checkServer() async -> Bool {
         guard !authBusy else { return false }
         authBusy = true
+        signInError = nil
         defer { authBusy = false }
         do {
             let address = try ServerAddress(serverText)
@@ -251,7 +260,7 @@ final class AppModel: ObservableObject {
             signInAtServer = false
             return true
         } catch {
-            if !UserMessage.isCancellation(error) { self.error = UserMessage.text(for: error) }
+            signInError = SignInFailure.of(error, step: .server)
             return false
         }
     }
@@ -626,6 +635,8 @@ final class AppModel: ObservableObject {
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(logos: true), to: GuideFixtures.requestedCount)
         model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
         model.recordings = GuideFixtures.recordings()
+        model.recordingStore.loaded = true // #280: the fixture's answer is in
+        model.recordingStore.rulesLoaded = true
         GuideFixtures.preloadLogos()
         let sportFixture: [SportEvent]
         if let countStr = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPORT_EVENTS"],
@@ -646,6 +657,22 @@ final class AppModel: ObservableObject {
     // third channel with a remembered last channel. `media` (a local movie
     // file) makes it ready at once; without it the player stays on the
     // tuning card (the resolve goes to a non-routable TEST-NET address).
+    /// #280 (`PIGTV_UI_TEST_SIGNIN_ERROR=server|password|pairing|saved`): Sign in showing why an attempt did not work, as
+    /// the form draws it (the server's address unreachable, a refused password, a pairing code that expired, a refused
+    /// saved sign-in with "Try again").
+    func injectSignInError(_ kind: String) {
+        switch kind {
+        case "server": signInError = SignInFailure.of(URLError(.cannotConnectToHost), step: .server)
+        case "password": signInError = SignInFailure.of(PigTVError.unauthorised, step: .password)
+        case "pairing":
+            signInError = SignInFailure.of(PigTVError.message("The pairing code expired. Request another code."), step: .pairing)
+        case "saved":
+            canRestore = true
+            signInError = SignInFailure.of(PigTVError.unauthorised, step: .saved)
+        default: break
+        }
+    }
+
     func injectPairingReview() {
         pairing = PairStart(code: "PIG482", expiresAt: Date().addingTimeInterval(600).timeIntervalSince1970 * 1000, expiresInSec: 600)
     }
@@ -681,6 +708,8 @@ final class AppModel: ObservableObject {
         let client = info.map { APIClient(address: address, token: "fixture", info: $0) } ?? APIClient(address: address, token: "fixture")
         let model = BrowseModel(client: client)
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(), to: GuideFixtures.requestedCount)
+        model.recordingStore.loaded = true // #280: the fixture's (empty) answer is in
+        model.recordingStore.rulesLoaded = true
         if watchOn {
             let now = Date()
             let carrying = model.guide.filter { $0.programmes.contains { $0.start <= now && now < $0.end } }.prefix(3)

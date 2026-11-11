@@ -102,6 +102,7 @@ private struct SportSettingsTestScreen: View {
             .task {
                 model.injectHomeFixture(sportFollows: true)
                 SportFollowFixtures.apply(to: model.browse?.sportFollows)
+                PageStateFixtures.apply(model)
             }
             .preferredColorScheme(fixtureScheme)
     }
@@ -112,7 +113,10 @@ private struct GuideTestScreen: View {
     @StateObject private var model = AppModel()
     var body: some View {
         LibraryView(model: model, initialTab: "guide")
-            .task { model.injectGuideFixture() }
+            .task {
+                model.injectGuideFixture()
+                PageStateFixtures.apply(model)
+            }
             // PIGTV_UI_TEST_APPEARANCE=light|dark: the tvOS simulator cannot
             // switch its own appearance (simctl ui appearance is unsupported).
             .preferredColorScheme(fixtureScheme)
@@ -252,6 +256,7 @@ private struct HomeTestScreen: View {
                 model.injectHomeFixture()
                 if let front = Self.front { model.browse?.sportFront.setFixture(front) }
                 if initialTab == "recordings", let browse = model.browse { GuideFixtures.addSchedules(to: browse) }
+                PageStateFixtures.apply(model)
                 // PIGTV_UI_TEST_DASHBOARD_PLAY=1: a play reaches the real player, whose resolve goes to a
                 // non-routable TEST-NET address, so it stays on the tuning card (as player-tuning does).
                 if Self.presentsPlayer, let address = try? ServerAddress("http://192.0.2.1:3000") {
@@ -328,7 +333,13 @@ private struct DesignTestScreen: View {
             // D-44 batch 6: Sign in's step 1 (the server), as after "Use a different server".
             if screen == "signin-server" { app.signInAtServer = true }
             if let browse = app.browse { GuideFixtures.addSchedules(to: browse) }
+            PageStateFixtures.apply(app)
             ready = true
+            // #280: PIGTV_UI_TEST_ACTION_ERROR=1: a page's action did not work (after it has appeared, which clears it).
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_ACTION_ERROR"] == "1", let browse = app.browse {
+                try? await Task.sleep(for: .seconds(1))
+                browse.actionError = PageWords.ruleAddFailed
+            }
             // Codex 5a round 1: PIGTV_UI_TEST_RECORD_FLIP=recording | gone changes the scheduled programme's row 4 s after
             // the page opens (it starts recording, or it is gone), as a refreshed list would.
             if let flip = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_RECORD_FLIP"], let browse = app.browse {
@@ -346,6 +357,17 @@ private struct DesignTestScreen: View {
 
     @ViewBuilder
     private func content(_ browse: BrowseModel) -> some View {
+        if ["search", "jump"].contains(screen) {
+            // Before the others: with PIGTV_UI_TEST_GUIDE_STATE the guide may have no channels (#280).
+            GuideSearchPage(model: browse, date: Date(), canJump: true, startWithJump: screen == "jump",
+                            openChannel: { _ in }, openProgramme: { _, _ in }, showGuide: { _ in })
+        } else {
+            screenContent(browse)
+        }
+    }
+
+    @ViewBuilder
+    private func screenContent(_ browse: BrowseModel) -> some View {
         let channel = browse.guide[2]
         let now = Date()
         let live = channel.programmes.first { $0.isLive(at: now) } ?? channel.programmes[0]
@@ -362,7 +384,7 @@ private struct DesignTestScreen: View {
         case "channel":
             ChannelPageView(model: browse, presenter: app.presenter, channel: channel, watch: {}, openProgramme: { _ in })
         case "recordings":
-            RecordingsView(model: browse, presenter: app.presenter)
+            RecordingsView(model: browse, presenter: app.presenter, openGuide: { app.requestedTab = "guide" })
         case "recording-player", "recording-loading", "recording-preparing", "recording-error", "recording-resume":
             RecordingPlayerScreen(recording: browse.recordings[1], client: browse.client)
         case "recording":
@@ -370,9 +392,6 @@ private struct DesignTestScreen: View {
         case "recording-game":
             // Apple 121: a game recording, drawn with its two teams.
             if let game = browse.recordings.first(where: { $0.id == 24 }) { RecordingView(model: browse, presenter: app.presenter, original: game) }
-        case "search", "jump":
-            GuideSearchPage(model: browse, date: Date(), canJump: true, startWithJump: screen == "jump",
-                            openChannel: { _ in }, openProgramme: { _, _ in }, showGuide: { _ in })
         case "record-sport":
             // Apple 114: the record page for a game on three channels, with the game's id (it stops when the game ends).
             Color.clear.task {
@@ -436,6 +455,25 @@ private struct TopShelfCardsTestScreen: View {
             let pixels = cards.first.map { "\(Int($0.1.size.width * $0.1.scale))×\(Int($0.1.size.height * $0.1.scale)) px" } ?? "-"
             summary = "\(count) cards rendered · \(pixels) each"
         }
+    }
+}
+
+/// #280: the other pages' states for the simulator and UI tests, in the style of PIGTV_UI_TEST_SPORT_STATE:
+/// PIGTV_UI_TEST_GUIDE_STATE=loading|empty|failed|stale (the TV Guide, and Search, which looks through it),
+/// PIGTV_UI_TEST_RECORDINGS_STATE=loading|empty|failed|stale (Recordings and Scheduled),
+/// PIGTV_UI_TEST_SETTINGS_SPORT_STATE=loading|empty|failed|stale (Settings › Sport) and
+/// PIGTV_UI_TEST_SIGNIN_ERROR=server|password|pairing|saved (Sign in's inline note), on the fixtures that show them.
+enum PageStateFixtures {
+    static func apply(_ app: AppModel) {
+        let environment = ProcessInfo.processInfo.environment
+        // The Sport front in its state inside the tab bar (the `front` screen applies it itself).
+        if let state = environment["PIGTV_UI_TEST_SPORT_STATE"], environment["PIGTV_UI_TEST_SCREEN"] != "front", let browse = app.browse {
+            browse.sportFront.setFixtureState(state, front: browse.sportFront.front)
+        }
+        if let state = environment["PIGTV_UI_TEST_GUIDE_STATE"] { app.browse?.setGuideFixtureState(state) }
+        if let state = environment["PIGTV_UI_TEST_RECORDINGS_STATE"] { app.browse?.setRecordingsFixtureState(state) }
+        if let state = environment["PIGTV_UI_TEST_SETTINGS_SPORT_STATE"] { app.browse?.sportFollows.setFixtureState(state) }
+        if let kind = environment["PIGTV_UI_TEST_SIGNIN_ERROR"] { app.injectSignInError(kind) }
     }
 }
 

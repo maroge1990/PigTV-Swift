@@ -121,11 +121,15 @@ struct SportSettingsSection: View {
                 .focusSection()
                 yourSportsHeading.padding(.top, PigSpacing.xs)
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
-                if follows.sports.isEmpty {
-                    SportStatusLine(text: "Follow a sport to fill the Sport tab.").accessibilityIdentifier("settings.sport.empty")
+                if model.state == .empty {
+                    // #280 (E1): Add a sport is its one action.
+                    PigEmptyState(title: PageWords.noSportsTitle, text: PageWords.noSportsText,
+                                  action: model.canEdit ? PigStateAction(label: PageWords.addSport, systemImage: "plus") { route = .addSport } : nil,
+                                  identifier: "settings.sport.empty")
+                } else {
+                    if !model.offline { ForEach(model.suggestions) { SportSuggestionRow(model: model, suggestion: $0) } }
+                    if !model.unfollowedSports.isEmpty { addSportRow }
                 }
-                if !model.offline { ForEach(model.suggestions) { SportSuggestionRow(model: model, suggestion: $0) } }
-                if !model.unfollowedSports.isEmpty { addSportRow }
             } else { loadingOrFailed }
         }
         #else
@@ -139,8 +143,10 @@ struct SportSettingsSection: View {
                 // #256: Edit order, then drag a sport by its handle (each sport's page keeps Move up / Move down).
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
                     .onMove(perform: model.canEdit ? { from, to in Task { await model.moveSports(from: from, to: to) } } : nil)
-                if follows.sports.isEmpty {
-                    SportStatusLine(text: "Follow a sport to fill the Sport tab.").accessibilityIdentifier("settings.sport.empty")
+                if model.state == .empty {
+                    // #280 (E1): its one action is the Add a sport row just below (a pushed page in this list).
+                    PigEmptyState(title: PageWords.noSportsTitle, text: PageWords.noSportsText, identifier: "settings.sport.empty")
+                        .listRowBackground(Color.clear)
                 }
             } header: {
                 HStack(alignment: .firstTextBaseline) {
@@ -176,23 +182,25 @@ struct SportSettingsSection: View {
             SportStatusLine(text: delay.message).accessibilityIdentifier("settings.sport.delay.message")
         }
         if model.follows != nil, model.offline {
-            SportStatusLine(text: "Can't reach the server: showing your last copy.").accessibilityIdentifier("settings.sport.offline")
+            // #280 (R1): this device's last copy stays, with the slim notice.
+            PigStaleNotice(since: nil, retry: { await model.load() }, identifier: "settings.sport.offline")
         }
     }
 
+    /// #280: before the first answer, the page's shape; with neither an answer nor a copy, the error (nothing polls this
+    /// page, so its own 20 s retry is the only one).
     @ViewBuilder
     private var loadingOrFailed: some View {
-        if model.loadFailed {
-            SportStatusLine(text: "Your sport choices could not be loaded.").accessibilityIdentifier("settings.sport.failed")
-            Button { Task { await model.load() } } label: {
-                Text("Retry")
-                    #if os(tvOS)
-                    .font(.system(size: PigType.body))
-                    #endif
-            }
-            .accessibilityIdentifier("settings.sport.retry")
+        if let failure = model.state.failure {
+            PigErrorState(failure: failure, retry: { await model.load() }, identifier: "settings.sport.failed")
+                #if os(iOS)
+                .listRowBackground(Color.clear)
+                #endif
         } else {
-            SportStatusLine(text: "Loading…")
+            SettingsSportPlaceholder()
+                #if os(iOS)
+                .listRowBackground(Color.clear)
+                #endif
         }
     }
 

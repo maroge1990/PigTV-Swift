@@ -28,7 +28,8 @@ final class SignInRestoreTests: XCTestCase {
         XCTAssertFalse(model.loggedIn)
         XCTAssertEqual(try keychain.token(for: address), "fixture-token", "the saved sign-in is kept")
         XCTAssertTrue(model.canRestore, "Retry saved sign-in is offered")
-        XCTAssertNotNil(model.error)
+        XCTAssertNil(model.error, "#280: no alert")
+        XCTAssertEqual(model.signInError?.title, "Your saved sign-in wasn’t accepted", "#280: said on the form")
         accepted.value = true
         await model.restore()
         XCTAssertTrue(model.loggedIn, "the retry signs in with the same saved sign-in")

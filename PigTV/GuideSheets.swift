@@ -71,8 +71,10 @@ nonisolated enum GuideJump {
 }
 
 struct GuideSearchPage: View {
-    /// Not observed (audit R05): the page reads the guide once per search and the logos.
+    /// The page reads the guide once per search and the logos; it observes the guide's store only for its state (#280:
+    /// still loading, failed, or loaded), and searches again when a load finishes.
     let model: BrowseModel
+    @ObservedObject private var guideStore: GuideStore
     /// The grid can be moved (not the iPhone's upright On now list).
     let canJump: Bool
     /// Jump to… opened the page: focus starts on the selected day, not the search field.
@@ -84,6 +86,8 @@ struct GuideSearchPage: View {
 
     @State private var query = ""
     @State private var results = GuideSearch.Results()
+    /// #280: the query the results are for (nil until a search has run).
+    @State private var searched: String?
     @State private var searchTask: Task<Void, Never>?
     @State private var date: Date
     private enum Focus: Hashable { case field, day(Int) }
@@ -94,6 +98,7 @@ struct GuideSearchPage: View {
          openChannel: @escaping (GuideChannel) -> Void, openProgramme: @escaping (GuideChannel, GuideProgramme) -> Void,
          showGuide: @escaping (Date) -> Void, pushedFrom: String? = nil) {
         self.model = model
+        _guideStore = ObservedObject(wrappedValue: model.guideStore)
         _date = State(initialValue: date)
         self.canJump = canJump
         self.startWithJump = startWithJump
@@ -124,6 +129,8 @@ struct GuideSearchPage: View {
         }
         .defaultFocus($focus, startWithJump && canJump ? .day(selectedDay) : .field)
         .onChange(of: query) { scheduleSearch() }
+        // #280: a guide that was still loading (or failed) is searched as soon as it has channels.
+        .onChange(of: model.guideState.showsContent) { _, ready in if ready { scheduleSearch() } }
         .onDisappear { searchTask?.cancel() }
         #if DEBUG
         .task {
@@ -142,9 +149,25 @@ struct GuideSearchPage: View {
                 .pigField()
                 .focused($focus, equals: .field)
                 .accessibilityIdentifier("search.field")
+            let state = PageState.search(query: query, searched: searched,
+                                         found: !results.channels.isEmpty || !results.programmes.isEmpty, guide: model.guideState)
             if query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 {
                 Text("Type two letters or more: channels by name, and programmes in the next 24 hours.")
                     .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
+            } else if state == .loading {
+                SearchResultsPlaceholder()
+            } else if let failure = state.failure {
+                // #280 (R1): Search looks through the guide, which did not load. The app's next pass retries it.
+                PigErrorState(failure: failure, retry: { await model.retryGuide() }, identifier: "search.error",
+                              schedule: guideStore.schedule)
+            } else if state == .empty {
+                // #280 (E1): Show guide is this page's rose button, so Clear search is the secondary one.
+                PigEmptyState(title: PageWords.searchNothingTitle(searched ?? query), text: PageWords.searchNothingText,
+                              action: PigStateAction(label: PageWords.clearSearch, prominent: false) {
+                                  query = ""
+                                  focus = .field
+                              },
+                              identifier: "search.empty")
             } else {
                 if !results.channels.isEmpty {
                     sectionTitle("Channels · \(results.channels.count)")
@@ -212,6 +235,7 @@ struct GuideSearchPage: View {
             let found = await Task.detached(priority: .userInitiated) { GuideSearch.run(text, in: guide, now: Date()) }.value
             guard !Task.isCancelled else { return }
             results = found
+            searched = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 

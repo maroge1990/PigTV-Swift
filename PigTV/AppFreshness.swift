@@ -25,6 +25,9 @@ enum AppFreshness {
         // while something records, ask through the same staleness check).
         await browse.loadRecordingsIfStale(maxAge: recordingsMaxAge, quietly: true)
         export(browse)
+        // #280 (one retry clock): a guide or recordings list that failed is retried by the next pass, nothing sooner;
+        // its error page counts down to it.
+        browse.notePolls(recordingsAfter: interval, guideAfter: interval)
     }
 
     /// A pass now, then one after every `interval` until the task is cancelled (the app leaves the foreground or the

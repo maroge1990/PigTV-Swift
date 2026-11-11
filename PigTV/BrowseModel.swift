@@ -199,6 +199,9 @@ final class BrowseModel: ObservableObject {
     /// from `guideCursor` — wherever it stopped — instead of
     /// restarting the whole guide.
     func retryGuide() async {
+        #if DEBUG
+        if fixtureHoldsGuide { return }
+        #endif
         guideError = nil
         await loadGuide(reset: guide.isEmpty)
     }
@@ -266,6 +269,9 @@ final class BrowseModel: ObservableObject {
     /// or the Guide): the cached guide when it still covers the present,
     /// then the network. A second caller waits for the same load.
     func loadInitialGuide() async {
+        #if DEBUG
+        if fixtureHoldsGuide { return }
+        #endif
         if let initialGuideLoad { await initialGuideLoad.value; return }
         guard guide.isEmpty else { return }
         let task = Task { [weak self] in
@@ -427,7 +433,41 @@ final class BrowseModel: ObservableObject {
             if files != recordings { recordings = files }
             if planned != schedules { schedules = planned }
             settleTombstones(loadedSince: began) { !$0.hasPrefix("rule:") }
+            recordingStore.updatedAt = Date()
+            recordingStore.change(\.loaded, to: true)
         } catch { recordingsError = UserMessage.text(for: error) }
+    }
+
+    // MARK: Page states (#280)
+
+    /// #280: what an action that did not work says: `plain` (what could not be done), or a sentence the server or this
+    /// app wrote to be shown (C-B, #147); never the system's description of the error or a code. Nil when it was
+    /// cancelled (not a failure).
+    static func actionText(_ plain: String, _ error: Error) -> String? {
+        if UserMessage.isCancellation(error) { return nil }
+        switch error as? PigTVError {
+        case .serverMessage(let text, _), .viewerConflict(let text), .message(let text): return text
+        default: return plain
+        }
+    }
+
+    /// What the TV Guide shows (and Search, which looks through it).
+    var guideState: PageState {
+        PageState.guide(channels: guide.count, busy: guideBusy, paging: guideHasMore, failed: guideError != nil,
+                        loadedAt: guideLoadedAt)
+    }
+
+    /// What a page drawn from the recordings answer shows (`isEmpty`: what it lists is empty), with `failure` its words.
+    func recordingsState(isEmpty: Bool, failure: PageFailure = PageWords.recordingsFailed) -> PageState {
+        PageState.list(loaded: recordingStore.loaded, isEmpty: isEmpty, failed: recordingsError != nil,
+                       since: recordingStore.updatedAt, failure: failure)
+    }
+
+    /// One retry clock (#280): the polling says when it asks next. Published only while that list has failed (it is the
+    /// failed page's countdown), so a healthy page is not redrawn by it.
+    func notePolls(recordingsAfter recordings: Duration?, guideAfter guide: Duration?) {
+        if let recordings, recordingsError != nil { recordingStore.schedule = RefreshSchedule(after: recordings) }
+        if let guide, guideError != nil, self.guide.isEmpty { guideStore.schedule = RefreshSchedule(after: guide) }
     }
 
     func loadFavourites() async {
@@ -565,7 +605,7 @@ final class BrowseModel: ObservableObject {
             }
             return true
         } catch {
-            actionError = "Could not confirm the schedule. Check Recordings before retrying, in case the server accepted it. \(error.localizedDescription)"
+            actionError = Self.actionText(PageWords.scheduleUnconfirmed, error)
             return false
         }
     }
@@ -583,7 +623,7 @@ final class BrowseModel: ObservableObject {
             }
             actionMessage = "Schedule cancelled or recording stopped."
             await loadRecordings()
-        } catch { actionError = UserMessage.text(for: error) }
+        } catch { actionError = Self.actionText(PageWords.cancelFailed, error) }
     }
 
     static let cannotChangeText = "This server can't change recordings yet."
@@ -614,7 +654,7 @@ final class BrowseModel: ObservableObject {
             await loadRecordings()
             actionError = text
         } catch {
-            actionError = "Could not change the recording. \(UserMessage.text(for: error) ?? "")"
+            actionError = Self.actionText(PageWords.changeFailed, error)
         }
         return false
     }
@@ -753,7 +793,7 @@ final class BrowseModel: ObservableObject {
         } catch PigTVError.http(404) {
             return .done
         } catch {
-            return .failed(UserMessage.text(for: error) ?? "The change could not be made.")
+            return .failed(Self.actionText(PageWords.removeFailed, error) ?? PageWords.removeFailed)
         }
     }
 
@@ -788,7 +828,7 @@ final class BrowseModel: ObservableObject {
         } catch PigTVError.http(404) {
             actionError = "That recording has already started or no longer exists."
         } catch {
-            actionError = UserMessage.text(for: error)
+            actionError = Self.actionText(PageWords.chooseFailed, error)
         }
         await loadRecordings()
     }
@@ -805,7 +845,7 @@ final class BrowseModel: ObservableObject {
             _ = try await client.response("recordings/scheduled/\(item.id)", method: "DELETE")
             actionMessage = "Schedule deleted."
             await loadRecordings()
-        } catch { actionError = UserMessage.text(for: error) }
+        } catch { actionError = Self.actionText(PageWords.deleteFailed, error) }
     }
 
     /// Resume fraction and watched state, from the server's per-login values on the recordings list.
@@ -839,9 +879,11 @@ final class BrowseModel: ObservableObject {
             if loaded != recordingStore.rules { recordingStore.rules = loaded }
             settleTombstones(loadedSince: began) { $0.hasPrefix("rule:") }
             recordingStore.change(\.rulesError, to: nil)
+            recordingStore.change(\.rulesLoaded, to: true)
         } catch {
-            guard generation > rulesPublished else { return }
-            recordingStore.change(\.rulesError, to: "Could not load the rules. \(UserMessage.text(for: error) ?? "")")
+            guard generation > rulesPublished, !UserMessage.isCancellation(error) else { return }
+            // #280: plain words, never the system's text.
+            recordingStore.change(\.rulesError, to: PageWords.rulesFailed)
         }
     }
     private var rulesGeneration = 0
@@ -862,7 +904,7 @@ final class BrowseModel: ObservableObject {
             await loadRecordings()
             return true
         } catch {
-            actionError = "Could not add the rule. \(error.localizedDescription)"
+            actionError = Self.actionText(PageWords.ruleAddFailed, error)
             return false
         }
     }
@@ -883,7 +925,7 @@ final class BrowseModel: ObservableObject {
             await reloadRules()
             return true
         } catch {
-            actionError = "Could not change the rule. \(UserMessage.text(for: error))"
+            actionError = Self.actionText(PageWords.ruleChangeFailed, error)
             return false
         }
     }
@@ -900,7 +942,7 @@ final class BrowseModel: ObservableObject {
             actionMessage = "It will record once it's in the TV guide."
             return rule.id
         } catch {
-            actionError = "It couldn't be set to record. \(UserMessage.text(for: error))"
+            actionError = Self.actionText(PageWords.recordWhenListedFailed, error)
             return nil
         }
     }
@@ -919,7 +961,7 @@ final class BrowseModel: ObservableObject {
             await loadRecordings()
             return true
         } catch {
-            actionError = "Could not change that. \(UserMessage.text(for: error))"
+            actionError = Self.actionText(PageWords.followChangeFailed, error)
             return false
         }
     }
@@ -940,7 +982,7 @@ final class BrowseModel: ObservableObject {
             await reloadRules()
             return true
         } catch {
-            actionError = "Could not delete the rule. \(UserMessage.text(for: error))"
+            actionError = Self.actionText(PageWords.ruleDeleteFailed, error)
             return false
         }
     }
@@ -960,7 +1002,7 @@ final class BrowseModel: ObservableObject {
             guard result.success else { throw PigTVError.message("The server did not confirm the change.") }
             actionMessage = success
             await loadRecordings()
-        } catch { actionError = UserMessage.text(for: error) }
+        } catch { actionError = Self.actionText(PageWords.actionFailed, error) }
     }
 
     #if DEBUG
@@ -969,5 +1011,62 @@ final class BrowseModel: ObservableObject {
     /// extend it from — this tells the grid how far that data actually
     /// reaches, exactly what `extendGuideForward()` would otherwise set.
     func setGuideLoadedUntilForFixture(_ date: Date) { guideLoadedUntil = date }
+
+    /// #280: a guide fixture in one of its states makes no requests (else the empty fixture would try the network).
+    private(set) var fixtureHoldsGuide = false
+
+    /// #280 (`PIGTV_UI_TEST_GUIDE_STATE`): the TV Guide (and Search) in one of its states for the simulator and UI tests:
+    /// `loading` (no channels, and none come), `empty` (an answer with no channels), `failed` (the first load failed),
+    /// `stale` (the fixture's channels, a refresh failed 25 minutes after they came).
+    func setGuideFixtureState(_ state: String) {
+        fixtureHoldsGuide = true
+        let past = Date().addingTimeInterval(-25 * 60)
+        switch state {
+        case "loading":
+            guide = []
+            guideLoadedAt = nil
+            guideBusy = true
+        case "empty":
+            guide = []
+            guideLoadedAt = past
+        case "failed":
+            guide = []
+            guideLoadedAt = nil
+            guideError = "fixture"
+            guideStore.schedule = RefreshSchedule(after: AppFreshness.interval)
+        case "stale":
+            guideLoadedAt = past
+            guideError = "fixture"
+        default: break
+        }
+    }
+
+    /// #280 (`PIGTV_UI_TEST_RECORDINGS_STATE`): Recordings and Scheduled in one of their states: `loading` (no answer
+    /// yet, the rules neither), `empty` (an answer with nothing recorded or scheduled, and no rules), `failed` (the first
+    /// load failed), `stale` (the fixture's lists, the last refresh failed 25 minutes after they came).
+    func setRecordingsFixtureState(_ state: String) {
+        switch state {
+        case "loading":
+            recordings = []
+            schedules = []
+            recordingStore.rules = []
+            recordingStore.loaded = false
+            recordingStore.rulesLoaded = false
+        case "empty":
+            recordings = []
+            schedules = []
+            recordingStore.rules = []
+        case "failed":
+            recordings = []
+            schedules = []
+            recordingStore.loaded = false
+            recordingsError = "fixture"
+            recordingStore.schedule = RefreshSchedule(after: AppFreshness.interval)
+        case "stale":
+            recordingStore.updatedAt = Date().addingTimeInterval(-25 * 60)
+            recordingsError = "fixture"
+        default: break
+        }
+    }
     #endif
 }

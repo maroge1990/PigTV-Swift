@@ -47,6 +47,13 @@ enum RecordingsMetrics {
     static let phoneEdge: CGFloat = 16
     /// The iPhone recording card's height while the first answer loads (a placeholder of the card's size, no jump).
     static let phoneCardHeight: CGFloat = 420
+    /// #280: the Coming up strip's and the iPhone's Coming up card's heights, for their placeholders while loading.
+    #if os(tvOS)
+    static let comingUpStripHeight: CGFloat = 78
+    #else
+    static let comingUpStripHeight: CGFloat = 52
+    #endif
+    static let comingUpCardHeight: CGFloat = 84
 }
 
 /// Where the Recordings tab's stack goes: Scheduled, or a recording (by id, so a refreshed list keeps the page).
@@ -72,6 +79,8 @@ struct RecordingsView: View {
     let model: BrowseModel
     /// The app's presentation layer: its Undo toast (Apple 122).
     let presenter: AppPresenter
+    /// #280: the empty pages' one action, Open the TV Guide (the tab bar's Guide tab).
+    var openGuide: () -> Void = {}
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
     @State private var path: [RecordingsRoute] = RecordingsView.initialPath
@@ -82,9 +91,10 @@ struct RecordingsView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
-    init(model: BrowseModel, presenter: AppPresenter) {
+    init(model: BrowseModel, presenter: AppPresenter, openGuide: @escaping () -> Void = {}) {
         self.model = model
         self.presenter = presenter
+        self.openGuide = openGuide
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
     }
@@ -123,7 +133,7 @@ struct RecordingsView: View {
             .pigPageBackdrop()
             .navigationDestination(for: RecordingsRoute.self) { route in
                 switch route {
-                case .scheduled: ScheduledPage(model: model, presenter: presenter)
+                case .scheduled: ScheduledPage(model: model, presenter: presenter, openGuide: openGuide)
                 case .rules, .attention: ScheduledSubpage(model: model, presenter: presenter, route: route)
                 case .recording(let id):
                     if let item = model.recordings.first(where: { $0.id == id }) { RecordingView(model: model, presenter: presenter, original: item) }
@@ -140,6 +150,7 @@ struct RecordingsView: View {
             .whileVisible {
                 while !Task.isCancelled {
                     let wait = RecordingsRows.refreshInterval(recordings: model.recordings, schedules: model.schedules, now: Date())
+                    model.notePolls(recordingsAfter: .seconds(wait), guideAfter: nil) // #280: a failed page's countdown
                     do { try await Task.sleep(for: .seconds(wait)) } catch { return }
                     // #239: through the shared staleness check (AppFreshness may have just loaded them)
                     await model.loadRecordingsIfStale(maxAge: max(1, wait - 1), quietly: true)
@@ -157,10 +168,14 @@ struct RecordingsView: View {
     /// Apple 121: View recording is a page on the tab's stack.
     private func open(_ item: Recording) { path.append(.recording(item.id)) }
 
+    /// #280: what the page shows (the model's answer, not worked out here): the list is empty when nothing is recorded.
+    private var state: PageState { model.recordingsState(isEmpty: shelf.isEmpty) }
+
     @ViewBuilder
     private var status: some View {
-        if let error = model.recordingsError {
-            RetryBanner(message: error) { Task { await model.loadRecordings() } }
+        if case .stale(let since) = state {
+            PigStaleNotice(since: since, retry: { await model.loadRecordings() }, identifier: "recordings.stale")
+                .padding(.horizontal, compact ? RecordingsMetrics.phoneEdge : RecordingsMetrics.pagePadding)
         }
         if let message = model.actionMessage {
             Text(message).font(.callout).foregroundStyle(.secondary).padding(.horizontal, RecordingsMetrics.pagePadding)
@@ -178,6 +193,50 @@ struct RecordingsView: View {
             status
             ScrollView {
                 VStack(alignment: .leading, spacing: RecordingsMetrics.gap) {
+                    switch state {
+                    case .loading:
+                        RecordingsPlaceholder()
+                        #if os(tvOS)
+                        ComingUpPlaceholder()
+                        #endif
+                    case .failed(let failure):
+                        PigErrorState(failure: failure, retry: { await model.loadRecordings() }, identifier: "recordings.error",
+                                      schedule: store.schedule)
+                            .pigStateFillsPage()
+                    case .empty:
+                        RecordingsEmpty(openGuide: openGuide).pigStateFillsPage()
+                        #if os(tvOS)
+                        ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
+                            .tvFocusSection()
+                        #endif
+                    case .content, .stale:
+                        wideContent
+                    }
+                }
+                .padding(.horizontal, RecordingsMetrics.pagePadding)
+                .padding(.bottom, PigSpacing.l)
+            }
+            #if !os(tvOS)
+            .refreshable { await model.loadRecordings() }
+            #endif
+        }
+        #if !os(tvOS)
+        .safeAreaInset(edge: .bottom) {
+            Group {
+                switch state {
+                case .loading: ComingUpPlaceholder()
+                case .failed: EmptyView()
+                default: ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
+                }
+            }
+            .padding(.horizontal, RecordingsMetrics.pagePadding).padding(.bottom, PigSpacing.s)
+        }
+        #endif
+    }
+
+    /// The recordings (the layout batch K settled), current or with the stale notice above.
+    @ViewBuilder
+    private var wideContent: some View {
                     if let featured {
                         FeaturedRecording(item: featured, progress: model.progress(for: featured),
                                           teams: RecordingTeams.match(title: featured.title, games: games),
@@ -187,8 +246,6 @@ struct RecordingsView: View {
                                           details: { open(featured) },
                                           delete: { model.deleteWithUndo(featured, presenter: presenter) })
                             .tvFocusSection()
-                    } else if !model.recordingsBusy {
-                        RecordingsEmpty()
                     }
                     if !cards.isEmpty {
                         VStack(alignment: .leading, spacing: PigSpacing.s) {
@@ -212,21 +269,6 @@ struct RecordingsView: View {
                     ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
                         .tvFocusSection()
                     #endif
-                    if model.recordingsBusy { ProgressView("Refreshing recordings…") }
-                }
-                .padding(.horizontal, RecordingsMetrics.pagePadding)
-                .padding(.bottom, PigSpacing.l)
-            }
-            #if !os(tvOS)
-            .refreshable { await model.loadRecordings() }
-            #endif
-        }
-        #if !os(tvOS)
-        .safeAreaInset(edge: .bottom) {
-            ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
-                .padding(.horizontal, RecordingsMetrics.pagePadding).padding(.bottom, PigSpacing.s)
-        }
-        #endif
     }
 
     // MARK: iPhone
@@ -245,21 +287,25 @@ struct RecordingsView: View {
                 }
             }
             status
-            if all.isEmpty {
-                // #229: while the first answer loads, a card of the recording card's size where it will be, so nothing
-                // jumps; then the empty card or the recordings, faded in.
-                if model.recordingsBusy {
-                    RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous).fill(Color.pigSurface)
-                        .frame(height: RecordingsMetrics.phoneCardHeight)
-                        .overlay { ProgressView() }
-                        .padding(.horizontal, RecordingsMetrics.phoneEdge)
-                        .accessibilityIdentifier("recordings.loading")
-                        .transition(.opacity)
-                } else {
-                    RecordingsEmpty(card: true).padding(.horizontal, RecordingsMetrics.phoneEdge).transition(.opacity)
-                }
+            switch state {
+            case .loading:
+                // #229, #280: while the first answer loads, the recording card's shape where it will be, so nothing jumps;
+                // then the recordings, E1 or the error, faded in.
+                RecordingsPhonePlaceholder().padding(.horizontal, RecordingsMetrics.phoneEdge).transition(.opacity)
                 Spacer()
-            } else {
+            case .failed(let failure):
+                ScrollView {
+                    PigErrorState(failure: failure, retry: { await model.loadRecordings() }, identifier: "recordings.error",
+                                  schedule: store.schedule)
+                        .pigStateFillsPage()
+                }
+                .transition(.opacity)
+            case .empty:
+                ScrollView {
+                    RecordingsEmpty(openGuide: openGuide).pigStateFillsPage()
+                }
+                .transition(.opacity)
+            case .content, .stale:
                 TabView(selection: Binding(get: { page ?? all.first?.id }, set: { page = $0 })) {
                     ForEach(all) { item in
                         RecordingStackCard(item: item, progress: model.progress(for: item),
@@ -278,31 +324,26 @@ struct RecordingsView: View {
             }
         }
         .animation(.easeOut(duration: 0.25), value: all.isEmpty)
-        .animation(.easeOut(duration: 0.25), value: model.recordingsBusy)
+        .animation(.easeOut(duration: 0.25), value: store.loaded)
         .safeAreaInset(edge: .bottom) {
-            ComingUpCard(items: comingUp, now: Date()) { path.append(.scheduled) }
+            switch state {
+            case .loading:
+                ComingUpPlaceholder(card: true).padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, PigSpacing.s)
+            case .failed: EmptyView()
+            default: ComingUpCard(items: comingUp, now: Date()) { path.append(.scheduled) }
+            }
         }
         .refreshable { await model.loadRecordings() }
         #endif
     }
 }
 
-/// Nothing recorded yet (always drawn: Mark's rule for every page).
+/// Nothing recorded yet (E1, #280): the pig, the words and Open the TV Guide, the page's one action.
 private struct RecordingsEmpty: View {
-    /// #229: the iPhone draws it as a card the width of the recording and Coming up cards.
-    var card = false
+    let openGuide: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: PigSpacing.s) {
-            Text("No recordings yet").font(RecordingsMetrics.title)
-            Text("Choose a programme in the TV Guide, or a game in Sport, and record it. It shows here once it starts.")
-                .font(RecordingsMetrics.detail).foregroundStyle(.secondary)
-        }
-        .padding(.vertical, PigSpacing.l)
-        .padding(.horizontal, card ? PigSpacing.m : 0)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(card ? Color.pigSurface : .clear, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("recordings.empty")
+        PigEmptyState(title: PageWords.noRecordingsTitle, text: PageWords.noRecordingsText,
+                      action: PigStateAction(label: PageWords.openGuide, run: openGuide), identifier: "recordings.empty")
     }
 }
 

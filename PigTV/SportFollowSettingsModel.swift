@@ -53,6 +53,14 @@ final class SportFollowSettingsModel: ObservableObject {
     @Published private(set) var ruleBusy: Set<String> = []
 
     var canEdit: Bool { follows != nil && !offline }
+
+    /// #280: what Settings › Sport shows: its shape until the first answer, the error (with its own 20 s retry: nothing
+    /// polls this page) when there is neither an answer nor a copy, E1 with Add a sport when nothing is followed, or the
+    /// sports, with the slim notice while they are this device's last copy (`offline`).
+    var state: PageState {
+        PageState.of(loaded: loadFailed, hasAnswer: follows != nil, isEmpty: follows?.sports.isEmpty == true,
+                     failed: loadFailed, stale: offline, since: nil, failure: PageWords.sportSettingsFailed)
+    }
     /// "Record every game" is offered (C-M recording rules; a fixture says whether).
     var rulesAvailable: Bool { isFixture ? fixtureRules : true }
     /// After a save that changed the spoiler-free switch: the sport pages forget their copy of it.
@@ -377,6 +385,26 @@ final class SportFollowSettingsModel: ObservableObject {
 
     #if DEBUG
     /// Offline UI fixtures: nothing is requested; changes apply locally.
+    /// #280 (`PIGTV_UI_TEST_SETTINGS_SPORT_STATE`): Settings › Sport in one of its states: `loading` (no answer, and
+    /// none comes), `failed` (no answer and no copy), `empty` (nothing followed), `stale` (the last copy, offline).
+    func setFixtureState(_ state: String) {
+        isFixture = true
+        switch state {
+        case "loading":
+            follows = nil
+            loadFailed = false
+        case "failed":
+            follows = nil
+            loadFailed = true
+        case "empty":
+            follows = SportFollows(spoilerFree: follows?.spoilerFree ?? false, sports: [])
+            suggestions = []
+        case "stale":
+            offline = true
+        default: break
+        }
+    }
+
     func setFixture(_ follows: SportFollows, catalog: SportCatalog, names: [String: SportNames.Fixture] = [:],
                     suggestions: [SportSuggestions.Suggestion] = [], rules: [SportTeamRule]? = nil) {
         isFixture = true

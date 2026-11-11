@@ -42,6 +42,28 @@ nonisolated enum PigStateMetrics {
     static let noticeBorder: CGFloat = 2
 }
 
+/// #280 (one rule on every page, Apple TV): a state's button takes focus when it appears only if focus is inside the page
+/// (or nowhere, so it would be lost); never off the tab bar, where the viewer may be moving from tab to tab. Down from the
+/// tab bar reaches it (it is the page's default focus).
+enum PigStateFocus {
+    @MainActor static func mayTake() -> Bool {
+        #if os(tvOS)
+        // The scene's focus system (UIScreen.focusedItem asserts in a scene-based app).
+        let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).first { $0.isKeyWindow }
+        var view = window.flatMap { UIFocusSystem.focusSystem(for: $0)?.focusedItem } as? UIView
+        guard view != nil else { return true }
+        while let current = view {
+            if current is UITabBar || String(describing: type(of: current)).contains("TabBar") { return false }
+            view = current.superview
+        }
+        return true
+        #else
+        return false
+        #endif
+    }
+}
+
 /// The page's one action in an empty state.
 struct PigStateAction {
     let label: String
@@ -92,7 +114,7 @@ struct PigEmptyState: View {
                 .controlSize(.large)
                 #elseif os(tvOS)
                 .focused($focused)
-                .onAppear { focused = true }
+                .onAppear { if PigStateFocus.mayTake() { focused = true } }
                 #endif
                 .padding(.top, PigSpacing.s)
                 .accessibilityIdentifier("\(identifier).action")
@@ -153,7 +175,7 @@ struct PigErrorState: View {
                 .controlSize(.large)
                 #elseif os(tvOS)
                 .focused($focused)
-                .onAppear { focused = true }
+                .onAppear { if PigStateFocus.mayTake() { focused = true } }
                 #endif
                 .accessibilityIdentifier("\(identifier).retry")
         }
@@ -303,9 +325,11 @@ struct PigPlaceholderBlock<Content: View>: View {
     }
 }
 
-extension PigPlaceholderBlock where Content == EmptyView {
+extension PigPlaceholderBlock where Content == Color {
+    /// A plain surface. (#280: its content is a clear colour, not EmptyView, which drops every modifier, so the surface
+    /// was never drawn.)
     init(width: CGFloat? = nil, height: CGFloat? = nil, radius: CGFloat = PigRadius.card) {
-        self.init(width: width, height: height, radius: radius) { EmptyView() }
+        self.init(width: width, height: height, radius: radius) { Color.clear }
     }
 }
 

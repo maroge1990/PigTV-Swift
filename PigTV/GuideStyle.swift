@@ -1,6 +1,6 @@
 import SwiftUI
 
-// The guide's shared look (split out of GuideView.swift in build 39): tiles, the retry banner,
+// The guide's shared look (split out of GuideView.swift in build 39): tiles (#280: the retry banner gave way to PigStaleNotice),
 // metrics, typography and colours, also used by other screens.
 
 // Logo tile for the channel column. The logo replaces the channel name; the
@@ -31,19 +31,6 @@ struct ChannelTile: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-    }
-}
-
-struct RetryBanner: View {
-    let message: String
-    let retry: () -> Void
-    var body: some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle")
-            Text(message).font(.callout)
-            Spacer()
-            Button("Retry", action: retry)
-        }.padding().background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card)).padding(.horizontal)
     }
 }
 

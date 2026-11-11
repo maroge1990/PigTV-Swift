@@ -44,7 +44,7 @@ final class RecordingRuleActionTests: XCTestCase {
         XCTAssertFalse(ok)
         XCTAssertEqual(rules.first?.isOn, true)
         XCTAssertNotNil(model.actions.actionError, "the failure is kept for the sheet")
-        XCTAssertTrue(model.actions.actionError?.hasPrefix("Could not change the rule.") ?? false)
+        XCTAssertEqual(model.actions.actionError, PageWords.ruleChangeFailed, "#280: plain words, not the system's")
         XCTAssertNil(model.actions.actionMessage, "no stale success beside it")
         XCTAssertFalse(model.actions.mutationBusy)
     }
@@ -55,7 +55,7 @@ final class RecordingRuleActionTests: XCTestCase {
         let (model, rule) = try model(http)
         let ok = await model.deleteRule(rule)
         XCTAssertFalse(ok)
-        XCTAssertTrue(model.actions.actionError?.hasPrefix("Could not delete the rule.") ?? false)
+        XCTAssertEqual(model.actions.actionError, PageWords.ruleDeleteFailed, "#280: plain words, not the system's")
         XCTAssertNil(model.actions.actionMessage)
     }
 

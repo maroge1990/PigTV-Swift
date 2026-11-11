@@ -41,6 +41,9 @@ final class MinimumServerTests: XCTestCase {
         model.serverText = server.baseURL
         let accepted = await model.checkServer()
         XCTAssertFalse(accepted)
-        XCTAssertEqual(model.error, "This PigTV server is too old for this app. Update the server, then try again.")
+        // #280: on the form, not an alert.
+        XCTAssertNil(model.error)
+        XCTAssertEqual(model.signInError, SignInFailure(title: "PigTV can’t use this server",
+                                                        check: "This PigTV server is too old for this app. Update the server, then try again."))
     }
 }

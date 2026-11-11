@@ -150,28 +150,38 @@ struct GuideView: View {
                 #else
                 let compact = geometry.size.width < 700
                 #endif
+                let state = pageState
                 VStack(alignment: .leading, spacing: slim ? PigSpacing.xs : PigSpacing.s) {
                     Group {
                         if slim {
                             slimBar
                         } else {
                             header(compact: compact)
-                            // D-44 (Apple 106): the slim focus strip, then the chips and the tools, above the grid.
-                            if !compact { focusStrip.padding(.horizontal, PigSpacing.l) }
-                            filters(compact: compact)
+                            // #280: the guide failed: the header, then the error (no strip or chips over nothing).
+                            if state.failure == nil {
+                                staleNotice(state)
+                                // D-44 (Apple 106): the slim focus strip, then the chips and the tools, above the grid.
+                                if !compact { focusStrip.padding(.horizontal, PigSpacing.l) }
+                                filters(compact: compact)
+                            }
                         }
                     }
                     // The menu card holds focus while it is open.
                     .disabled(menu != nil)
-                    if let error = model.guideError {
-                        RetryBanner(message: error) { reload() }
-                    }
-                    // Build 29: the UIKit grid on iPad too (free touch
-                    // scrolling there); iPhone keeps the On now list.
-                    if usesOnNowList {
-                        onNowList
+                    if slim { staleNotice(state) }
+                    if let failure = state.failure {
+                        // #280 (R1): retried by the app's next freshness pass (its countdown), or now.
+                        ScrollView {
+                            PigErrorState(failure: failure, retry: { await model.retryGuide() }, identifier: "guide.error",
+                                          schedule: guideStore.schedule)
+                                .pigStateFillsPage()
+                        }
+                    } else if usesOnNowList {
+                        // Build 29: the UIKit grid on iPad too (free touch
+                        // scrolling there); iPhone keeps the On now list.
+                        onNowList(state)
                     } else {
-                        gridView()
+                        gridView(state)
                     }
                 }
                 // No top inset under the header: it sits at the same corner on every tab (PigPageHeader).
@@ -284,6 +294,28 @@ struct GuideView: View {
         }
     }
 
+    /// #280: what the page shows: the model's state, or E1 when the chosen chip leaves no channels.
+    private var pageState: PageState {
+        PageState.guideRows(model.guideState, rowsEmpty: rows.isEmpty, paging: model.guideHasMore)
+    }
+
+    /// #280 (R1): channels on screen whose refresh (or a later page) failed: they stay, with the slim notice.
+    @ViewBuilder
+    private func staleNotice(_ state: PageState) -> some View {
+        if case .stale(let since) = state {
+            PigStaleNotice(since: since, retry: { await model.retryGuide() }, identifier: "guide.stale")
+                .padding(.horizontal, PigSpacing.l)
+        }
+    }
+
+    /// #280 (E1): no channels, no favourites, or none in the chosen category; the filters' one action shows them all.
+    private var guideEmpty: some View {
+        let words = PageWords.guideEmpty(filter: filter, channels: model.guide.count)
+        return PigEmptyState(title: words.title, text: words.text,
+                             action: words.showsAll ? PigStateAction(label: PageWords.showAllChannels) { filter = "all" } : nil,
+                             identifier: "guide.empty")
+    }
+
     // A4.4, D-44: the iPhone upright shows the "On now" list instead of the
     // grid; sideways (compact height) and the iPad keep the grid.
     private var usesOnNowList: Bool {
@@ -295,15 +327,12 @@ struct GuideView: View {
     }
 
     @ViewBuilder
-    private var onNowList: some View {
+    private func onNowList(_ state: PageState) -> some View {
         #if os(iOS)
-        if model.guideBusy && model.guide.isEmpty {
-            ProgressView("Loading guide…").frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
-            ContentUnavailableView(filter == "favourites" ? "No favourites yet" : "No matching channels",
-                systemImage: filter == "favourites" ? "heart" : "magnifyingglass",
-                description: Text(filter == "favourites" ? "Open a channel's schedule, then add it to favourites." : "Try another category or search."))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if state == .loading {
+            OnNowPlaceholder()
+        } else if state == .empty {
+            ScrollView { guideEmpty.pigStateFillsPage() }
         } else {
             OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { openChannel($0) },
                       menu: { channel in menuSubject(channel, OnNowRow.make(programmes: channel.programmes, now: Date()).current) },
@@ -334,7 +363,7 @@ struct GuideView: View {
     // draws its own pinned time header. Now sits in the guide header next to
     // Earlier/Later (build 22), where Up from the grid's top row lands.
     @ViewBuilder
-    private func gridView() -> some View {
+    private func gridView(_ state: PageState) -> some View {
         ZStack(alignment: .topLeading) {
             // Not in the first frame: the shell (header, chips) is built and
             // shown first, then the grid, so the first visit is several short
@@ -360,14 +389,16 @@ struct GuideView: View {
                         leaveUp: { headerNowFocused = true },
                         menu: { openMenu($0, $1, anchor: $2) }))
                     .focused($gridHasFocus)
+                    // #280: kept (it is built once) but not drawn while its shape stands in for it.
+                    .opacity(state == .loading ? 0 : 1)
             }
-            if model.guideBusy && model.guide.isEmpty {
-                ProgressView("Loading guide…").frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if rows.isEmpty && !model.guideBusy && !model.guideHasMore && model.guideError == nil {
-                ContentUnavailableView(filter == "favourites" ? "No favourites yet" : "No matching channels",
-                    systemImage: filter == "favourites" ? "heart" : "magnifyingglass",
-                    description: Text(filter == "favourites" ? "Choose a channel, then Details to add it to favourites." : "Try another category or search."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            switch state {
+            case .loading:
+                GuideGridPlaceholder()
+            case .empty:
+                ScrollView { guideEmpty.pigStateFillsPage() }
+            default:
+                EmptyView()
             }
         }
         .padding(.horizontal, PigSpacing.l)
@@ -676,9 +707,6 @@ struct GuideView: View {
         }
     }
     private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds), focusGrid: false) }
-    // The guide error banner's Retry: resumes background paging from where
-    // it stopped rather than starting the whole guide over (build 33).
-    private func reload() { Task { await model.retryGuide() } }
     /// Moves SwiftUI focus into the UIKit grid; the grid then focuses the
     /// cell it chose (its pending focus). UIKit's own focus requests are
     /// refused while a SwiftUI control holds focus. #49 (Apple 110): once,

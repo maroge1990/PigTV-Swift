@@ -100,6 +100,8 @@ struct ScheduledPage: View {
     let model: BrowseModel
     /// The app's presentation layer: its Undo toast (Apple 122).
     let presenter: AppPresenter
+    /// #280: the empty Coming up's one action, Open the TV Guide.
+    var openGuide: () -> Void = {}
     @ObservedObject private var store: RecordingsStore
     @ObservedObject private var actions: ActionState
     /// #12 (D-42): the losing schedule whose "Record this one instead" is being confirmed.
@@ -108,11 +110,17 @@ struct ScheduledPage: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
-    init(model: BrowseModel, presenter: AppPresenter) {
+    init(model: BrowseModel, presenter: AppPresenter, openGuide: @escaping () -> Void = {}) {
         self.model = model
         self.presenter = presenter
+        self.openGuide = openGuide
         _store = ObservedObject(wrappedValue: model.recordingStore)
         _actions = ObservedObject(wrappedValue: model.actions)
+    }
+
+    /// #280: what Coming up shows, from the schedules' answer (never "Nothing scheduled" before it has come).
+    private var state: PageState {
+        model.recordingsState(isEmpty: upcoming.isEmpty, failure: PageWords.scheduledFailed)
     }
 
     private var hidden: Set<String> { store.pendingRemovals }
@@ -137,14 +145,28 @@ struct ScheduledPage: View {
                 Text("Scheduled").font(ScheduledMetrics.heading).accessibilityAddTraits(.isHeader)
                 #endif
                 status
-                if compact {
+                if case .failed(let failure) = state {
+                    // #280: the schedules' answer never came: the page is the error (its lists all come from it).
+                    PigErrorState(failure: failure, retry: { await model.loadRecordings() }, identifier: "scheduled.error.page",
+                                  schedule: store.schedule)
+                        .pigStateFillsPage()
+                } else if compact {
                     VStack(alignment: .leading, spacing: PigSpacing.s) {
                         comingUp
-                        HStack(spacing: PigSpacing.s) {
-                            ScheduledTile(title: "Recording rules", detail: "\(ScheduledRows.rulesSummary(rules)) ›",
-                                          warning: false, route: .rules)
-                            ScheduledTile(title: "Needs attention", detail: "\(ScheduledRows.attentionSummary(attention)) ›",
-                                          warning: !attention.isEmpty, route: .attention)
+                        if state == .loading {
+                            PigLoadingPage(identifier: "scheduled.tiles.loading") {
+                                HStack(spacing: PigSpacing.s) {
+                                    PigPlaceholderBlock(height: 58)
+                                    PigPlaceholderBlock(height: 58)
+                                }
+                            }
+                        } else {
+                            HStack(spacing: PigSpacing.s) {
+                                ScheduledTile(title: "Recording rules", detail: "\(ScheduledRows.rulesSummary(rules)) ›",
+                                              warning: false, route: .rules)
+                                ScheduledTile(title: "Needs attention", detail: "\(ScheduledRows.attentionSummary(attention)) ›",
+                                              warning: !attention.isEmpty, route: .attention)
+                            }
                         }
                     }
                 } else {
@@ -175,8 +197,8 @@ struct ScheduledPage: View {
 
     @ViewBuilder
     private var status: some View {
-        if let error = model.recordingsError {
-            RetryBanner(message: error) { Task { await model.loadRecordings() } }
+        if case .stale(let since) = state {
+            PigStaleNotice(since: since, retry: { await model.loadRecordings() }, identifier: "scheduled.stale")
         }
         if let error = actions.actionError {
             Text(error).font(ScheduledMetrics.detail).foregroundStyle(Color.pigDanger).accessibilityIdentifier("scheduled.error")
@@ -190,10 +212,15 @@ struct ScheduledPage: View {
     private var comingUp: some View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             ScheduledSectionTitle(text: upcoming.isEmpty ? "Coming up" : "Coming up · \(upcoming.count)")
-            if upcoming.isEmpty {
-                Text("Nothing scheduled. Choose a programme in the TV Guide, or a game in Sport, and record it.")
-                    .font(ScheduledMetrics.detail).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("scheduled.empty")
+            switch state {
+            case .loading:
+                ScheduledRowsPlaceholder(rows: 4, compact: compact)
+            case .empty:
+                // #280 (E1): the one action is Open the TV Guide; it takes the TV's focus only when nothing else is there.
+                PigEmptyState(title: PageWords.nothingScheduledTitle, text: PageWords.nothingScheduledText,
+                              action: PigStateAction(label: PageWords.openGuide, run: openGuide), identifier: "scheduled.empty")
+            default:
+                EmptyView()
             }
             ForEach(upcoming) { item in
                 ScheduleRow(item: item, all: model.schedules, rule: ScheduledRows.ruleChip(item, rules: rules),
@@ -212,7 +239,7 @@ struct ScheduledPage: View {
     // MARK: Needs attention
 
     private var attentionSection: some View {
-        ScheduledAttentionList(items: attention, busy: actions.mutationBusy,
+        ScheduledAttentionList(items: attention, busy: actions.mutationBusy, loading: state == .loading,
                                delete: { ScheduledRows.delete($0, model: model, presenter: presenter) })
     }
 }
@@ -371,8 +398,17 @@ struct ScheduledRulesList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             ScheduledSectionTitle(text: rules.isEmpty ? "Recording rules" : "Recording rules · \(rules.count)")
-            if let error = store.rulesError { Text(error).font(ScheduledMetrics.detail).foregroundStyle(.secondary) }
-            if rules.isEmpty && store.rulesError == nil {
+            if let error = store.rulesError {
+                // #280: plain words and the one retry wording.
+                Text(error).font(ScheduledMetrics.detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("rules.error")
+                Button(PageWords.tryAgain, systemImage: "arrow.clockwise") { Task { await model.reloadRules() } }
+                    .pigSecondaryButton()
+                    .accessibilityIdentifier("rules.retry")
+            } else if !store.rulesLoaded {
+                ScheduledRowsPlaceholder(rows: 2, compact: true)
+            }
+            if rules.isEmpty && store.rulesError == nil && store.rulesLoaded {
                 Text("No rules yet. Choose Record every episode on a programme, or Record every game on a Sport card.")
                     .font(ScheduledMetrics.detail).foregroundStyle(.secondary)
             }
@@ -410,12 +446,16 @@ struct ScheduledRulesList: View {
 struct ScheduledAttentionList: View {
     let items: [AttentionItem]
     let busy: Bool
+    /// #280: the answer has not come: its shape, never "Nothing needs attention."
+    var loading = false
     let delete: (AttentionItem) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             ScheduledSectionTitle(text: items.isEmpty ? "Needs attention" : "Needs attention · \(items.count)")
-            if items.isEmpty {
+            if loading {
+                ScheduledRowsPlaceholder(rows: 1, compact: true)
+            } else if items.isEmpty {
                 Text("Nothing needs attention.").font(ScheduledMetrics.detail).foregroundStyle(.secondary)
             }
             ForEach(items) { item in
@@ -525,7 +565,7 @@ struct ScheduledSubpage: View {
                 } else {
                     ScheduledAttentionList(items: ScheduledRows.attention(recordings: model.recordings, schedules: model.schedules,
                                                                           hidden: store.pendingRemovals),
-                                           busy: actions.mutationBusy,
+                                           busy: actions.mutationBusy, loading: !store.loaded,
                                            delete: { ScheduledRows.delete($0, model: model, presenter: presenter) })
                 }
             }
