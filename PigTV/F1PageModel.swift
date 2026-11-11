@@ -45,6 +45,18 @@ final class F1PageModel: ObservableObject {
     private var readGeneration = 0
     /// Saves are sent one after another, in the order they were made.
     private var saveQueue: Task<Void, Never>?
+    /// #278 (F5): the preferences read in flight. A sport page's two pollers (the front page and its league) ask at once;
+    /// the later asker awaits this read instead of sending its own, while it is still fresh for it: no invalidation, newer
+    /// read, local change or save answer since it began (`read`, `generation`, `answers`). Otherwise a new read is sent,
+    /// and this one's answer is superseded. `waiters` counts askers not cancelled: when the last one is, so is the read.
+    private struct SharedRead {
+        let read: Int
+        let generation: Int
+        let answers: Int
+        let task: Task<PreferencesRead, Never>
+        var waiters = 0
+    }
+    private var sharedRead: SharedRead?
     private enum Field: CaseIterable { case spoilerFree, following, nflFollowing, sports, teams }
 
     private static func copy(_ field: Field, from source: SportPagePreferences, to target: inout SportPagePreferences) {
@@ -141,10 +153,43 @@ final class F1PageModel: ObservableObject {
     /// (`superseded`), so a slow old answer (an F1 backdrop load that outlived the front page) cannot undo a newer one.
     @discardableResult
     private func loadPreferences() async -> PreferencesRead {
-        readGeneration += 1
-        let read = readGeneration
-        let startedFields = fieldGeneration
-        let startedAnswers = answers
+        let shared: SharedRead
+        if let current = sharedRead, current.read == readGeneration, current.generation == generation, current.answers == answers {
+            shared = current
+        } else {
+            readGeneration += 1
+            let read = readGeneration
+            let startedFields = fieldGeneration
+            let startedAnswers = answers
+            let task = Task { [weak self] () -> PreferencesRead in
+                guard let self else { return .superseded }
+                let outcome = await self.readPreferences(read: read, startedFields: startedFields, startedAnswers: startedAnswers)
+                // Before any asker resumes: a later tick sends its own request.
+                if self.sharedRead?.read == read { self.sharedRead = nil }
+                return outcome
+            }
+            shared = SharedRead(read: read, generation: generation, answers: answers, task: task)
+            sharedRead = shared
+        }
+        let read = shared.read
+        sharedRead?.waiters += 1
+        return await withTaskCancellationHandler {
+            await shared.task.value
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.leaveRead(read) }
+        }
+    }
+
+    /// An asker of `read` was cancelled (its page went away); the last one cancels the request, as before it was shared.
+    private func leaveRead(_ read: Int) {
+        guard var current = sharedRead, current.read == read else { return }
+        current.waiters -= 1
+        if current.waiters > 0 { sharedRead = current; return }
+        sharedRead = nil
+        current.task.cancel()
+    }
+
+    private func readPreferences(read: Int, startedFields: [Field: Int], startedAnswers: Int) async -> PreferencesRead {
         do {
             let answer: SportPagePreferences = try await client.request("sports/pages/preferences")
             guard read == readGeneration else { return .superseded }
