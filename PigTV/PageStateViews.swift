@@ -298,11 +298,15 @@ struct PigPlaceholderBar: View {
     }
 }
 
-/// A button or chip that has not come yet: exactly `width` wide, side by side with others.
+/// A button or chip that has not come yet: `width` wide, side by side with others. Where the row is narrower (an iPad in
+/// portrait), it gives way rather than widening the page (#280, review of 207: a fixed width pushed the Sport front's
+/// loading state, and the real header with it, past both edges).
 struct PigPlaceholderChip: View {
     var width: CGFloat
     var body: some View {
-        Capsule().fill(Color.pigBorder).frame(width: width, height: PigPlaceholderMetrics.chip)
+        Capsule().fill(Color.pigBorder)
+            .frame(minWidth: 0, idealWidth: width, maxWidth: width)
+            .frame(height: PigPlaceholderMetrics.chip)
     }
 }
 
@@ -405,17 +409,20 @@ struct PigPlaceholderRows: View {
     }
 }
 
-/// A grid of game cards, `columns` across (or as many as fit).
+/// A grid of game cards, `columns` across (or as many as fit: cards of `cardWidth`, or at least `minimum` wide and
+/// sharing the row, as the real grid's columns are).
 struct PigPlaceholderGrid: View {
     var count: Int
     var cardWidth: CGFloat?
     var cardHeight: CGFloat
     var columns: Int? = nil
+    var minimum: CGFloat? = nil
     var gap: CGFloat
 
     var body: some View {
         let items: [GridItem] = columns.map { Array(repeating: GridItem(.flexible(), spacing: gap, alignment: .top), count: $0) }
-            ?? [GridItem(.adaptive(minimum: cardWidth ?? 260, maximum: cardWidth ?? .infinity), spacing: gap, alignment: .topLeading)]
+            ?? [GridItem(.adaptive(minimum: cardWidth ?? minimum ?? 260, maximum: cardWidth ?? .infinity), spacing: gap,
+                         alignment: .topLeading)]
         LazyVGrid(columns: items, alignment: .leading, spacing: gap) {
             ForEach(0..<count, id: \.self) { _ in PigPlaceholderCard(width: columns == nil ? cardWidth : nil, height: cardHeight) }
         }

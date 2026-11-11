@@ -190,7 +190,10 @@ struct RecordingsPhonePlaceholder: View {
     var body: some View {
         PigLoadingPage(identifier: "recordings.loading") {
             VStack(alignment: .leading, spacing: 0) {
-                PigPlaceholderBlock(height: RecordingsMetrics.phoneCardHeight * 0.58, radius: 0)
+                // The art gives way when the screen is short (an iPhone on its side), as the real card's does inside its
+                // page view: the page's header stays on screen (review of 207).
+                PigPlaceholderBlock(radius: 0).frame(minHeight: 0, maxHeight: RecordingsMetrics.phoneCardHeight * 0.58)
+                    .layoutPriority(1)
                 VStack(alignment: .leading, spacing: PigSpacing.m) {
                     PigPlaceholderBar(width: 140)
                     PigPlaceholderBar(width: 220, height: PigPlaceholderMetrics.title)
@@ -203,10 +206,11 @@ struct RecordingsPhonePlaceholder: View {
                 .padding(PigSpacing.l)
                 Spacer(minLength: 0)
             }
-            .frame(height: RecordingsMetrics.phoneCardHeight)
+            .frame(maxHeight: RecordingsMetrics.phoneCardHeight)
             .background(Color.pigSurface)
             .clipShape(RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         }
+        .layoutPriority(1) // its full height before the page's spacer below it, where the screen has room
     }
 }
 #endif

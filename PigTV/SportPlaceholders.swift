@@ -34,19 +34,35 @@ struct SportBannerPlaceholder: View {
     }
 }
 
-/// A sport's rail on the front page: its header, then a row of game cards.
+/// A sport's rail on the front page: its header, then a row of game cards. In a fixed horizontal scroll view, as the real
+/// rail is (`SportFrontTVPage.sectionView`): the cards past the edge are cut off, never widening the page (review of 207:
+/// four 260 pt cards made an iPad in portrait 1 100 pt wide).
 struct SportRailPlaceholder: View {
     var cards: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             PigPlaceholderTitle()
-            HStack(alignment: .top, spacing: SportCardMetrics.spacing) {
-                ForEach(0..<cards, id: \.self) { _ in
-                    PigPlaceholderCard(width: SportCardMetrics.width, height: SportCardMetrics.height)
+            PigPlaceholderRail {
+                HStack(alignment: .top, spacing: SportCardMetrics.spacing) {
+                    ForEach(0..<cards, id: \.self) { _ in
+                        PigPlaceholderCard(width: SportCardMetrics.width, height: SportCardMetrics.height)
+                    }
                 }
+                .padding(.vertical, PigSpacing.xs)
             }
         }
+    }
+}
+
+/// A row that scrolls sideways in the real page (a rail, Formula 1's session tiles): fixed, so its shapes past the edge
+/// are cut off and the row is only as wide as the page gives it.
+struct PigPlaceholderRail<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        ScrollView(.horizontal) { content }
+            .scrollDisabled(true)
+            .scrollIndicators(.hidden)
     }
 }
 
@@ -128,8 +144,9 @@ struct SportLeaguePlaceholder: View {
                         PigPlaceholderChip(width: 160)
                         PigPlaceholderChip(width: 160)
                     }
-                    PigPlaceholderGrid(count: 6, cardWidth: narrow ? 300 : nil, cardHeight: SportFixtureMetrics.cardHeight,
-                                       columns: narrow ? nil : SportFixtureMetrics.columns, gap: PigSpacing.m)
+                    // The real grid's columns (`SportFixtureContent`): at least 300 pt each, sharing the row, when narrow.
+                    PigPlaceholderGrid(count: 6, cardWidth: nil, cardHeight: SportFixtureMetrics.cardHeight,
+                                       columns: narrow ? nil : SportFixtureMetrics.columns, minimum: 300, gap: PigSpacing.m)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 PigPlaceholderBlock {
@@ -142,11 +159,17 @@ struct SportLeaguePlaceholder: View {
             }
         }
 
-        /// The week's event cards, then a list.
+        /// The week's event cards (one row that scrolls sideways, as `SportEventsContent.eventCards`), then a list.
         private var events: some View {
             VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
-                PigPlaceholderGrid(count: narrow ? 2 : 3, cardWidth: SportCardMetrics.width, cardHeight: SportCardMetrics.height,
-                                   gap: SportCardMetrics.spacing)
+                PigPlaceholderRail {
+                    HStack(alignment: .top, spacing: PigSpacing.m) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            PigPlaceholderCard(width: SportCardMetrics.width, height: SportCardMetrics.height)
+                        }
+                    }
+                    .padding(.vertical, PigSpacing.xs)
+                }
                 PigPlaceholderBlock {
                     VStack(alignment: .leading, spacing: PigSpacing.m) {
                         PigPlaceholderTitle(width: 220)
@@ -165,11 +188,9 @@ struct SportLeaguePlaceholder: View {
                     }
                     PigPlaceholderCard(width: SportMotorMetrics.circuitWidth, height: SportPageMetrics.tileHeight)
                 }
-                if narrow {
-                    ScrollView(.horizontal) { tiles }.scrollIndicators(.hidden).scrollDisabled(true)
-                } else {
-                    tiles
-                }
+                // Never wider than the page (review of 207): five tiles and the circuit are 1 330 pt on an iPad, more than
+                // an 11-inch iPad in landscape gives; past the edge they are cut off.
+                PigPlaceholderRail { tiles }
                 SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap).callAsFunction {
                     ForEach(0..<2, id: \.self) { _ in
                         PigPlaceholderBlock {
