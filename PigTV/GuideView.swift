@@ -219,9 +219,12 @@ struct GuideView: View {
             .whileVisible {
                 // Back on screen after a while: the clock is stale at once.
                 clock = Date()
+                if model.sportEnabled { await model.sport.loadIfStale() }
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                     clock = Date()
+                    // Audit F6: the long-press menu's Watch on… reads these; at most ~5 minutes old while the Guide is up.
+                    if model.sportEnabled { await model.sport.loadIfStale() }
                 }
             }
             .task {
@@ -234,7 +237,7 @@ struct GuideView: View {
                 await model.loadFavouritesIfStale()
                 await model.loadRecordingsIfStale()
                 // #257: the long-press menu's Watch on… needs the sport events (the Sport tab may not have loaded them).
-                if model.sportEnabled && !model.sport.loaded { await model.sport.load() }
+                if model.sportEnabled { await model.sport.loadIfStale() }
             }
             .onAppear {
                 refreshRows()

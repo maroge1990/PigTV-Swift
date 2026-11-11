@@ -16,6 +16,9 @@ final class SportModel: ObservableObject {
     var isFixture = false
     let client: APIClient
     private var inFlight: Task<Void, Never>?
+    /// When the last load that succeeded finished (a 404 from an older server counts: it is the answer).
+    private(set) var lastLoaded: Date?
+    static let maxAge: TimeInterval = 5 * 60
 
     init(client: APIClient) { self.client = client }
 
@@ -47,10 +50,12 @@ final class SportModel: ObservableObject {
                     query: [URLQueryItem(name: "hours", value: String(Self.hours))])
                 if response.events != self.events { self.events = response.events }
                 self.error = nil
+                self.lastLoaded = Date()
             } catch is CancellationError {
             } catch {
                 if error as? PigTVError == .http(404) {
                     if !self.events.isEmpty { self.events = [] }
+                    self.lastLoaded = Date()
                 } else { self.error = UserMessage.text(for: error) }
             }
             self.loaded = true
@@ -58,6 +63,13 @@ final class SportModel: ObservableObject {
         inFlight = task
         await task.value
         inFlight = nil
+    }
+
+    /// Audit F6: an Apple TV app lives for days, so the Guide asks again when what it holds is older than `maxAge`.
+    /// Concurrent callers share `load()`'s one request; a failed reload keeps the events held and is tried again by the next call.
+    func loadIfStale(maxAge: TimeInterval = SportModel.maxAge, now: Date = Date()) async {
+        if let last = lastLoaded, now.timeIntervalSince(last) < maxAge { return }
+        await load()
     }
 
     #if DEBUG
