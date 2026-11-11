@@ -502,7 +502,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     private func setOffset(for viewport: Date, animated: Bool) {
         let target = clampedX(for: viewport)
         if animated && !reduceMotion {
-            animator.animate(to: target, duration: 0.2)
+            animator.animate(to: target, duration: PigMotion.standardDuration)
         } else {
             animator.stop()
             collectionView.setX(target)

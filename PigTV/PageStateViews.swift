@@ -164,7 +164,7 @@ struct PigErrorState: View {
                             .accessibilityIdentifier("\(identifier).message")
                     }
                     Text(countdown(now: context.date))
-                        .font(PigStateMetrics.countdown).monospacedDigit().fontDesign(.rounded)
+                        .font(PigStateMetrics.countdown).pigFigures()
                         .foregroundStyle(Color.pigSecondary)
                         .accessibilityIdentifier("\(identifier).countdown")
                 }
@@ -353,7 +353,7 @@ struct PigLoadingPage<Content: View>: View {
             .accessibilityIdentifier(identifier)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: PigPlaceholderMetrics.pulseHalf).repeatForever(autoreverses: true)) { dim = true }
+                withAnimation(.easeInOut(duration: PigPlaceholderMetrics.pulseHalf).repeatForever(autoreverses: true)) { dim = true } // motion: L1's pulse (owner's pick, 11 Nov)
             }
     }
 }

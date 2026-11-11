@@ -50,7 +50,7 @@ struct RecordingPlayerView: View {
                     }
                     .onChange(of: context.date) { _, now in autoHide(now) }
                 }
-                .animation(.easeInOut(duration: 0.16), value: chrome)
+                .pigAnimation(value: chrome)
             }
         }
         .buttonStyle(BlankButtonStyle())
@@ -166,7 +166,7 @@ struct RecordingPlayerView: View {
                     HStack(spacing: PigSpacing.s) {
                         Text(recording.channel_name ?? "Recording")
                         if let date = recording.started {
-                            Text(date.formatted(date: .abbreviated, time: .shortened))
+                            Text(date.formatted(date: .abbreviated, time: .shortened)).pigFigures()
                         }
                     }
                     .font(.system(size: PigType.cardTitle, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
@@ -188,8 +188,7 @@ struct RecordingPlayerView: View {
                     Text("−\(RecordingTimeline.clock(timeline.remaining))")
                 }
             }
-            .font(.system(size: PigType.body, weight: .semibold).monospacedDigit())
-            .fontDesign(.rounded)
+            .font(.system(size: PigType.body, weight: .semibold)).pigFigures()
         }
         .foregroundStyle(.white)
         .padding(.horizontal, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.section)

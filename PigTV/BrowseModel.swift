@@ -603,6 +603,7 @@ final class BrowseModel: ObservableObject {
             } else {
                 actionMessage = "Recording scheduled. You can review it in Recordings."
             }
+            PigHaptic.play(.record)
             return true
         } catch {
             actionError = Self.actionText(PageWords.scheduleUnconfirmed, error)
@@ -619,7 +620,7 @@ final class BrowseModel: ObservableObject {
         do {
             let updated: ScheduledRecording = try await client.request("recordings/scheduled/\(item.id)", method: "DELETE")
             guard !updated.canCancel else {
-                throw PigTVError.message("The server still reports this schedule as active. Refresh before retrying.")
+                throw PigTVError.message("The server still lists this recording as active. Refresh, then try again.")
             }
             actionMessage = "Schedule cancelled or recording stopped."
             await loadRecordings()
@@ -693,6 +694,7 @@ final class BrowseModel: ObservableObject {
     /// before deleting it (C-M).
     private func removeWithUndo(_ kind: PendingRemoval.Kind, id: Int, message: String, presenter: AppPresenter) {
         let key = PendingRemoval.key(kind, id)
+        PigHaptic.play(.delete)
         recordingStore.pendingRemovals.insert(key)
         // Apple 126 (Codex 5b round 2, high): while its Undo is open, a logged removal of this item is never replayed.
         openUndoKeys.insert(key)
@@ -778,7 +780,7 @@ final class BrowseModel: ObservableObject {
             case .cancelSchedule:
                 let updated: ScheduledRecording = try await client.request("recordings/scheduled/\(id)", method: "DELETE")
                 guard !updated.canCancel else {
-                    throw PigTVError.message("The server still reports this schedule as active. Refresh before retrying.")
+                    throw PigTVError.message("The server still lists this recording as active. Refresh, then try again.")
                 }
                 actionMessage = "Schedule cancelled or recording stopped."
             case .deleteSchedule:
@@ -901,6 +903,7 @@ final class BrowseModel: ObservableObject {
             let rule: RecordingRule = try await client.request("recordings/rules", method: "POST", body: body)
             let n = rule.scheduled ?? 0
             actionMessage = "\(rule.summary). \(n == 1 ? "1 recording" : "\(n) recordings") scheduled for now; more as the guide fills in."
+            PigHaptic.play(.record)
             await loadRecordings()
             return true
         } catch {
@@ -940,6 +943,7 @@ final class BrowseModel: ObservableObject {
             let rule: RecordingRule = try await client.request("recordings/rules", method: "POST",
                                                                body: RuleBody(kind: "game", match: game.title, gameId: game.id))
             actionMessage = "It will record once it's in the TV guide."
+            PigHaptic.play(.record)
             return rule.id
         } catch {
             actionError = Self.actionText(PageWords.recordWhenListedFailed, error)

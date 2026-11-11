@@ -429,7 +429,7 @@ struct GuideView: View {
             if model.guideHasMore && model.guideError == nil {
                 ProgressView()
                 Text("\(model.guide.count) of \(model.guideTotal) channels")
-                    .font(GuideTypography.small).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
+                    .font(GuideTypography.small).foregroundStyle(Color.pigSecondary).pigFigures()
             }
             #if os(tvOS)
             Text("Long press for options").font(.system(size: PigType.caption)).foregroundStyle(Color.pigSecondary).fixedSize()
@@ -516,8 +516,9 @@ struct GuideView: View {
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
+            .buttonBorderShape(.circle)
+            // #280: 44 pt to touch (brand 1.8 §16); `.small` drew them about 28 pt
+            .controlSize(.large)
         }
         .padding(.horizontal, PigSpacing.l)
     }
@@ -786,7 +787,7 @@ struct GuideView: View {
     }
 
     private func openMenu(_ channel: GuideChannel, _ programme: GuideProgramme?, anchor: CGRect) {
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(PigMotion.standard) {
             menu = GuideMenuTarget(channel: channel, programme: programme, subject: menuSubject(channel, programme), anchor: anchor)
         }
     }
@@ -795,7 +796,7 @@ struct GuideView: View {
     /// can: `menuOpen` false, then the restore token).
     private func closeMenu() {
         guard menu != nil else { return }
-        withAnimation(.easeOut(duration: 0.15)) { menu = nil }
+        withAnimation(PigMotion.standard) { menu = nil }
         if usesGridView {
             gridFocusRestore += 1
             #if os(tvOS)

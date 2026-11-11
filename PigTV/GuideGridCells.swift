@@ -103,8 +103,8 @@ struct GuideGridTileView: View {
             }
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: PigSpacing.xs) {
-                    if flaky { Circle().fill(Color.pigWarning).frame(width: 12, height: 12) }
-                    if recording { Circle().fill(Color.pigDanger).frame(width: 12, height: 12) }
+                    if flaky { GuideStatusMarkView(mark: .unreliable) }
+                    if recording { GuideStatusMarkView(mark: .recording) }
                 }
                 .padding(PigSpacing.xs)
             }
@@ -114,6 +114,48 @@ struct GuideGridTileView: View {
             .overlay { RoundedRectangle(cornerRadius: PigRadius.compact).stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             #endif
     }
+}
+
+/// Brand 1.8 §4 and §14 (#280): status is a word or a symbol as well as a colour. A channel's marks in the guide differ in
+/// shape (a warning triangle, a record symbol), not only in colour, and each carries its words for VoiceOver. Before
+/// Apple 206 the grid drew two 12 pt dots told apart by colour alone.
+nonisolated enum GuideStatusMark: CaseIterable, Sendable {
+    case unreliable, recording
+
+    var symbol: String {
+        switch self {
+        case .unreliable: "exclamationmark.triangle.fill"
+        case .recording: "record.circle.fill"
+        }
+    }
+
+    var words: String {
+        switch self {
+        case .unreliable: "Unreliable channel"
+        case .recording: "Recording now"
+        }
+    }
+}
+
+struct GuideStatusMarkView: View {
+    let mark: GuideStatusMark
+    /// The mark's side: the dots' 12 pt footprint and a little more, so the shape reads (the grid keeps its density).
+    var side: CGFloat = GuideStatusMarkMetrics.side
+
+    var body: some View {
+        Image(systemName: mark.symbol).resizable().scaledToFit()
+            .frame(width: side, height: side)
+            .foregroundStyle(mark == .unreliable ? Color.pigWarning : Color.pigDanger)
+            .accessibilityLabel(mark.words)
+    }
+}
+
+nonisolated enum GuideStatusMarkMetrics {
+    #if os(tvOS)
+    static let side: CGFloat = 20
+    #else
+    static let side: CGFloat = 14
+    #endif
 }
 
 final class GuideGridProgrammeCell: UICollectionViewCell {
@@ -197,7 +239,8 @@ final class GuideGridTileCell: UICollectionViewCell {
         }
         .margins(.all, 0)
         accessibilityLabel = info.number.map { "\($0) \(channel.name)" } ?? channel.name
-        accessibilityValue = [info.quality?.spoken, info.flaky ? "Unreliable channel" : nil, info.recording ? "Recording now" : nil]
+        accessibilityValue = [info.quality?.spoken, info.flaky ? GuideStatusMark.unreliable.words : nil,
+                              info.recording ? GuideStatusMark.recording.words : nil]
             .compactMap { $0 }.joined(separator: ", ")
     }
 }

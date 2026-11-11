@@ -25,7 +25,7 @@ final class SettingsMenuTests: XCTestCase {
         XCTAssertEqual(SettingsMenu.sportSummary(follows), "2 sports · 3 follows")
         XCTAssertEqual(SettingsMenu.sportSummary(SportFollows(spoilerFree: true, sports: [.init(sport: "Golf", leagues: ["PGA"])])),
                        "1 sport · 0 follows")
-        XCTAssertEqual(SettingsMenu.sportSummary(nil), "Hide scores and your sports")
+        XCTAssertEqual(SettingsMenu.sportSummary(nil), "Hide scores and your sport")
         XCTAssertEqual(SettingsMenu.accountSummary(user: "mark", server: "http://pigtv.local:3000"), "mark · pigtv.local")
         XCTAssertEqual(SettingsMenu.accountSummary(user: nil, server: "http://pigtv.local:3000"), "pigtv.local")
         XCTAssertEqual(SettingsMenu.appearanceSummary("dark"), "Dark")
@@ -76,6 +76,6 @@ final class SettingsMenuTests: XCTestCase {
         let follows = SportFollows(spoilerFree: true, sports: [.init(sport: "Football", leagues: ["EPL"], teams: ["Arsenal", "Liverpool"]),
                                                               .init(sport: "Cricket", leagues: ["Tests"])])
         XCTAssertEqual(SettingsMenu.sportFacts(follows), ["Scores are hidden", "Football: Arsenal, Liverpool", "Cricket"])
-        XCTAssertEqual(SettingsMenu.sportFacts(nil), ["Your sports load when the page opens"])
+        XCTAssertEqual(SettingsMenu.sportFacts(nil), ["Your sport loads when the page opens"])
     }
 }

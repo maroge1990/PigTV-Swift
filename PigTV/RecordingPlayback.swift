@@ -80,7 +80,7 @@ final class RecordingPlayerModel: ObservableObject {
     #if DEBUG
     func showReviewStatus(_ state: String) {
         started = true
-        if state == "recording-error" { error = "The recording could not be loaded. Try again or return to your library."; canRetry = true }
+        if state == "recording-error" { error = "The recording couldn’t be loaded. Try again, or close the player."; canRetry = true }
         if state == "recording-preparing" { preparing = true }
         if state == "recording-resume" { resumePrompt = 3909; ready = true }
     }
@@ -161,7 +161,7 @@ final class RecordingPlayerModel: ObservableObject {
                     Task { @MainActor [weak self] in
                         guard let self, !self.stopped, self.generation == generation else { return }
                         self.player.pause()
-                        self.error = "Playback could not start. The server's recording stream was refused by the player."
+                        self.error = "This recording couldn’t start playing. Try again in a moment."
                         self.canRetry = true
                     }
                 }
@@ -190,7 +190,7 @@ final class RecordingPlayerModel: ObservableObject {
                 guard !stopped, !Task.isCancelled else { return }
                 self.error = error as? PigTVError == .http(404)
                     ? "This recording is no longer available, or this server does not support recording playback."
-                    : error.localizedDescription
+                    : UserMessage.text(for: error, otherwise: "This recording couldn’t be loaded. Try again in a moment.")
                 canRetry = true
             }
         }
@@ -470,8 +470,8 @@ struct RecordingPlayerScreen: View {
                 VStack(spacing: PigSpacing.l) {
                     Text("Unable to play \(model.recording.title)").font(.title2)
                     Text(error)
-                    if model.canRetry { Button("Retry") { model.retry() }.pigPrimaryButton() }
-                    Button("Back") { dismiss() }
+                    if model.canRetry { Button(PageWords.tryAgain) { model.retry() }.pigPrimaryButton() }
+                    Button(PageWords.closePlayer) { dismiss() }
                 }.padding(PigSpacing.section).foregroundStyle(.white)
             } else if let position = model.resumePrompt {
                 VStack(spacing: PigSpacing.l) {
@@ -480,7 +480,7 @@ struct RecordingPlayerScreen: View {
                         .pigPrimaryButton()
                         .focused($resumeFocused)
                     Button("Start over", systemImage: "arrow.counterclockwise") { model.chooseResume(false) }
-                    Button("Cancel") { dismiss() }
+                    Button(PageWords.closePlayer) { dismiss() }
                 }
                 .padding(PigSpacing.section).foregroundStyle(.white)
                 .tvFocusSection()
@@ -495,7 +495,7 @@ struct RecordingPlayerScreen: View {
             } else {
                 VStack(spacing: PigSpacing.l) {
                     ProgressView(model.preparing ? "Preparing recording…" : "Loading recording…")
-                    Button("Cancel") { dismiss() }
+                    Button(PageWords.closePlayer) { dismiss() }
                 }.foregroundStyle(.white)
             }
         }

@@ -202,7 +202,7 @@ struct GuideSearchPage: View {
     }
 
     private func sectionTitle(_ text: String) -> some View {
-        Text(text).font(DetailType.rowDetail.weight(.bold)).foregroundStyle(Color.pigSecondary).monospacedDigit()
+        Text(text).font(DetailType.rowDetail.weight(.bold)).foregroundStyle(Color.pigSecondary).pigFigures()
             .padding(.top, PigSpacing.xs)
             .accessibilityAddTraits(.isHeader)
     }
@@ -264,7 +264,7 @@ struct GuideSearchPage: View {
                 ForEach(0..<24, id: \.self) { hour in
                     Button { date = GuideJump.moving(date, toHour: hour) } label: {
                         Text(GuideJump.moving(Date(), toHour: hour).formatted(.dateTime.hour()))
-                            .monospacedDigit().lineLimit(1).pigMinimumScale(0.7, size: PigType.body).frame(maxWidth: .infinity)
+                            .pigFigures().lineLimit(1).pigMinimumScale(0.7, size: PigType.body).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(GuideFilterStyle(selected: Calendar.current.component(.hour, from: date) == hour))
                 }
@@ -273,7 +273,7 @@ struct GuideSearchPage: View {
             .focusSection()
             #endif
             Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))
-                .font(DetailType.meta).foregroundStyle(Color.pigSecondary)
+                .font(DetailType.meta).foregroundStyle(Color.pigSecondary).pigFigures()
             Button("Show guide", systemImage: "calendar") { showGuide(date) }
                 .pigPrimaryButton()
         }
@@ -348,7 +348,7 @@ private struct SearchResultRow: View {
                         if live { StatusPill(text: "On now", colour: .pigAccent) }
                     }
                     Text("\(channel.name) · \(DetailText.day(programme.start, now: now)) · \(programme.timeRange)")
-                        .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).monospacedDigit().lineLimit(1)
+                        .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)

@@ -314,7 +314,7 @@ struct SportChannelList: View {
             }
             Button("Cancel", role: .cancel) { choosing = nil }
         } message: { _ in
-            Text(SportRows.timing(event, now: clock))
+            Text(SportRows.timing(event, now: clock)).pigFigures()
         }
     }
 }
@@ -400,7 +400,7 @@ struct SportEventDetails: View {
                     }
                     Text(words.title).font(.title2.weight(.heavy)).fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
-                    Text(words.line).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                    Text(words.line).font(.subheadline).foregroundStyle(.secondary).pigFigures()
                     if words.live {
                         PigProgressBar(fraction: SportRows.progress(event, now: now), height: 6).padding(.top, PigSpacing.xs)
                     }

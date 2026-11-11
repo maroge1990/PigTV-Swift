@@ -197,7 +197,7 @@ struct RecordingView: View {
         Text(RecordingFacts.state(item)).font(ViewMetrics.pill)
             .foregroundStyle(item.status == "recording" ? Color.pigDanger : Color.pigSecondary)
             .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-            .background(Color.pigCanvas.opacity(0.85), in: Capsule())
+            .pigTranslucentBackground(Capsule())
             .accessibilityIdentifier("recording.state")
     }
 
@@ -206,7 +206,7 @@ struct RecordingView: View {
         let eyebrow = RecordingFacts.eyebrow(item)
         if !eyebrow.isEmpty {
             Text(eyebrow).font(ViewMetrics.eyebrow).tracking(1.2).foregroundStyle(.secondary)
-                .monospacedDigit().fontDesign(.rounded).lineLimit(2)
+                .pigFigures().lineLimit(2)
         }
         Text(item.title).font(ViewMetrics.title).lineLimit(2).pigMinimumScale(0.7, size: PigType.hero)
             .accessibilityAddTraits(.isHeader)
@@ -215,7 +215,7 @@ struct RecordingView: View {
                 PigProgressBar(fraction: fraction, height: 8).frame(maxWidth: ViewMetrics.barWidth)
                 if let position = RecordingFacts.position(item, progress: progress) {
                     Text(compact ? "\(DetailText.duration((item.duration_sec ?? 0) * (1 - fraction))) left" : position)
-                        .font(ViewMetrics.detail.monospacedDigit()).fontDesign(.rounded).foregroundStyle(.secondary)
+                        .font(ViewMetrics.detail).pigFigures().foregroundStyle(.secondary)
                         .fixedSize()
                 }
             }
@@ -300,7 +300,7 @@ struct RecordingView: View {
             ForEach(RecordingFacts.facts(item), id: \.0) { fact in
                 GridRow {
                     Text(fact.0).foregroundStyle(.secondary)
-                    Text(fact.1).fontWeight(.semibold).monospacedDigit().fontDesign(.rounded)
+                    Text(fact.1).fontWeight(.semibold).pigFigures()
                 }
                 .font(ViewMetrics.fact)
                 .accessibilityElement(children: .combine)

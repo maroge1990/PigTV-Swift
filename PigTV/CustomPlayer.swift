@@ -49,6 +49,7 @@ struct CustomPlayerView: View {
     @State private var seekForward = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // A4.2: Labs → Stream info overlay.
     @AppStorage(Labs.streamInfo) private var showsStreamInfo = false
 
@@ -99,7 +100,7 @@ struct CustomPlayerView: View {
                     }
                     .onChange(of: context.date) { _, now in autoHide(now) }
                 }
-                .animation(.easeInOut(duration: 0.16), value: chrome)
+                .pigAnimation(value: chrome)
             }
         }
         .buttonStyle(BlankButtonStyle())
@@ -276,7 +277,7 @@ struct CustomPlayerView: View {
                         .font(.system(size: PigType.hero, weight: .bold)).lineLimit(2)
                     if let programme {
                         Text("\(programme.start.formatted(date: .omitted, time: .shortened)) — \(programme.end.formatted(date: .omitted, time: .shortened))")
-                            .font(.system(size: PigType.cardTitle, weight: .medium))
+                            .font(.system(size: PigType.cardTitle, weight: .medium)).pigFigures()
                         if let description = programme.description, !description.isEmpty {
                             Text(description).font(.system(size: PigType.body)).foregroundStyle(.white.opacity(0.85))
                                 .lineLimit(2).frame(maxWidth: 1000, alignment: .leading)
@@ -413,12 +414,12 @@ struct CustomPlayerView: View {
                     }
                 }.frame(height: 10)
                 HStack {
-                    Text(programme?.start.formatted(date: .omitted, time: .shortened) ?? "")
+                    Text(programme?.start.formatted(date: .omitted, time: .shortened) ?? "").pigFigures()
                     Spacer()
                     HStack(spacing: PigSpacing.xs) {
                         if !paused && !playback.behindLive { Circle().fill(Color.pigMediaAccent).frame(width: 12, height: 12) }
                         Text(paused || playback.behindLive ? "BEHIND LIVE" : "LIVE").foregroundStyle(paused || playback.behindLive ? Color.white : Color.pigMediaAccent)
-                        Text(now.formatted(date: .omitted, time: .shortened))
+                        Text(now.formatted(date: .omitted, time: .shortened)).pigFigures()
                     }
                 }.font(.system(size: PigType.body, weight: .semibold))
             }
@@ -453,9 +454,9 @@ struct CustomPlayerView: View {
                         Text("LIVE").foregroundStyle(Color.pigMediaAccent)
                     }
                 } else {
-                    Text("\(PlayerTimeMath.behindText(behind)) behind live")
+                    Text("\(PlayerTimeMath.behindText(behind)) behind live").pigFigures()
                 }
-                Text(now.formatted(date: .omitted, time: .shortened))
+                Text(now.formatted(date: .omitted, time: .shortened)).pigFigures()
             }
             .font(.system(size: PigType.body, weight: .semibold))
             PlayerScrubTrack(fraction: position ?? 1)
@@ -483,7 +484,7 @@ struct CustomPlayerView: View {
                 .scrollIndicators(.hidden)
                 .onAppear { proxy.scrollTo(cursor, anchor: .center) }
                 .onChange(of: cursor) { _, value in
-                    withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(value, anchor: .center) }
+                    pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { proxy.scrollTo(value, anchor: .center) }
                 }
             }
             .frame(width: 640)
@@ -499,7 +500,7 @@ struct CustomPlayerView: View {
             Spacer()
         }
         .foregroundStyle(.white)
-        .transition(.move(edge: .leading).combined(with: .opacity))
+        .pigSlide(from: .leading)
     }
 
     private func channelRow(_ channel: Channel, highlighted: Bool, now: Date) -> some View {
@@ -517,8 +518,7 @@ private struct StreamInfoLine: View {
     @State private var stats: StreamStats?
     var body: some View {
         Text(stats?.line ?? " ")
-            .font(.system(size: PigType.caption, weight: .medium).monospacedDigit())
-            .fontDesign(.rounded)
+            .font(.system(size: PigType.caption, weight: .medium)).pigFigures()
             .foregroundStyle(.white.opacity(0.8))
             .lineLimit(1).pigMinimumScale(0.7, size: PigType.caption)
             .frame(maxWidth: 1100, alignment: .leading)

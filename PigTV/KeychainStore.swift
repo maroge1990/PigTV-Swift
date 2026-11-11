@@ -18,7 +18,7 @@ struct KeychainStore {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let data = result as? Data, let token = String(data: data, encoding: .utf8) else {
-            throw PigTVError.message("Could not read the saved sign-in from Keychain (\(status)).")
+            throw PigTVError.message("PigTV couldn’t read the sign-in saved on this device. Sign in again.")
         }
         return token
     }
@@ -32,14 +32,14 @@ struct KeychainStore {
             status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
         }
         guard status == errSecSuccess else {
-            throw PigTVError.message("Could not save the sign-in securely (\(status)). Please try again.")
+            throw PigTVError.message("PigTV couldn’t save your sign-in on this device. Try again.")
         }
     }
 
     func remove(for address: ServerAddress) throws {
         let status = SecItemDelete(query(for: address) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw PigTVError.message("Could not remove the saved sign-in (\(status)).")
+            throw PigTVError.message("PigTV couldn’t remove the sign-in saved on this device. Try again.")
         }
     }
 }

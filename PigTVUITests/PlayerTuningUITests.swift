@@ -14,12 +14,12 @@ final class PlayerTuningUITests: XCTestCase {
         let player = app.descendants(matching: .any)["review.livePlayer"]
         XCTAssertTrue(player.waitForExistence(timeout: 5), "the player is installed under the card")
         let focused = { app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true")) }
-        XCTAssertTrue(waitUntil(5) { focused().label == "Cancel" }, "Cancel holds focus, not \(focused().label)")
+        XCTAssertTrue(waitUntil(5) { focused().label == "Close player" }, "Close player holds focus, not \(focused().label)")
         for press in [XCUIRemote.Button.right, .right, .down, .left, .up] {
             XCUIRemote.shared.press(press)
             Thread.sleep(forTimeInterval: 0.3)
         }
-        XCTAssertEqual(focused().label, "Cancel")
+        XCTAssertEqual(focused().label, "Close player")
         // The chrome hides on its own idle timer; input would move the action cursor, open the channel list or scrub.
         let untouched = { (state: String) in
             !state.hasPrefix("channels") && !state.hasPrefix("scrub") && state.contains("action=0;") && state.contains("channel=2;")

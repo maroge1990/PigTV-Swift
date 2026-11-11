@@ -327,7 +327,8 @@ final class PlaybackLifecycleTests: XCTestCase {
         let server = SyntheticServer { _, _, _ in .init(status: 500, json: "{}") }
         let playback = model(try client(server))
         playback.playbackFailed(detail: "Route: transcode. PlayerError -1")
-        XCTAssertTrue(playback.error!.contains("Playback could not start"))
+        XCTAssertTrue(playback.error!.contains("couldn’t start playing"))
+        XCTAssertFalse(playback.error!.contains("PlayerError"), "#280: no code on the screen")
         XCTAssertTrue(playback.canRetry)
         playback.start() // a repeated appearance is not a manual Retry
         XCTAssertTrue(server.captured.isEmpty)

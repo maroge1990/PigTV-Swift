@@ -754,7 +754,7 @@ final class RealPlaybackTests: XCTestCase {
         try await waitFor("the start to time out", timeout: 8) { playback.error != nil }
         XCTAssertFalse(playback.hasPlayed)
         XCTAssertTrue(playback.canRetry)
-        XCTAssertTrue(playback.error?.hasPrefix("Playback could not start") == true, playback.error ?? "")
+        XCTAssertTrue(playback.error?.hasPrefix("This channel couldn’t start playing") == true, playback.error ?? "")
         try await waitFor("the start-timeout report") { !server.clientEventBodies("start-timeout").isEmpty }
         let reports = server.clientEventBodies("start-timeout")
         XCTAssertEqual(reports.count, 1)

@@ -89,9 +89,12 @@ nonisolated enum PigType {
     static let display: CGFloat = 30
     static let pageTitle: CGFloat = 34
     static let hero: CGFloat = 44
-    static let micro: CGFloat = 9
+    /// Brand 1.8 §16 (#280): nothing on touch is under 11 pt, badge letters included (was 9).
+    static let micro: CGFloat = 11
     static let jumbo: CGFloat = 56
     static let minimum: CGFloat = 0
+    /// The smallest text on iPhone and iPad (brand 1.8 §16); BrandRulesTests reads the roles against it.
+    static let touchMinimum: CGFloat = 11
     #endif
 }
 
@@ -147,5 +150,35 @@ extension View {
     /// (brand 1.8 §15, #279). On touch `PigType.minimum` is 0, so the factor is used as given.
     func pigMinimumScale(_ factor: CGFloat, size: CGFloat) -> some View {
         minimumScaleFactor(size > 0 ? max(factor, PigType.minimum / size) : factor)
+    }
+}
+
+/// Brand §5 and §14 (maroge1990/PigTV#190, #280): a figure a person reads (a score, a clock, a time, a date's numbers, a
+/// count, a size, a channel number, a duration) is set in SF Pro Rounded with tabular digits, one way everywhere. Not for
+/// running text. BrandRulesTests fails on `monospacedDigit` or the rounded design written anywhere else, and on a known
+/// figure without it (the guide grid's UIKit cells build the same font: `roundedMonospacedDigits`).
+extension View {
+    func pigFigures() -> some View { monospacedDigit().fontDesign(.rounded) }
+}
+
+extension Text {
+    /// The same for a `Text` that is joined to another (`Text(time).pigFigures() + Text(" · title")`).
+    func pigFigures() -> Text { monospacedDigit().fontDesign(.rounded) }
+}
+
+/// Brand 1.8 §16 (#280): a control on iPhone and iPad is at least 44 x 44 pt to touch, whatever it draws.
+nonisolated enum PigTouch {
+    static let minTarget: CGFloat = 44
+}
+
+extension View {
+    /// At least `PigTouch.minTarget` high and wide on touch, the whole frame touchable; nothing on the television, where
+    /// the focus styles carry their own minimum (`pigTarget()`).
+    @ViewBuilder func pigTouchTarget(alignment: Alignment = .center) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        frame(minWidth: PigTouch.minTarget, minHeight: PigTouch.minTarget, alignment: alignment).contentShape(Rectangle())
+        #endif
     }
 }

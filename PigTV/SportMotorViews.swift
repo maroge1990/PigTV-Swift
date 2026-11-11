@@ -157,7 +157,7 @@ struct SportF1Content: View {
 
     private func lists(_ page: F1Page, spoilerFree: Bool) -> some View {
         let lists = SportMotorText.lists(page, followed: SportMotorText.followedDrivers(model.preferences), spoilerFree: spoilerFree)
-        let hiddenText = "Spoiler-free is on. Grids, finishing orders and points stay hidden until it is turned off in Settings."
+        let hiddenText = "Hide scores is on. Grids, finishing orders and points stay hidden until it is turned off in Settings."
         return SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap).callAsFunction {
             SportListCard(title: lists.gridTitle ?? "Last race", identifier: "f1.results") {
                 if lists.hidden { SportHiddenNote(title: "Results hidden", text: hiddenText) }
@@ -183,7 +183,7 @@ struct SportF1Content: View {
         VStack(spacing: PigSpacing.xxs) {
             ForEach(rows, id: \.pos) { row in
                 HStack(spacing: PigSpacing.s) {
-                    Text(String(row.pos)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).monospacedDigit()
+                    Text(String(row.pos)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).pigFigures()
                         .frame(minWidth: 28, alignment: .trailing)
                     RoundedRectangle(cornerRadius: 3).fill(Color(teamHex: row.teamColor) ?? Color.pigBorder).frame(width: 6, height: 22)
                         .accessibilityHidden(true)
@@ -194,7 +194,7 @@ struct SportF1Content: View {
                         Text(detail).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1)
                     }
                     if let points = row.points, !points.isEmpty {
-                        Text(points).font(SportPageMetrics.rowPos).monospacedDigit()
+                        Text(points).font(SportPageMetrics.rowPos).pigFigures()
                     }
                 }
                 .frame(minHeight: SportPageMetrics.row)

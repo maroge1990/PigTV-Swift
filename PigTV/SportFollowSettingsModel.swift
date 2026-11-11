@@ -267,7 +267,9 @@ final class SportFollowSettingsModel: ObservableObject {
         let one = isOneLeague(sport)
         await save({ [catalog] in SportFollowLogic.addSport($0, sport, catalog: catalog) },
                    done: { one ? "Following \(sport)." : "Following \(sport). Open it to choose its leagues." })
-        return follows?.entry(sport) != nil
+        let followed = follows?.entry(sport) != nil
+        if followed { PigHaptic.play(.follow) }
+        return followed
     }
 
     func addLeague(_ sport: String, _ league: String) async {
@@ -307,7 +309,9 @@ final class SportFollowSettingsModel: ObservableObject {
         guard let name = chosen.name else { message = chosen.error ?? ""; return false }
         if let error = SportFollowLogic.addName(follows, sport, name).error { message = error; return false }
         await save({ SportFollowLogic.addName($0, sport, name).state }, done: { "Following \(name)." })
-        return self.entry(sport)?.teams.contains { SportFollowLogic.same($0, name) } ?? false
+        let followed = self.entry(sport)?.teams.contains { SportFollowLogic.same($0, name) } ?? false
+        if followed { PigHaptic.play(.follow) }
+        return followed
     }
 
     func unfollow(_ sport: String, _ name: String, ask: Ask) async {

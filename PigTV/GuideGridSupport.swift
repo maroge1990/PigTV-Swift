@@ -60,7 +60,7 @@ final class GuideGridScrollAnimator: NSObject {
     @objc private func step() {
         guard let collectionView else { stop(); return }
         let t = min(1, (CACurrentMediaTime() - startTime) / duration)
-        collectionView.setX(from + (to - from) * GuideGridMath.easeInOut(t))
+        collectionView.setX(from + (to - from) * GuideGridMath.easeInOut(t)) // motion: the grid scroll's curve, timed by PigMotion.standardDuration
         collectionView.layoutIfNeeded()
         if t >= 1 { stop() }
         onFrame?()

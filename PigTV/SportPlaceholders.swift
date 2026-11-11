@@ -260,7 +260,7 @@ struct SportPhonePagePlaceholder: View {
 /// The carousel's card: a kicker, two badges with names, a line and the two buttons.
 struct SportPhoneHeroPlaceholder: View {
     var body: some View {
-        PigPlaceholderBlock(height: SportPhoneMetrics.cardHeight) {
+        PigPlaceholderBlock(height: SportPhoneMetrics.cardMinHeight) {
             VStack(alignment: .leading, spacing: PigSpacing.s) {
                 PigPlaceholderBar(width: 80)
                 HStack(spacing: PigSpacing.l) {

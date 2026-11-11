@@ -36,7 +36,7 @@ final class OutsidePlayUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 7)
         XCTAssertTrue(tuning.exists, "the play is still on")
         // Leaving the player lands on the guide: the details page was closed, not left under the player (Apple 82 left it).
-        XCTAssertTrue(waitUntil(5) { focused().label == "Cancel" }, "the tuning card's Cancel, not \(focused().label)")
+        XCTAssertTrue(waitUntil(5) { focused().label == "Close player" }, "the tuning card's Close player, not \(focused().label)")
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(waitUntil(8) { !tuning.exists }, "the player closes")
         XCTAssertTrue(waitUntil(8) { grid.isHittable }, "back on the guide, not on the details page")

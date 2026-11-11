@@ -56,14 +56,14 @@ nonisolated enum SettingsMenu {
 
     /// "6 sports · 9 follows"; before the account's sports have loaded, what the page holds.
     static func sportSummary(_ follows: SportFollows?) -> String {
-        guard let follows else { return "Hide scores and your sports" }
+        guard let follows else { return "Hide scores and your sport" }
         let sports = follows.sports.count, names = follows.sports.reduce(0) { $0 + $1.teams.count }
         return "\(count(sports, "sport")) · \(count(names, "follow"))"
     }
 
     /// The Sport section's facts for the television's summary (#279): hidden scores, then each sport with its names.
     static func sportFacts(_ follows: SportFollows?) -> [String] {
-        guard let follows else { return ["Your sports load when the page opens"] }
+        guard let follows else { return ["Your sport loads when the page opens"] }
         let sports = follows.sports.prefix(3).map { entry in
             entry.teams.isEmpty ? entry.sport : "\(entry.sport): \(entry.teams.joined(separator: ", "))"
         }
@@ -231,7 +231,7 @@ struct LibrarySettings: View {
                             }
                         } footer: {
                             Text("App \(Self.appVersion) (\(Self.appBuild))" + (model.serverInfo.map { " · Server \($0.build ?? $0.version ?? "?")" } ?? ""))
-                                .font(.footnote.monospacedDigit()).fontDesign(.rounded)
+                                .font(.footnote).pigFigures()
                                 .frame(maxWidth: .infinity).padding(.top, PigSpacing.m)
                         }
                     }
@@ -432,7 +432,7 @@ struct LibrarySettings: View {
                 #if os(tvOS)
                 .font(.system(size: PigType.body))
                 .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
-                .background(appearance == value ? Color.pigAccent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: PigRadius.compact))
+                .background(appearance == value ? Color.pigSelection : .clear, in: RoundedRectangle(cornerRadius: PigRadius.compact))
                 #endif
                 .overlay(alignment: .leading) {
                     if appearance == value {
@@ -449,7 +449,7 @@ struct LibrarySettings: View {
             }
             #if os(iOS)
             .buttonStyle(.borderless)
-            .listRowBackground(appearance == value ? Color.pigAccent.opacity(0.14) : Color.pigRaised)
+            .listRowBackground(appearance == value ? Color.pigSelection : Color.pigRaised)
             #else
             .buttonStyle(PigSurfaceButtonStyle())
             #endif
@@ -576,7 +576,7 @@ private struct SettingsMenuLabel: View {
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(page.title).font(SettingsType.menuTitle)
                     .foregroundStyle(selected ? Color.pigAccentText : Color.pigText)
-                Text(summary).font(SettingsType.menuSummary).monospacedDigit()
+                Text(summary).font(SettingsType.menuSummary).pigFigures()
                     .foregroundStyle(Color.pigSecondary).lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -599,7 +599,7 @@ private struct SettingsMenuRowStyle: ButtonStyle {
             .padding(SettingsMetrics.rowPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .pigTarget()
-            .background(lit ? PigFocus.fill : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: shape)
+            .background(lit ? PigFocus.fill : selected ? Color.pigSelection : Color.pigRaised, in: shape)
             .overlay(alignment: .leading) {
                 if selected {
                     Capsule().fill(Color.pigAccent).frame(width: SettingsMetrics.barWidth, height: 26)
@@ -618,7 +618,7 @@ private struct SettingsMenuRowStyle: ButtonStyle {
 nonisolated enum SettingsType {
     #if os(tvOS)
     static let menuTitle: Font = .system(size: PigType.body, weight: .bold)
-    static let menuSummary: Font = .system(size: PigType.caption).monospacedDigit()
+    static let menuSummary: Font = .system(size: PigType.caption)
     static let pageTitle: Font = .system(size: PigType.display, weight: .heavy)
     static let confirmTitle: Font = .system(size: PigType.cardTitle, weight: .bold)
     static let confirmBody: Font = .system(size: PigType.secondary)
@@ -747,7 +747,7 @@ struct SettingsAccountPage: View {
             Section {
                 Text("App \(LibrarySettings.appVersion) (\(LibrarySettings.appBuild))"
                      + (model.serverInfo.map { " · Server \($0.build ?? $0.version ?? "?")" } ?? ""))
-                    .font(SettingsType.footnote).fontDesign(.rounded).monospacedDigit()
+                    .font(SettingsType.footnote).pigFigures()
                     .foregroundStyle(Color.pigSecondary)
                     #if os(iOS)
                     .listRowBackground(Color.clear)
@@ -760,11 +760,11 @@ struct SettingsAccountPage: View {
     }
 
     private func open(_ reason: SignOutReason) {
-        withAnimation(.easeOut(duration: 0.15)) { confirm = reason }
+        withAnimation(PigMotion.standard) { confirm = reason }
     }
 
     private func close() {
-        withAnimation(.easeOut(duration: 0.15)) { confirm = nil }
+        withAnimation(PigMotion.standard) { confirm = nil }
     }
 
     private var signOutRow: some View {

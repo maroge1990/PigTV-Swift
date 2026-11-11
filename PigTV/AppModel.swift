@@ -114,7 +114,7 @@ final class AppModel: ObservableObject {
                 canRestore = true
                 signInError = SignInFailure.of(error, step: .saved)
             } else if let urlError = error as? URLError {
-                // Server asleep, wrong network or Tailscale down: show a
+                // Server asleep, wrong network or no route to it: show a
                 // dedicated screen rather than a generic alert.
                 unreachable = Self.describe(urlError)
             } else {
@@ -124,12 +124,7 @@ final class AppModel: ObservableObject {
     }
 
     private static func describe(_ error: URLError) -> String {
-        switch error.code {
-        case .timedOut: return "PigTV did not answer in time. It may be asleep or busy."
-        case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
-            return "This device cannot reach the server. Check that you are on the home network or that Tailscale is connected."
-        default: return error.localizedDescription
-        }
+        error.code == .timedOut ? "PigTV did not answer in time. It may be asleep or busy." : UserMessage.unreachable
     }
 
     func login() async {
@@ -677,10 +672,13 @@ final class AppModel: ObservableObject {
         pairing = PairStart(code: "PIG482", expiresAt: Date().addingTimeInterval(600).timeIntervalSince1970 * 1000, expiresInSec: 600)
     }
 
+    /// A documentation-only address that never answers (TEST-NET-1): the fixtures' unreachable server.
+    nonisolated static let unreachableFixtureServer = "http://192.0.2.1:3000"
+
     func injectPlayerFixture(media: URL?) {
         injectHomeFixture()
         guard let browse, browse.guide.count > 3 else { return }
-        if media == nil, let address = try? ServerAddress("http://192.0.2.1:3000") {
+        if media == nil, let address = try? ServerAddress(Self.unreachableFixtureServer) {
             let client = APIClient(address: address, token: "fixture", info: serverInfo)
             self.client = client
         } else {
@@ -740,3 +738,63 @@ nonisolated struct PendingWatch: Equatable, Sendable {
     let channelName: String
     let at: Date
 }
+
+/// Brand 1.8 §8 and upgrade row 2 (maroge1990/PigTV#280): the splash shows only while the app is loading. With no
+/// saved sign-in there is nothing to load: the app opens on sign-in, with no splash. With one, the splash shows until
+/// the session is restored (the first screen then draws its own page-shaped loading state); no minimum time, never
+/// held to finish an animation. Before Apple 206 every launch drew the splash and cross-faded it away.
+nonisolated enum LaunchStep: Equatable, Sendable {
+    case splash, firstScreen
+
+    /// `savedSignIn`: nil when it could not be read (the restore then says why, behind the splash).
+    static func opening(hasServerAddress: Bool, savedSignIn: Bool?) -> LaunchStep {
+        hasServerAddress && savedSignIn != false ? .splash : .firstScreen
+    }
+
+    /// This launch's step, from the saved server address and the Keychain (read synchronously, before the first frame).
+    @MainActor static func current(defaults: UserDefaults = .standard) -> LaunchStep {
+        #if DEBUG
+        LaunchFixture.applySavedSignIn(defaults: defaults)
+        #endif
+        guard let text = defaults.string(forKey: "pigtv.server"), !text.isEmpty,
+              let address = try? ServerAddress(text) else { return opening(hasServerAddress: false, savedSignIn: false) }
+        let saved: Bool?
+        do { saved = try KeychainStore().token(for: address) != nil } catch { saved = nil }
+        return opening(hasServerAddress: true, savedSignIn: saved)
+    }
+}
+
+#if DEBUG
+/// T3 only, to watch the launch in the simulator: PIGTV_UI_TEST_LAUNCH=saved saves a sign-in to an address that never
+/// answers (TEST-NET-1), =none opens with no saved address, and =clear (a launch that draws nothing) puts back the
+/// address there was before and removes the fixture's sign-in.
+@MainActor enum LaunchFixture {
+    private static let backupKey = "pigtv.server.beforeLaunchFixture"
+
+    static func applySavedSignIn(defaults: UserDefaults) {
+        switch ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LAUNCH"] {
+        case "saved":
+            guard let address = try? ServerAddress(AppModel.unreachableFixtureServer) else { return }
+            backup(defaults)
+            defaults.set(AppModel.unreachableFixtureServer, forKey: "pigtv.server")
+            try? KeychainStore().save(token: "fixture", for: address)
+        case "none":
+            backup(defaults)
+            defaults.removeObject(forKey: "pigtv.server")
+        default: break
+        }
+    }
+
+    static func clear(defaults: UserDefaults = .standard) {
+        if let address = try? ServerAddress(AppModel.unreachableFixtureServer) { try? KeychainStore().remove(for: address) }
+        guard let before = defaults.string(forKey: backupKey) else { return }
+        if before.isEmpty { defaults.removeObject(forKey: "pigtv.server") } else { defaults.set(before, forKey: "pigtv.server") }
+        defaults.removeObject(forKey: backupKey)
+    }
+
+    private static func backup(_ defaults: UserDefaults) {
+        guard defaults.object(forKey: backupKey) == nil else { return }
+        defaults.set(defaults.string(forKey: "pigtv.server") ?? "", forKey: backupKey)
+    }
+}
+#endif

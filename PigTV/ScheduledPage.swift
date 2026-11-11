@@ -304,12 +304,12 @@ private struct ScheduleRow: View {
                         Text(item.start.formatted(date: .omitted, time: .shortened)).font(ScheduledMetrics.time)
                             .foregroundStyle(.secondary)
                     }
-                    .monospacedDigit().fontDesign(.rounded)
+                    .pigFigures()
                     .frame(width: ScheduledMetrics.dayWidth, alignment: .leading)
                 }
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     if compact {
-                        Text(when).font(ScheduledMetrics.chip).monospacedDigit().fontDesign(.rounded).foregroundStyle(.secondary)
+                        Text(when).font(ScheduledMetrics.chip).pigFigures().foregroundStyle(.secondary)
                     }
                     HStack(spacing: PigSpacing.s) {
                         Text(item.title).font(ScheduledMetrics.title).lineLimit(1)
@@ -532,7 +532,7 @@ private struct ScheduledTile: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .pigPressable()
         .accessibilityIdentifier("scheduled.tile.\(title)")
     }
 }

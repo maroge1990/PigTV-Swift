@@ -77,7 +77,7 @@ struct BrandSplashView: View {
         .task {
             // A quiet progress indicator, only when start-up is genuinely slow.
             try? await Task.sleep(for: .seconds(2))
-            if !Task.isCancelled { withAnimation(.easeIn(duration: 0.4)) { slowStart = true } }
+            if !Task.isCancelled { withAnimation(PigMotion.standard) { slowStart = true } }
         }
     }
 
@@ -85,8 +85,8 @@ struct BrandSplashView: View {
     /// Motion is on).
     private func play() {
         guard !reduceMotion else { return }
-        withAnimation(.easeInOut(duration: 0.25)) { wordIn = true }
-        withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) { breathing = true }
+        withAnimation(PigMotion.standard) { wordIn = true }
+        withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) { breathing = true } // motion: brand §8's splash cycle
     }
 }
 

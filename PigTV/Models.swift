@@ -59,7 +59,7 @@ struct ServerInfo: Decodable {
 
     func validate() throws {
         guard apiVersion == 1, features.library == true, features.playbackResolve == true else {
-            throw PigTVError.message("This server does not support the library and playback APIs required by this app.")
+            throw PigTVError.message("This PigTV server can’t be used by this app. Update PigTV on the server, then try again.")
         }
         // A build that does not parse (a development server, the fallback's null) is accepted.
         if let build, let number = Int(build), number < Self.minimumBuild {
@@ -356,16 +356,16 @@ enum PigTVError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidServerURL: return "Enter an http or https server address, with an optional port. Paths, credentials and query strings are not supported."
-        case .unauthorised: return "Please sign in or pair again. Your credentials were rejected or have expired."
-        case .forbidden: return "Your account does not have permission for this action."
-        case .http(let status): return "The server returned HTTP \(status). Please try again."
+        case .invalidServerURL: return "Type the server’s address and its port only, as the PigTV web app shows it."
+        case .unauthorised: return "Your sign-in wasn’t accepted. Sign in or pair this device again."
+        case .forbidden: return "Your account can’t do this. Ask whoever runs your server."
+        case .http: return "Your server didn’t answer as expected. Try again in a moment."
         case .viewerConflict(let message): return message
         case .rateLimited(let seconds): return "Too many attempts — try again in \(max(1, Int(ceil(Double(seconds) / 60)))) minutes."
         case .recordingPreparationFailed(let reason):
             return reason == "file-missing" ? "The recording file is missing from the server's storage." : "The server could not prepare this recording."
-        case .recordingConflict: return "A recording is using the provider stream. Confirm before stopping it."
-        case .decoding: return "The server returned an unexpected response. Check that PigTV is up to date."
+        case .recordingConflict: return "Watching this would stop a recording in progress. Choose whether to stop it."
+        case .decoding: return "Your server didn’t answer as expected. Check that PigTV on the server is up to date."
         case .message(let message): return message
         case .serverMessage(let message, _): return message
         }
@@ -385,9 +385,22 @@ nonisolated enum UserMessage {
         return ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled
     }
 
-    static func text(for error: Error) -> String? {
-        isCancellation(error) ? nil : error.localizedDescription
+    /// #280: what reaches the screen is a sentence written for people: the app's own words for its errors, or a
+    /// sentence the server wrote to be shown. Never the system's description, an error domain, a code or a status.
+    static func text(for error: Error) -> String? { text(for: error, otherwise: somethingFailed) }
+
+    /// The same, with `plain` (what could not be done) for an error that carries no sentence of its own.
+    static func text(for error: Error, otherwise plain: String) -> String? {
+        if isCancellation(error) { return nil }
+        if let pig = error as? PigTVError { return pig.errorDescription ?? plain }
+        if error is URLError || (error as NSError).domain == NSURLErrorDomain { return unreachable }
+        return plain
     }
+
+    /// The server could not be reached (any network failure).
+    static let unreachable = "This device can’t reach your server. Check that it’s on your home network or connected to it, then try again."
+    /// An error with no words of its own.
+    static let somethingFailed = "That didn’t work. Try again in a moment."
 }
 
 // Immutable API data must also support Error equality outside the UI actor.

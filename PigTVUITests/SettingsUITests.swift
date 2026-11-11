@@ -137,21 +137,32 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(waitUntil(5) { !app.tabBars.buttons["Sport"].exists }, "signing out left the session's tabs")
     }
 
-    /// R5-SetSport-TV: Hide scores and Score delay side by side, then your sports with their followed names.
+    /// R5-SetSport-TV, #280: Hide scores first, then your sport with its followed names; Score delay one level down (a
+    /// row with its value that opens its page).
     @MainActor
-    func testTheSportPageHasScoreDelayAndYourSports() throws {
+    func testTheSportPageHasYourSportFirstAndScoreDelayOneLevelDown() throws {
         continueAfterFailure = false
         let app = launch(page: "sport")
-        let value = app.staticTexts["settings.sport.delay.value"]
-        XCTAssertTrue(value.waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertEqual(value.label, "Score delay 30 seconds")
         let hide = app.buttons["settings.sport.spoilerFree"]
-        XCTAssertLessThan(hide.frame.maxX, value.frame.minX, "Hide scores and Score delay sit side by side")
+        XCTAssertTrue(hide.waitForExistence(timeout: 10), app.debugDescription)
         let football = app.buttons["settings.sport.row.Football"]
         XCTAssertTrue(football.label.contains("Arsenal, Liverpool"), football.label)
         XCTAssertGreaterThan(football.frame.minY, hide.frame.maxY)
+        XCTAssertFalse(app.staticTexts["settings.sport.delay.value"].exists, "Score delay is one level down")
+        let delayRow = app.buttons["settings.sport.delay"]
+        XCTAssertTrue(delayRow.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(delayRow.frame.minY, football.frame.maxY, "Score delay comes after your sport")
+        for _ in 0..<14 where !delayRow.hasFocus {
+            XCUIRemote.shared.press(.down)
+            _ = waitUntil(1) { delayRow.hasFocus }
+        }
+        XCTAssertTrue(waitUntil(5) { delayRow.hasFocus }, "the Score delay row never took the focus: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        let value = app.staticTexts["settings.sport.delay.value"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5), "its page opens")
+        XCTAssertEqual(value.label, "Score delay 30 seconds")
         let more = app.buttons["settings.sport.delay.more"]
-        for _ in 0..<12 where !more.hasFocus {
+        for _ in 0..<6 where !more.hasFocus {
             let at = focused(app).frame
             XCUIRemote.shared.press(at.maxY < more.frame.minY ? .down : at.minY > more.frame.maxY ? .up : at.midX < more.frame.midX ? .right : .left)
             _ = waitUntil(1) { more.hasFocus }
@@ -159,6 +170,8 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(waitUntil(5) { more.hasFocus }, "+10 never took the focus: \(focused(app).identifier)")
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(waitUntil(5) { value.label == "Score delay 40 seconds" }, value.label)
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(waitUntil(5) { delayRow.hasFocus }, "Menu returns to the Score delay row: \(focused(app).identifier)")
     }
 
     @MainActor

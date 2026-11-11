@@ -18,6 +18,7 @@ struct SportFrontTVPage: View {
     @ObservedObject private var f1: F1PageModel
     @StateObject private var flow = SportRecordFlow()
     @Environment(\.sportPresenter) private var presenter
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Down from the tab bar lands on the hero's first button.
     @FocusState private var heroFocused: Bool
     /// #264: how far the page has scrolled, and the banner's height: past it, the banner shows as the strip.
@@ -75,16 +76,16 @@ struct SportFrontTVPage: View {
             VStack(alignment: .leading, spacing: SportHeroStripMetrics.gap) {
                 if stripShows, let front = model.front {
                     SportHeroStripView(strip: strip(front, now: now)) {
-                        withAnimation { reader.scrollTo(SportFrontTVPage.bannerID, anchor: .top) }
+                        pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { reader.scrollTo(SportFrontTVPage.bannerID, anchor: .top) }
                     }
                     #if os(iOS)
                     .padding(.horizontal, PigSpacing.xl)
                     #endif
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .pigSlide(from: .top)
                 }
                 page(now: now)
             }
-            .animation(.easeOut(duration: 0.2), value: stripShows)
+            .pigAnimation(value: stripShows, moves: true)
         }
     }
 
@@ -159,7 +160,7 @@ struct SportFrontTVPage: View {
     private func heroWords(_ front: SportFront, now: Date) -> SportBannerHero {
         model.heroGame.map { SportFrontLayout.hero($0, in: front, hidden: hidden, now: now, labels: model.labels) }
             ?? SportBannerHero(kicker: "YOUR SPORTS", live: false, title: "Nothing on right now",
-                               line: "Your sports' next games are below.")
+                               line: "The next games you follow are below.")
     }
 
     /// #264: the banner's words, slim.

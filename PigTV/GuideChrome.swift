@@ -122,7 +122,7 @@ struct GuideFocusStrip<Trailing: View>: View {
 
     private var detailLine: Text {
         guard let times = text.times else { return Text(text.detail) }
-        return Text(times).fontDesign(.rounded).monospacedDigit() + Text(" · \(text.detail)")
+        return Text(times).pigFigures() + Text(" · \(text.detail)")
     }
 
     #if os(tvOS)

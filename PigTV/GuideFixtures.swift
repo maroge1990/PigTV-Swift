@@ -64,9 +64,11 @@ enum GuideFixtures {
                     k += 1
                 }
             }
+            // #280: PIGTV_UI_TEST_STATUS_MARKS=1 marks the second channel unreliable (the guide's status marks).
+            let flaky = index == 1 && ProcessInfo.processInfo.environment["PIGTV_UI_TEST_STATUS_MARKS"] == "1"
             return GuideChannel(rawID: "ch\(index)", sourceId: 1, name: name,
                                 logo: logos ? logoKey(index) : nil, category: category, programmes: programmes,
-                                number: 501 + index)
+                                number: 501 + index, health: flaky ? "flaky" : nil)
         }
     }
 

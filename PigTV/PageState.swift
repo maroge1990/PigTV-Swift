@@ -127,6 +127,8 @@ nonisolated struct PageFailure: Equatable, Sendable {
 nonisolated enum PageWords {
     static let tryAgain = "Try again"
     static let tryingAgain = "Trying again…"
+    /// Leaving a player (live, recording, tuning, or after an error): one name, as the web's "Close player".
+    static let closePlayer = "Close player"
     static let loading = "Loading"
     /// A change to the sport preferences the server refused or did not get.
     static let notSaved = "Your change wasn’t saved. Try again."
@@ -156,7 +158,7 @@ nonisolated enum PageWords {
     /// A league's own page whose server answered `available: false`.
     static func leagueNotAvailable(_ label: String) -> PageFailure {
         PageFailure(reason: .notAvailable, title: "\(label) isn’t available right now",
-                    message: "Your server hasn’t had \(label) from the sports feed yet, or can’t reach it at the moment.",
+                    message: "Your server hasn’t had \(label) from the scores feed yet, or can’t reach it at the moment.",
                     stillWorks: leagueStillWorks)
     }
 
@@ -178,16 +180,16 @@ nonisolated enum PageWords {
 
     /// A fixture league with no rounds.
     static func noRoundsTitle(_ label: String) -> String { "No \(label) games listed" }
-    static func noRoundsText(_ label: String) -> String { "The sports feed has no rounds for \(label) at the moment." }
+    static func noRoundsText(_ label: String) -> String { "The scores feed has no rounds for \(label) at the moment." }
     /// An events league with nothing this week.
     static func emptyWeekTitle(_ label: String) -> String { "Nothing in \(label) this week" }
-    static let emptyWeekText = "Its next events show here once the sports feed lists them."
+    static let emptyWeekText = "Its next events show here once the scores feed lists them."
     /// Formula 1 with no weekend.
     static let noRaceTitle = "No race scheduled"
-    static let noRaceText = "The next race weekend shows here once the sports feed lists it."
+    static let noRaceText = "The next race weekend shows here once the scores feed lists it."
     /// Cricket with no match.
     static let noCricketTitle = "No cricket today or tomorrow"
-    static let noCricketText = "Matches show here once the sports feed lists them."
+    static let noCricketText = "Matches show here once the scores feed lists them."
 
     // MARK: TV Guide and Search
 
@@ -238,7 +240,7 @@ nonisolated enum PageWords {
 
     // MARK: Settings › Sport
 
-    static let sportSettingsFailed = PageFailure(reason: .couldNotLoad, title: "Your sports didn’t load",
+    static let sportSettingsFailed = PageFailure(reason: .couldNotLoad, title: "Your sport didn’t load",
                                                  message: "PigTV couldn’t get the sports you follow from your server.",
                                                  stillWorks: "Your other settings, the TV Guide and your recordings still work.")
     static let noSportsTitle = "No sports followed yet"

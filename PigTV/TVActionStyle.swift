@@ -24,14 +24,25 @@ private struct PigFocusSurface<S: InsettableShape>: ViewModifier {
             .pigTarget()
             .foregroundStyle(.primary)
             .background(drawSurface ? (focused ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
+            .modifier(PigOptionalContrastBorder(shape: shape, draws: drawSurface))
             .pigFocus(focused, in: shape, lift: lift)
         #else
         // Touch (keyboard focus on iPad): the look before brand 1.8, a pink ring inside the shape over the focus fill.
         content
             .foregroundStyle(.primary)
             .background(drawSurface ? (focused ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
+            .modifier(PigOptionalContrastBorder(shape: shape, draws: drawSurface))
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
         #endif
+    }
+}
+
+/// #280: the Control boundary border under Increase Contrast, on a surface the style draws (PigContrast.swift).
+private struct PigOptionalContrastBorder<S: InsettableShape>: ViewModifier {
+    var shape: S
+    var draws: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if draws { content.pigContrastBorder(shape) } else { content }
     }
 }
 
@@ -98,7 +109,7 @@ struct PigMenuRowStyle: ButtonStyle {
             .background(on ? PigFocus.fill : .clear, in: shape)
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
             .scaleEffect(focused ? 1.03 : 1)
-            .animation(.easeOut(duration: 0.12), value: focused)
+            .pigAnimation(value: focused, moves: true)
         #endif
     }
 }
@@ -126,7 +137,7 @@ struct PigPrimaryButtonStyle: ButtonStyle {
             #else
             .overlay { Capsule().strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigFocus.clearance).allowsHitTesting(false) }
             .scaleEffect(focused ? 1.04 : 1)
-            .animation(.easeOut(duration: 0.12), value: focused)
+            .pigAnimation(value: focused, moves: true)
             #endif
     }
 }
@@ -157,9 +168,9 @@ struct GuideFilterStyle: ButtonStyle {
             .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             .pigTarget()
             #if os(tvOS)
-            .background(focused ? PigFocus.fill : selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
+            .background(focused ? PigFocus.fill : selected ? Color.pigSelection : Color.pigRaised, in: Capsule())
             #else
-            .background(selected ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
+            .background(selected ? Color.pigSelection : Color.pigRaised, in: Capsule())
             #endif
             .overlay(alignment: .bottom) {
                 if selected {

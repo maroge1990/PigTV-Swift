@@ -66,6 +66,8 @@ struct PigTVApp: App {
         } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
                   DesignTestScreen.screens.contains(screen) {
             DesignTestScreen(screen: screen)
+        } else if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LAUNCH"] == "clear" {
+            Color.clear.onAppear { LaunchFixture.clear() }
         } else if ProcessInfo.processInfo.environment["PIGTV_SYNTHETIC_TESTS"] == "1" {
             Color.clear
         } else {
@@ -409,7 +411,7 @@ private struct DesignTestScreen: View {
                 SportChannelPicker(event: event, app: app, browse: browse, clock: now, play: { $0() })
             }
         case "unreachable":
-            UnreachableView(model: app, message: "This device cannot reach the server. Check that you are on the home network or that Tailscale is connected.")
+            UnreachableView(model: app, message: UserMessage.unreachable)
         default:
             OnboardingView(model: app)
         }

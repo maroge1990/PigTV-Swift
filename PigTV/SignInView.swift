@@ -32,6 +32,8 @@ struct OnboardingView: View {
     #if os(tvOS)
     @FocusState private var focus: SignInFocus?
     private enum SignInFocus: Hashable { case address, pair, password, username }
+    /// #49 (#280): the field a step change asked for, taken when that step appears (it waited 200 ms before).
+    @State private var pendingField = PendingUntil<SignInStep>()
     #endif
 
     /// #280: PIGTV_UI_TEST_SIGNIN_STEP=password opens on the password step (with PIGTV_UI_TEST_SIGNIN_ERROR=password, its
@@ -56,9 +58,9 @@ struct OnboardingView: View {
                         pairingCard(pairing)
                     } else {
                         switch current {
-                        case .server: serverStep
-                        case .method: serverChip; methodStep
-                        case .password: serverChip; passwordStep
+                        case .server: serverStep.onAppear { takeField(.server) }
+                        case .method: serverChip; methodStep.onAppear { takeField(.method) }
+                        case .password: serverChip; passwordStep.onAppear { takeField(.password) }
                         }
                     }
                 }
@@ -75,12 +77,17 @@ struct OnboardingView: View {
     private func go(_ next: SignInStep) {
         // #280: a note belongs to the attempt that made it; another step starts clean (what was typed stays).
         if !(model.canRestore && next == .method) { model.signInError = nil }
-        withAnimation(.easeOut(duration: 0.15)) { step = next }
         #if os(tvOS)
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(200))
-            focus = next == .server ? .address : next == .password ? .username : .pair
-        }
+        pendingField.request(next)
+        #endif
+        withAnimation(PigMotion.standard) { step = next }
+    }
+
+    /// The step that asked for its first field has appeared: its field takes focus (tvOS).
+    private func takeField(_ appeared: SignInStep) {
+        #if os(tvOS)
+        guard pendingField.take(when: appeared) else { return }
+        focus = appeared == .server ? .address : appeared == .password ? .username : .pair
         #endif
     }
 
@@ -158,7 +165,7 @@ struct OnboardingView: View {
             .accessibilityIdentifier("signin.server.change")
         }
         .padding(SignInMetrics.chipPadding)
-        .background(Color.pigAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .background(Color.pigSelection, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         .overlay(alignment: .leading) {
             Capsule().fill(Color.pigAccent).frame(width: 4, height: 28).padding(.leading, PigSpacing.xs).accessibilityHidden(true)
         }
@@ -339,7 +346,7 @@ private struct StepNumber: View {
     let number: Int
     let active: Bool
     var body: some View {
-        Text("\(number)").font(SignInType.stepNumber).monospacedDigit().fontDesign(.rounded)
+        Text("\(number)").font(SignInType.stepNumber).pigFigures()
             .foregroundStyle(active ? Color.pigOnAccent : Color.pigText)
             .frame(width: SignInMetrics.disc, height: SignInMetrics.disc)
             .background(active ? Color.pigAccent : Color.pigSurface, in: Circle())
@@ -357,7 +364,7 @@ private struct SignInTile: View {
             if recommended {
                 Text("RECOMMENDED").font(SignInType.badge).tracking(1)
                     .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
-                    .background(Color.pigCanvas.opacity(0.85), in: Capsule())
+                    .pigTranslucentBackground(Capsule())
                     .foregroundStyle(Color.pigAccentText)
             }
             Image(systemName: systemImage).font(SignInType.tileIcon).accessibilityHidden(true)
@@ -392,7 +399,7 @@ private struct SignInTileStyle: ButtonStyle {
             .overlay { shape.strokeBorder(focused ? Color.pigAccent : .clear, lineWidth: 3).padding(-PigFocus.clearance).allowsHitTesting(false) }
             .scaleEffect(focused ? 1.03 : configuration.isPressed ? 0.98 : 1)
             .opacity(enabled ? 1 : 0.5)
-            .animation(.easeOut(duration: 0.12), value: focused)
+            .pigAnimation(value: focused, moves: true)
             #endif
     }
 }

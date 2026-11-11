@@ -327,7 +327,7 @@ struct SportGameCard: View {
                 Text(team.name).font(SportCardMetrics.team).lineLimit(1)
                 Spacer(minLength: 6)
                 if let scores = drawn.scores, scores.indices.contains(index) {
-                    Text(scores[index]).font(SportCardMetrics.score).monospacedDigit()
+                    Text(scores[index]).font(SportCardMetrics.score).pigFigures()
                 }
             }
             .frame(height: 40)
@@ -359,7 +359,7 @@ struct SportGameCard: View {
             if live {
                 // #211: the card's clock is short ("Q4 0:17", "OT1 10:00"); the situation is the banner's.
                 Circle().fill(Color.pigDanger).frame(width: 10, height: 10).accessibilityHidden(true)
-                Text(SportFrontText.cardClock(game, in: front, hidden: hidden)).font(SportCardMetrics.detail.weight(.bold))
+                Text(SportFrontText.cardClock(game, in: front, hidden: hidden)).font(SportCardMetrics.detail.weight(.bold)).pigFigures()
                     .foregroundStyle(Color.pigDanger).lineLimit(1).pigMinimumScale(0.75, size: PigType.caption).layoutPriority(1)
             } else if game.terminal {
                 Text(drawn.status).font(SportCardMetrics.detail.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)

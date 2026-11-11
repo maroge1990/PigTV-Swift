@@ -248,16 +248,13 @@ struct ScheduledRowsPlaceholder: View {
     }
 }
 
-/// Settings › Sport: Hide scores and Score delay, the "Your sports" heading, then the sports' rows.
+/// Settings › Sport: Hide scores, the "Your sport" heading, then the sports' rows (#280: Score delay is one level down).
 struct SettingsSportPlaceholder: View {
     var body: some View {
         PigLoadingPage(identifier: "settings.sport.loading") {
             VStack(alignment: .leading, spacing: PigSpacing.s) {
                 #if os(tvOS)
-                HStack(spacing: PigSpacing.s) {
-                    PigPlaceholderBlock(height: SettingsSportMetrics.tileHeight)
-                    PigPlaceholderBlock(height: SettingsSportMetrics.tileHeight)
-                }
+                PigPlaceholderBlock(height: SettingsSportMetrics.tileHeight)
                 PigPlaceholderBar(width: 420, height: PigPlaceholderMetrics.title).padding(.vertical, PigSpacing.xs)
                 #endif
                 ForEach(0..<3, id: \.self) { _ in

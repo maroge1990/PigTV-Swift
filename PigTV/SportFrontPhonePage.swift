@@ -1,7 +1,7 @@
 import SwiftUI
 
 // D-44 (R5-Front-iPhone, Apple 139): the iPhone Sport front page. The header (the pig, "Sport", and whether scores
-// show); a 212 pt carousel of the follows, one card each in the order sent, swiped sideways with its dots and "1 of 10
+// show); a carousel (each card at least 212 pt, as tall as its content) of the follows, one card each in the order sent, swiped sideways with its dots and "1 of 10
 // follows" (Watch or Remind me, and Record every game, on the card); then one card per sport under its "Football ›"
 // header, which opens the sport's page, each game a fixture row (`SportFixtureRow`). Pressing a row plays it while its
 // channel airs it, else opens its details; a long press offers its RECORD section. The words come from
@@ -10,7 +10,10 @@ import SwiftUI
 #if os(iOS)
 enum SportPhoneMetrics {
     static let cardWidth: CGFloat = 330
-    static let cardHeight: CGFloat = 212
+    /// #280 (Mark, 10 Nov): the follow card's height in the design, now its minimum: a card grows with its content (two-line
+    /// names on both sides, larger text) and every card in the row is as tall as the tallest. A fixed 212 pt pushed
+    /// Remind me and Record below the card.
+    static let cardMinHeight: CGFloat = 212
     static let heroBadge: CGFloat = 48
     /// #254: the hero card's score column between the two names (a longer score takes a smaller size).
     static let heroScoreWidth: CGFloat = 100
@@ -27,6 +30,7 @@ struct SportFrontPhonePage: View {
     /// The preferences every sport page shares: unknown counts as spoiler-free (#192).
     @ObservedObject private var f1: F1PageModel
     @StateObject private var flow = SportRecordFlow()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// #264: how far the page has scrolled, and the carousel's height: past it, the hero shows as the strip.
     @State private var scrolled: CGFloat = 0
     @State private var carouselHeight: CGFloat = 0
@@ -61,14 +65,14 @@ struct SportFrontPhonePage: View {
                 VStack(alignment: .leading, spacing: SportHeroStripMetrics.gap) {
                     if stripShows, let front = model.front {
                         SportHeroStripView(strip: strip(front, now: now)) {
-                            withAnimation { reader.scrollTo(Self.carouselID, anchor: .top) }
+                            pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { reader.scrollTo(Self.carouselID, anchor: .top) }
                         }
                         .padding(.horizontal, SportPhoneMetrics.edge)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .pigSlide(from: .top)
                     }
                     page(now: now)
                 }
-                .animation(.easeOut(duration: 0.2), value: stripShows)
+                .pigAnimation(value: stripShows, moves: true)
             }
         }
     }
@@ -84,7 +88,7 @@ struct SportFrontPhonePage: View {
     private func strip(_ front: SportFront, now: Date) -> SportHeroStrip {
         let words = model.heroGame.map { SportFrontLayout.hero($0, in: front, hidden: hidden, now: now, labels: model.labels) }
             ?? SportBannerHero(kicker: "YOUR SPORTS", live: false, title: "Nothing on right now",
-                               line: "Your sports' next games are below.")
+                               line: "The next games you follow are below.")
         return SportHeroStrip(hero: words, items: SportFrontLayout.followItems(front, now: now), selected: model.heroFollowIndex)
     }
 
@@ -155,7 +159,7 @@ struct SportFrontPhonePage: View {
                 .padding(.horizontal, PigSpacing.xs)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .pigPressable()
             .accessibilityLabel("\(group.sport), \(group.note), open its page")
             .accessibilityIdentifier("sport.rail.header.\(group.sport)")
             SportPhoneRowsCard(app: app, browse: browse, flow: flow, front: front, rows: group.rows, identifier: "sport.front.game")
@@ -185,7 +189,7 @@ struct SportFrontPhonePage: View {
                                 .padding(.horizontal, PigSpacing.l).frame(minHeight: 36)
                                 .background(Color.pigRaised, in: Capsule())
                             }
-                            .buttonStyle(.plain)
+                            .pigPressable()
                             .accessibilityIdentifier("sport.also.\(sport)")
                         }
                     }
@@ -214,28 +218,31 @@ struct SportFixtureRow: View {
                     SportBadge(name: row.sides[1].name, logo: row.sides[1].logo, league: row.league, client: client,
                                size: SportPhoneMetrics.rowBadge)
                 } else {
+                    // #280: 11 pt letters (they were 9): the badge widens to hold them rather than cut them off.
                     Text(row.badge ?? "").font(.system(size: PigType.micro, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
-                        .frame(width: SportPhoneMetrics.rowBadge, height: SportPhoneMetrics.rowBadge)
-                        .background(Color(teamHex: SportFrontText.leagueColor(row.league)) ?? Color.pigDanger,
+                        .lineLimit(1).fixedSize()
+                        .padding(.horizontal, PigSpacing.xxs)
+                        .frame(minWidth: SportPhoneMetrics.rowBadge, minHeight: SportPhoneMetrics.rowBadge)
+                        .background(Color(SportFrontText.leagueColorName(row.league)),
                                     in: RoundedRectangle(cornerRadius: PigRadius.inner, style: .continuous))
                         .accessibilityHidden(true)
                     Text(row.title).font(.subheadline.weight(.bold)).lineLimit(1)
                 }
                 Spacer(minLength: 10)
                 if let score = row.shortScore ?? row.score {
-                    Text(score).font(.system(.subheadline, design: .rounded).weight(.heavy)).monospacedDigit().lineLimit(1)
+                    Text(score).font(.system(.subheadline, design: .rounded).weight(.heavy)).pigFigures().lineLimit(1)
                         .fixedSize()
                 }
             }
             HStack(spacing: PigSpacing.s) {
                 if let live = row.live {
-                    Text("● \(live)").font(.caption.weight(.bold)).foregroundStyle(Color.pigDanger).monospacedDigit()
+                    Text("● \(live)").font(.caption.weight(.bold)).foregroundStyle(Color.pigDanger).pigFigures()
                         .fixedSize()
                     if !row.sub.isEmpty { Text("·") }
                 }
                 Text(row.sub).lineLimit(1)
             }
-            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            .font(.caption).foregroundStyle(.secondary).pigFigures()
             .padding(.leading, PigSpacing.section)
         }
         .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)

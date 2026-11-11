@@ -227,7 +227,7 @@ struct SportFixtureContent: View {
                         }
                         Spacer(minLength: 6)
                         // #228: a score is always drawn whole; the name and record give way
-                        if let score = side.score { Text(score).font(SportPageMetrics.score).monospacedDigit().fixedSize().layoutPriority(1) }
+                        if let score = side.score { Text(score).font(SportPageMetrics.score).pigFigures().fixedSize().layoutPriority(1) }
                     }
                 }
                 if let situation = game.situation {
@@ -290,7 +290,7 @@ struct SportFixtureContent: View {
             }
             if hidesSpoilers {
                 SportListCard(title: "Standings hidden", identifier: "sport.fixture.standings.hidden") {
-                    SportHiddenNote(title: "", text: "Records, positions and points reveal results while spoiler-free is on.", minHeight: 160)
+                    SportHiddenNote(title: "", text: "Records, positions and points reveal results while Hide scores is on.", minHeight: 160)
                 }
             } else if let shown {
                 let groups = FixtureText.groups(shown)
@@ -319,7 +319,7 @@ struct SportFixtureContent: View {
         VStack(spacing: PigSpacing.xxs) {
             ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
                 HStack(spacing: narrow ? PigSpacing.xs : SportFixtureMetrics.table.spacing) {
-                    Text(String(row.rank ?? index + 1)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).monospacedDigit()
+                    Text(String(row.rank ?? index + 1)).font(SportPageMetrics.rowPos).foregroundStyle(.secondary).pigFigures()
                         .frame(minWidth: narrow ? 20 : SportFixtureMetrics.table.rankWidth, alignment: .trailing)
                     SportBadge(name: row.name, logo: row.logo, league: leagueName, client: browse.client,
                                size: narrow ? 20 : SportFixtureMetrics.table.badge)
@@ -329,7 +329,7 @@ struct SportFixtureContent: View {
                     Spacer(minLength: 4)
                     ForEach(Array(row.values.enumerated()), id: \.offset) { _, value in
                         // #211: a value is drawn whole ("4-2-1", "137.2"); the team's name gives way.
-                        Text(value ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit().lineLimit(1).fixedSize()
+                        Text(value ?? "–").font(SportPageMetrics.rowDetail).pigFigures().lineLimit(1).fixedSize()
                             .frame(minWidth: narrow ? 26 : SportFixtureMetrics.table.valueWidth, alignment: .trailing)
                     }
                 }

@@ -285,8 +285,11 @@ final class PageStatesTests: XCTestCase {
             XCTAssertNotNil(failure, "\(error)")
             if let failure {
                 assertPlain(failure)
-                XCTAssertFalse("\(failure.title) \(failure.check)".contains(error.localizedDescription),
-                               "never the system's text: \(error)")
+                // #280 (206): a PigTVError's own description is the app's plain words now, so only the system's errors count.
+                if !(error is PigTVError) {
+                    XCTAssertFalse("\(failure.title) \(failure.check)".contains(error.localizedDescription),
+                                   "never the system's text: \(error)")
+                }
             }
         }
         XCTAssertNil(SignInFailure.of(CancellationError(), step: .server), "a cancelled request is not a failure")

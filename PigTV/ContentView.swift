@@ -4,7 +4,13 @@ import AVKit
 struct ContentView: View {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
-    @State private var initialRestoreFinished = false
+    /// Brand 1.8 §8 (#280): the splash shows only while a saved sign-in is being restored; with none the app opens on
+    /// sign-in at once.
+    @State private var initialRestoreFinished: Bool
+
+    init() {
+        _initialRestoreFinished = State(initialValue: LaunchStep.current() == .firstScreen)
+    }
     // Appearance is owned here (a View), not in the App/Scene: an @AppStorage
     // change re-renders a View immediately, where the Scene-level modifier only
     // took effect after a relaunch.
@@ -58,13 +64,14 @@ struct ContentView: View {
             else { OnboardingView(model: model).tint(Color("AccentColor")) }
         }
         // The splash never holds the app back: when start-up finishes it fades out at once.
-        .animation(.easeOut(duration: 0.25), value: initialRestoreFinished)
+        .animation(PigMotion.standard, value: initialRestoreFinished)
         #if os(tvOS)
         .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .task {
             // This is a cold-launch handoff only. It has no arbitrary minimum
             // duration and is not replayed when the app returns to foreground.
+            // With no saved sign-in there was no splash (LaunchStep), and this returns at once.
             await model.restore()
             initialRestoreFinished = true
         }
@@ -123,7 +130,7 @@ struct ProviderReminderBanner: View {
             .frame(maxWidth: 1100)
             .reminderBackground()
             .padding(.top, bannerTop).padding(.horizontal, PigSpacing.m)
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .pigSlide(from: .top)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("providerReminder")
             #if os(tvOS)
@@ -162,6 +169,8 @@ private struct LaunchLoadingView: View {
 /// The next automatic retry of the Offline screen (pure, `OfflineRetryTests`): every 20 seconds from the last attempt.
 nonisolated enum RetryCountdown {
     static let period: TimeInterval = 20
+    /// The ring advances once a second (its clock, not a transition).
+    static let tick: TimeInterval = 1
 
     /// Whole seconds until the next attempt (20 … 0).
     static func remaining(from start: Date, now: Date) -> Int {
@@ -199,7 +208,7 @@ struct UnreachableView: View {
                             Text("Can’t reach PigTV").font(OfflineType.title).multilineTextAlignment(.center)
                                 .accessibilityAddTraits(.isHeader)
                             Text(model.authBusy ? "Trying again…" : RetryCountdown.text(RetryCountdown.remaining(from: started, now: context.date)))
-                                .font(OfflineType.countdown).monospacedDigit().fontDesign(.rounded)
+                                .font(OfflineType.countdown).pigFigures()
                                 .foregroundStyle(Color.pigSecondary)
                                 .accessibilityIdentifier("offline.countdown")
                         }
@@ -225,7 +234,7 @@ struct UnreachableView: View {
 
     @ViewBuilder
     private var actions: some View {
-        let tryNow = Button("Try now", systemImage: "arrow.clockwise") { Task { await attempt() } }
+        let tryNow = Button(PageWords.tryAgain, systemImage: "arrow.clockwise") { Task { await attempt() } }
             .pigPrimaryButton()
             .disabled(model.authBusy)
             .accessibilityIdentifier("offline.tryNow")
@@ -269,7 +278,7 @@ struct RetryRing: View {
             Circle().trim(from: 0, to: fraction)
                 .stroke(Color.pigAccent, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(reduceMotion ? nil : .linear(duration: 1), value: fraction)
+                .animation(reduceMotion ? nil : .linear(duration: RetryCountdown.tick), value: fraction) // motion: the countdown's clock, not a transition
             PigBrandMark(width: mark, height: mark * 797 / 1000)
         }
         .frame(width: ring, height: ring)
@@ -387,17 +396,17 @@ struct PlayerScreen: View {
                     Text("Unable to play \(playback.channel.name)").font(.title2)
                     Text(error)
                     if playback.canRetry {
-                        Button("Retry") { playback.retry() }.pigPrimaryButton().playerStateFocus($stateFocus)
-                        Button("Back to channels") { dismiss() }
+                        Button(PageWords.tryAgain) { playback.retry() }.pigPrimaryButton().playerStateFocus($stateFocus)
+                        Button(PageWords.closePlayer) { dismiss() }
                     } else {
-                        Button("Back to channels") { dismiss() }.playerStateFocus($stateFocus)
+                        Button(PageWords.closePlayer) { dismiss() }.playerStateFocus($stateFocus)
                     }
                 }.padding(PigSpacing.section).foregroundStyle(Color.pigMediaText)
             } else if playback.reconnecting {
                 // Build 29: the tuning card on iOS too.
                 VStack(spacing: PigSpacing.l) {
                     TuningCard(playback: playback, browse: app.browse, message: "Reconnecting…")
-                    Button("Back to guide") { dismiss() }.playerStateFocus($stateFocus)
+                    Button(PageWords.closePlayer) { dismiss() }.playerStateFocus($stateFocus)
                 }
                 .environment(\.colorScheme, .dark)
                 #if os(tvOS)
@@ -422,7 +431,7 @@ struct PlayerScreen: View {
                             Color.pigMediaCanvas.ignoresSafeArea()
                             VStack(spacing: PigSpacing.l) {
                                 TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
-                                Button("Cancel") { dismiss() }.playerStateFocus($stateFocus)
+                                Button(PageWords.closePlayer) { dismiss() }.playerStateFocus($stateFocus)
                             }
                         }
                         #if os(tvOS)
@@ -436,7 +445,7 @@ struct PlayerScreen: View {
             } else {
                 VStack(spacing: PigSpacing.l) {
                     TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
-                    Button("Cancel") { dismiss() }.playerStateFocus($stateFocus)
+                    Button(PageWords.closePlayer) { dismiss() }.playerStateFocus($stateFocus)
                 }
                 .environment(\.colorScheme, .dark)
                 #if os(tvOS)
@@ -565,11 +574,11 @@ struct PlayerScreen: View {
             }
             if showingGuide && sizeClass == .regular {
                 PlayerSidePanel(app: app) { showingGuide = false; lastInput = Date() }
-                    .transition(.move(edge: .leading))
+                    .pigSlide(from: .leading)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: chromeVisible)
-        .animation(.easeInOut(duration: 0.22), value: showingGuide)
+        .pigAnimation(value: chromeVisible)
+        .pigAnimation(value: showingGuide, moves: true)
         .task(id: lastInput) {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }

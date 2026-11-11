@@ -258,7 +258,7 @@ struct CricketPageView: View {
                             ForEach(Array(board.rows[index].enumerated()), id: \.offset) { column, text in
                                 Text(text ?? "").font(column == board.rows[index].count - 1 ? CricketMetrics.detail : CricketMetrics.score)
                                     .foregroundStyle(column == board.rows[index].count - 1 ? Color.secondary : Color.primary)
-                                    .monospacedDigit().lineLimit(1).frame(width: compact ? 62 : 150, alignment: .trailing)
+                                    .pigFigures().lineLimit(1).frame(width: compact ? 62 : 150, alignment: .trailing)
                             }
                         }
                         .accessibilityElement(children: .combine)
@@ -272,7 +272,7 @@ struct CricketPageView: View {
             }
             Divider().overlay(Color.pigBorder)
             if spoilerFree {
-                Label("Scores hidden · spoiler-free is on", systemImage: "eye.slash").font(CricketMetrics.detail)
+                Label("Scores hidden", systemImage: "eye.slash").font(CricketMetrics.detail)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("cricket.lead.hidden")
             } else if lead.summary != nil || lead.crease != nil {
@@ -314,13 +314,13 @@ struct CricketPageView: View {
                     .accessibilityIdentifier("cricket.following")
             }
             Button { Task { await preferences.setSpoilerFree(!preferences.preferences.spoilerFree) } } label: {
-                Label(preferences.preferences.spoilerFree ? "Spoiler-free on" : "Scores shown",
+                Label(preferences.preferences.spoilerFree ? "Scores hidden" : "Scores shown",
                       systemImage: preferences.preferences.spoilerFree ? "eye.slash" : "eye")
                     .font(CricketMetrics.chip).lineLimit(1)
             }
             .buttonStyle(GuideFilterStyle(selected: preferences.preferences.spoilerFree))
             .disabled(!preferences.preferencesKnown)
-            .accessibilityLabel(preferences.preferences.spoilerFree ? "Spoiler-free is on" : "Scores are shown")
+            .accessibilityLabel(preferences.preferences.spoilerFree ? "Scores are hidden" : "Scores are shown")
             .accessibilityHint("Changes it for every device")
             .accessibilityIdentifier("cricket.spoilers")
         }
@@ -382,7 +382,7 @@ struct CricketPageView: View {
                             Text(note).font(CricketMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
                         }
                         if let score = CricketPageText.innings(list) {
-                            Text(score).font(CricketMetrics.score).monospacedDigit().lineLimit(1)
+                            Text(score).font(CricketMetrics.score).pigFigures().lineLimit(1)
                                 .accessibilityIdentifier("cricket.lead.score.\(index)")
                         }
                     }
@@ -392,7 +392,7 @@ struct CricketPageView: View {
             }
             Divider().overlay(Color.pigBorder)
             if spoilerFree {
-                Label("Scores hidden · spoiler-free is on", systemImage: "eye.slash").font(CricketMetrics.detail)
+                Label("Scores hidden", systemImage: "eye.slash").font(CricketMetrics.detail)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("cricket.lead.hidden")
             } else if lead.summary != nil || lead.crease != nil {
@@ -417,7 +417,7 @@ struct CricketPageView: View {
                 HStack(spacing: PigSpacing.s) {
                     ForEach(lead.days) { day in
                         VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                            Text("Day \(day.number)").font(CricketMetrics.dayLabel)
+                            Text("Day \(day.number)").font(CricketMetrics.dayLabel).pigFigures()
                             Text(CricketPageText.daySub(day, lead: lead, now: now)).font(CricketMetrics.daySub)
                                 .foregroundStyle(day.state == .live ? Color.pigOnStatus : Color.secondary).lineLimit(1)
                         }
@@ -593,7 +593,7 @@ struct CricketPageView: View {
                         Text(team.name).font(CricketMetrics.otherTeam).lineLimit(1)
                         Spacer(minLength: 6)
                         if index < other.scores.count, let score = other.scores[index] {
-                            Text(score).font(CricketMetrics.otherScore).monospacedDigit().lineLimit(1)
+                            Text(score).font(CricketMetrics.otherScore).pigFigures().lineLimit(1)
                         }
                     }
                 }

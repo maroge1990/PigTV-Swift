@@ -416,7 +416,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
                     reconnecting = true
                     retryAfter = max(delay, wait)
                 } else {
-                    self.error = hasPlayed ? "The stream ended. \(error.localizedDescription)" : error.localizedDescription
+                    let words = UserMessage.text(for: error, otherwise: "This channel couldn’t start. Try again in a moment.")
+                    self.error = hasPlayed ? "The stream ended. \(words)" : words
                     canRetry = true
                 }
                 // Keep the session ID if cleanup fails so Retry/stop can retry release.
@@ -565,7 +566,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
         } else if state == "player-recording-prompt" {
             recordingPrompt = RecordingPrompt(scheduleId: 90, title: "Coastal stories", channelName: "Documentary", startsAt: Date().timeIntervalSince1970 * 1000, programEnd: Date().addingTimeInterval(1800).timeIntervalSince1970 * 1000)
         } else if state == "player-error" {
-            error = "The local review stream is unavailable. Try again or return to channels."
+            error = "The local review stream is unavailable. Try again, or close the player."
             canRetry = true
         } else if state == "player-starting" {
             // #132: an installed player that has not shown a picture yet (the tuning card covers it).
@@ -833,7 +834,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             scheduleRecovery(after: delay, session: failedSession)
         } else {
             reconnecting = false
-            error = hasPlayed ? "The stream ended. Try again to reconnect." : "Playback could not start. \(detail)"
+            error = hasPlayed ? "The stream ended. Try again to reconnect." : "This channel couldn’t start playing. Try again, or choose another channel."
             canRetry = true
         }
     }
@@ -985,7 +986,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             codes.append("\(domain) \(value.code)")
             current = value.userInfo[NSUnderlyingErrorKey] as? NSError
         }
-        return codes.isEmpty ? "No player error code supplied." : codes.joined(separator: " → ")
+        return codes.isEmpty ? "No player codes supplied." : codes.joined(separator: " → ")
     }
 
     func confirmRecordingStop() {
@@ -1017,7 +1018,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 pendingDeclines.remove(id)
                 coordinationWarning = nil
             } catch {
-                if !ended { coordinationWarning = "Could not confirm your choice with the server. Retrying…" }
+                if !ended { coordinationWarning = "Your choice isn’t confirmed with the server yet. Trying again…" }
             }
         }
     }

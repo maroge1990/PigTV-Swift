@@ -441,7 +441,7 @@ struct RecordPage: View {
                     .accessibilityAddTraits(.isHeader)
                 if let airing {
                     Text("\(DetailText.day(airing.programme.start, now: now)) · \(airing.programme.timeRange) · \(airing.channel.name)")
-                        .font(Metrics.meta).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
+                        .font(Metrics.meta).foregroundStyle(Color.pigSecondary).pigFigures()
                         .lineLimit(2)
                 }
             }
@@ -468,7 +468,7 @@ struct RecordPage: View {
                         VStack(alignment: .leading, spacing: PigSpacing.xs) {
                             Text(label.title).font(Metrics.choice).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             Text(label.detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).lineLimit(2)
-                                .monospacedDigit()
+                                .pigFigures()
                         }
                         .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.m)
                         .frame(maxWidth: .infinity, minHeight: Metrics.choiceHeight, alignment: .leading)
@@ -518,7 +518,7 @@ struct RecordPage: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(lines.title).font(Metrics.choice)
-                    Text(lines.detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).monospacedDigit()
+                    Text(lines.detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures()
                 }
                 Spacer(minLength: 0)
             }
@@ -539,7 +539,7 @@ struct RecordPage: View {
         #if os(tvOS)
         let chips = ForEach(options, id: \.self) { minutes in
             Button { selection.wrappedValue = minutes } label: {
-                Text(RecordPlan.chipTitle(minutes)).lineLimit(1).fixedSize().monospacedDigit()
+                Text(RecordPlan.chipTitle(minutes)).lineLimit(1).fixedSize().pigFigures()
             }
             .buttonStyle(GuideFilterStyle(selected: selection.wrappedValue == minutes))
             .disabled(locked)
@@ -570,7 +570,7 @@ struct RecordPage: View {
                     }
                 } label: {
                     HStack(spacing: PigSpacing.xs) {
-                        Text(RecordPlan.chipTitle(selection.wrappedValue)).monospacedDigit()
+                        Text(RecordPlan.chipTitle(selection.wrappedValue)).pigFigures()
                         Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold))
                     }
                     .font(Metrics.rowLabel)
@@ -608,7 +608,7 @@ struct RecordPage: View {
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                             Text(option.channel.name).font(Metrics.choice).lineLimit(1)
-                            Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).monospacedDigit().lineLimit(1)
+                            Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
                         }
                         Spacer(minLength: 0)
                         if let quality = option.quality {
@@ -728,7 +728,7 @@ struct RecordPage: View {
         let on: Bool
         func body(content: Content) -> some View {
             content
-                .background(on ? Color.pigAccent.opacity(0.14) : .clear,
+                .background(on ? Color.pigSelection : .clear,
                             in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
                 .overlay(alignment: .leading) {
                     if on {

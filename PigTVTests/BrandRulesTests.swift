@@ -309,6 +309,73 @@ final class BrandRulesTests: XCTestCase {
         }
     }
 
+    // Brand 1.8 §16 (maroge1990/PigTV#280): on iPhone and iPad no text is under 11 pt and a control is at least 44 pt to
+    // touch. Before Apple 206 a league badge's letters were 9 pt on the iPhone front page, the iPhone Sport pages' "‹ Back"
+    // was about 20 pt high, the iPhone landscape guide's icon buttons were `.controlSize(.small)` (about 28 pt), and the
+    // iPhone follow card had a fixed 212 pt height that pushed Remind me and Record out of it (Mark's report, 10 Nov).
+    func testTouchTextAndTargetsMeetTheMinimums() throws {
+        let files = try sourceFiles()
+        var found: [Line] = []
+        let roles = try XCTUnwrap(files.first { $0.file == Self.rolesFile })
+        let touchRoles = SourceFile(file: roles.file, code: Self.touchCode(roles.code))
+        let typeBlock = try XCTUnwrap(Self.block(after: #"enum\s+PigType\b"#, in: touchRoles.code), "PigType was not found")
+        let sizes = Self.sizeConstants(in: typeBlock.body).filter { $0.name != "minimum" }
+        XCTAssertGreaterThan(sizes.count, 8, "PigType's touch roles were not read")
+        found += sizes.filter { $0.value < 11 }.map { touchRoles.line(typeBlock.offset + $0.offset) }
+        let target = Self.sizeConstants(in: Self.block(after: #"enum\s+PigTouch\b"#, in: roles.code)?.body ?? "")
+        XCTAssertGreaterThanOrEqual(target.first { $0.name == "minTarget" }?.value ?? 0, 44, "PigTouch.minTarget")
+        for file in files {
+            let touch = SourceFile(file: file.file, code: Self.touchCode(file.code))
+            found += Self.uiFontSizes(in: touch.code).filter { $0.value < 11 }.map { touch.line($0.offset) }
+            // a small control (a ProgressView may be small: it is not a target)
+            found += Self.offsets(of: #"\.controlSize\(\.(small|mini)\)"#, in: touch.code).map { touch.line($0) }
+                .filter { !$0.text.contains("ProgressView") }
+        }
+        // The follow card sizes by its content, and the sport page's back control carries the touch minimum.
+        for name in ["SportPhonePage.swift", "SportFrontPhonePage.swift"] {
+            let file = try XCTUnwrap(files.first { $0.file == name })
+            found += Self.offsets(of: #"height:\s*SportPhoneMetrics\.card"#, in: file.code).map { file.line($0) }
+        }
+        let page = try XCTUnwrap(files.first { $0.file == "SportPhonePage.swift" })
+        let header = try XCTUnwrap(Self.block(after: #"struct\s+SportPhonePageHeader\b"#, in: page.code))
+        if !header.body.contains(".pigTouchTarget(") { found.append(page.line(header.offset)) }
+        report(found, "touch text under 11 pt or a target under 44 pt (use PigType's roles, .pigTouchTarget(), a regular or large control)")
+    }
+
+    /// The code compiled for iOS (the mirror of `tvOSCode`).
+    static func touchCode(_ text: String) -> String {
+        var stack: [(active: Bool, iosTaken: Bool, osGroup: Bool)] = []
+        func iosCondition(_ condition: String) -> (active: Bool, isOS: Bool, ios: Bool) {
+            let c = condition.replacingOccurrences(of: " ", with: "")
+            if c == "os(iOS)" || c == "!os(tvOS)" { return (true, true, true) }
+            if c == "os(tvOS)" || c == "!os(iOS)" { return (false, true, false) }
+            return (true, false, false)
+        }
+        var out: [String] = []
+        for raw in text.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#if ") || line == "#if" {
+                let t = iosCondition(String(line.dropFirst(3)))
+                stack.append((t.active, t.ios, t.isOS)); out.append(""); continue
+            }
+            if line.hasPrefix("#elseif"), let top = stack.popLast() {
+                let t = iosCondition(String(line.dropFirst(7)))
+                stack.append((!top.iosTaken && t.active, top.iosTaken || t.ios, top.osGroup || t.isOS)); out.append(""); continue
+            }
+            if line.hasPrefix("#else"), let top = stack.popLast() {
+                stack.append((top.osGroup ? !top.iosTaken : true, top.iosTaken, top.osGroup)); out.append(""); continue
+            }
+            if line.hasPrefix("#endif") { _ = stack.popLast(); out.append(""); continue }
+            out.append(stack.allSatisfy(\.active) ? raw : "")
+        }
+        return out.joined(separator: "\n")
+    }
+
+    func testTouchCodeParser() {
+        let ios = Self.touchCode("a\n#if os(tvOS)\nb\n#else\nc\n#endif\n#if os(iOS)\nd\n#elseif os(tvOS)\ne\n#endif\n#if !os(tvOS)\nf\n#endif")
+        XCTAssertEqual(ios.components(separatedBy: "\n").filter { !$0.isEmpty }, ["a", "c", "d", "f"])
+    }
+
     /// The literal sizes in UIKit `ofSize:` arguments.
     static func uiFontSizes(in text: String) -> [(value: Double, offset: Int)] {
         let regex = try! NSRegularExpression(pattern: #"ofSize:\s*([0-9]+(?:\.[0-9]+)?)\b"#)
@@ -342,6 +409,136 @@ final class BrandRulesTests: XCTestCase {
         report(lines.filter { $0.text.contains("Welcome to PigTV") }, "a second tagline (SignInMetrics.welcome is one line)")
         report(lines.filter { matches(#"textFieldStyle\(\.roundedBorder\)"#, $0.text) }, "the system's rounded field (use .pigField())")
         report(lines.filter { $0.text.contains("and on Home") }, "Home is gone (D-44)")
+    }
+
+    /// Words that must not come back (brand 1.8 §14, maroge1990/PigTV#280), each with the one name used instead. Read in
+    /// the app's string literals; identifiers and keys ("settings.sport.spoilerFree", "Retry-After") do not match.
+    static let bannedWords: [(pattern: String, rule: String)] = [
+        (#"\bRetry(?!-After)\b|\b[Rr]etrying\b|\bTry now\b"#, "the retry action is \"Try again\""),
+        (#"[Ss]poiler-free|\bSpoiler"#, "hiding scores is \"Hide scores\" (Settings' name), its state \"Scores hidden\""),
+        (#"Back to (channels|guide)|\b[Rr]eturn to (channels|your library)"#, "leaving a player is \"Close player\""),
+        (#"^Your sports\b"#, "the Settings section is \"Your sport\", as on the web"),
+        (#"[Ll]ive scores|[Ss]ports feed"#, "the scores source is \"the scores feed\", as on the web"),
+        (#"[Tt]ailscale|[Pp]rovider stream"#, "a network product or a stream is not a household word: say what to do"),
+        (#"HTTP \\\(|\\\(status\)|\bOSStatus|Keychain|[Ee]rror code|credentials"#, "no status, code or system name on screen"),
+        (#"Settings → Sports|\bFavorite|\bfavorite\b"#, "Settings › Sport and favourite, as on the web"),
+        (#"[A-Za-z]!(\s|$)"#, "no exclamation marks"),
+    ]
+
+    /// The string literals on a line of code (an interpolation's own quotes split it, which only shortens what is read).
+    static func stringLiterals(in code: String) -> [String] {
+        let regex = try! NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#)
+        return regex.matches(in: code, range: NSRange(code.startIndex..., in: code)).compactMap {
+            Range($0.range(at: 1), in: code).map { String(code[$0]) }
+        }
+    }
+
+    // Brand 1.8 §14 (maroge1990/PigTV#280): one name per thing on every platform, sentence case, no exclamation marks, and
+    // no status, code or system text on screen. Before Apple 206 the app said Retry, Try now and Try again; Spoiler-free
+    // beside Hide scores; Back to channels, Back to guide, Back and Cancel to leave a player; "Live scores" and "sports
+    // feed"; Tailscale and "the provider stream"; "HTTP 500", Keychain statuses, and the system's description of any error.
+    func testOneNamePerThingAndNoCodesOnScreen() throws {
+        let lines = try sourceLines()
+        var found: [Line] = []
+        for line in lines {
+            for literal in Self.stringLiterals(in: line.text) {
+                for banned in Self.bannedWords where matches(banned.pattern, literal) {
+                    found.append(Line(file: line.file, number: line.number, text: "\(banned.rule): \"\(literal)\""))
+                }
+            }
+        }
+        report(found, "a banned word in the app's text")
+        report(lines.filter { matches(#"\.localizedDescription\b"#, $0.text) },
+               "the system's description of an error reaches the screen (use UserMessage.text(for:otherwise:))")
+    }
+
+    func testBannedWordsParser() {
+        XCTAssertEqual(Self.stringLiterals(in: #"Button("Retry") { f("a \"b\" c") }"#), ["Retry", #"a \"b\" c"#])
+        let hits = { (text: String) in Self.bannedWords.filter { self.matches($0.pattern, text) }.count }
+        for bad in ["Retry", "Try now", "Spoiler-free on", "Scores hidden · spoiler-free is on", "Back to channels",
+                    "Your sports", "Live scores are not available", "the sports feed", "Tailscale is connected",
+                    "the provider stream", "The server returned HTTP \\(status).", "from Keychain (\\(status))", "Done!"] {
+            XCTAssertGreaterThan(hits(bad), 0, bad)
+        }
+        for fine in ["Try again", "Retry-After", "settings.sport.spoilerFree", "Close player", "Hide scores", "Scores hidden",
+                     "Your sport", "the scores feed", "Also in your sports", "a != b", "Back to Sport"] {
+            XCTAssertEqual(hits(fine), 0, fine)
+        }
+    }
+
+    /// Figures a person reads (brand §14, #190, #280): each place one is drawn, with how many lines after it may carry
+    /// `.pigFigures()` (a modifier on the stack around it counts).
+    static let figureSites: [(file: String, needle: String, within: Int)] = [
+        ("CustomPlayer.swift", "Text(now.formatted(", 1), ("CustomPlayer.swift", "Text(programme?.start.formatted(", 1),
+        ("CustomPlayer.swift", "behind live\")", 1), ("PlayerExtras.swift", "Text(now.formatted(", 2),
+        ("RecordingPlayer.swift", "Text(RecordingTimeline.clock(", 7), ("RecordingTouchChrome.swift", "Text(RecordingTimeline.clock(", 2),
+        ("RecordingTouchChrome.swift", "Text(\"−\" + RecordingTimeline.clock(", 2),
+        ("SportGameCard.swift", "Text(scores[index])", 1), ("SportGameCard.swift", "Text(SportFrontText.cardClock(", 1),
+        ("SportFrontPhonePage.swift", "Text(score)", 1), ("SportPhonePage.swift", "Text(score)", 1),
+        ("CricketPageView.swift", "Text(score)", 1), ("SportFixtureView.swift", "Text(score)", 1),
+        ("SportEventsViews.swift", "Text(games)", 1), ("SportEventsViews.swift", "Text(toPar)", 1),
+        ("SportMotorViews.swift", "Text(points)", 1), ("SportMotorViews.swift", "Text(String(row.pos))", 1),
+        ("DetailComponents.swift", "Text(verbatim: number)", 1), ("OnNowList.swift", "Text(programme.timeRange)", 1),
+        ("ContentView.swift", "RetryCountdown.text(", 2), ("PageStateViews.swift", "Text(countdown(", 2),
+        ("RecordPage.swift", "Text(RecordPlan.chipTitle(selection", 1), ("RecordPage.swift", "chipTitle(minutes)).lineLimit", 1),
+        ("GuideChrome.swift", "Text(times)", 1), ("SportFollowSettingsView.swift", "Text(seconds.map(ScoreDelay.text)", 1),
+        ("ScheduledPage.swift", "Text(item.start.formatted(", 4), ("DetailScreens.swift", "Text(programme.durationText)", 1),
+        ("SignInView.swift", "Text(\"\\(number)\")", 1),
+    ]
+
+    // Brand §5 and §14 (maroge1990/PigTV#190, #280): every figure is set in rounded tabular numerals through one helper
+    // (`pigFigures()`, PigBrandRoles.swift). Before Apple 206, 37 of 71 figure sites had tabular digits without the
+    // rounded design, and the live player's clock had neither.
+    func testFiguresUseRoundedTabularNumeralsThroughOneHelper() throws {
+        let lines = try sourceLines()
+        report(lines.filter { $0.file != Self.rolesFile && matches(#"\.monospacedDigit\(\)|fontDesign\(\.rounded\)"#, $0.text) },
+               "a figure styled by hand (use .pigFigures())")
+        var missing: [Line] = []
+        for site in Self.figureSites {
+            let file = lines.filter { $0.file == site.file }
+            let hits = file.indices.filter { file[$0].text.contains(site.needle) }
+            if hits.isEmpty { missing.append(Line(file: site.file, number: 0, text: "not found: \(site.needle)")) }
+            for index in hits where !file[index..<min(file.count, index + site.within)].contains(where: { $0.text.contains(".pigFigures()") }) {
+                missing.append(file[index])
+            }
+        }
+        report(missing, "a figure without rounded tabular numerals (add .pigFigures())")
+    }
+
+    // Apple's design checklist and brand 1.8 §16 (maroge1990/PigTV#280): two named animations (`PigMotion.standard`,
+    // `PigMotion.momentum`, PigMotion.swift) instead of hand-picked durations, and a slide becomes a fade under Reduce
+    // Motion (`pigSlide(from:)`). A line marked `// motion: <reason>` keeps its own timing (the splash's brand cycle, the
+    // television's focus lift, a countdown's clock, the placeholders' pulse). Before Apple 206 the views used ten
+    // durations from 0.12 to 0.25 s, three bare `withAnimation {}` and six slides that ignored Reduce Motion.
+    func testAnimationsComeFromTheTwoNamedOnes() throws {
+        let names = try FileManager.default.contentsOfDirectory(atPath: Self.sources.path).filter { $0.hasSuffix(".swift") }
+        var found: [Line] = []
+        for name in names where name != "PigMotion.swift" {
+            let text = try String(contentsOf: Self.sources.appendingPathComponent(name), encoding: .utf8)
+            for (index, raw) in text.components(separatedBy: "\n").enumerated() where !raw.contains("// motion:") {
+                let code = raw.range(of: "//").map { String(raw[..<$0.lowerBound]) } ?? raw
+                if Self.handPickedAnimation(code) { found.append(Line(file: name, number: index + 1, text: code)) }
+            }
+        }
+        report(found, "a hand-picked animation (use PigMotion.standard or .momentum, .pigAnimation(value:), .pigSlide(from:))")
+    }
+
+    static func handPickedAnimation(_ code: String) -> Bool {
+        let patterns = [#"\.(easeIn|easeOut|easeInOut|linear|spring|smooth|snappy|bouncy|interactiveSpring)\b"#,
+                        #"\bwithAnimation\s*\{"#, #"\.animation\(\s*\.default\b"#, #"\.move\(edge:"#,
+                        #"\banimate\([^)]*duration:\s*[0-9]"#, #"\bduration:\s*[0-9]"#]
+        return patterns.contains { code.range(of: $0, options: .regularExpression) != nil }
+    }
+
+    func testAnimationParser() {
+        for bad in [".animation(.easeOut(duration: 0.15), value: x)", "withAnimation { a = b }", ".transition(.move(edge: .top))",
+                    "animator.animate(to: x, duration: 0.2)", "withAnimation(.spring(duration: 0.3)) {}"] {
+            XCTAssertTrue(Self.handPickedAnimation(bad), bad)
+        }
+        for fine in [".pigAnimation(value: x)", "withAnimation(PigMotion.standard) { a = b }", ".pigSlide(from: .top)",
+                     "animator.animate(to: x, duration: PigMotion.standardDuration)", ".transition(.opacity)"] {
+            XCTAssertFalse(Self.handPickedAnimation(fine), fine)
+        }
     }
 
     // #243: font sizes come from PigType's roles; the weight and design stay at the call site.

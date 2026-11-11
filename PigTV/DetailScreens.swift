@@ -328,10 +328,10 @@ struct ChannelPageView: View {
             Text("UP NEXT").font(DetailType.eyebrow).tracking(1.4).foregroundStyle(Color.pigSecondary)
                 .accessibilityAddTraits(.isHeader)
             Text("\(Countdown.text(to: next.start, now: now)) · \(next.start.formatted(date: .omitted, time: .shortened))")
-                .font(DetailType.rowDetail.weight(.bold)).foregroundStyle(Color.pigAccentText).monospacedDigit().fontDesign(.rounded)
+                .font(DetailType.rowDetail.weight(.bold)).foregroundStyle(Color.pigAccentText).pigFigures()
             Text(next.title).font(DetailType.rowTitle.weight(.heavy)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Text("\(next.timeRange) · \(next.durationText)").font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
-                .monospacedDigit()
+                .pigFigures()
         }
         .accessibilityElement(children: .combine)
     }
@@ -365,8 +365,8 @@ private struct ScheduleRow: View {
         HStack(alignment: .center, spacing: PigSpacing.l) {
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(programme.start.formatted(date: .omitted, time: .shortened))
-                    .font(DetailType.rowTitle.monospacedDigit()).fontDesign(.rounded).lineLimit(1).fixedSize()
-                Text(programme.durationText).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).lineLimit(1)
+                    .font(DetailType.rowTitle).pigFigures().lineLimit(1).fixedSize()
+                Text(programme.durationText).font(DetailType.rowDetail).pigFigures().foregroundStyle(Color.pigSecondary).lineLimit(1)
             }
             .frame(minWidth: DetailMetrics.timeColumn, alignment: .leading)
             VStack(alignment: .leading, spacing: PigSpacing.xs) {

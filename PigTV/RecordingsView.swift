@@ -282,7 +282,7 @@ struct RecordingsView: View {
             PigPageHeader(title: "Recordings") {
                 if all.count > 1 {
                     Text("\((all.firstIndex { $0.id == page } ?? 0) + 1) of \(all.count)")
-                        .font(.subheadline.monospacedDigit()).fontDesign(.rounded).foregroundStyle(.secondary)
+                        .font(.subheadline).pigFigures().foregroundStyle(.secondary)
                         .accessibilityIdentifier("recordings.stack.position")
                 }
             }
@@ -323,8 +323,8 @@ struct RecordingsView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.25), value: all.isEmpty)
-        .animation(.easeOut(duration: 0.25), value: store.loaded)
+        .pigAnimation(value: all.isEmpty)
+        .pigAnimation(value: store.loaded)
         .safeAreaInset(edge: .bottom) {
             switch state {
             case .loading:
@@ -448,7 +448,7 @@ private struct FeaturedRecording: View {
                     .font(RecordingsMetrics.kicker).tracking(1).foregroundStyle(Color.pigAccentText)
                 Text(item.title).font(RecordingsMetrics.featuredTitle).lineLimit(2).pigMinimumScale(0.7, size: PigType.hero)
                 Text(RecordingsHome.meta(item, progress: progress))
-                    .font(RecordingsMetrics.featuredMeta.monospacedDigit()).fontDesign(.rounded).foregroundStyle(.secondary)
+                    .font(RecordingsMetrics.featuredMeta).pigFigures().foregroundStyle(.secondary)
                 if item.isPreparingForPlayback {
                     Text("Preparing for playback…").font(RecordingsMetrics.featuredMeta).foregroundStyle(.secondary)
                 }
@@ -518,7 +518,7 @@ private struct RecordingCard: View {
                         Text("Preparing for playback…").font(RecordingsMetrics.detail).foregroundStyle(.secondary).lineLimit(1)
                     } else {
                         Text(RecordingsHome.meta(item, progress: progress))
-                            .font(RecordingsMetrics.detail.monospacedDigit()).fontDesign(.rounded)
+                            .font(RecordingsMetrics.detail).pigFigures()
                             .foregroundStyle(item.status == "recording" ? Color.pigDanger : Color.pigSecondary).lineLimit(1)
                     }
                     PigProgressBar(fraction: progress.fraction ?? 0, height: 5)
@@ -562,7 +562,7 @@ private struct ComingUpStrip: View {
                 Button(action: open) {
                     HStack(spacing: PigSpacing.s) {
                         Text(RecordingsHome.chip(item, now: now))
-                            .monospacedDigit().fontDesign(.rounded)
+                            .pigFigures()
                             .foregroundStyle(clash ? Color.pigWarning : Color.pigSecondary)
                         Text(item.title).fontWeight(.bold).lineLimit(1)
                     }
@@ -578,7 +578,7 @@ private struct ComingUpStrip: View {
             }
             Spacer(minLength: 0)
             Button(action: open) {
-                Text(items.isEmpty ? "All ›" : "All \(items.count) ›").font(RecordingsMetrics.strip.weight(.bold))
+                Text(items.isEmpty ? "All ›" : "All \(items.count) ›").font(RecordingsMetrics.strip.weight(.bold)).pigFigures()
                     .foregroundStyle(Color.pigAccentText)
                     .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
             }
@@ -616,7 +616,7 @@ private struct ComingUpCard: View {
                 }
                 if let next = items.first {
                     HStack(spacing: PigSpacing.m) {
-                        Text(RecordingsHome.when(next.start, now: now)).font(.subheadline.monospacedDigit()).fontDesign(.rounded)
+                        Text(RecordingsHome.when(next.start, now: now)).font(.subheadline).pigFigures()
                             .foregroundStyle(.secondary)
                         Text(next.title).font(.subheadline.weight(.bold)).lineLimit(1)
                     }
@@ -630,7 +630,7 @@ private struct ComingUpCard: View {
             .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
             .shadow(color: Color.pigShadow.opacity(0.3), radius: 14, y: -6)
         }
-        .buttonStyle(.plain)
+        .pigPressable()
         .padding(.horizontal, RecordingsMetrics.phoneEdge).padding(.bottom, PigSpacing.s)
         .accessibilityLabel(items.first.map { "Coming up, \(items.count) scheduled. Next: \($0.title), \(RecordingsHome.when($0.start, now: now))" }
                             ?? "Coming up, nothing scheduled")
@@ -673,7 +673,7 @@ private struct RecordingStackCard: View {
                         }
                     }
             }
-            .buttonStyle(.plain)
+            .pigPressable()
             .accessibilityLabel(RecordingLabel.text(item, progress: progress))
             .accessibilityHint("Opens the recording")
             PigProgressBar(fraction: progress.fraction ?? 0, height: 4).opacity(progress.fraction == nil ? 0 : 1)

@@ -227,9 +227,9 @@ final class BrandDepthUITests: XCTestCase {
         for mode in ["light", "dark"] {
             for screen in ["player-error", "recording-error"] {
                 let app = launch(screen, mode)
-                focus(app, label: "Retry")
+                focus(app, label: "Try again")
                 shot(app, "\(screen)-retry-focus-\(mode)")
-                focus(app, label: screen == "player-error" ? "Back to channels" : "Back")
+                focus(app, label: "Close player")
                 shot(app, "\(screen)-back-focus-\(mode)")
                 app.terminate()
             }

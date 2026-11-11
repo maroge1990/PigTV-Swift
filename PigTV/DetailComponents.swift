@@ -204,7 +204,7 @@ struct ProgrammeHero<Actions: View>: View {
             if let title {
                 Text(title).font(DetailType.title).lineLimit(3).fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
-                Text(meta).font(DetailType.meta).foregroundStyle(Color.pigSecondary).monospacedDigit()
+                Text(meta).font(DetailType.meta).foregroundStyle(Color.pigSecondary).pigFigures()
             } else {
                 Text("No programme information right now").font(DetailType.meta).foregroundStyle(Color.pigSecondary)
             }
@@ -213,7 +213,7 @@ struct ProgrammeHero<Actions: View>: View {
                     PigProgressBar(fraction: progress, height: 6).frame(maxWidth: ProgrammeHeroMetrics.progressWidth)
                     if let remaining {
                         Text(remaining).font(DetailType.meta).foregroundStyle(Color.pigSecondary)
-                            .monospacedDigit().fontDesign(.rounded)
+                            .pigFigures()
                     }
                 }
             }
@@ -290,7 +290,7 @@ struct ChannelNumberText: View {
     /// hierarchy's tertiary style.
     var onDark = false
     var body: some View {
-        Text(verbatim: number).font(font).monospacedDigit().fontDesign(.rounded)
+        Text(verbatim: number).font(font).pigFigures()
             .foregroundStyle(onDark ? AnyShapeStyle(Color.pigMediaText.opacity(0.5)) : AnyShapeStyle(.tertiary))
     }
 }

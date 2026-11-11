@@ -226,7 +226,7 @@ struct SportEventsContent: View {
             matchRail("Tonight", rails.tonight, events: page.events, now: now, hidden: hidden, id: "tonight",
                       empty: "Nothing more today.")
             matchRail("Results today", rails.resultsToday, events: page.events, now: now, hidden: hidden, id: "results",
-                      note: hidden ? "Hidden while spoiler-free is on" : nil, empty: "No results yet today.")
+                      note: hidden ? "Hidden while Hide scores is on" : nil, empty: "No results yet today.")
             draws(page.events, now: now, hidden: hidden)
         }
     }
@@ -279,7 +279,7 @@ struct SportEventsContent: View {
                             .font(SportPageMetrics.rowName.weight(!hidden && player.winner == true ? .heavy : .semibold)).lineLimit(1)
                         Spacer(minLength: 6)
                         ForEach(Array(SportEventsText.sets(match, player: index, spoilerFree: hidden).enumerated()), id: \.offset) { _, games in
-                            Text(games).font(SportPageMetrics.score).monospacedDigit()
+                            Text(games).font(SportPageMetrics.score).pigFigures()
                                 .frame(width: SportEventsMetrics.setWidth, alignment: .trailing)
                         }
                     }
@@ -341,7 +341,7 @@ struct SportEventsContent: View {
                         .font(SportPageMetrics.rowDetail.weight(!hidden && player.winner == true ? .heavy : .regular)).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(SportEventsText.sets(match, player: index, spoilerFree: hidden).joined(separator: " "))
-                        .font(SportPageMetrics.rowDetail).monospacedDigit().foregroundStyle(.secondary)
+                        .font(SportPageMetrics.rowDetail).pigFigures().foregroundStyle(.secondary)
                 }
                 .sportFollowedRow(followed)
             }
@@ -383,7 +383,7 @@ struct SportEventsContent: View {
         SportListCard(title: "Leaderboard", note: hidden ? nil : "Top 11", identifier: "sport.golf.leaderboard") {
             if hidden {
                 SportHiddenNote(title: "Leaderboard hidden",
-                                text: "Spoiler-free is on. Positions and scores reveal the result; the field and its round stay visible.")
+                                text: "Hide scores is on. Positions and scores reveal the result; the field and its round stay visible.")
             } else {
                 VStack(spacing: PigSpacing.xxs) {
                     HStack(spacing: PigSpacing.s) {
@@ -403,10 +403,10 @@ struct SportEventsContent: View {
                             SportFollowStar(followed: followed)
                             Text(row.name).font(SportPageMetrics.rowName).lineLimit(1)
                             Spacer(minLength: 6)
-                            Text(row.toPar ?? "–").font(SportPageMetrics.rowPos).monospacedDigit().frame(width: 80, alignment: .trailing)
+                            Text(row.toPar ?? "–").font(SportPageMetrics.rowPos).pigFigures().frame(width: 80, alignment: .trailing)
                             if !compact {
                                 ForEach(Array(SportEventsText.firstRounds(row).enumerated()), id: \.offset) { _, strokes in
-                                    Text(strokes.map(String.init) ?? "–").font(SportPageMetrics.rowDetail).monospacedDigit()
+                                    Text(strokes.map(String.init) ?? "–").font(SportPageMetrics.rowDetail).pigFigures()
                                         .foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
                                 }
                             }
@@ -428,7 +428,7 @@ struct SportEventsContent: View {
                     Text(player.name).font(SportPageMetrics.tileTitle).lineLimit(1)
                     Spacer(minLength: 6)
                     if let pos = player.pos { Text(pos).font(SportPageMetrics.rowPos).foregroundStyle(.secondary) }
-                    if let toPar = player.toPar { Text(toPar).font(SportPageMetrics.score).monospacedDigit() }
+                    if let toPar = player.toPar { Text(toPar).font(SportPageMetrics.score).pigFigures() }
                 }
                 if hidden {
                     Text(["In the field", event.round.map { "round \($0) in play" }].compactMap { $0 }.joined(separator: " · "))
@@ -436,7 +436,7 @@ struct SportEventsContent: View {
                 } else {
                     HStack(spacing: PigSpacing.m) {
                         ForEach(Array(player.rounds.enumerated()), id: \.offset) { index, strokes in
-                            Text("R\(index + 1) \(strokes.map(String.init) ?? "–")").font(SportPageMetrics.note).monospacedDigit()
+                            Text("R\(index + 1) \(strokes.map(String.init) ?? "–")").font(SportPageMetrics.note).pigFigures()
                         }
                         Spacer(minLength: 6)
                         if let gap = player.gap {

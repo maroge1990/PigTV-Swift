@@ -115,12 +115,12 @@ struct SportBadge: View {
                 Text(disc.text).font(.system(size: size * 0.34, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
                     .minimumScaleFactor(0.6)
                     .frame(width: size, height: size)
-                    .background(Color(teamHex: disc.color) ?? .gray, in: Circle())
+                    .background(Color(teamHex: disc.color) ?? Color("LeagueOther"), in: Circle())
             } else {
                 Text(SportFrontText.monogram(name)).font(.system(size: size * 0.38, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
                     .minimumScaleFactor(0.6)
                     .frame(width: size, height: size)
-                    .background(Color(teamHex: SportFrontText.leagueColor(league)) ?? .gray, in: Circle())
+                    .background(Color(SportFrontText.leagueColorName(league)), in: Circle())
             }
         }
         .accessibilityHidden(true)

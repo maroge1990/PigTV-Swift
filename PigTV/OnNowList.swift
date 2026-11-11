@@ -89,7 +89,7 @@ private struct OnNowMenuPreview: View {
             Text(eyebrow).font(.caption.weight(.bold)).tracking(1).foregroundStyle(Color.pigAccentText)
             Text(subject.title).font(.title3.weight(.heavy)).lineLimit(3)
             if let programme = subject.programme {
-                Text(programme.timeRange).font(.subheadline).foregroundStyle(Color.pigSecondary).monospacedDigit().fontDesign(.rounded)
+                Text(programme.timeRange).font(.subheadline).foregroundStyle(Color.pigSecondary).pigFigures()
             }
         }
         .padding(PigSpacing.xl)
@@ -133,10 +133,7 @@ private struct OnNowRowView: View {
                             Text(channel.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             if let number { ChannelNumberText(number: number, font: .caption2) }
                             if let quality = model.guideQuality(of: channel) { GuideQualityBadge(quality: quality) }
-                            if model.isFlaky(channel) {
-                                Circle().fill(Color.pigWarning).frame(width: 8, height: 8)
-                                    .accessibilityLabel("Unreliable channel")
-                            }
+                            if model.isFlaky(channel) { GuideStatusMarkView(mark: .unreliable, side: GuideStatusMarkMetrics.side) }
                         }
                         Text(row.current?.title ?? "No programme information")
                             .font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -153,7 +150,7 @@ private struct OnNowRowView: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .pigPressable()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel([number, channel.name].compactMap { $0 }.joined(separator: " "))
             .accessibilityValue([row.current.map { "Now: \($0.title)" }, row.next.map { "Next: \($0.title)" }]

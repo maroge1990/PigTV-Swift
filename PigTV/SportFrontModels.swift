@@ -203,13 +203,13 @@ nonisolated enum SportFrontHero {
 
 /// What the front page says. Pure.
 nonisolated enum SportFrontText {
-    static let scoresUnavailable = "Live scores are not available right now. The guide's channels and times are shown."
+    static let scoresUnavailable = "The scores feed isn’t available right now. The guide’s channels and times are shown."
 
     /// The empty state's help: Settings › Sport when the server has per-account follows (C-U), else the web app.
     static func followHelp(settings: Bool) -> String {
         settings
             ? "Choose the sports, leagues and teams you follow in Settings › Sport. They appear here on every device."
-            : "Choose the sports, teams and drivers you follow in the PigTV web app, under Settings → Sports."
+            : "Choose the sports, teams and drivers you follow in the PigTV web app, under Settings › Sport."
     }
 
     /// "5:30 pm" today, else "Sat 5:30 pm" (the device's zone, as the sport pages).
@@ -355,10 +355,12 @@ nonisolated enum SportFrontText {
         return (String(first) + String(last)).uppercased()
     }
 
-    /// The monogram disc's colour by league (hex), when a badge has no logo.
-    static func leagueColor(_ league: String) -> String {
-        ["NFL": "013369", "F1": "E10600", "NBA": "C9082A", "AFL": "0B3D91", "AFLW": "0B3D91", "Cricket": "1F7A3A",
-         "EPL": "3D195B", "MLB": "041E42", "NRL": "00A651"][league] ?? "5A5466"
+    /// The monogram disc's colour by league, when a badge has no logo: a named colour in the catalogue (#280; they were
+    /// typed in here as hex). Each keeps its white letters at 4.5:1 or more in light and dark (BrandRulesTests); NRL's
+    /// green is darkened from 00A651 (3.2:1) to 00843F (4.8:1).
+    static func leagueColorName(_ league: String) -> String {
+        ["NFL": "LeagueNFL", "F1": "LeagueF1", "NBA": "LeagueNBA", "AFL": "LeagueAFL", "AFLW": "LeagueAFL",
+         "Cricket": "LeagueCricket", "EPL": "LeagueEPL", "MLB": "LeagueMLB", "NRL": "LeagueNRL"][league] ?? "LeagueOther"
     }
 
     static func date(_ ms: Double) -> Date { Date(timeIntervalSince1970: ms / 1000) }

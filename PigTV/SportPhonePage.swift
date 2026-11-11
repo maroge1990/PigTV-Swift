@@ -1,7 +1,7 @@
 import SwiftUI
 
 // D-44 (R5-League/Cricket/Motor/Golf/Tennis/UFC-iPhone, #177, #186): a sport's page on the iPhone, the front page's
-// pattern (SportFrontPhonePage): "‹ Sport", the sport and whether scores show; the sport's leagues as chips; a 212 pt
+// pattern (SportFrontPhonePage): "‹ Sport", the sport and whether scores show; the sport's leagues as chips; a
 // carousel of the selected league's games (yours, then live); its games as fixture rows under Live, Later today, Coming
 // up and Earlier; then the league's own page (rounds and standings, Formula 1's weekend, the cricket scoreboard, a
 // leaderboard or fight card) behind its header, pushed (#177: pages for the extra content, not one long scroll). Words:
@@ -25,24 +25,27 @@ struct SportPhoneCarousel: View {
     /// A card without a game (a follow with nothing in the next three days).
     let open: (SportPhoneCard) -> Void
     @Environment(\.sportPresenter) private var presenter
+    /// #280: at the accessibility text sizes the card's buttons stack and its names may scale down to fit.
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var shown: String?
 
     var body: some View {
         if !cards.isEmpty {
             ScrollView(.horizontal) {
-                LazyHStack(spacing: PigSpacing.m) {
+                // #280: the row is as tall as its tallest card (each card fills it), and no card has a fixed height.
+                HStack(alignment: .top, spacing: PigSpacing.m) {
                     ForEach(cards) { card in
                         followCard(card)
                             .opacity(card.id == (shown ?? cards[0].id) ? 1 : 0.6)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 .scrollTargetLayout()
                 .padding(.horizontal, SportPhoneMetrics.edge)
             }
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $shown)
             .scrollIndicators(.hidden)
-            .frame(height: SportPhoneMetrics.cardHeight)
             .accessibilityIdentifier("\(identifier).carousel")
             let index = cards.firstIndex { $0.id == shown } ?? 0
             HStack(spacing: PigSpacing.s) {
@@ -50,7 +53,7 @@ struct SportPhoneCarousel: View {
                     Capsule().fill(offset == index ? Color.pigAccent : Color.secondary.opacity(0.6))
                         .frame(width: offset == index ? 18 : 6, height: 6)
                 }
-                Text(position(index, cards.count)).font(.caption).foregroundStyle(.secondary)
+                Text(position(index, cards.count)).font(.caption).pigFigures().foregroundStyle(.secondary)
                     .padding(.leading, PigSpacing.s)
             }
             .accessibilityElement(children: .ignore)
@@ -82,7 +85,7 @@ struct SportPhoneCarousel: View {
                                     // The largest size that fits the column, never cut off ("60–47" large, "245/6–180/3" smaller).
                                     ViewThatFits(in: .horizontal) {
                                         ForEach(Self.scoreSizes, id: \.self) { size in
-                                            Text(score).font(.system(size, design: .rounded).weight(.heavy)).monospacedDigit()
+                                            Text(score).font(.system(size, design: .rounded).weight(.heavy)).pigFigures()
                                                 .lineLimit(1).fixedSize()
                                         }
                                     }
@@ -90,7 +93,7 @@ struct SportPhoneCarousel: View {
                                     Text("v").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
                                 }
                                 if let detail = card.scoreDetail {
-                                    Text(detail).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                                    Text(detail).font(.caption).pigFigures().foregroundStyle(.secondary).lineLimit(1)
                                         .fixedSize() // one size on every card; it may run a little past the column
                                 }
                             }
@@ -110,19 +113,20 @@ struct SportPhoneCarousel: View {
                             Spacer(minLength: 0)
                         }
                     }
-                    Text(card.line).font(.footnote).foregroundStyle(.secondary).lineLimit(1).monospacedDigit()
+                    Text(card.line).font(.footnote).foregroundStyle(.secondary).lineLimit(1).pigFigures()
                         .frame(maxWidth: .infinity)
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .pigPressable()
             .accessibilityLabel(card.accessibilityLabel)
             .accessibilityIdentifier(card.index >= 0 ? "\(identifier).follow.\(card.index)" : "\(identifier).card.\(card.id)")
             Spacer(minLength: 0)
             if let game { actions(game, team: card.team.isEmpty ? nil : card.team, now: now) }
         }
         .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.l)
-        .frame(width: SportPhoneMetrics.cardWidth, height: SportPhoneMetrics.cardHeight, alignment: .topLeading)
+        .frame(width: SportPhoneMetrics.cardWidth, alignment: .topLeading)
+        .frame(minHeight: SportPhoneMetrics.cardMinHeight, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .accessibilityElement(children: .contain)
         .id(card.id)
@@ -144,8 +148,10 @@ struct SportPhoneCarousel: View {
                 }
             // #252: one size for both names and the rows below (each side shrank on its own to 80%): a long name takes
             // a second line instead.
-            Text(side.name).font(.subheadline.weight(.bold)).lineLimit(2).multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(side.name).font(.subheadline.weight(.bold)).lineLimit(typeSize.isAccessibilitySize ? 3 : 2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(typeSize.isAccessibilitySize ? 0.5 : 1)
+                .fixedSize(horizontal: false, vertical: !typeSize.isAccessibilitySize)
         }
         .frame(maxWidth: .infinity)
     }
@@ -155,7 +161,9 @@ struct SportPhoneCarousel: View {
     @ViewBuilder
     private func actions(_ game: SportsGame, team: String?, now: Date) -> some View {
         if !game.terminal, let event = SportFrontText.event(game) {
-            HStack(spacing: PigSpacing.s) {
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: PigSpacing.s))
+                                                      : AnyLayout(HStackLayout(spacing: PigSpacing.s))
+            layout {
                 switch SportFrontText.action(game, now: now) {
                 case .watch:
                     Button { SportGamePress.watch(game, event: event, app: app, presenter: presenter) } label: {
@@ -206,7 +214,7 @@ struct SportPhoneRowsCard: View {
                     Button { SportGamePress.select(game, app: app, presenter: presenter) } label: {
                         SportFixtureRow(row: row, client: browse.client)
                     }
-                    .buttonStyle(.plain)
+                    .pigPressable()
                     .contextMenu {
                         if !game.terminal, let event = SportFrontText.event(game) {
                             SportRecordMenu(flow: flow, event: event, game: game)
@@ -232,8 +240,9 @@ struct SportPhonePageHeader: View {
         VStack(alignment: .leading, spacing: PigSpacing.xxs) {
             Button { dismiss() } label: {
                 Text("‹ \(back)").font(.subheadline.weight(.semibold)).foregroundStyle(Color.pigAccentText)
+                    .pigTouchTarget(alignment: .leading) // #280: was about 20 pt high
             }
-            .buttonStyle(.plain)
+            .pigPressable()
             .accessibilityLabel("Back to \(back)")
             .accessibilityIdentifier("sport.page.back")
             HStack(spacing: PigSpacing.m) {
@@ -335,12 +344,12 @@ struct SportPhonePage: View {
                             Text(SportLabels.label(league, in: model.labels)).font(.subheadline.weight(.bold))
                                 .foregroundStyle(on ? Color.pigAccentText : Color.secondary)
                                 .padding(.horizontal, PigSpacing.l).frame(height: 34)
-                                .background(on ? Color.pigAccent.opacity(0.14) : Color.pigRaised, in: Capsule())
+                                .background(on ? Color.pigSelection : Color.pigRaised, in: Capsule())
                                 .overlay(alignment: .bottom) {
                                     if on { Capsule().fill(Color.pigAccent).frame(width: 18, height: 2).padding(.bottom, PigSpacing.xs) }
                                 }
                         }
-                        .buttonStyle(.plain)
+                        .pigPressable()
                         .accessibilityAddTraits(on ? .isSelected : [])
                         .accessibilityIdentifier("sport.page.chip.\(league)")
                     }
@@ -388,7 +397,7 @@ struct SportPhonePage: View {
                 .padding(.horizontal, PigSpacing.xs).padding(.vertical, PigSpacing.s)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .pigPressable()
             .padding(.horizontal, SportPhoneMetrics.edge)
             .accessibilityLabel("\(title), \(SportLabels.label(league, in: model.labels)), open its page")
             .accessibilityIdentifier("sport.page.more")

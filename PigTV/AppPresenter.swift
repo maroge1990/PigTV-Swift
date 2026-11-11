@@ -212,7 +212,7 @@ struct UndoToast: View {
             .shadow(color: Color.pigShadow.opacity(0.5), radius: 30, y: 14)
             .padding(.horizontal, PigSpacing.s)
             .padding(.bottom, bottom)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .pigSlide(from: .bottom)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("undo.toast")
             #if os(tvOS)
@@ -251,5 +251,27 @@ enum BackgroundWork {
         guard token.id != .invalid else { return }
         UIApplication.shared.endBackgroundTask(token.id)
         token.id = .invalid
+    }
+}
+
+/// #49 (maroge1990/PigTV#280): something to do once an event has happened (a page has closed, a step has appeared), in
+/// place of a guessed wait for it. Pure.
+nonisolated struct PendingUntil<Value: Equatable & Sendable>: Equatable, Sendable {
+    private(set) var value: Value?
+
+    /// Asks for `value` once the event comes (a newer request replaces it).
+    mutating func request(_ value: Value) { self.value = value }
+
+    /// The event came: what was asked for, once.
+    mutating func take() -> Value? {
+        defer { value = nil }
+        return value
+    }
+
+    /// The event for `value` came (a step appeared): true, once, when that is what was asked for.
+    mutating func take(when appeared: Value) -> Bool {
+        guard value == appeared else { return false }
+        value = nil
+        return true
     }
 }

@@ -50,8 +50,8 @@ struct RecordingTouchPlayer: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: chromeVisible)
-        .animation(.easeInOut(duration: 0.2), value: model.inBreak != nil)
+        .pigAnimation(value: chromeVisible)
+        .pigAnimation(value: model.inBreak != nil)
         .task(id: lastInput) {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
@@ -110,7 +110,7 @@ struct RecordingTouchPlayer: View {
             let fraction = dragFraction ?? timeline.fraction
             HStack(spacing: PigSpacing.m) {
                 Text(RecordingTimeline.clock(timeline.end * fraction))
-                    .font(.footnote.weight(.semibold).monospacedDigit()).fontDesign(.rounded)
+                    .font(.footnote.weight(.semibold)).pigFigures()
                     .frame(minWidth: 56, alignment: .leading)
                 TouchScrubBar(fraction: fraction, changed: { value in
                     dragFraction = value; lastInput = Date()
@@ -120,7 +120,7 @@ struct RecordingTouchPlayer: View {
                 .accessibilityLabel("Position")
                 .accessibilityValue("\(RecordingTimeline.clock(timeline.end * fraction)) of \(RecordingTimeline.clock(timeline.end))")
                 Text("−" + RecordingTimeline.clock(timeline.end * (1 - fraction)))
-                    .font(.footnote.weight(.semibold).monospacedDigit()).fontDesign(.rounded)
+                    .font(.footnote.weight(.semibold)).pigFigures()
                     .frame(minWidth: 56, alignment: .trailing)
             }
             .padding(PigSpacing.m)

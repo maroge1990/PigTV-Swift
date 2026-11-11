@@ -25,7 +25,7 @@ struct PlayerActionRow: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.15), value: selected)
+        .pigAnimation(value: selected, moves: true)
     }
 }
 

@@ -59,10 +59,10 @@ private extension View {
 
 // MARK: Settings section
 
-/// Settings › Sport (D-44 batch 6, R5-SetSport-*), only with the server's `sportFollows` flag: Hide scores and Score delay
-/// side by side, then your sports in your order (each with its leagues and its followed teams or people, their logos where
-/// the loaded Sport data has them, else monograms), the league suggestions and Add a sport. On the TV a sport opens its
-/// page as a cover; on iOS it is pushed.
+/// Settings › Sport (D-44 batch 6, R5-SetSport-*), only with the server's `sportFollows` flag. #280: the choices most
+/// people change come first (`SettingsSportOrder`): Hide scores, then your sport in your order (each with its leagues and its followed teams or people, their logos where
+/// the loaded Sport data has them, else monograms), the league suggestions and Add a sport; Score delay is one level down
+/// (a row with its value that opens its own page). On the TV a sport opens its page as a cover; on iOS it is pushed.
 struct SportSettingsSection: View {
     @ObservedObject var model: SportFollowSettingsModel
     /// The signed-in user's name, for "(set by …)" on a rule someone else made.
@@ -74,6 +74,7 @@ struct SportSettingsSection: View {
     private enum Route: Identifiable, Hashable {
         case sport(String)
         case addSport
+        case scoreDelay
         var id: Self { self }
     }
     @State private var route: Route?
@@ -86,18 +87,24 @@ struct SportSettingsSection: View {
         _delay = StateObject(wrappedValue: ScoreDelaySetting(client: model.client, fixture: model.isFixture))
     }
 
+    #if os(tvOS)
+    /// The sport whose page opens once Add a sport has closed.
+    @State private var afterClose = PendingUntil<String>()
+    #endif
+
     var body: some View {
         content
             #if os(tvOS)
-            .detailCover(item: $route) { route in
+            .detailCover(item: $route, onDismiss: {
+                // #49 (#280): the new sport's page, to choose its leagues, once Add a sport has gone (it waited 600 ms).
+                if let added = afterClose.take() { route = .sport(added) }
+            }) { route in
                 switch route {
                 case .sport(let sport): SportFollowScreen(model: model, sport: sport, me: me)
+                case .scoreDelay: SportScoreDelayScreen(delay: delay)
                 case .addSport: SportAddSportScreen(model: model) { added in
+                    if let added, !model.isOneLeague(added) { afterClose.request(added) }
                     self.route = nil
-                    if let added, !model.isOneLeague(added) {
-                        // The new sport's page, to choose its leagues, once this one has gone.
-                        Task { try? await Task.sleep(for: .milliseconds(600)); self.route = .sport(added) }
-                    }
                 }
                 }
             }
@@ -114,31 +121,29 @@ struct SportSettingsSection: View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             statusLines
             if let follows = model.follows {
-                HStack(alignment: .top, spacing: PigSpacing.s) {
-                    spoilerRow(follows.spoilerFree)
-                    if delay.shown { delayRow }
-                }
-                .focusSection()
-                yourSportsHeading.padding(.top, PigSpacing.xs)
-                ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
-                if model.state == .empty {
-                    // #280 (E1): Add a sport is its one action.
-                    PigEmptyState(title: PageWords.noSportsTitle, text: PageWords.noSportsText,
-                                  action: model.canEdit ? PigStateAction(label: PageWords.addSport, systemImage: "plus") { route = .addSport } : nil,
-                                  identifier: "settings.sport.empty")
-                } else {
-                    if !model.offline { ForEach(model.suggestions) { SportSuggestionRow(model: model, suggestion: $0) } }
-                    if !model.unfollowedSports.isEmpty { addSportRow }
+                ForEach(SettingsSportOrder.parts(empty: model.state == .empty, suggestions: !model.offline && !model.suggestions.isEmpty,
+                                                 canAdd: !model.unfollowedSports.isEmpty, scoreDelay: delay.shown), id: \.self) { part in
+                    switch part {
+                    case .hideScores: spoilerRow(follows.spoilerFree).focusSection()
+                    case .yourSport:
+                        yourSportsHeading.padding(.top, PigSpacing.xs)
+                        ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
+                    case .empty:
+                        // #280 (E1): Add a sport is its one action.
+                        PigEmptyState(title: PageWords.noSportsTitle, text: PageWords.noSportsText,
+                                      action: model.canEdit ? PigStateAction(label: PageWords.addSport, systemImage: "plus") { route = .addSport } : nil,
+                                      identifier: "settings.sport.empty")
+                    case .suggestions: ForEach(model.suggestions) { SportSuggestionRow(model: model, suggestion: $0) }
+                    case .addSport: addSportRow
+                    case .scoreDelay: scoreDelayLink.padding(.top, PigSpacing.xs)
+                    }
                 }
             } else { loadingOrFailed }
         }
         #else
         Section { statusLines }
         if let follows = model.follows {
-            Section {
-                spoilerRow(follows.spoilerFree)
-                if delay.shown { delayRow }
-            }
+            Section { spoilerRow(follows.spoilerFree) }
             Section {
                 // #256: Edit order, then drag a sport by its handle (each sport's page keeps Move up / Move down).
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
@@ -155,7 +160,7 @@ struct SportSettingsSection: View {
                     if follows.sports.count > 1 && model.canEdit {
                         // #256: a press and drag on the row itself goes to its button; Edit order shows the handles.
                         Button(model.ordering ? "Done" : "Edit order") {
-                            withAnimation { model.ordering.toggle() }
+                            withAnimation(PigMotion.standard) { model.ordering.toggle() }
                         }
                         .font(SettingsSportType.caption.weight(.semibold))
                         .textCase(nil)
@@ -167,9 +172,26 @@ struct SportSettingsSection: View {
                 Section { ForEach(model.suggestions) { SportSuggestionRow(model: model, suggestion: $0) } }
             }
             if !model.unfollowedSports.isEmpty { Section { addSportRow } }
+            if delay.shown { Section { scoreDelayLink } }
         } else {
             Section { loadingOrFailed }
         }
+        #endif
+    }
+
+    /// #280: Score delay one level down: the row says its value and opens its page.
+    @ViewBuilder
+    private var scoreDelayLink: some View {
+        let value = delay.preferences.map { ScoreDelay.text($0.scoreDelaySeconds) }
+        #if os(tvOS)
+        SportSurfaceRow(title: "Score delay", detail: "Clocks and scores follow it", value: value, chevron: true) { route = .scoreDelay }
+            .accessibilityIdentifier("settings.sport.delay")
+        #else
+        NavigationLink { SportScoreDelayScreen(delay: delay) } label: {
+            LabeledContent("Score delay") { Text(value ?? "").pigFigures() }
+        }
+        .listRowBackground(Color.pigRaised)
+        .accessibilityIdentifier("settings.sport.delay")
         #endif
     }
 
@@ -206,7 +228,7 @@ struct SportSettingsSection: View {
 
     private var yourSportsHeading: some View {
         HStack(alignment: .firstTextBaseline, spacing: PigSpacing.m) {
-            Text("Your sports").font(SettingsSportType.heading).foregroundStyle(Color.pigText)
+            Text("Your sport").font(SettingsSportType.heading).foregroundStyle(Color.pigText)
                 .accessibilityAddTraits(.isHeader)
             #if os(tvOS)
             Text("in your order · select one to change its leagues and teams").font(SettingsSportType.caption)
@@ -250,67 +272,6 @@ struct SportSettingsSection: View {
         .listRowBackground(Color.pigRaised)
         .disabled(!model.canEdit)
         .accessibilityIdentifier("settings.sport.spoilerFree")
-        #endif
-    }
-
-    /// Score delay: −10, the delay, +10 (C-O; only where the server keeps it).
-    private var delayRow: some View {
-        let seconds = delay.preferences?.scoreDelaySeconds
-        let less = Button { Task { await delay.step(-ScoreDelay.step) } } label: {
-            Text("−10").font(SettingsSportType.stepper).monospacedDigit().fontDesign(.rounded)
-                #if os(tvOS)
-                .padding(.horizontal, PigSpacing.m)
-                #endif
-        }
-        .disabled(seconds == nil || seconds == ScoreDelay.range.lowerBound || delay.saving)
-        .accessibilityLabel("Ten seconds less")
-        .accessibilityIdentifier("settings.sport.delay.less")
-        let more = Button { Task { await delay.step(ScoreDelay.step) } } label: {
-            Text("+10").font(SettingsSportType.stepper).monospacedDigit().fontDesign(.rounded)
-                #if os(tvOS)
-                .padding(.horizontal, PigSpacing.m)
-                #endif
-        }
-        .disabled(seconds == nil || seconds == ScoreDelay.range.upperBound || delay.saving)
-        .accessibilityLabel("Ten seconds more")
-        .accessibilityIdentifier("settings.sport.delay.more")
-        let value = Text(seconds.map(ScoreDelay.text) ?? "—").font(SettingsSportType.delay).monospacedDigit().fontDesign(.rounded)
-            .frame(minWidth: SettingsSportMetrics.delayWidth)
-            .accessibilityLabel("Score delay \(seconds.map { "\($0) seconds" } ?? "unknown")")
-            .accessibilityIdentifier("settings.sport.delay.value")
-        #if os(tvOS)
-        return HStack(spacing: PigSpacing.s) {
-            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                Text("Score delay").font(SettingsSportType.tileTitle)
-                Text("0–300 seconds. Clocks and scores follow it.").font(SettingsSportType.tileDetail)
-                    .foregroundStyle(Color.pigSecondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 8)
-            // #279: two real buttons, 56 pt or more with their own surface on the raised tile.
-            less.buttonStyle(PigSurfaceButtonStyle(restingFill: .pigSurface))
-            value
-            more.buttonStyle(PigSurfaceButtonStyle(restingFill: .pigSurface))
-        }
-        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
-        .frame(maxWidth: .infinity, minHeight: SettingsSportMetrics.tileHeight, alignment: .leading)
-        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
-        .focusSection()
-        #else
-        return HStack(spacing: PigSpacing.m) {
-            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                Text("Score delay")
-                Text("0–300 seconds").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            HStack(spacing: 0) {
-                less.frame(minWidth: 44, minHeight: 36)
-                value
-                more.frame(minWidth: 44, minHeight: 36)
-            }
-            .buttonStyle(.borderless)
-            .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
-        }
-        .listRowBackground(Color.pigRaised)
         #endif
     }
 
@@ -373,6 +334,116 @@ struct SportSettingsSection: View {
     }
 }
 
+/// Score delay: −10, the delay, +10 (C-O; only where the server keeps it). #280: one level down from Settings › Sport.
+struct SportScoreDelayRow: View {
+    @ObservedObject var delay: ScoreDelaySetting
+
+    var body: some View {
+        let seconds = delay.preferences?.scoreDelaySeconds
+        let less = Button { Task { await delay.step(-ScoreDelay.step) } } label: {
+            Text("−10").font(SettingsSportType.stepper).pigFigures()
+                #if os(tvOS)
+                .padding(.horizontal, PigSpacing.m)
+                #endif
+        }
+        .disabled(seconds == nil || seconds == ScoreDelay.range.lowerBound || delay.saving)
+        .accessibilityLabel("Ten seconds less")
+        .accessibilityIdentifier("settings.sport.delay.less")
+        let more = Button { Task { await delay.step(ScoreDelay.step) } } label: {
+            Text("+10").font(SettingsSportType.stepper).pigFigures()
+                #if os(tvOS)
+                .padding(.horizontal, PigSpacing.m)
+                #endif
+        }
+        .disabled(seconds == nil || seconds == ScoreDelay.range.upperBound || delay.saving)
+        .accessibilityLabel("Ten seconds more")
+        .accessibilityIdentifier("settings.sport.delay.more")
+        let value = Text(seconds.map(ScoreDelay.text) ?? "—").font(SettingsSportType.delay).pigFigures()
+            .frame(minWidth: SettingsSportMetrics.delayWidth)
+            .accessibilityLabel("Score delay \(seconds.map { "\($0) seconds" } ?? "unknown")")
+            .accessibilityIdentifier("settings.sport.delay.value")
+        #if os(tvOS)
+        return HStack(spacing: PigSpacing.s) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+                Text("Score delay").font(SettingsSportType.tileTitle)
+                Text("0–300 seconds. Clocks and scores follow it.").font(SettingsSportType.tileDetail)
+                    .foregroundStyle(Color.pigSecondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            // #279: two real buttons, 56 pt or more with their own surface on the raised tile.
+            less.buttonStyle(PigSurfaceButtonStyle(restingFill: .pigSurface))
+            value
+            more.buttonStyle(PigSurfaceButtonStyle(restingFill: .pigSurface))
+        }
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
+        .frame(maxWidth: .infinity, minHeight: SettingsSportMetrics.tileHeight, alignment: .leading)
+        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .focusSection()
+        #else
+        return HStack(spacing: PigSpacing.m) {
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+                Text("Score delay")
+                Text("0–300 seconds").font(.footnote).pigFigures().foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 0) {
+                less.frame(minWidth: 44, minHeight: 36)
+                value
+                more.frame(minWidth: 44, minHeight: 36)
+            }
+            .buttonStyle(.borderless)
+            .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
+        }
+        .listRowBackground(Color.pigRaised)
+        #endif
+    }
+}
+
+/// #280: Score delay's own page, one level down from Settings › Sport.
+struct SportScoreDelayScreen: View {
+    @ObservedObject var delay: ScoreDelaySetting
+
+    var body: some View {
+        #if os(tvOS)
+        DetailPage(title: "Score delay") {
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
+                if !delay.message.isEmpty { SportStatusLine(text: delay.message) }
+                SportScoreDelayRow(delay: delay)
+            }
+            .frame(maxWidth: 1100, alignment: .leading)
+            .padding(.horizontal, PigSpacing.section)
+        }
+        #else
+        Form {
+            Section {
+                SportScoreDelayRow(delay: delay)
+            } footer: {
+                if !delay.message.isEmpty { Text(delay.message) }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .pigPageBackdrop()
+        .navigationTitle("Score delay")
+        #endif
+    }
+}
+
+/// #280: Settings › Sport's order, the choices most people change first: Hide scores, then what you follow (or E1),
+/// then suggestions and Add a sport; Score delay last, as a row that opens its page. Pure.
+nonisolated enum SettingsSportOrder: Hashable, Sendable {
+    case hideScores, yourSport, empty, suggestions, addSport, scoreDelay
+
+    static func parts(empty: Bool, suggestions: Bool, canAdd: Bool, scoreDelay: Bool) -> [SettingsSportOrder] {
+        var parts: [SettingsSportOrder] = [.hideScores, .yourSport]
+        if empty { parts.append(.empty) } else {
+            if suggestions { parts.append(.suggestions) }
+            if canAdd { parts.append(.addSport) }
+        }
+        if scoreDelay { parts.append(.scoreDelay) }
+        return parts
+    }
+}
+
 /// The followed teams or people beside a sport: up to two, each with its cached logo or a monogram, then "+n".
 private struct FollowedNames: View {
     let names: [SettingsSportLogos.Name]
@@ -388,7 +459,7 @@ private struct FollowedNames: View {
                 }
             }
             if names.count > 2 {
-                Text("+\(names.count - 2)").font(SettingsSportType.follow).monospacedDigit().foregroundStyle(Color.pigSecondary)
+                Text("+\(names.count - 2)").font(SettingsSportType.follow).pigFigures().foregroundStyle(Color.pigSecondary)
             }
         }
         .fixedSize()
@@ -404,7 +475,7 @@ private struct SwitchGlyph: View {
             .overlay(alignment: on ? .trailing : .leading) {
                 Circle().fill(Color.pigOnStatus).frame(width: 30, height: 30).padding(PigSpacing.xxs)
             }
-            .animation(.easeOut(duration: 0.15), value: on)
+            .pigAnimation(value: on, moves: true)
             .accessibilityHidden(true)
     }
 }
@@ -842,7 +913,7 @@ private struct SportSurfaceRow: View {
                     }
                 }
                 Spacer()
-                if let value { Text(value).foregroundStyle(.secondary) }
+                if let value { Text(value).foregroundStyle(.secondary).pigFigures() }
                 if chevron { Image(systemName: "chevron.right").foregroundStyle(.secondary).accessibilityHidden(true) }
             }
             #if os(tvOS)

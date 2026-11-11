@@ -184,10 +184,10 @@ struct ProgrammeMenuCard: View {
                 #if os(tvOS)
                 // #279: at 23 pt on the television the channel and times can need a second line.
                 Text(subject.subtitle).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary)
-                    .monospacedDigit().lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    .pigFigures().lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 #else
                 Text(subject.subtitle).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary)
-                    .monospacedDigit().lineLimit(1)
+                    .pigFigures().lineLimit(1)
                 #endif
             }
             .padding(.horizontal, PigSpacing.s).padding(.bottom, PigSpacing.s)
@@ -220,7 +220,7 @@ struct ProgrammeMenuCard: View {
                     Text(item.title).font(item.isRecordSection ? Self.itemFont : Self.moreFont)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     if let detail = item.detail {
-                        Text(detail).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary).monospacedDigit()
+                        Text(detail).font(Self.subtitleFont).foregroundStyle(Color.pigSecondary).pigFigures()
                             .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     }
                 }

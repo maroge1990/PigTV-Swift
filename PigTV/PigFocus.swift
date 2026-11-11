@@ -109,7 +109,7 @@ private struct PigFocusModifier<S: InsettableShape>: ViewModifier {
             .visualEffect { [lift, lifted = focused && !reduceMotion] content, proxy in
                 content.scaleEffect(lifted ? lift.scale(forWidth: proxy.size.width) : 1)
             }
-            .animation(reduceMotion ? nil : .easeOut(duration: PigFocus.duration), value: focused)
+            .animation(reduceMotion ? nil : .easeOut(duration: PigFocus.duration), value: focused) // motion: the television's focus lift (198, #279)
     }
 }
 
