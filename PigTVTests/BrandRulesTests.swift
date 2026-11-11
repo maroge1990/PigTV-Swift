@@ -452,6 +452,71 @@ final class BrandRulesTests: XCTestCase {
                "the system's description of an error reaches the screen (use UserMessage.text(for:otherwise:))")
     }
 
+    /// Review of 206 (M1): the helpers that return the words for an error give an optional (nil: a cancelled request);
+    /// put straight into a sentence, Swift draws "Optional(\"…\")" on screen ("The stream ended. Optional(…)", Settings ›
+    /// Sport's "Not saved: Optional(…)"). Each such call, or a name bound to one, is unwrapped (`??`) before it is put in a
+    /// sentence.
+    func testNoOptionalWordsAreInterpolatedIntoASentence() throws {
+        var found: [Line] = []
+        for file in try sourceFiles() {
+            for hit in Self.optionalInterpolations(in: file.code) {
+                let number = file.code.prefix(hit).filter { $0 == "\n" }.count + 1
+                found.append(Line(file: file.file, number: number, text: file.code.components(separatedBy: "\n")[number - 1]))
+            }
+        }
+        report(found, "an optional error text put into a sentence (it draws “Optional(…)”; unwrap it with ??)")
+    }
+
+    func testOptionalInterpolationParser() {
+        for bad in [#"x = "Not saved: \(UserMessage.text(for: error))""#,
+                    #"let words = UserMessage.text(for: error, otherwise: plain)\nself.error = "The stream ended. \(words)""#,
+                    #"t = "\(BrowseModel.actionText(PageWords.actionFailed, error))""#,
+                    #"let w = Self.actionText(a, e)\nlet s = "Oh: \(w)""#] {
+            XCTAssertFalse(Self.optionalInterpolations(in: bad).isEmpty, bad)
+        }
+        for fine in [#"x = "Not saved: \(UserMessage.text(for: error) ?? "the change was cancelled.")""#,
+                     #"let words = UserMessage.text(for: error, otherwise: plain)\nself.error = "The stream ended. \(words ?? plain)""#,
+                     #"let words = UserMessage.text(for: error) ?? plain\nself.error = "Oh. \(words)""#,
+                     #"message = UserMessage.text(for: error)"#, #"Text("\(count) items")"#] {
+            XCTAssertEqual(Self.optionalInterpolations(in: fine), [], fine)
+        }
+    }
+
+    /// The helpers whose result is optional words for an error.
+    private static let optionalWordCalls = #"(UserMessage\.text\(for:|actionText\()"#
+
+    /// The offsets of `\( … )` interpolations whose content is one of `optionalWordCalls`, or a name bound to one
+    /// (`let x = UserMessage.text(…)` with no `??`), with no `??` of its own.
+    static func optionalInterpolations(in text: String) -> [Int] {
+        let chars = Array(text)
+        var names: Set<String> = []
+        let binding = try! NSRegularExpression(pattern: #"\b(?:let|var)\s+([A-Za-z_][A-Za-z_0-9]*)\s*=\s*([^\n]*)"#)
+        for m in binding.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let name = Range(m.range(at: 1), in: text), let value = Range(m.range(at: 2), in: text) else { continue }
+            let rhs = String(text[value])
+            if rhs.range(of: optionalWordCalls, options: .regularExpression) != nil, !rhs.contains("??") {
+                names.insert(String(text[name]))
+            }
+        }
+        var found: [Int] = []
+        var index = 0
+        while index + 1 < chars.count {
+            guard chars[index] == "\\", chars[index + 1] == "(" else { index += 1; continue }
+            var depth = 0, end = index + 1
+            while end < chars.count {
+                if chars[end] == "(" { depth += 1 } else if chars[end] == ")" { depth -= 1; if depth == 0 { break } }
+                end += 1
+            }
+            guard end < chars.count else { break }
+            let inside = String(chars[(index + 2)..<end]).trimmingCharacters(in: .whitespaces)
+            let unwrapped = inside.contains("??")
+            let call = inside.range(of: optionalWordCalls, options: .regularExpression) != nil
+            if !unwrapped && (call || names.contains(inside)) { found.append(index) }
+            index = end + 1
+        }
+        return found
+    }
+
     func testBannedWordsParser() {
         XCTAssertEqual(Self.stringLiterals(in: #"Button("Retry") { f("a \"b\" c") }"#), ["Retry", #"a \"b\" c"#])
         let hits = { (text: String) in Self.bannedWords.filter { self.matches($0.pattern, text) }.count }

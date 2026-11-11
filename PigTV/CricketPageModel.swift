@@ -31,7 +31,7 @@ final class CricketPageModel: ObservableObject {
     func state(label: String) -> PageState {
         if let page {
             if !page.available { return .failed(PageWords.leagueNotAvailable(label)) }
-            if page.lead == nil && page.others.isEmpty { return .empty }
+            if page.lead == nil && page.others.isEmpty { return stale ? .emptyStale(since: updatedAt) : .empty }
             return stale ? .stale(since: updatedAt) : .content
         }
         return PageState.of(loaded: loaded, hasAnswer: false, isEmpty: false, failed: error != nil, stale: false, since: nil,
@@ -68,9 +68,10 @@ final class CricketPageModel: ObservableObject {
             if !kept { updatedAt = Date() }
             error = nil
         case .failure(let failure):
-            if !(failure is CancellationError) {
-                if page == nil { error = UserMessage.text(for: failure) } else { stale = true }
-            }
+            // #280 (review of 204, M4): a cancelled request (the page went away; URLError's "cancelled" too) is not a
+            // failure: what was on screen is as it was, and a page with nothing yet is still loading.
+            if UserMessage.isCancellation(failure) { return }
+            if page == nil { error = UserMessage.text(for: failure) ?? UserMessage.somethingFailed } else { stale = true }
         case nil:
             break
         }

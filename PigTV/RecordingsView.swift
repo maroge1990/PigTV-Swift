@@ -173,8 +173,8 @@ struct RecordingsView: View {
 
     @ViewBuilder
     private var status: some View {
-        if case .stale(let since) = state {
-            PigStaleNotice(since: since, retry: { await model.loadRecordings() }, identifier: "recordings.stale")
+        if state.isStale {
+            PigStaleNotice(since: state.staleSince, retry: { await model.loadRecordings() }, identifier: "recordings.stale")
                 .padding(.horizontal, compact ? RecordingsMetrics.phoneEdge : RecordingsMetrics.pagePadding)
         }
         if let message = model.actionMessage {
@@ -203,7 +203,7 @@ struct RecordingsView: View {
                         PigErrorState(failure: failure, retry: { await model.loadRecordings() }, identifier: "recordings.error",
                                       schedule: store.schedule)
                             .pigStateFillsPage()
-                    case .empty:
+                    case .empty, .emptyStale:
                         RecordingsEmpty(openGuide: openGuide).pigStateFillsPage()
                         #if os(tvOS)
                         ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
@@ -300,7 +300,7 @@ struct RecordingsView: View {
                         .pigStateFillsPage()
                 }
                 .transition(.opacity)
-            case .empty:
+            case .empty, .emptyStale:
                 ScrollView {
                     RecordingsEmpty(openGuide: openGuide).pigStateFillsPage()
                 }

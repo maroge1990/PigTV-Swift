@@ -121,7 +121,7 @@ struct SportSettingsSection: View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             statusLines
             if let follows = model.follows {
-                ForEach(SettingsSportOrder.parts(empty: model.state == .empty, suggestions: !model.offline && !model.suggestions.isEmpty,
+                ForEach(SettingsSportOrder.parts(empty: model.state.showsEmpty, suggestions: !model.offline && !model.suggestions.isEmpty,
                                                  canAdd: !model.unfollowedSports.isEmpty, scoreDelay: delay.shown), id: \.self) { part in
                     switch part {
                     case .hideScores: spoilerRow(follows.spoilerFree).focusSection()
@@ -148,7 +148,7 @@ struct SportSettingsSection: View {
                 // #256: Edit order, then drag a sport by its handle (each sport's page keeps Move up / Move down).
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
                     .onMove(perform: model.canEdit ? { from, to in Task { await model.moveSports(from: from, to: to) } } : nil)
-                if model.state == .empty {
+                if model.state.showsEmpty {
                     // #280 (E1): its one action is the Add a sport row just below (a pushed page in this list).
                     PigEmptyState(title: PageWords.noSportsTitle, text: PageWords.noSportsText, identifier: "settings.sport.empty")
                         .listRowBackground(Color.clear)

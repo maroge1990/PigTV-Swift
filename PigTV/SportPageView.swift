@@ -197,10 +197,10 @@ struct SportPageView: View {
                 case .failed(let failure):
                     SportPageBack()
                     PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.page.error", schedule: model.schedule)
-                case .content, .stale, .empty:
+                case .content, .stale, .empty, .emptyStale:
                     if let front = model.front {
-                        if case .stale(let since) = model.state {
-                            PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.page.stale")
+                        if model.state.isStale {
+                            PigStaleNotice(since: model.state.staleSince, retry: { await model.load() }, identifier: "sport.page.stale")
                         }
                         let hero = SportPageRules.hero(sport, in: front)
                         let leagues = SportPageRules.leagues(sport, in: front)

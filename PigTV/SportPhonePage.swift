@@ -311,10 +311,10 @@ struct SportPhonePage: View {
                 case .failed(let failure):
                     PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.page.error", schedule: model.schedule)
                         .pigStateFillsPage()
-                case .content, .stale, .empty:
+                case .content, .stale, .empty, .emptyStale:
                     if let front = model.front {
-                        if case .stale(let since) = model.state {
-                            PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.page.stale")
+                        if model.state.isStale {
+                            PigStaleNotice(since: model.state.staleSince, retry: { await model.load() }, identifier: "sport.page.stale")
                                 .padding(.horizontal, SportPhoneMetrics.edge)
                         }
                         if let league = SportPhonePageLayout.league(sport, chosen: chosen, in: front) {
@@ -447,10 +447,10 @@ struct SportPhoneLeaguePage: View {
                         case .failed(let failure):
                             PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.page.error", schedule: model.schedule)
                                 .pigStateFillsPage()
-                        case .content, .stale, .empty:
+                        case .content, .stale, .empty, .emptyStale:
                             if let front = model.front {
-                                if case .stale(let since) = model.state {
-                                    PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.page.stale")
+                                if model.state.isStale {
+                                    PigStaleNotice(since: model.state.staleSince, retry: { await model.load() }, identifier: "sport.page.stale")
                                 }
                                 SportLeagueContent(app: app, browse: browse, sport: sport, league: league, front: front,
                                                    labels: model.labels, hidden: hidden, now: context.date, flow: flow)

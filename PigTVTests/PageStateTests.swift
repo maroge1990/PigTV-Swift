@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import PigTV
 
@@ -13,6 +14,11 @@ final class PageStateTests: XCTestCase {
     override func setUp() {
         super.setUp()
         StateRoutes.reset()
+    }
+
+    override func tearDown() {
+        StateRoutes.reset()
+        super.tearDown()
     }
 
     private func client() throws -> APIClient {
@@ -56,6 +62,20 @@ final class PageStateTests: XCTestCase {
         XCTAssertFalse(PageState.empty.showsContent)
         XCTAssertEqual(PageState.failed(failure).failure, failure)
         XCTAssertNil(stale.failure)
+        // Codex round 1 (medium): an empty answer whose refresh failed is empty and stale at once.
+        let emptyStale = PageState.of(loaded: true, hasAnswer: true, isEmpty: true, failed: true, stale: true, since: when,
+                                      failure: failure)
+        XCTAssertEqual(emptyStale, .emptyStale(since: when))
+        XCTAssertTrue(emptyStale.showsEmpty)
+        XCTAssertTrue(emptyStale.isStale)
+        XCTAssertFalse(emptyStale.showsContent)
+        XCTAssertEqual(emptyStale.staleSince, when)
+        XCTAssertNil(emptyStale.failure)
+        XCTAssertTrue(PageState.empty.showsEmpty)
+        XCTAssertFalse(PageState.empty.isStale)
+        XCTAssertTrue(stale.isStale)
+        XCTAssertFalse(stale.showsEmpty)
+        XCTAssertEqual(stale.staleSince, when)
     }
 
     // MARK: The Sport front page (and the sport pages, which share its answer)
@@ -255,6 +275,142 @@ final class PageStateTests: XCTestCase {
         }
     }
 
+    // MARK: A retry changes nothing on screen until it has its answer (review of 204–205, H2)
+
+    /// What `state` reads before each poll, while its request is in flight, and after it.
+    private func states(_ state: @escaping @MainActor () -> PageState, polls: Int,
+                        _ poll: @MainActor () async -> Void) async -> [PageState] {
+        var seen: [PageState] = []
+        StateRoutes.during = { MainActor.assumeIsolated { seen.append(state()) } }
+        defer { StateRoutes.during = nil }
+        for _ in 0..<polls {
+            seen.append(state())
+            await poll()
+            seen.append(state())
+        }
+        return seen
+    }
+
+    /// The Sport pages never cleared their failure before asking (unlike the Guide and Recordings before the fix): held
+    /// here so they keep to it. Failed → failed, stale → stale, then content on success.
+    func testTheSportPagesStayAsTheyAreThroughEachPoll() async throws {
+        let frontRoute = "\(Self.base)/front"
+        StateRoutes.set(frontRoute, status: 500)
+        let front = SportFrontModel(client: try client())
+        await front.load()
+        var polls = await states({ front.state }, polls: 2) { await front.load() }
+        XCTAssertEqual(polls, Array(repeating: .failed(PageWords.sportFailed), count: polls.count), "front: failed → failed")
+        StateRoutes.set(frontRoute, body: try fixture("sport-front-0381.json"))
+        await front.load()
+        XCTAssertEqual(front.state, .content)
+        StateRoutes.set(frontRoute, status: 500)
+        await front.load()
+        let stale = front.state
+        XCTAssertTrue(stale.isStale)
+        polls = await states({ front.state }, polls: 2) { await front.load() }
+        XCTAssertEqual(polls, Array(repeating: stale, count: polls.count), "front: stale → stale")
+
+        for league in try leagues() {
+            StateRoutes.reset()
+            StateRoutes.set(league.route, status: 500)
+            await league.load()
+            let failed = PageState.failed(PageWords.leagueFailed(league.label))
+            polls = await states(league.state, polls: 2) { await league.load() }
+            XCTAssertEqual(polls, Array(repeating: failed, count: polls.count), "\(league.label): failed → failed")
+            StateRoutes.set(league.route, body: league.full)
+            await league.load()
+            XCTAssertEqual(league.state(), .content, league.label)
+            StateRoutes.set(league.route, status: 500)
+            await league.load()
+            let stale = league.state()
+            XCTAssertTrue(stale.isStale, league.label)
+            polls = await states(league.state, polls: 2) { await league.load() }
+            XCTAssertEqual(polls, Array(repeating: stale, count: polls.count), "\(league.label): stale → stale")
+        }
+    }
+
+    // MARK: An empty answer that may be out of date (Codex round 1, medium)
+
+    /// Before: the Sport front's (and each league's) empty state stayed up through a failed refresh with no notice and
+    /// no Try again, as if current.
+    func testAnEmptyAnswerWhoseRefreshFailsKeepsItsEmptyLayoutWithTheStaleNotice() async throws {
+        let frontRoute = "\(Self.base)/front"
+        StateRoutes.set(frontRoute, body: Self.empty)
+        let front = SportFrontModel(client: try client())
+        await front.load()
+        XCTAssertEqual(front.state, .empty)
+        StateRoutes.set(frontRoute, status: 500)
+        await front.load()
+        guard case .emptyStale(let since) = front.state else { return XCTFail("front: \(front.state)") }
+        XCTAssertNotNil(since)
+        XCTAssertTrue(front.state.showsEmpty && front.state.isStale)
+        StateRoutes.set(frontRoute, body: Self.empty)
+        await front.load()
+        XCTAssertEqual(front.state, .empty, "front: a successful refresh clears the notice")
+
+        for league in try leagues() {
+            StateRoutes.reset()
+            StateRoutes.set(league.route, body: Self.emptyPage)
+            await league.load()
+            XCTAssertEqual(league.state(), .empty, league.label)
+            StateRoutes.set(league.route, status: 500)
+            await league.load()
+            XCTAssertTrue(league.state().showsEmpty && league.state().isStale, "\(league.label): \(league.state())")
+            StateRoutes.set(league.route, body: Self.emptyPage)
+            await league.load()
+            XCTAssertEqual(league.state(), .empty, "\(league.label): a successful refresh clears the notice")
+        }
+    }
+
+    // MARK: Leaving a page mid-refresh (review of 204, M4)
+
+    /// Before: only Swift's CancellationError counted as a cancellation; URLSession's own "cancelled" (what a page's
+    /// request throws when the page goes away) marked a page with content stale, and one without content failed.
+    func testACancelledRequestIsNotAFailure() async throws {
+        let frontRoute = "\(Self.base)/front"
+        StateRoutes.set(frontRoute, body: try fixture("sport-front-0381.json"))
+        let front = SportFrontModel(client: try client())
+        await front.load()
+        StateRoutes.cancelled = [frontRoute]
+        await front.load()
+        XCTAssertEqual(front.state, .content, "front: no false “Couldn’t update”")
+        let fresh = SportFrontModel(client: try client())
+        await fresh.load()
+        XCTAssertEqual(fresh.state, .loading, "front: still loading, not “didn’t load”")
+
+        for league in try leagues() {
+            StateRoutes.reset()
+            StateRoutes.set(league.route, body: league.full)
+            await league.load()
+            StateRoutes.cancelled = [league.route]
+            await league.load()
+            XCTAssertEqual(league.state(), .content, "\(league.label): no false “Couldn’t update”")
+        }
+        for league in try leagues() {
+            StateRoutes.reset()
+            StateRoutes.cancelled = [league.route]
+            await league.load()
+            XCTAssertEqual(league.state(), .loading, "\(league.label): still loading, not “didn’t load”")
+        }
+    }
+
+    // MARK: Apple TV focus (review of 204–205, M5)
+
+    /// Before: a state's button took focus whenever focus was not in the tab bar, so a league's error or empty state that
+    /// appeared under the sport page's banner list pulled focus out of it. Now it takes focus only when focus is nowhere.
+    func testAStateTakesFocusOnlyWhenFocusIsNowhere() {
+        XCTAssertTrue(PigStateFocus.mayTake(focused: nil), "nothing focused: the state's button takes it")
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+        let row = UIButton(type: .system)
+        window.addSubview(row)
+        XCTAssertFalse(PigStateFocus.mayTake(focused: row), "a control on screen (a banner row) keeps focus")
+        let tabBar = UITabBar()
+        window.addSubview(tabBar)
+        XCTAssertFalse(PigStateFocus.mayTake(focused: tabBar), "the tab bar keeps focus (205's rule)")
+        let gone = UIButton(type: .system)
+        XCTAssertTrue(PigStateFocus.mayTake(focused: gone), "a control that left the screen with the content it belonged to")
+    }
+
     // MARK: The words
 
     /// No state on these pages shows a code, a status or the system's own description of the error.
@@ -290,8 +446,12 @@ final class PageStateTests: XCTestCase {
 private final class StateRoutes: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var routes: [String: (status: Int, body: Data)] = [:]
     nonisolated(unsafe) static var asked: [String] = []
+    /// Paths whose request fails as URLSession's own "cancelled" (the page that asked went away).
+    nonisolated(unsafe) static var cancelled: Set<String> = []
+    /// Runs on the main thread while each request is in flight (before its answer): what the page shows meanwhile.
+    nonisolated(unsafe) static var during: (() -> Void)?
 
-    static func reset() { routes = [:]; asked = [] }
+    static func reset() { routes = [:]; asked = []; cancelled = []; during = nil }
     static func count(_ path: String) -> Int { asked.filter { $0 == path }.count }
     static func set(_ path: String, status: Int = 200, body: Data = Data(#"{"error":"down"}"#.utf8)) {
         routes[path] = (status, body)
@@ -301,6 +461,13 @@ private final class StateRoutes: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.asked.append(request.url?.path ?? "")
+        if let during = Self.during {
+            if Thread.isMainThread { during() } else { DispatchQueue.main.sync(execute: during) }
+        }
+        if Self.cancelled.contains(request.url?.path ?? "") {
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+            return
+        }
         let route = Self.routes[request.url?.path ?? ""] ?? (404, Data(#"{"error":"not found"}"#.utf8))
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: route.status, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)

@@ -75,8 +75,9 @@ struct OnboardingView: View {
     }
 
     private func go(_ next: SignInStep) {
-        // #280: a note belongs to the attempt that made it; another step starts clean (what was typed stays).
-        if !(model.canRestore && next == .method) { model.signInError = nil }
+        // #280: a note belongs to the attempt that made it; another step starts clean (what was typed stays). A refused
+        // saved sign-in's note stays on the tiles, where it is retried.
+        if !(model.signInRetry == .saved && next == .method) { model.signInError = nil }
         #if os(tvOS)
         pendingField.request(next)
         #endif
@@ -210,8 +211,9 @@ struct OnboardingView: View {
                     #endif
             }
             errorNote
-            // #280: a saved sign-in that was refused is tried again from its note ("Try again"); without one, it is offered.
-            if model.canRestore && model.signInError == nil {
+            // #280: a saved sign-in that was refused is tried again from its note ("Try again"); otherwise it is offered
+            // (also under a note about another attempt, whose own "Try again" retries that attempt: review of 205, M2).
+            if model.canRestore && model.signInRetry != .saved {
                 Button("Use saved sign-in", systemImage: "arrow.clockwise") { Task { await model.restore() } }
                     .disabled(model.authBusy)
             }
@@ -264,8 +266,21 @@ struct OnboardingView: View {
     @ViewBuilder
     private var errorNote: some View {
         if let failure = model.signInError {
-            SignInErrorNote(failure: failure, retry: model.canRestore ? { Task { await model.restore() } } : nil,
-                            busy: model.authBusy)
+            SignInErrorNote(failure: failure, retry: retryAction, busy: model.authBusy)
+        }
+    }
+
+    /// Review of 205 (M2): the note's "Try again" retries the attempt the note is about; none where trying the same again
+    /// cannot help (the note says what to do instead).
+    private var retryAction: (() -> Void)? {
+        switch model.signInRetry {
+        case .saved?:
+            guard model.canRestore else { return nil }
+            return { Task { await model.restore() } }
+        case .server?: return { continueToMethod() }
+        case .password?: return { Task { await model.login() } }
+        case .pairing?: return { model.startPairing() }
+        case nil: return nil
         }
     }
 
@@ -288,7 +303,7 @@ struct OnboardingView: View {
 }
 
 /// #280: a sign-in that did not work, said where it was tried: what happened and what to check, in plain words (no alert,
-/// no code). A refused saved sign-in offers "Try again".
+/// no code). "Try again" (when given) retries that same attempt.
 struct SignInErrorNote: View {
     let failure: SignInFailure
     var retry: (() -> Void)? = nil

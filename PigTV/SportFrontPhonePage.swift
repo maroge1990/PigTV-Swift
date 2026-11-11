@@ -102,7 +102,18 @@ struct SportFrontPhonePage: View {
                 case .failed(let failure):
                     PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.front.error", schedule: model.schedule)
                         .pigStateFillsPage()
-                case .empty:
+                case .empty, .emptyStale:
+                    // An empty answer whose refresh failed keeps E1 under the slim notice (it may be out of date); the
+                    // scores feed's own note shows above it, as above the content.
+                    if model.state.isStale {
+                        PigStaleNotice(since: model.state.staleSince, retry: { await model.load() }, identifier: "sport.front.stale")
+                            .padding(.horizontal, SportPhoneMetrics.edge)
+                    }
+                    if model.front?.scoresUnavailable == true {
+                        Label(SportFrontText.scoresUnavailable, systemImage: "info.circle")
+                            .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, SportPhoneMetrics.edge)
+                            .accessibilityIdentifier("sport.front.scoresUnavailable")
+                    }
                     SportFollowEmpty(app: app, settings: browse.sportFollowsEnabled).pigStateFillsPage()
                 case .content, .stale:
                     if let front = model.front {

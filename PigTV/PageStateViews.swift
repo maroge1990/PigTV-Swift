@@ -42,25 +42,30 @@ nonisolated enum PigStateMetrics {
     static let noticeBorder: CGFloat = 2
 }
 
-/// #280 (one rule on every page, Apple TV): a state's button takes focus when it appears only if focus is inside the page
-/// (or nowhere, so it would be lost); never off the tab bar, where the viewer may be moving from tab to tab. Down from the
-/// tab bar reaches it (it is the page's default focus).
+/// #280 (one rule on every page, Apple TV; review of 204–205, M5): a state's button never takes focus from a control that
+/// has it (the tab bar, where the viewer may be moving from tab to tab, or a banner row a league's answer arrived under);
+/// it claims focus only when focus would otherwise be nowhere (nothing focused, or the focused control has just left the
+/// screen with the content it belonged to). Down reaches it from above (it is the page's default focus).
 enum PigStateFocus {
     @MainActor static func mayTake() -> Bool {
         #if os(tvOS)
         // The scene's focus system (UIScreen.focusedItem asserts in a scene-based app).
         let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows).first { $0.isKeyWindow }
-        var view = window.flatMap { UIFocusSystem.focusSystem(for: $0)?.focusedItem } as? UIView
-        guard view != nil else { return true }
-        while let current = view {
-            if current is UITabBar || String(describing: type(of: current)).contains("TabBar") { return false }
-            view = current.superview
-        }
-        return true
+        let system = window.flatMap { UIFocusSystem.focusSystem(for: $0) }
+        return mayTake(focused: system?.focusedItem)
         #else
         return false
         #endif
+    }
+
+    /// Pure, for the tests: whether `focused` (the focus system's item) leaves focus nowhere.
+    @MainActor static func mayTake(focused: UIFocusItem?) -> Bool {
+        guard let focused else { return true }
+        // A view that has left its window (the placeholder or old content the state replaced) holds focus for nothing.
+        if let view = focused as? UIView { return view.window == nil }
+        // Any other item (SwiftUI's own focusable content, a tab bar item) is a control that has focus.
+        return false
     }
 }
 

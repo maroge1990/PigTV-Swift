@@ -53,6 +53,32 @@ final class SignInUITests: XCTestCase {
         XCTAssertFalse(pair.exists)
     }
 
+    /// #49, review of 205 (M6): each step change puts the focus on that step's first control, taken when the step
+    /// appears (it waited 200 ms before): the username field after "Username and password", the Pair tile after Menu,
+    /// the address field after Change.
+    @MainActor
+    func testEachStepChangeFocusesItsFirstControl() throws {
+        continueAfterFailure = false
+        let app = launch("onboarding")
+        let pair = app.buttons["signin.pair"], password = app.buttons["signin.password"]
+        XCTAssertTrue(pair.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(waitUntil(5) { pair.hasFocus }, "at launch: \(focused(app).identifier)")
+        XCTAssertTrue(reach(password, in: app))
+        XCUIRemote.shared.press(.select)
+        let username = app.textFields["signin.username"]
+        XCTAssertTrue(username.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(5) { username.hasFocus }, "after Username and password: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(pair.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(5) { pair.hasFocus }, "after Menu: \(focused(app).identifier)")
+        let change = app.buttons["signin.server.change"]
+        XCTAssertTrue(reach(change, in: app), "Change never took the focus: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        let address = app.textFields["signin.address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(5) { address.hasFocus }, "after Change: \(focused(app).identifier)")
+    }
+
     @MainActor
     func testADifferentServerStartsAtTheServer() throws {
         let app = launch("signin-server")

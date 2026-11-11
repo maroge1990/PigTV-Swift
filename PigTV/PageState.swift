@@ -17,6 +17,9 @@ nonisolated enum PageState: Equatable, Sendable {
     case stale(since: Date?)
     /// The answer has nothing to show (E1).
     case empty
+    /// The answer had nothing to show, but the last refresh failed (#280, Codex round 1): the empty layout stays, with the
+    /// slim notice and its "Try again" above it, so an empty page that may be out of date never looks current.
+    case emptyStale(since: Date?)
     /// Nothing to show and no answer to show it from (R1).
     case failed(PageFailure)
 
@@ -25,6 +28,30 @@ nonisolated enum PageState: Equatable, Sendable {
         switch self {
         case .content, .stale: true
         default: false
+        }
+    }
+
+    /// The page draws its empty layout (current or stale).
+    var showsEmpty: Bool {
+        switch self {
+        case .empty, .emptyStale: true
+        default: false
+        }
+    }
+
+    /// The last refresh failed and what is shown (content or the empty layout) stays: the slim notice is drawn above it.
+    var isStale: Bool {
+        switch self {
+        case .stale, .emptyStale: true
+        default: false
+        }
+    }
+
+    /// When what a stale page shows was received (the notice's time); nil when not known or not stale.
+    var staleSince: Date? {
+        switch self {
+        case .stale(let since), .emptyStale(let since): since
+        default: nil
         }
     }
 
@@ -39,7 +66,7 @@ nonisolated enum PageState: Equatable, Sendable {
     static func of(loaded: Bool, hasAnswer: Bool, isEmpty: Bool, failed: Bool, stale: Bool, since: Date?,
                    failure: PageFailure) -> PageState {
         guard hasAnswer else { return loaded || failed ? .failed(failure) : .loading }
-        if isEmpty { return .empty }
+        if isEmpty { return stale ? .emptyStale(since: since) : .empty }
         return stale ? .stale(since: since) : .content
     }
 
@@ -50,11 +77,13 @@ nonisolated enum PageState: Equatable, Sendable {
     }
 
     /// #280: the TV Guide, which pages its channels in (`channels` so far; `paging` while more are coming). Channels on
-    /// screen stay when a page or a refresh fails (stale); with none, a failure is the error. It is empty only once a
-    /// whole answer came with no channels; before the first answer (`loadedAt` nil) it is loading.
+    /// screen stay when a page or a refresh fails (stale); with none, a failure is the error, unless an answer with no
+    /// channels came before it (`loadedAt` set): that empty guide stays, marked stale. It is empty only once a whole
+    /// answer came with no channels; before the first answer (`loadedAt` nil) it is loading. A retry changes nothing on
+    /// screen until it has its answer: `failed` holds until an attempt succeeds, whatever `busy` says.
     static func guide(channels: Int, busy: Bool, paging: Bool, failed: Bool, loadedAt: Date?) -> PageState {
         if channels > 0 { return failed ? .stale(since: loadedAt) : .content }
-        if failed { return .failed(PageWords.guideFailed) }
+        if failed { return loadedAt != nil ? .emptyStale(since: loadedAt) : .failed(PageWords.guideFailed) }
         if busy || paging || loadedAt == nil { return .loading }
         return .empty
     }
@@ -62,7 +91,8 @@ nonisolated enum PageState: Equatable, Sendable {
     /// #280: the Guide's page as drawn: the model's state (`guide`), except that channels on screen which the chosen chip
     /// filters down to none (`rowsEmpty`, once paging is done) are its empty state too.
     static func guideRows(_ guide: PageState, rowsEmpty: Bool, paging: Bool) -> PageState {
-        guide.showsContent && rowsEmpty && !paging ? .empty : guide
+        guard guide.showsContent && rowsEmpty && !paging else { return guide }
+        return guide.isStale ? .emptyStale(since: guide.staleSince) : .empty
     }
 
     /// #280: Search over the loaded guide. A query under two letters shows its prompt (content); while the guide has not
@@ -276,6 +306,20 @@ struct SignInFailure: Equatable {
 
     /// Where the attempt was made, which decides the wording of a sentence the app or server wrote itself.
     enum Step: Equatable, Sendable { case server, password, pairing, saved }
+
+    /// Review of 205 (M2): what the note's "Try again" retries after `error` at `step`: that same attempt, but only when
+    /// trying it again can help (the server did not answer, or answered with an error); nil after a refusal that needs
+    /// the person to change something first (a wrong password, an expired pairing code, a server too old), whose note
+    /// says what to do. A saved sign-in's note always retries it (the server may have been restored meanwhile).
+    static func retry(after error: Error, step: Step) -> Step? {
+        if UserMessage.isCancellation(error) { return nil }
+        if step == .saved { return .saved }
+        if error is URLError { return step }
+        switch error as? PigTVError {
+        case .http?, .decoding?: return step
+        default: return nil
+        }
+    }
 
     /// The words for `error` (nil for a cancelled request, which is not a failure).
     static func of(_ error: Error, step: Step) -> SignInFailure? {

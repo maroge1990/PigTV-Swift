@@ -79,7 +79,7 @@ final class F1PageModel: ObservableObject {
     func state(label: String = "Formula 1") -> PageState {
         if let page {
             if !page.available { return .failed(PageWords.leagueNotAvailable(label)) }
-            if page.weekend == nil { return .empty }
+            if page.weekend == nil { return stale ? .emptyStale(since: updatedAt) : .empty }
             return stale ? .stale(since: updatedAt) : .content
         }
         return PageState.of(loaded: loaded, hasAnswer: false, isEmpty: false, failed: error != nil, stale: false, since: nil,
@@ -106,9 +106,11 @@ final class F1PageModel: ObservableObject {
                 self.stale = kept
                 if !kept { self.updatedAt = Date() }
                 self.error = nil
-            } catch is CancellationError {
             } catch {
-                if self.page == nil { self.error = UserMessage.text(for: error) } else { self.stale = true }
+                // #280 (review of 204, M4): a cancelled request (the page went away; URLError's "cancelled" too) is not
+                // a failure: what was on screen is as it was, and a page with nothing yet is still loading.
+                if UserMessage.isCancellation(error) { return }
+                if self.page == nil { self.error = UserMessage.text(for: error) ?? UserMessage.somethingFailed } else { self.stale = true }
             }
             self.loaded = true
         }

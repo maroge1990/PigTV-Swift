@@ -411,7 +411,7 @@ private struct DesignTestScreen: View {
                 SportChannelPicker(event: event, app: app, browse: browse, clock: now, play: { $0() })
             }
         case "unreachable":
-            UnreachableView(model: app, message: UserMessage.unreachable)
+            UnreachableView(model: app, notice: .unreachable)
         default:
             OnboardingView(model: app)
         }

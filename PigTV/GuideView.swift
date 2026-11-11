@@ -302,8 +302,8 @@ struct GuideView: View {
     /// #280 (R1): channels on screen whose refresh (or a later page) failed: they stay, with the slim notice.
     @ViewBuilder
     private func staleNotice(_ state: PageState) -> some View {
-        if case .stale(let since) = state {
-            PigStaleNotice(since: since, retry: { await model.retryGuide() }, identifier: "guide.stale")
+        if state.isStale {
+            PigStaleNotice(since: state.staleSince, retry: { await model.retryGuide() }, identifier: "guide.stale")
                 .padding(.horizontal, PigSpacing.l)
         }
     }
@@ -331,7 +331,7 @@ struct GuideView: View {
         #if os(iOS)
         if state == .loading {
             OnNowPlaceholder()
-        } else if state == .empty {
+        } else if state.showsEmpty {
             ScrollView { guideEmpty.pigStateFillsPage() }
         } else {
             OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { openChannel($0) },
@@ -395,7 +395,7 @@ struct GuideView: View {
             switch state {
             case .loading:
                 GuideGridPlaceholder()
-            case .empty:
+            case .empty, .emptyStale:
                 ScrollView { guideEmpty.pigStateFillsPage() }
             default:
                 EmptyView()

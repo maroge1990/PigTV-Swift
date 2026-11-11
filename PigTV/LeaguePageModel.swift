@@ -45,9 +45,12 @@ final class LeaguePageModel: ObservableObject {
             if kept { stale.insert(league) } else { stale.remove(league); updatedAt[league] = Date() }
             errors[league] = nil
         case .failure(let failure):
-            if !(failure is CancellationError) {
-                if pages[league] == nil { errors[league] = UserMessage.text(for: failure) } else { stale.insert(league) }
-            }
+            // #280 (review of 204, M4): a cancelled request (the page went away; URLError's "cancelled" too) is not a
+            // failure: what was on screen is as it was, and a page with nothing yet is still loading.
+            if UserMessage.isCancellation(failure) { return }
+            if pages[league] == nil {
+                errors[league] = UserMessage.text(for: failure) ?? UserMessage.somethingFailed
+            } else { stale.insert(league) }
         case nil:
             break
         }
@@ -59,7 +62,7 @@ final class LeaguePageModel: ObservableObject {
     func state(_ league: String, label: String) -> PageState {
         if let page = pages[league] {
             if !page.available { return .failed(PageWords.leagueNotAvailable(label)) }
-            if page.rounds.isEmpty { return .empty }
+            if page.rounds.isEmpty { return stale.contains(league) ? .emptyStale(since: updatedAt[league]) : .empty }
             return stale.contains(league) ? .stale(since: updatedAt[league]) : .content
         }
         return PageState.of(loaded: loaded.contains(league), hasAnswer: false, isEmpty: false, failed: errors[league] != nil,

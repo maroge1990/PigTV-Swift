@@ -106,7 +106,8 @@ final class BrowseModel: ObservableObject {
         }
         let generation = guideGeneration
         guideBusy = true
-        guideError = nil
+        // #280 (review of 205, H2): the last failure stays until an attempt succeeds (fetchGuidePage clears it), so a
+        // retry never swaps the error, or the stale notice, for the loading placeholders while it waits for its answer.
         defer { if generation == guideGeneration { guideBusy = false } }
         await fetchGuidePage(generation: generation)
         guard reset, generation == guideGeneration, guideHasMore, guideError == nil else { return }
@@ -146,6 +147,7 @@ final class BrowseModel: ObservableObject {
                 // copy the whole array for every page.
                 guideStore.guide.append(contentsOf: additions)
             }
+            if guideError != nil { guideError = nil }
             guideTotal = page.total
             fromCache = false
             guideCursor = page.nextCursor
@@ -158,8 +160,9 @@ final class BrowseModel: ObservableObject {
             // A4.1: the Top Shelf snapshot (first rows / favourites' now-next).
             if isFirstPage || !guideHasMore { exportTopShelf() }
         } catch {
-            guard generation == guideGeneration, !(error is CancellationError) else { return }
-            guideError = UserMessage.text(for: error)
+            // A cancelled request (the task that asked went away, URLError's own "cancelled" too) is not a failure.
+            guard generation == guideGeneration, !UserMessage.isCancellation(error) else { return }
+            guideError = UserMessage.text(for: error) ?? UserMessage.somethingFailed
         }
     }
 
@@ -177,7 +180,7 @@ final class BrowseModel: ObservableObject {
         while true {
             do { return try await client.guidePage(query: query) }
             catch {
-                guard generation == guideGeneration, !(error is CancellationError) else { throw CancellationError() }
+                guard generation == guideGeneration, !UserMessage.isCancellation(error) else { throw CancellationError() }
                 guard attempt < delays.count else { throw error }
                 let delay = delays[attempt]
                 attempt += 1
@@ -194,16 +197,21 @@ final class BrowseModel: ObservableObject {
     static var guidePageRetryDelaysOverride: [TimeInterval]?
     #endif
 
-    /// The guide error banner's Retry: an empty guide (the very first page
-    /// never arrived) starts over, otherwise this resumes background paging
-    /// from `guideCursor` — wherever it stopped — instead of
-    /// restarting the whole guide.
+    /// The guide error's and stale notice's "Try again": an empty guide (the very first page
+    /// never arrived) starts over, a stopped paging resumes from `guideCursor` — wherever it
+    /// stopped — instead of restarting the whole guide, and a refresh that failed with every
+    /// channel on screen is asked again with those channels kept. #280 (H2): the failure stays
+    /// on screen until the attempt succeeds (it was cleared first, so the page showed its
+    /// loading shape, or a failed refresh's notice vanished without a request being made).
     func retryGuide() async {
         #if DEBUG
         if fixtureHoldsGuide { return }
         #endif
-        guideError = nil
-        await loadGuide(reset: guide.isEmpty)
+        if guide.isEmpty || !guideHasMore {
+            await loadGuide(reset: true, keepVisible: true)
+        } else {
+            await loadGuide(reset: false)
+        }
     }
 
     /// Build 33 ("the guide hits a wall moving forward in time"): fetches the
@@ -419,7 +427,8 @@ final class BrowseModel: ObservableObject {
         lastLoads["recordings"] = Date()
         recordingsLoading = true
         if !quietly { recordingsBusy = true }
-        if recordingsError != nil { recordingsError = nil }
+        // #280 (review of 205, H2): the last failure stays until a request succeeds, so a poll or "Try again" never swaps
+        // the error for the loading placeholders, or makes the stale notice blink, while it waits for its answer.
         defer { recordingsLoading = false; if !quietly { recordingsBusy = false } }
         let began = Date()
         do {
@@ -434,8 +443,13 @@ final class BrowseModel: ObservableObject {
             if planned != schedules { schedules = planned }
             settleTombstones(loadedSince: began) { !$0.hasPrefix("rule:") }
             recordingStore.updatedAt = Date()
+            if recordingsError != nil { recordingsError = nil }
             recordingStore.change(\.loaded, to: true)
-        } catch { recordingsError = UserMessage.text(for: error) }
+        } catch {
+            // A cancelled request is not a failure (and must not clear one either).
+            guard !UserMessage.isCancellation(error) else { return }
+            recordingsError = UserMessage.text(for: error) ?? UserMessage.somethingFailed
+        }
     }
 
     // MARK: Page states (#280)
@@ -447,6 +461,8 @@ final class BrowseModel: ObservableObject {
         if UserMessage.isCancellation(error) { return nil }
         switch error as? PigTVError {
         case .serverMessage(let text, _), .viewerConflict(let text), .message(let text): return text
+        // Trying again cannot help an account the server refuses: say so (review of 206, low 8).
+        case .forbidden: return PigTVError.forbidden.errorDescription ?? plain
         default: return plain
         }
     }
@@ -1047,7 +1063,8 @@ final class BrowseModel: ObservableObject {
 
     /// #280 (`PIGTV_UI_TEST_RECORDINGS_STATE`): Recordings and Scheduled in one of their states: `loading` (no answer
     /// yet, the rules neither), `empty` (an answer with nothing recorded or scheduled, and no rules), `failed` (the first
-    /// load failed), `stale` (the fixture's lists, the last refresh failed 25 minutes after they came).
+    /// load failed), `stale` (the fixture's lists, the last refresh failed 25 minutes after they came), `empty-stale` (an
+    /// answer with nothing in it, the last refresh failed 25 minutes after it came).
     func setRecordingsFixtureState(_ state: String) {
         switch state {
         case "loading":
@@ -1067,6 +1084,12 @@ final class BrowseModel: ObservableObject {
             recordingsError = "fixture"
             recordingStore.schedule = RefreshSchedule(after: AppFreshness.interval)
         case "stale":
+            recordingStore.updatedAt = Date().addingTimeInterval(-25 * 60)
+            recordingsError = "fixture"
+        case "empty-stale":
+            recordings = []
+            schedules = []
+            recordingStore.rules = []
             recordingStore.updatedAt = Date().addingTimeInterval(-25 * 60)
             recordingsError = "fixture"
         default: break

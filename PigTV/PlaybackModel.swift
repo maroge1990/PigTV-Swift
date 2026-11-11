@@ -416,8 +416,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
                     reconnecting = true
                     retryAfter = max(delay, wait)
                 } else {
-                    let words = UserMessage.text(for: error, otherwise: "This channel couldn’t start. Try again in a moment.")
-                    self.error = hasPlayed ? "The stream ended. \(words)" : words
+                    // Review of 206 (M1): an optional in the sentence drew "Optional(…)" on screen; it is unwrapped there.
+                    let plain = "This channel couldn’t start. Try again in a moment."
+                    let words = UserMessage.text(for: error, otherwise: plain)
+                    self.error = hasPlayed ? "The stream ended. \(words ?? plain)" : words
                     canRetry = true
                 }
                 // Keep the session ID if cleanup fails so Retry/stop can retry release.

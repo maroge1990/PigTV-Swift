@@ -19,6 +19,7 @@ final class PageStatesTests: XCTestCase {
     }
 
     override func tearDown() {
+        PageRoutes.reset()
         BrowseModel.guidePageRetryDelaysOverride = nil
         try? FileManager.default.removeItem(at: cacheDirectory)
         super.tearDown()
@@ -243,6 +244,146 @@ final class PageStatesTests: XCTestCase {
         Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
+    // MARK: A retry changes nothing on screen until it has its answer (review of 205, H2)
+
+    /// What `state` reads before each poll, while each of its requests is in flight, and after it.
+    private func states(_ state: @escaping @MainActor () -> PageState, polls: Int,
+                        _ poll: @MainActor () async -> Void) async -> [PageState] {
+        var seen: [PageState] = []
+        PageRoutes.during = { MainActor.assumeIsolated { seen.append(state()) } }
+        defer { PageRoutes.during = nil }
+        for _ in 0..<polls {
+            seen.append(state())
+            await poll()
+            seen.append(state())
+        }
+        return seen
+    }
+
+    /// Before: each pass cleared the guide's error before asking, so a failed TV Guide showed its loading placeholders
+    /// for the length of every attempt (about 20 s a minute with the page retries), and "Try again" did the same.
+    func testAFailedGuideStaysFailedThroughEachPollAndTryAgain() async throws {
+        PageRoutes.set(Self.guide, status: 500)
+        let m = try browse()
+        await m.loadInitialGuide()
+        let failed = PageState.failed(PageWords.guideFailed)
+        XCTAssertEqual(m.guideState, failed)
+        let polls = await states({ m.guideState }, polls: 2) { await m.loadInitialGuide() }
+        XCTAssertGreaterThanOrEqual(polls.count, 6, "each poll was watched mid-request")
+        XCTAssertEqual(polls, Array(repeating: failed, count: polls.count), "failed → failed, never failed → loading → failed")
+        let tried = await states({ m.guideState }, polls: 1) { await m.retryGuide() }
+        XCTAssertEqual(tried, Array(repeating: failed, count: tried.count), "Try again: the error stays (its ring shows the attempt)")
+        PageRoutes.set(Self.guide, body: Self.oneChannel)
+        await m.retryGuide()
+        XCTAssertEqual(m.guideState, .content, "a successful attempt clears it")
+    }
+
+    /// Before: with channels on screen a refresh cleared the error first, so the stale notice went and came back with
+    /// every pass, moving the page; and its "Try again" cleared the notice without asking anything.
+    func testAStaleGuideStaysStaleThroughEachPollAndTryAgain() async throws {
+        PageRoutes.set(Self.guide, body: Self.oneChannel)
+        let m = try browse()
+        await m.loadGuide()
+        let stale = PageState.stale(since: try XCTUnwrap(m.guideLoadedAt))
+        PageRoutes.set(Self.guide, status: 500)
+        await m.loadGuide(reset: true, keepVisible: true) // the refresh that fails
+        XCTAssertEqual(m.guideState, stale)
+        let polls = await states({ m.guideState }, polls: 2) { await m.loadGuide(reset: true, keepVisible: true) }
+        XCTAssertEqual(polls, Array(repeating: stale, count: polls.count), "stale → stale, the notice never blinks off")
+        let asked = PageRoutes.count(Self.guide)
+        let tried = await states({ m.guideState }, polls: 1) { await m.retryGuide() }
+        XCTAssertEqual(tried, Array(repeating: stale, count: tried.count))
+        XCTAssertEqual(PageRoutes.count(Self.guide), asked + 1, "Try again asks")
+        PageRoutes.set(Self.guide, body: Self.oneChannel)
+        await m.retryGuide()
+        XCTAssertEqual(m.guideState, .content)
+    }
+
+    /// Before: each poll (and "Try again") cleared the recordings' error first: the error page turned into the loading
+    /// placeholders for the request, and the stale notice over a list blinked off and on.
+    func testFailedAndStaleRecordingsStayAsTheyAreThroughEachPoll() async throws {
+        PageRoutes.set(Self.recordings, status: 500)
+        let m = try browse()
+        await m.loadRecordings(quietly: true)
+        for failure in [PageWords.recordingsFailed, PageWords.scheduledFailed] {
+            let polls = await states({ m.recordingsState(isEmpty: true, failure: failure) }, polls: 2) {
+                await m.loadRecordings(quietly: true)
+            }
+            XCTAssertEqual(polls, Array(repeating: .failed(failure), count: polls.count), "failed → failed")
+        }
+        let tried = await states({ m.recordingsState(isEmpty: true) }, polls: 1) { await m.loadRecordings() }
+        XCTAssertEqual(tried, Array(repeating: .failed(PageWords.recordingsFailed), count: tried.count), "Try again")
+
+        PageRoutes.set(Self.recordings, body: Self.oneRecording)
+        PageRoutes.set(Self.scheduled, body: Self.none)
+        await m.loadRecordings()
+        XCTAssertEqual(m.recordingsState(isEmpty: m.recordings.isEmpty), .content, "a successful attempt clears it")
+        let stale = PageState.stale(since: try XCTUnwrap(m.recordingStore.updatedAt))
+        PageRoutes.set(Self.recordings, status: 503)
+        await m.loadRecordings(quietly: true) // the refresh that fails
+        XCTAssertEqual(m.recordingsState(isEmpty: m.recordings.isEmpty), stale)
+        let polls = await states({ m.recordingsState(isEmpty: m.recordings.isEmpty) }, polls: 2) { await m.loadRecordings(quietly: true) }
+        XCTAssertEqual(polls, Array(repeating: stale, count: polls.count), "stale → stale, the notice never blinks off")
+        PageRoutes.set(Self.recordings, body: Self.oneRecording)
+        await m.loadRecordings()
+        XCTAssertEqual(m.recordingsState(isEmpty: m.recordings.isEmpty), .content)
+    }
+
+    /// A request cancelled because what asked went away (URLSession's own "cancelled") neither fails the list nor clears
+    /// its failure.
+    func testACancelledRecordingsRequestChangesNothing() async throws {
+        PageRoutes.set(Self.recordings, status: 500)
+        let m = try browse()
+        await m.loadRecordings()
+        PageRoutes.cancelled = [Self.recordings]
+        await m.loadRecordings()
+        XCTAssertEqual(m.recordingsState(isEmpty: true), .failed(PageWords.recordingsFailed))
+        let fresh = try browse()
+        await fresh.loadRecordings()
+        XCTAssertEqual(fresh.recordingsState(isEmpty: true), .loading, "still loading, not failed")
+    }
+
+    // MARK: An empty answer that may be out of date (Codex round 1, medium)
+
+    /// Before: `PageState.of` said `.empty` before it looked at whether the last refresh failed, so "No recordings yet",
+    /// "Nothing scheduled" and "No channels yet" looked current through an outage (a recording scheduled on another
+    /// device stayed hidden), with no notice and no Try again.
+    func testAnEmptyAnswerWhoseRefreshFailsKeepsItsEmptyLayoutWithTheStaleNotice() async throws {
+        PageRoutes.set(Self.recordings, body: Self.none)
+        PageRoutes.set(Self.scheduled, body: Self.none)
+        let m = try browse()
+        await m.loadRecordings()
+        XCTAssertEqual(m.recordingsState(isEmpty: true), .empty)
+        let since = m.recordingStore.updatedAt
+        PageRoutes.set(Self.recordings, status: 503)
+        await m.loadRecordings()
+        for failure in [PageWords.recordingsFailed, PageWords.scheduledFailed] {
+            let state = m.recordingsState(isEmpty: true, failure: failure)
+            XCTAssertEqual(state, .emptyStale(since: since), "\(failure.title)")
+            XCTAssertTrue(state.showsEmpty, "the empty layout stays")
+            XCTAssertTrue(state.isStale, "with the notice and its Try again above it")
+            XCTAssertEqual(state.staleSince, since)
+        }
+        PageRoutes.set(Self.recordings, body: Self.none)
+        await m.loadRecordings()
+        XCTAssertEqual(m.recordingsState(isEmpty: true), .empty, "a successful refresh clears the notice")
+
+        PageRoutes.set(Self.guide, body: Self.noChannels)
+        await m.loadGuide()
+        XCTAssertEqual(m.guideState, .empty)
+        let loadedAt = try XCTUnwrap(m.guideLoadedAt)
+        PageRoutes.set(Self.guide, status: 500)
+        await m.loadInitialGuide()
+        XCTAssertEqual(m.guideState, .emptyStale(since: loadedAt), "No channels yet stays, marked out of date")
+        XCTAssertEqual(PageState.guideRows(m.guideState, rowsEmpty: true, paging: false), .emptyStale(since: loadedAt))
+        PageRoutes.set(Self.guide, body: Self.noChannels)
+        await m.retryGuide()
+        XCTAssertEqual(m.guideState, .empty, "a successful refresh clears the notice")
+
+        // A chip that leaves no channels on a stale guide keeps the notice too.
+        XCTAssertEqual(PageState.guideRows(.stale(since: loadedAt), rowsEmpty: true, paging: false), .emptyStale(since: loadedAt))
+    }
+
     // MARK: Sign in
 
     /// Before: every sign-in error was an alert titled "PigTV" with OK, carrying the system's text (or "The server
@@ -325,6 +466,8 @@ final class PageStatesTests: XCTestCase {
         XCTAssertEqual(BrowseModel.actionText(PageWords.changeFailed, PigTVError.serverMessage("Too late to change the padding.", status: 409)),
                        "Too late to change the padding.", "a sentence the server wrote to be shown is kept")
         XCTAssertNil(BrowseModel.actionText(PageWords.actionFailed, CancellationError()), "a cancelled request is not a failure")
+        // Review of 206 (low 8): an account the server refuses is not told to try again.
+        XCTAssertEqual(BrowseModel.actionText(PageWords.deleteFailed, PigTVError.forbidden), PigTVError.forbidden.errorDescription)
     }
 
     // MARK: The words
@@ -354,8 +497,12 @@ final class PageStatesTests: XCTestCase {
 private final class PageRoutes: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var routes: [String: (status: Int, body: Data)] = [:]
     nonisolated(unsafe) static var asked: [String] = []
+    /// Paths whose request fails as URLSession's own "cancelled" (the task that asked went away).
+    nonisolated(unsafe) static var cancelled: Set<String> = []
+    /// Runs on the main thread while each request is in flight (before its answer): what the page shows meanwhile.
+    nonisolated(unsafe) static var during: (() -> Void)?
 
-    static func reset() { routes = [:]; asked = [] }
+    static func reset() { routes = [:]; asked = []; cancelled = []; during = nil }
     static func count(_ path: String) -> Int { asked.filter { $0 == path }.count }
     static func set(_ path: String, status: Int = 200, body: Data = Data(#"{"error":"down"}"#.utf8)) {
         routes[path] = (status, body)
@@ -365,6 +512,13 @@ private final class PageRoutes: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.asked.append(request.url?.path ?? "")
+        if let during = Self.during {
+            if Thread.isMainThread { during() } else { DispatchQueue.main.sync(execute: during) }
+        }
+        if Self.cancelled.contains(request.url?.path ?? "") {
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+            return
+        }
         let route = Self.routes[request.url?.path ?? ""] ?? (404, Data(#"{"error":"not found"}"#.utf8))
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: route.status, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)

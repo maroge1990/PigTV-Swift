@@ -3,17 +3,24 @@ import Combine
 
 @MainActor
 final class AppModel: ObservableObject {
-    @Published var serverText = UserDefaults.standard.string(forKey: "pigtv.server") ?? ""
-    @Published var username = ""
-    @Published var password = ""
+    // Review of 205 (M3): editing the form starts a new attempt, so the last one's note goes.
+    @Published var serverText = UserDefaults.standard.string(forKey: "pigtv.server") ?? "" {
+        didSet { if serverText != oldValue { formEdited() } }
+    }
+    @Published var username = "" { didSet { if username != oldValue { formEdited() } } }
+    @Published var password = "" { didSet { if password != oldValue { formEdited() } } }
     @Published var error: String?
     /// #280: why the last sign-in attempt (the server check, a password, pairing or the saved sign-in) did not work, in
     /// plain words; Sign in shows it on the form (never an alert) and keeps what was typed.
-    @Published var signInError: SignInFailure?
+    @Published var signInError: SignInFailure? { didSet { if signInError == nil { signInRetry = nil } } }
+    /// Review of 205 (M2): what the note's "Try again" retries: the attempt the note is about (the saved sign-in, the
+    /// server check, the password or pairing), nil when trying the same again cannot help (a wrong password).
+    @Published private(set) var signInRetry: SignInFailure.Step?
     @Published private(set) var authBusy = false
     @Published private(set) var canRestore = false
-    // Saved sign-in exists but the server could not be reached.
-    @Published private(set) var unreachable: String?
+    /// A saved sign-in exists but the restore could not finish: the Offline screen's title and sentence (the server could
+    /// not be reached, or it answered that it could not sign in yet).
+    @Published private(set) var unreachable: OfflineNotice?
     @Published private(set) var pairing: PairStart?
     @Published private(set) var user: User?
     @Published private(set) var serverInfo: ServerInfo? {
@@ -77,6 +84,8 @@ final class AppModel: ObservableObject {
         guard !authBusy, !serverText.isEmpty, !loggedIn else { return }
         authBusy = true
         defer { authBusy = false }
+        // Which words a refusal takes: the server's own check (too old, not a PigTV server) reads as Continue's does.
+        var words = SignInFailure.Step.saved
         do {
             let address = try ServerAddress(serverText)
             guard let token = try keychain.token(for: address) else { return }
@@ -87,7 +96,9 @@ final class AppModel: ObservableObject {
             let userAnswer = Task { () async throws -> User in try await candidate.request("auth/me") }
             defer { userAnswer.cancel() } // nothing left running if info fails first
             let info: ServerInfo = try await candidate.request("info")
+            words = .server
             try info.validate()
+            words = .saved
             let user = try await userAnswer.value
             let authenticated = APIClient(address: address, token: token, info: info, accountID: user.id)
             self.client = authenticated
@@ -97,6 +108,7 @@ final class AppModel: ObservableObject {
             self.user = user
             canRestore = false
             unreachable = nil
+            signInError = nil // review of 205 (M3): a note about an earlier attempt never outlives this sign-in
             categoriesTask?.cancel()
             categoriesTask = Task { await self.loadCategories() } // #55: the tabs show without waiting for it
             // Apple 163 (161 Codex round 2, medium): a saved category filter needs the categories before the guide draws
@@ -107,24 +119,52 @@ final class AppModel: ObservableObject {
             // A cancelled restore (the app went to the background) is retried
             // on the next launch; it is not "unreachable" and not an alert.
             if UserMessage.isCancellation(error) { return }
-            if error as? PigTVError == .unauthorised {
-                // #54 (Apple 160): the saved sign-in is kept: a 401 at launch can be passing (the server's database
-                // restored, a restart); the sign-in screen offers "Retry saved sign-in", and signing in or pairing
-                // replaces it. Only Sign out deletes it.
-                canRestore = true
-                signInError = SignInFailure.of(error, step: .saved)
-            } else if let urlError = error as? URLError {
-                // Server asleep, wrong network or no route to it: show a
-                // dedicated screen rather than a generic alert.
-                unreachable = Self.describe(urlError)
-            } else {
-                signInError = SignInFailure.of(error, step: .saved)
+            // #54 (Apple 160): the saved sign-in is kept whatever the answer: a 401 at launch can be passing (the
+            // server's database restored, a restart); Sign in offers it again, and signing in or pairing replaces it.
+            // Only Sign out deletes it.
+            if error as? PigTVError == .unauthorised { canRestore = true }
+            // Review of 205 (H1): every outcome leaves for the screen that says it. Before, a refusal answered to the
+            // Offline screen's retry set the sign-in note while Offline stayed up, retrying every 20 s for ever.
+            switch Self.restoreOutcome(error) {
+            case .offline(let notice):
+                unreachable = notice
+            case .signIn:
+                unreachable = nil
+                noteSignInFailure(error, words: words, retry: .saved)
             }
         }
     }
 
-    private static func describe(_ error: URLError) -> String {
-        error.code == .timedOut ? "PigTV did not answer in time. It may be asleep or busy." : UserMessage.unreachable
+    /// Where a restore that did not finish goes (pure, `SignInRestoreTests`).
+    enum RestoreOutcome: Equatable {
+        /// The Offline screen, which retries every 20 s: the server could not be reached, or it answered with a server
+        /// error (5xx). Nothing on the sign-in form can help with either; the saved sign-in is probably fine, and the
+        /// next attempt finishes once the server is back (it may be starting up or updating).
+        case offline(OfflineNotice)
+        /// Sign in, with the note saying why (a refused saved sign-in, a server too old or not PigTV, an account
+        /// refused, too many attempts): something the person has to do.
+        case signIn
+    }
+
+    static func restoreOutcome(_ error: Error) -> RestoreOutcome {
+        if let url = error as? URLError {
+            return .offline(OfflineNotice(title: OfflineNotice.unreachableTitle,
+                                          message: url.code == .timedOut ? "PigTV did not answer in time. It may be asleep or busy."
+                                              : UserMessage.unreachable))
+        }
+        if case PigTVError.http(let status) = error, (500..<600).contains(status) { return .offline(.notReady) }
+        return .signIn
+    }
+
+    /// The note for a sign-in attempt that did not work (`words`: whose wording) and what its "Try again" retries.
+    private func noteSignInFailure(_ failure: Error, words: SignInFailure.Step, retry: SignInFailure.Step?) {
+        signInError = SignInFailure.of(failure, step: words)
+        if signInError != nil { signInRetry = retry }
+    }
+
+    /// The person changed the address, the username or the password: the last attempt's note is no longer about this.
+    private func formEdited() {
+        if signInError != nil { signInError = nil }
     }
 
     func login() async {
@@ -155,8 +195,8 @@ final class AppModel: ObservableObject {
         if case PigTVError.rateLimited(let seconds) = failure {
             authRetry = (serverText, Date().addingTimeInterval(Double(seconds)))
         }
-        // #280: on the form, in plain words (was the system's text in an alert).
-        signInError = SignInFailure.of(failure, step: step)
+        // #280: on the form, in plain words (was the system's text in an alert); "Try again" only where it can help.
+        noteSignInFailure(failure, words: step, retry: SignInFailure.retry(after: failure, step: step))
     }
 
     private func accept(token: String, address: ServerAddress, info: ServerInfo, user: User? = nil) async throws {
@@ -255,7 +295,7 @@ final class AppModel: ObservableObject {
             signInAtServer = false
             return true
         } catch {
-            signInError = SignInFailure.of(error, step: .server)
+            noteSignInFailure(error, words: .server, retry: SignInFailure.retry(after: error, step: .server))
             return false
         }
     }
@@ -287,6 +327,8 @@ final class AppModel: ObservableObject {
         password = ""
         categories = []
         canRestore = false
+        signInError = nil // review of 205 (M3): a note about the last session's sign-in never shows after Sign out
+        unreachable = nil
     }
 
     /// Apple 162 (161 Codex round 1, medium): it runs after the tabs show, so its answer is published only while the
@@ -656,14 +698,16 @@ final class AppModel: ObservableObject {
     /// the form draws it (the server's address unreachable, a refused password, a pairing code that expired, a refused
     /// saved sign-in with "Try again").
     func injectSignInError(_ kind: String) {
+        func note(_ error: Error, _ step: SignInFailure.Step) {
+            noteSignInFailure(error, words: step, retry: step == .saved ? .saved : SignInFailure.retry(after: error, step: step))
+        }
         switch kind {
-        case "server": signInError = SignInFailure.of(URLError(.cannotConnectToHost), step: .server)
-        case "password": signInError = SignInFailure.of(PigTVError.unauthorised, step: .password)
-        case "pairing":
-            signInError = SignInFailure.of(PigTVError.message("The pairing code expired. Request another code."), step: .pairing)
+        case "server": note(URLError(.cannotConnectToHost), .server)
+        case "password": note(PigTVError.unauthorised, .password)
+        case "pairing": note(PigTVError.message("The pairing code expired. Request another code."), .pairing)
         case "saved":
             canRestore = true
-            signInError = SignInFailure.of(PigTVError.unauthorised, step: .saved)
+            note(PigTVError.unauthorised, .saved)
         default: break
         }
     }
@@ -739,6 +783,20 @@ nonisolated struct PendingWatch: Equatable, Sendable {
     let at: Date
 }
 
+/// What the Offline screen says (review of 205, H1): its title and one sentence. It retries by itself every 20 s.
+nonisolated struct OfflineNotice: Equatable, Sendable {
+    let title: String
+    let message: String
+
+    static let unreachableTitle = "Can’t reach PigTV"
+    /// The server could not be reached (the fixtures' Offline screen too).
+    static let unreachable = OfflineNotice(title: unreachableTitle, message: UserMessage.unreachable)
+    /// The server answered with a server error (5xx): it is up but cannot sign this device in yet. The saved sign-in is
+    /// kept and the screen keeps trying; nothing on the sign-in form would help.
+    static let notReady = OfflineNotice(title: "Your server isn’t ready yet",
+                                        message: "It answered but couldn’t sign this device in. It may be starting up or updating. Your sign-in is kept.")
+}
+
 /// Brand 1.8 §8 and upgrade row 2 (maroge1990/PigTV#280): the splash shows only while the app is loading. With no
 /// saved sign-in there is nothing to load: the app opens on sign-in, with no splash. With one, the splash shows until
 /// the session is restored (the first screen then draws its own page-shaped loading state); no minimum time, never
@@ -766,17 +824,21 @@ nonisolated enum LaunchStep: Equatable, Sendable {
 
 #if DEBUG
 /// T3 only, to watch the launch in the simulator: PIGTV_UI_TEST_LAUNCH=saved saves a sign-in to an address that never
-/// answers (TEST-NET-1), =none opens with no saved address, and =clear (a launch that draws nothing) puts back the
-/// address there was before and removes the fixture's sign-in.
+/// answers (TEST-NET-1; or PIGTV_UI_TEST_LAUNCH_SERVER, a stub the test runs), =none opens with no saved address, and
+/// =clear (a launch that draws nothing) puts back the address there was before and removes the fixture's sign-in.
 @MainActor enum LaunchFixture {
     private static let backupKey = "pigtv.server.beforeLaunchFixture"
+    private static let fixtureServerKey = "pigtv.server.launchFixture"
 
     static func applySavedSignIn(defaults: UserDefaults) {
         switch ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LAUNCH"] {
         case "saved":
-            guard let address = try? ServerAddress(AppModel.unreachableFixtureServer) else { return }
+            // PIGTV_UI_TEST_LAUNCH_SERVER: a stub server the test runs instead (to watch a restore's answers).
+            let server = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LAUNCH_SERVER"] ?? AppModel.unreachableFixtureServer
+            guard let address = try? ServerAddress(server) else { return }
             backup(defaults)
-            defaults.set(AppModel.unreachableFixtureServer, forKey: "pigtv.server")
+            defaults.set(server, forKey: fixtureServerKey)
+            defaults.set(server, forKey: "pigtv.server")
             try? KeychainStore().save(token: "fixture", for: address)
         case "none":
             backup(defaults)
@@ -787,6 +849,10 @@ nonisolated enum LaunchStep: Equatable, Sendable {
 
     static func clear(defaults: UserDefaults = .standard) {
         if let address = try? ServerAddress(AppModel.unreachableFixtureServer) { try? KeychainStore().remove(for: address) }
+        if let server = defaults.string(forKey: fixtureServerKey), let address = try? ServerAddress(server) {
+            try? KeychainStore().remove(for: address)
+        }
+        defaults.removeObject(forKey: fixtureServerKey)
         guard let before = defaults.string(forKey: backupKey) else { return }
         if before.isEmpty { defaults.removeObject(forKey: "pigtv.server") } else { defaults.set(before, forKey: "pigtv.server") }
         defaults.removeObject(forKey: backupKey)

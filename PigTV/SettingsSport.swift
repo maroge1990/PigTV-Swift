@@ -72,7 +72,7 @@ final class ScoreDelaySetting: ObservableObject {
         } catch {
             message = error as? PigTVError == .http(409)
                 ? "Changed on another device: this is the delay now."
-                : "Not saved: \(UserMessage.text(for: error))"
+                : "Not saved: \(UserMessage.text(for: error) ?? "the change was cancelled.")"
             if let fresh: SportsPreferences = try? await client.request("sports/preferences") { preferences = fresh }
         }
     }

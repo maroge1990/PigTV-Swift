@@ -85,11 +85,11 @@ struct SportEventsContent: View {
         case .failed(let failure):
             PigErrorState(failure: failure, retry: retry, identifier: "sport.events.error",
                            schedule: model.schedules[league])
-        case .content, .stale, .empty:
+        case .content, .stale, .empty, .emptyStale:
             if let page = model.pages[league] {
                 VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
-                    if case .stale(let since) = state {
-                        PigStaleNotice(since: since, retry: retry, identifier: "sport.events.stale")
+                    if state.isStale {
+                        PigStaleNotice(since: state.staleSince, retry: retry, identifier: "sport.events.stale")
                     }
                     switch page.kind {
                     case "race":

@@ -144,9 +144,14 @@ struct SportFixtureContent: View {
             SportLeaguePlaceholder(kind: .fixture)
         case .failed(let failure):
             PigErrorState(failure: failure, retry: retry, identifier: "sport.fixture.error", schedule: schedule)
-        case .empty:
-            SportLeagueEmpty(app: app, title: PageWords.noRoundsTitle(label), text: PageWords.noRoundsText(label),
-                             identifier: "sport.fixture.empty")
+        case .empty, .emptyStale:
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
+                if state.isStale {
+                    PigStaleNotice(since: state.staleSince, retry: retry, identifier: "sport.fixture.stale")
+                }
+                SportLeagueEmpty(app: app, title: PageWords.noRoundsTitle(label), text: PageWords.noRoundsText(label),
+                                 identifier: "sport.fixture.empty")
+            }
         case .content, .stale:
             VStack(alignment: .leading, spacing: PigSpacing.m) {
                 if case .stale(let since) = state {

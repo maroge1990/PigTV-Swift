@@ -60,7 +60,7 @@ struct ContentView: View {
         Group {
             if !initialRestoreFinished { LaunchLoadingView().transition(.opacity) }
             else if model.loggedIn { LibraryView(model: model) }
-            else if let message = model.unreachable { UnreachableView(model: model, message: message).tint(Color("AccentColor")) }
+            else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
             else { OnboardingView(model: model).tint(Color("AccentColor")) }
         }
         // The splash never holds the app back: when start-up finishes it fades out at once.
@@ -190,7 +190,8 @@ nonisolated enum RetryCountdown {
 /// retry, the server's address, Try now (the rose primary) and Use a different server.
 struct UnreachableView: View {
     @ObservedObject var model: AppModel
-    let message: String
+    /// The title and sentence (the server could not be reached, or it answered that it could not sign in yet).
+    let notice: OfflineNotice
     @State private var showSignIn = false
     /// When the countdown to the next attempt began (the last attempt, or this screen opening).
     @State private var started = Date()
@@ -205,7 +206,7 @@ struct UnreachableView: View {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         VStack(spacing: OfflineMetrics.spacing) {
                             RetryRing(fraction: model.authBusy ? 1 : RetryCountdown.fraction(from: started, now: context.date))
-                            Text("Can’t reach PigTV").font(OfflineType.title).multilineTextAlignment(.center)
+                            Text(notice.title).font(OfflineType.title).multilineTextAlignment(.center)
                                 .accessibilityAddTraits(.isHeader)
                             Text(model.authBusy ? "Trying again…" : RetryCountdown.text(RetryCountdown.remaining(from: started, now: context.date)))
                                 .font(OfflineType.countdown).pigFigures()
@@ -213,7 +214,7 @@ struct UnreachableView: View {
                                 .accessibilityIdentifier("offline.countdown")
                         }
                     }
-                    Text(message).font(OfflineType.message).multilineTextAlignment(.center).foregroundStyle(Color.pigSecondary)
+                    Text(notice.message).font(OfflineType.message).multilineTextAlignment(.center).foregroundStyle(Color.pigSecondary)
                         .frame(maxWidth: OfflineMetrics.messageWidth)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(model.serverText).font(OfflineType.address).fontDesign(.monospaced).foregroundStyle(Color.pigSecondary)

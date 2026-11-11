@@ -114,9 +114,11 @@ final class SportFrontModel: ObservableObject {
                 self.error = nil
                 self.stale = false
                 self.updatedAt = Date()
-            } catch is CancellationError {
             } catch {
-                if self.front == nil { self.error = UserMessage.text(for: error) } else { self.stale = true }
+                // #280 (review of 204, M4): a cancelled request (the page went away; URLError's "cancelled" too) is not
+                // a failure: what was on screen is as it was, and a page with nothing yet is still loading.
+                if UserMessage.isCancellation(error) { return }
+                if self.front == nil { self.error = UserMessage.text(for: error) ?? UserMessage.somethingFailed } else { self.stale = true }
             }
             self.loaded = true
         }

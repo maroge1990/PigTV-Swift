@@ -56,8 +56,13 @@ struct SportF1Content: View {
             SportLeaguePlaceholder(kind: .motorsport)
         case .failed(let failure):
             PigErrorState(failure: failure, retry: { await model.load() }, identifier: "f1.error", schedule: model.schedule)
-        case .empty:
-            SportLeagueEmpty(app: app, title: PageWords.noRaceTitle, text: PageWords.noRaceText, identifier: "f1.empty")
+        case .empty, .emptyStale:
+            VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
+                if state.isStale {
+                    PigStaleNotice(since: state.staleSince, retry: { await model.load() }, identifier: "f1.stale")
+                }
+                SportLeagueEmpty(app: app, title: PageWords.noRaceTitle, text: PageWords.noRaceText, identifier: "f1.empty")
+            }
         case .content, .stale:
             if let page = model.page, let weekend = page.weekend {
                 VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {

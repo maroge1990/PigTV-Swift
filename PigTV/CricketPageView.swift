@@ -145,8 +145,8 @@ struct CricketPageView: View {
         let state = model.state(label: "Cricket")
         VStack(alignment: .leading, spacing: CricketMetrics.spacing) {
             if !embedded { header }
-            if case .stale(let since) = state {
-                PigStaleNotice(since: since, retry: retry, identifier: "cricket.stale")
+            if state.isStale {
+                PigStaleNotice(since: state.staleSince, retry: retry, identifier: "cricket.stale")
             }
             if case .loading = state {
                 SportLeaguePlaceholder(kind: .cricket)

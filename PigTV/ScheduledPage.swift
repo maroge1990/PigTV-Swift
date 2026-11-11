@@ -197,8 +197,8 @@ struct ScheduledPage: View {
 
     @ViewBuilder
     private var status: some View {
-        if case .stale(let since) = state {
-            PigStaleNotice(since: since, retry: { await model.loadRecordings() }, identifier: "scheduled.stale")
+        if state.isStale {
+            PigStaleNotice(since: state.staleSince, retry: { await model.loadRecordings() }, identifier: "scheduled.stale")
         }
         if let error = actions.actionError {
             Text(error).font(ScheduledMetrics.detail).foregroundStyle(Color.pigDanger).accessibilityIdentifier("scheduled.error")
@@ -215,7 +215,7 @@ struct ScheduledPage: View {
             switch state {
             case .loading:
                 ScheduledRowsPlaceholder(rows: 4, compact: compact)
-            case .empty:
+            case .empty, .emptyStale:
                 // #280 (E1): the one action is Open the TV Guide; it takes the TV's focus only when nothing else is there.
                 PigEmptyState(title: PageWords.nothingScheduledTitle, text: PageWords.nothingScheduledText,
                               action: PigStateAction(label: PageWords.openGuide, run: openGuide), identifier: "scheduled.empty")
