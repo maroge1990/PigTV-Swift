@@ -22,6 +22,11 @@ final class F1PageModel: ObservableObject {
     @Published private(set) var error: String?
     /// A save that did not reach the server (the switch is put back).
     @Published private(set) var saveError: String?
+    /// #280: the last refresh failed (or answered "not ready yet") while a page was on screen; when the page shown came.
+    @Published private(set) var stale = false
+    @Published private(set) var updatedAt: Date?
+    /// #280: the polling's next request, for a failed page's countdown (one retry clock).
+    @Published private(set) var schedule: RefreshSchedule?
     var isFixture = false
     let client: APIClient
     private var inFlight: Task<Void, Never>?
@@ -69,8 +74,23 @@ final class F1PageModel: ObservableObject {
         self.defaults = defaults
     }
 
+    /// #280: what the Formula 1 page shows. `available: false` with nothing on screen is the honest "not available right
+    /// now", never a spinner; empty is an answer with no weekend.
+    func state(label: String = "Formula 1") -> PageState {
+        if let page {
+            if !page.available { return .failed(PageWords.leagueNotAvailable(label)) }
+            if page.weekend == nil { return .empty }
+            return stale ? .stale(since: updatedAt) : .content
+        }
+        return PageState.of(loaded: loaded, hasAnswer: false, isEmpty: false, failed: error != nil, stale: false, since: nil,
+                            failure: PageWords.leagueFailed(label))
+    }
+
     func load() async {
         if let inFlight { await inFlight.value; return }
+        #if DEBUG
+        if holdsLoading { return }
+        #endif
         guard !isFixture else { loaded = true; return }
         let task = Task { [weak self] in
             guard let self else { return }
@@ -80,12 +100,15 @@ final class F1PageModel: ObservableObject {
             await self.revalidatePreferences()
             do {
                 let answer = try await pageAnswer
-                // "Not ready yet" keeps what is on screen; a later load has it.
+                // "Not ready yet" keeps what is on screen; a later load has it. #280: what is kept is then out of date.
+                let kept = !answer.available && self.page?.available == true
                 if answer.available || self.page == nil, answer != self.page { self.page = answer }
+                self.stale = kept
+                if !kept { self.updatedAt = Date() }
                 self.error = nil
             } catch is CancellationError {
             } catch {
-                if self.page == nil { self.error = UserMessage.text(for: error) }
+                if self.page == nil { self.error = UserMessage.text(for: error) } else { self.stale = true }
             }
             self.loaded = true
         }
@@ -217,12 +240,31 @@ final class F1PageModel: ObservableObject {
         invalidatePreferences()
         await load()
         while !Task.isCancelled {
+            schedule = RefreshSchedule(after: Self.refreshInterval)
             do { try await Task.sleep(for: Self.refreshInterval) } catch { return }
             await load()
         }
     }
 
     #if DEBUG
+    /// #280: a fixture that stays loading.
+    var holdsLoading = false
+
+    /// #280 (`PIGTV_UI_TEST_LEAGUE_STATE`): the page in one of its states for the simulator and UI tests: `loading`,
+    /// `failed`, `unavailable` (the server's `available: false`), `empty` (no weekend), `stale` (its refresh failed).
+    /// The preferences stay as the fixture set them.
+    func setFixtureState(_ state: String) {
+        isFixture = true
+        switch state {
+        case "loading": holdsLoading = true; page = nil; loaded = false
+        case "failed": page = nil; error = "fixture"; loaded = true
+        case "unavailable": page = F1Page(available: false); loaded = true
+        case "empty": page = F1Page(available: true); loaded = true
+        case "stale": stale = true; updatedAt = Date().addingTimeInterval(-25 * 60)
+        default: break
+        }
+    }
+
     func setFixture(_ page: F1Page, preferences: SportPagePreferences = SportPagePreferences()) {
         isFixture = true
         self.page = page

@@ -28,6 +28,15 @@ final class AppModel: ObservableObject {
     /// player's TV Guide button, "sport" from a pigtv://home link);
     /// LibraryView applies it and clears it.
     @Published var requestedTab: String?
+    /// #280: a Settings page to open with it (the Sport page's empty state, "Choose your sport"); the Settings tab
+    /// applies it and clears it.
+    @Published var requestedSettingsPage: SettingsPage?
+
+    /// #280: the Settings tab, on `page`.
+    func openSettings(_ page: SettingsPage) {
+        requestedSettingsPage = page
+        requestedTab = "settings"
+    }
     // The tvOS player presents these over native AVKit controls. Keeping the
     // state here lets transport-bar actions open them without resolving media.
     @Published private(set) var browse: BrowseModel?

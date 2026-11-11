@@ -91,27 +91,29 @@ struct SportFrontTVPage: View {
     private func page(now: Date) -> some View {
         ScrollView(.vertical) {
             // D-43: the banner, then the rails 20 pt below it (the television's m is the nearest step)
+            // #280: the four states (PageState): placeholders shaped like the page, the pig with the one action, the pig in
+            // the retry ring, or the content (with the slim notice when its refresh failed).
             VStack(alignment: .leading, spacing: PigSpacing.m) {
-                if let front = model.front {
-                    if model.stale, let updated = model.updatedAt {
-                        Text("Couldn't refresh. Last updated \(updated.formatted(date: .omitted, time: .shortened)).")
-                            .font(SportCardMetrics.detail).foregroundStyle(.secondary)
-                            .accessibilityIdentifier("sport.front.stale")
-                    }
-                    if front.scoresUnavailable { scoresBanner }
-                    if front.isEmpty {
-                        emptyState
-                    } else {
+                switch model.state {
+                case .loading:
+                    SportFrontPlaceholder()
+                case .failed(let failure):
+                    PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.front.error", schedule: model.schedule)
+                        .pigStateFillsPage()
+                case .empty:
+                    SportFollowEmpty(app: app, settings: browse.sportFollowsEnabled).pigStateFillsPage()
+                case .content, .stale:
+                    if let front = model.front {
+                        if case .stale(let since) = model.state {
+                            PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.front.stale")
+                        }
+                        if front.scoresUnavailable { scoresBanner }
                         banner(front, now: now)
                             .id(SportFrontTVPage.bannerID)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bannerHeight = $0 }
                         ForEach(SportFrontLayout.sections(front)) { section in sectionView(section, front: front, now: now) }
                         also(front, now: now)
                     }
-                } else if !model.loaded {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
-                } else {
-                    unavailable
                 }
             }
             .padding(.bottom, PigSpacing.empty)
@@ -252,29 +254,40 @@ struct SportFrontTVPage: View {
             .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: SportCardMetrics.radius, style: .continuous))
             .accessibilityIdentifier("sport.front.scoresUnavailable")
     }
+}
 
-    private var emptyState: some View {
-        VStack(spacing: PigSpacing.m) {
-            Image(systemName: "sportscourt").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
-                .accessibilityHidden(true)
-            Text("Follow a sport to start").font(DetailType.title).multilineTextAlignment(.center)
-            Text(SportFrontText.followHelp(settings: browse.sportFollowsEnabled))
-                .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 900)
-        }
-        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("sport.front.empty")
+/// #280 (E1): a league's page with nothing to show: its one action is Open the TV Guide. Under the Sport banner (Apple TV,
+/// iPad) the banner's own rose button is the screen's primary, so this one is secondary; the iPhone's league page has none.
+struct SportLeagueEmpty: View {
+    let app: AppModel
+    let title: String
+    let text: String
+    let identifier: String
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var prominent: Bool { sizeClass == .compact }
+    #else
+    private var prominent: Bool { false }
+    #endif
+
+    var body: some View {
+        PigEmptyState(title: title, text: text,
+                      action: PigStateAction(label: PageWords.openGuide, prominent: prominent) { app.requestedTab = "guide" },
+                      identifier: identifier)
     }
+}
 
-    private var unavailable: some View {
-        VStack(spacing: PigSpacing.m) {
-            Image(systemName: "sportscourt").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
-                .accessibilityHidden(true)
-            Text("Sport is unavailable right now").font(DetailType.title).multilineTextAlignment(.center)
-            Text(model.error ?? "The sport data could not be reached. The guide and playback are not affected.")
-                .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
-        }
-        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
+/// #280 (E1): nothing followed. With per-account follows (C-U) "Choose your sport" opens Settings › Sport; an older
+/// server keeps follows in the web app, so the page says where and has no button. Every device's Sport pages draw it.
+struct SportFollowEmpty: View {
+    let app: AppModel
+    let settings: Bool
+    var title = PageWords.followTitle
+    var identifier = "sport.front.empty"
+
+    var body: some View {
+        PigEmptyState(title: title, text: PageWords.followText(settings: settings),
+                      action: settings ? PigStateAction(label: PageWords.followAction) { app.openSettings(.sport) } : nil,
+                      identifier: identifier)
     }
 }

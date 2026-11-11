@@ -188,18 +188,29 @@ struct SportPageView: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         ScrollView(.vertical) {
+            // #280: the sport's page shares the front page's answer, and so its states (PageState): the banner and games
+            // as placeholders, the pig in the retry ring (before, a first load that failed spun for ever), or the page.
             VStack(alignment: .leading, spacing: PigSpacing.l) {
-                if let front = model.front {
-                    let hero = SportPageRules.hero(sport, in: front)
-                    let leagues = SportPageRules.leagues(sport, in: front)
-                    let shown = league.flatMap { l in leagues.contains { $0.league == l } ? l : nil }
-                        ?? SportPageRules.openingLeague(sport, in: front, hero: hero)
-                    banner(front, hero: hero, leagues: leagues, shown: shown, now: now)
-                    if let shown {
-                        leagueContent(shown, front: front, now: now)
+                switch model.state {
+                case .loading:
+                    SportPagePlaceholder()
+                case .failed(let failure):
+                    SportPageBack()
+                    PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.page.error", schedule: model.schedule)
+                case .content, .stale, .empty:
+                    if let front = model.front {
+                        if case .stale(let since) = model.state {
+                            PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.page.stale")
+                        }
+                        let hero = SportPageRules.hero(sport, in: front)
+                        let leagues = SportPageRules.leagues(sport, in: front)
+                        let shown = league.flatMap { l in leagues.contains { $0.league == l } ? l : nil }
+                            ?? SportPageRules.openingLeague(sport, in: front, hero: hero)
+                        banner(front, hero: hero, leagues: leagues, shown: shown, now: now)
+                        if let shown {
+                            leagueContent(shown, front: front, now: now)
+                        }
                     }
-                } else {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                 }
             }
             .padding(.bottom, PigSpacing.empty)
@@ -292,8 +303,9 @@ struct SportLeagueContent: View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text(SportLabels.label(league, in: labels)).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             if games.isEmpty {
-                Text("Nothing in the next three days").font(SportCardMetrics.detail).foregroundStyle(.secondary)
-                    .padding(.vertical, PigSpacing.s)
+                // #280 (E1): the league's one action, Open the TV Guide (SportLeagueEmpty).
+                SportLeagueEmpty(app: app, title: PageWords.nothingSoonTitle,
+                                 text: PageWords.nothingSoonText(SportLabels.label(league, in: labels)), identifier: "sport.league.empty")
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: SportCardMetrics.width, maximum: SportCardMetrics.width),
                                              spacing: SportCardMetrics.spacing, alignment: .topLeading)],
@@ -306,5 +318,21 @@ struct SportLeagueContent: View {
             }
         }
         .tvFocusSection()
+    }
+}
+
+/// #280: a sport's page with no banner to hold its back button (its first load failed): the banner's own back button,
+/// alone above the state.
+struct SportPageBack: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "chevron.left").font(.system(size: PigType.body, weight: .bold))
+                .frame(width: SportBannerMetrics.back, height: SportBannerMetrics.back)
+        }
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
+        .accessibilityLabel("Back to Sport")
+        .accessibilityIdentifier("sport.page.back")
     }
 }

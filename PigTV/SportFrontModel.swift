@@ -16,6 +16,8 @@ final class SportFrontModel: ObservableObject {
     @Published private(set) var stale = false
     /// When the answer shown was received.
     @Published private(set) var updatedAt: Date?
+    /// #280: the polling's next request, for a failed page's countdown (one retry clock).
+    @Published private(set) var schedule: RefreshSchedule?
     /// The game the hero band shows (`SportFrontHero`).
     @Published private(set) var heroID: String?
     /// The follow the viewer flipped the hero to, by key (league and name), so a list reordered on another device keeps
@@ -38,6 +40,13 @@ final class SportFrontModel: ObservableObject {
     init(client: APIClient) { self.client = client }
 
     var heroGame: SportsGame? { front?.game(heroID) }
+
+    /// #280: what the front page and the sport pages show (they share this answer). A failed refresh keeps the answer
+    /// on screen (`stale`); a first load that failed shows the error, with its automatic retry.
+    var state: PageState {
+        PageState.of(loaded: loaded, hasAnswer: front != nil, isEmpty: front?.isEmpty == true, failed: error != nil,
+                     stale: stale, since: updatedAt, failure: PageWords.sportFailed)
+    }
     /// The follow the hero belongs to, for the list's highlight.
     var heroFollowIndex: Int? {
         guard let front, let heroID else { return nil }
@@ -93,6 +102,9 @@ final class SportFrontModel: ObservableObject {
 
     func load() async {
         if let inFlight { await inFlight.value; return }
+        #if DEBUG
+        if holdsLoading { return }
+        #endif
         guard !isFixture else { loaded = true; return }
         let task = Task { [weak self] in
             guard let self else { return }
@@ -121,7 +133,9 @@ final class SportFrontModel: ObservableObject {
         preferences?.invalidatePreferences()
         await refresh(preferences: preferences)
         while !Task.isCancelled {
-            do { try await Task.sleep(for: interval) } catch { return }
+            let wait = interval
+            schedule = RefreshSchedule(after: wait)
+            do { try await Task.sleep(for: wait) } catch { return }
             await refresh(preferences: preferences)
         }
     }
@@ -148,7 +162,35 @@ final class SportFrontModel: ObservableObject {
     }
 
     #if DEBUG
+    /// #280: a fixture that stays loading (`PIGTV_UI_TEST_SPORT_STATE=loading`).
+    private var holdsLoading = false
+
     func setLabels(_ labels: [String: String]) { self.labels = labels }
+
+    /// #280 (`PIGTV_UI_TEST_SPORT_STATE`): the page in one of its states for the simulator and UI tests: `loading` (no
+    /// answer, and none comes), `failed` (the first load failed), `empty` (nothing followed), `stale` (`front` on screen,
+    /// its last refresh failed 25 minutes after it came).
+    func setFixtureState(_ state: String, front: SportFront?) {
+        isFixture = true
+        switch state {
+        case "loading":
+            holdsLoading = true
+            self.front = nil
+            loaded = false
+        case "failed":
+            self.front = nil
+            error = "fixture"
+            loaded = true
+        case "empty":
+            if let empty = try? JSONDecoder().decode(SportFront.self, from: Data("{}".utf8)) { setFixture(empty) }
+        case "stale":
+            if let front { setFixture(front) }
+            stale = true
+            updatedAt = Date().addingTimeInterval(-25 * 60)
+        default:
+            if let front { setFixture(front) }
+        }
+    }
 
     func setFixture(_ front: SportFront) {
         isFixture = true

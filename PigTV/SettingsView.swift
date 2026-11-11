@@ -174,6 +174,15 @@ struct LibrarySettings: View {
         content
             .onAppear(perform: open)
             .onChange(of: pages) { _, now in if let page, !now.contains(page) { self.page = SettingsMenu.opening(now, compact: compact) } }
+            // #280: a page asked for from elsewhere (the Sport page's "Choose your sport") opens as a press on its row would.
+            .onChange(of: model.requestedSettingsPage, initial: true) { _, requested in
+                guard isTab, let requested else { return }
+                model.requestedSettingsPage = nil
+                guard pages.contains(requested) else { return }
+                opened = true
+                if compact { phonePath = [requested] }
+                choose(requested)
+            }
     }
 
     /// The opening page, once (a fixture may name one: PIGTV_UI_TEST_SETTINGS_PAGE).

@@ -294,16 +294,29 @@ struct SportPhonePage: View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: PigSpacing.m) {
                 SportPhonePageHeader(back: "Sport", title: sport, hidden: hidden)
-                if let front = model.front {
-                    if let league = SportPhonePageLayout.league(sport, chosen: chosen, in: front) {
-                        chips(front, selected: league)
-                        page(league, front: front, now: now)
-                    } else {
-                        SportPhoneEmpty(icon: "sportscourt", title: "Nothing in the next three days",
-                                        text: SportFrontText.followHelp(settings: browse.sportFollowsEnabled))
+                // #280: the front page's answer, and so its states (PageState); before, a first load that failed spun
+                // for ever.
+                switch model.state {
+                case .loading:
+                    SportPhonePagePlaceholder()
+                case .failed(let failure):
+                    PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.page.error", schedule: model.schedule)
+                        .pigStateFillsPage()
+                case .content, .stale, .empty:
+                    if let front = model.front {
+                        if case .stale(let since) = model.state {
+                            PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.page.stale")
+                                .padding(.horizontal, SportPhoneMetrics.edge)
+                        }
+                        if let league = SportPhonePageLayout.league(sport, chosen: chosen, in: front) {
+                            chips(front, selected: league)
+                            page(league, front: front, now: now)
+                        } else {
+                            SportFollowEmpty(app: app, settings: browse.sportFollowsEnabled, title: PageWords.nothingSoonTitle,
+                                             identifier: "sport.page.empty")
+                                .pigStateFillsPage()
+                        }
                     }
-                } else {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
                 }
             }
             .padding(.bottom, PigSpacing.section)
@@ -346,8 +359,10 @@ struct SportPhonePage: View {
                            position: SportPhonePageLayout.position, identifier: "sport.page.phone", open: { _ in })
             .id(league)
         if groups.isEmpty && cards.isEmpty {
-            Text("Nothing in the next three days").font(.subheadline).foregroundStyle(.secondary)
-                .padding(.horizontal, SportPhoneMetrics.edge).padding(.vertical, PigSpacing.s)
+            // #280 (E1): the league's one action, Open the TV Guide (SportLeagueEmpty).
+            SportLeagueEmpty(app: app, title: PageWords.nothingSoonTitle,
+                             text: PageWords.nothingSoonText(SportLabels.label(league, in: model.labels)),
+                             identifier: "sport.league.empty")
         }
         ForEach(groups) { group in
             VStack(alignment: .leading, spacing: PigSpacing.s) {
@@ -402,17 +417,39 @@ struct SportPhoneLeaguePage: View {
 
     private var hidden: Bool { f1.hidesSpoilers || model.front?.spoilerFree == true }
 
+    /// The league's page type, for its placeholder.
+    private var placeholderKind: SportLeaguePlaceholder.Kind {
+        .of(SportPageRules.content(league: league, sport: sport, f1: browse.sportPagesEnabled, nfl: browse.nflPageEnabled,
+                                   cricket: browse.cricketPageEnabled, leagues: browse.leaguePageLeagues,
+                                   events: browse.eventPagesEnabled))
+    }
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: PigSpacing.m) {
                     SportPhonePageHeader(back: sport, title: SportLabels.label(league, in: model.labels), hidden: hidden)
-                    if let front = model.front {
-                        SportLeagueContent(app: app, browse: browse, sport: sport, league: league, front: front,
-                                           labels: model.labels, hidden: hidden, now: context.date, flow: flow)
-                            .environment(\.sportNarrow, true)
-                            .padding(.horizontal, SportPhoneMetrics.edge)
+                    // #280: the front page's states first (before, a loading or failed answer drew the header alone), then
+                    // the league's own (SportLeagueContent).
+                    Group {
+                        switch model.state {
+                        case .loading:
+                            SportLeaguePlaceholder(kind: placeholderKind)
+                        case .failed(let failure):
+                            PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.page.error", schedule: model.schedule)
+                                .pigStateFillsPage()
+                        case .content, .stale, .empty:
+                            if let front = model.front {
+                                if case .stale(let since) = model.state {
+                                    PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.page.stale")
+                                }
+                                SportLeagueContent(app: app, browse: browse, sport: sport, league: league, front: front,
+                                                   labels: model.labels, hidden: hidden, now: context.date, flow: flow)
+                            }
+                        }
                     }
+                    .environment(\.sportNarrow, true)
+                    .padding(.horizontal, SportPhoneMetrics.edge)
                 }
                 .padding(.bottom, PigSpacing.section)
             }

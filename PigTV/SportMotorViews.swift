@@ -49,28 +49,37 @@ struct SportF1Content: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let spoilerFree = model.hidesSpoilers || pageHidesSpoilers
-        if let page = model.page, page.available, let weekend = page.weekend {
-            VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
-                let tiles = HStack(alignment: .top, spacing: PigSpacing.m) {
-                    ForEach(SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree)) { tile in
-                        sessionTile(tile, weekend: weekend, now: now)
+        // #280: the page's state; `available: false` is "not available right now" (before, it spun for ever).
+        let state = model.state()
+        switch state {
+        case .loading:
+            SportLeaguePlaceholder(kind: .motorsport)
+        case .failed(let failure):
+            PigErrorState(failure: failure, retry: { await model.load() }, identifier: "f1.error", schedule: model.schedule)
+        case .empty:
+            SportLeagueEmpty(app: app, title: PageWords.noRaceTitle, text: PageWords.noRaceText, identifier: "f1.empty")
+        case .content, .stale:
+            if let page = model.page, let weekend = page.weekend {
+                VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
+                    if case .stale(let since) = state {
+                        PigStaleNotice(since: since, retry: { await model.load() }, identifier: "f1.stale")
                     }
-                    circuit(weekend)
+                    let tiles = HStack(alignment: .top, spacing: PigSpacing.m) {
+                        ForEach(SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree)) { tile in
+                            sessionTile(tile, weekend: weekend, now: now)
+                        }
+                        circuit(weekend)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    // Narrow (an iPad in portrait, the iPhone's league page): the tiles scroll sideways.
+                    if narrow {
+                        ScrollView(.horizontal) { tiles }.scrollIndicators(.hidden).scrollClipDisabled()
+                    } else {
+                        tiles.tvFocusSection()
+                    }
+                    lists(page, spoilerFree: spoilerFree)
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                // Narrow (an iPad in portrait, the iPhone's league page): the tiles scroll sideways.
-                if narrow {
-                    ScrollView(.horizontal) { tiles }.scrollIndicators(.hidden).scrollClipDisabled()
-                } else {
-                    tiles.tvFocusSection()
-                }
-                lists(page, spoilerFree: spoilerFree)
             }
-        } else if !model.loaded || model.page?.available == false {
-            ProgressView("Loading Formula 1…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
-        } else {
-            Text("Formula 1 is unavailable right now.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
         }
     }
 
@@ -218,7 +227,9 @@ struct SportMotorCardsContent: View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             Text(label).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             if games.isEmpty {
-                Text("Nothing in the next three days").font(SportCardMetrics.detail).foregroundStyle(.secondary).padding(.vertical, PigSpacing.s)
+                // #280 (E1): the league's one action, Open the TV Guide (SportLeagueEmpty).
+                SportLeagueEmpty(app: app, title: PageWords.nothingSoonTitle, text: PageWords.nothingSoonText(label),
+                                 identifier: "sport.league.empty")
             } else {
                 HStack(alignment: .top, spacing: SportCardMetrics.spacing) {
                     ForEach(games) { game in

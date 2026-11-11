@@ -254,21 +254,25 @@ struct UnreachableView: View {
     }
 }
 
-/// The pig mark inside the retry ring: the pink arc is the time left before the next attempt.
-private struct RetryRing: View {
+/// The pig mark inside the retry ring: the pink arc is the time left before the next attempt. The Offline screen draws it
+/// at its own size (the defaults); a page that failed to load draws the same ring smaller (`PigErrorState`, #280).
+struct RetryRing: View {
     let fraction: Double
+    var ring: CGFloat = OfflineMetrics.ring
+    var ringWidth: CGFloat = OfflineMetrics.ringWidth
+    var mark: CGFloat = OfflineMetrics.mark
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.pigBorder, lineWidth: OfflineMetrics.ringWidth)
+            Circle().stroke(Color.pigBorder, lineWidth: ringWidth)
             Circle().trim(from: 0, to: fraction)
-                .stroke(Color.pigAccent, style: StrokeStyle(lineWidth: OfflineMetrics.ringWidth, lineCap: .round))
+                .stroke(Color.pigAccent, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(reduceMotion ? nil : .linear(duration: 1), value: fraction)
-            PigBrandMark(width: OfflineMetrics.mark, height: OfflineMetrics.mark * 797 / 1000)
+            PigBrandMark(width: mark, height: mark * 797 / 1000)
         }
-        .frame(width: OfflineMetrics.ring, height: OfflineMetrics.ring)
+        .frame(width: ring, height: ring)
         .accessibilityHidden(true)
     }
 }

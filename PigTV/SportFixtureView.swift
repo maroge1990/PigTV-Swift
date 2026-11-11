@@ -99,10 +99,27 @@ struct SportFixtureContent: View {
         }
     }
 
-    private var loading: Bool {
+    /// #280: the league page's state; `available: false` is "not available right now" (before, it spun for ever).
+    private var state: PageState {
         switch source {
-        case .nfl: return !nfl.loaded || nfl.page?.available == false
-        case .league(let league): return !leagues.loaded.contains(league) || leagues.pages[league]?.available == false
+        case .nfl: return nfl.state(label: label)
+        case .league(let league): return leagues.state(league, label: label)
+        }
+    }
+
+    /// The polling's next request (one retry clock).
+    private var schedule: RefreshSchedule? {
+        switch source {
+        case .nfl: return nfl.schedule
+        case .league(let league): return leagues.schedules[league]
+        }
+    }
+
+    /// Asks again (the preferences first, as every refresh).
+    private func retry() async {
+        switch source {
+        case .nfl: await nfl.refresh(preferences: preferences)
+        case .league(let league): await leagues.refresh(league, preferences: preferences)
         }
     }
 
@@ -122,26 +139,38 @@ struct SportFixtureContent: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        if let fixture {
-            SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap + PigSpacing.s).callAsFunction {
-                VStack(alignment: .leading, spacing: PigSpacing.m) {
-                    roundPicker(fixture)
-                    if let shown = FixtureText.round(round, in: fixture) {
-                        grid(shown, fixture: fixture, now: now)
-                    } else {
-                        Text("No games in this round.").font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
-                    }
+        switch state {
+        case .loading:
+            SportLeaguePlaceholder(kind: .fixture)
+        case .failed(let failure):
+            PigErrorState(failure: failure, retry: retry, identifier: "sport.fixture.error", schedule: schedule)
+        case .empty:
+            SportLeagueEmpty(app: app, title: PageWords.noRoundsTitle(label), text: PageWords.noRoundsText(label),
+                             identifier: "sport.fixture.empty")
+        case .content, .stale:
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
+                if case .stale(let since) = state {
+                    PigStaleNotice(since: since, retry: retry, identifier: "sport.fixture.stale")
                 }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                if !fixture.views.isEmpty || hidesSpoilers {
-                    standings(fixture).sportSideWidth(SportFixtureMetrics.standingsWidth, narrow: narrow)
+                if let fixture { page(fixture, now: now) }
+            }
+        }
+    }
+
+    private func page(_ fixture: FixtureLeague, now: Date) -> some View {
+        SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap + PigSpacing.s).callAsFunction {
+            VStack(alignment: .leading, spacing: PigSpacing.m) {
+                roundPicker(fixture)
+                if let shown = FixtureText.round(round, in: fixture) {
+                    grid(shown, fixture: fixture, now: now)
+                } else {
+                    Text("No games in this round.").font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
                 }
             }
-        } else if loading {
-            ProgressView("Loading \(label)…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
-        } else {
-            Text("\(label) is unavailable right now.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            if !fixture.views.isEmpty || hidesSpoilers {
+                standings(fixture).sportSideWidth(SportFixtureMetrics.standingsWidth, narrow: narrow)
+            }
         }
     }
 

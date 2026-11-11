@@ -174,8 +174,10 @@ private struct SportFrontTestScreen: View {
     private func injectPages(_ pages: [String: Any]) {
         let leagues = pages["leagues"] as? [String: Any] ?? [:]
         let events = pages["events"] as? [String: Any] ?? [:]
-        model.injectHomeFixture(sportFront: true, cricket: pages["cricket"] != nil, pageLeagues: Array(leagues.keys).sorted(),
-                                events: !events.isEmpty)
+        // #280: PIGTV_UI_TEST_SPORT_FOLLOWS=1: the server has per-account follows (C-U), so the empty page offers Settings › Sport.
+        model.injectHomeFixture(sportFront: true, cricket: pages["cricket"] != nil,
+                                sportFollows: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SPORT_FOLLOWS"] == "1",
+                                pageLeagues: Array(leagues.keys).sorted(), events: !events.isEmpty)
         guard let browse = model.browse, let front: SportFront = Self.part(pages["front"]) else { return }
         browse.sportFront.setFixture(front)
         browse.sportFront.setLabels(["F1": "Formula 1", "NASCAR": "NASCAR Cup", "Cricket": "International (men)",
@@ -202,6 +204,27 @@ private struct SportFrontTestScreen: View {
             spoilerFree: environment["PIGTV_UI_TEST_SPOILERS"] == "1",
             nflFollowing: environment["PIGTV_UI_TEST_NFL_FOLLOW"],
             sports: front.sports.map(\.league), teams: teams))
+        Self.applyStates(browse, front: front, leagues: Array(leagues.keys) + Array(events.keys))
+    }
+
+    /// #280: the pages' states for the simulator and UI tests. PIGTV_UI_TEST_SPORT_STATE=loading|empty|failed|stale puts
+    /// the front page's answer, and so the front page and every sport page, in that state; PIGTV_UI_TEST_LEAGUE_STATE=
+    /// loading|empty|failed|unavailable|stale puts every league's own page (Formula 1, the NFL, cricket, the C-T leagues
+    /// and the C-V events) in it, the front page's answer as given.
+    static func applyStates(_ browse: BrowseModel, front: SportFront, leagues: [String]) {
+        let environment = ProcessInfo.processInfo.environment
+        if let state = environment["PIGTV_UI_TEST_SPORT_STATE"] {
+            browse.sportFront.setFixtureState(state, front: front)
+        }
+        guard let state = environment["PIGTV_UI_TEST_LEAGUE_STATE"] else { return }
+        browse.f1Page.setFixtureState(state)
+        browse.nflPage.setFixtureState(state)
+        browse.cricketPage.setFixtureState(state)
+        let named = leagues + [environment["PIGTV_UI_TEST_OPEN_LEAGUE"]].compactMap { $0 }
+        for league in Set(named) {
+            browse.leaguePages.setFixtureState(state, league: league)
+            browse.eventPages.setFixtureState(state, league: league)
+        }
     }
 }
 

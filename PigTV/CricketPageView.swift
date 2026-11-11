@@ -30,7 +30,7 @@ private enum CricketMetrics {
     static let otherDetail: Font = .system(size: PigType.caption)
     static let spacing: CGFloat = PigSpacing.l
     static let columnGap: CGFloat = 44
-    static let sideWidth: CGFloat = 560
+    static let sideWidth: CGFloat = SportCricketMetrics.sideWidth
     static let otherWidth: CGFloat = 380
     static let badge: CGFloat = 48
     static let radius: CGFloat = 20
@@ -53,7 +53,7 @@ private enum CricketMetrics {
     static let otherDetail: Font = .footnote
     static let spacing: CGFloat = PigSpacing.l
     static let columnGap: CGFloat = 24
-    static let sideWidth: CGFloat = 400
+    static let sideWidth: CGFloat = SportCricketMetrics.sideWidth
     static let otherWidth: CGFloat = 300
     static let badge: CGFloat = 34
     static let radius: CGFloat = 16
@@ -141,9 +141,18 @@ struct CricketPageView: View {
     @ViewBuilder
     private func stack(now: Date) -> some View {
         let spoilerFree = preferences.hidesSpoilers || pageHidesSpoilers
+        // #280: the page's state; `available: false` is "not available right now" (before, it spun for ever).
+        let state = model.state(label: "Cricket")
         VStack(alignment: .leading, spacing: CricketMetrics.spacing) {
             if !embedded { header }
-            if let scope, let raw = model.page, raw.available {
+            if case .stale(let since) = state {
+                PigStaleNotice(since: since, retry: retry, identifier: "cricket.stale")
+            }
+            if case .loading = state {
+                SportLeaguePlaceholder(kind: .cricket)
+            } else if let failure = state.failure {
+                PigErrorState(failure: failure, retry: retry, identifier: "cricket.error", schedule: model.schedule)
+            } else if let scope, let raw = model.page, raw.available {
                 scoped(CricketLeagueFilter.apply(CricketPageText.visible(raw, spoilerFree: spoilerFree), scope: scope),
                        scope: scope, now: now, spoilerFree: spoilerFree)
             } else if let raw = model.page, raw.available, raw.lead != nil || !raw.others.isEmpty {
@@ -162,15 +171,12 @@ struct CricketPageView: View {
                     }
                 }
                 if !page.others.isEmpty { others(page.others, now: now) }
-            } else if !model.loaded || model.page?.available == false {
-                ProgressView("Loading cricket…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
-            } else if model.page != nil {
-                nothingOn
             } else {
-                unavailable
+                nothingOn
             }
-            if let error = preferences.saveError {
-                Text(error).font(CricketMetrics.detail).foregroundStyle(.secondary)
+            // #280: plain words, never the error's own text.
+            if preferences.saveError != nil {
+                Text(PageWords.notSaved).font(CricketMetrics.detail).foregroundStyle(.secondary)
             }
         }
         #if os(iOS)
@@ -623,24 +629,11 @@ struct CricketPageView: View {
 
     // MARK: States
 
+    /// #280 (E1): the league's one action, Open the TV Guide (SportLeagueEmpty).
     private var nothingOn: some View {
-        VStack(spacing: PigSpacing.m) {
-            Image(systemName: "figure.cricket").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
-                .accessibilityHidden(true)
-            Text("No cricket today or tomorrow").font(DetailType.title).multilineTextAlignment(.center)
-        }
-        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
+        SportLeagueEmpty(app: app, title: PageWords.noCricketTitle, text: PageWords.noCricketText, identifier: "cricket.empty")
     }
 
-    private var unavailable: some View {
-        VStack(spacing: PigSpacing.m) {
-            Image(systemName: "figure.cricket").font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
-                .accessibilityHidden(true)
-            Text("Cricket is unavailable right now").font(DetailType.title).multilineTextAlignment(.center)
-            Text(model.error ?? "The match data could not be reached. The guide and playback are not affected.")
-                .font(DetailType.meta).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
-        }
-        .padding(.vertical, PigSpacing.empty).frame(maxWidth: .infinity)
-    }
+    /// Asks again (the preferences first, as every refresh).
+    private func retry() async { await model.refresh(preferences: preferences) }
 }

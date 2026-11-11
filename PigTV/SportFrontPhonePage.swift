@@ -90,23 +90,27 @@ struct SportFrontPhonePage: View {
 
     private func page(now: Date) -> some View {
         ScrollView(.vertical) {
+            // #280: the four states (PageState), as on the Apple TV and iPad (SportFrontTVPage.page).
             VStack(alignment: .leading, spacing: PigSpacing.m) {
-                if let front = model.front {
-                    if model.stale, let updated = model.updatedAt {
-                        Text("Couldn't refresh. Last updated \(updated.formatted(date: .omitted, time: .shortened)).")
-                            .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, SportPhoneMetrics.edge)
-                            .accessibilityIdentifier("sport.front.stale")
-                    }
-                    if front.scoresUnavailable {
-                        Label(SportFrontText.scoresUnavailable, systemImage: "info.circle")
-                            .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, SportPhoneMetrics.edge)
-                            .accessibilityIdentifier("sport.front.scoresUnavailable")
-                    }
-                    if front.isEmpty {
-                        SportPhoneEmpty(icon: "sportscourt", title: "Follow a sport to start",
-                                        text: SportFrontText.followHelp(settings: browse.sportFollowsEnabled))
-                            .accessibilityIdentifier("sport.front.empty")
-                    } else {
+                switch model.state {
+                case .loading:
+                    SportFrontPhonePlaceholder()
+                case .failed(let failure):
+                    PigErrorState(failure: failure, retry: { await model.load() }, identifier: "sport.front.error", schedule: model.schedule)
+                        .pigStateFillsPage()
+                case .empty:
+                    SportFollowEmpty(app: app, settings: browse.sportFollowsEnabled).pigStateFillsPage()
+                case .content, .stale:
+                    if let front = model.front {
+                        if case .stale(let since) = model.state {
+                            PigStaleNotice(since: since, retry: { await model.load() }, identifier: "sport.front.stale")
+                                .padding(.horizontal, SportPhoneMetrics.edge)
+                        }
+                        if front.scoresUnavailable {
+                            Label(SportFrontText.scoresUnavailable, systemImage: "info.circle")
+                                .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, SportPhoneMetrics.edge)
+                                .accessibilityIdentifier("sport.front.scoresUnavailable")
+                        }
                         carousel(front, now: now)
                             .id(Self.carouselID)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { carouselHeight = $0 }
@@ -115,15 +119,6 @@ struct SportFrontPhonePage: View {
                         }
                         also(front, now: now)
                     }
-                } else if !model.loaded {
-                    ProgressView("Loading sport…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
-                } else {
-                    VStack(spacing: PigSpacing.l) {
-                        SportPhoneEmpty(icon: "sportscourt", title: "Sport is unavailable right now",
-                                        text: model.error ?? "The sport data could not be reached. The guide and playback are not affected.")
-                        Button("Try again", systemImage: "arrow.clockwise") { Task { await model.load() } }.pigPrimaryButton()
-                    }
-                    .frame(maxWidth: .infinity)
                 }
             }
             .padding(.bottom, PigSpacing.section)
@@ -262,21 +257,4 @@ struct SportFixtureRow: View {
     }
 }
 
-/// A short centred state: an icon, a title and a line.
-struct SportPhoneEmpty: View {
-    let icon: String
-    let title: String
-    let text: String
-
-    var body: some View {
-        VStack(spacing: PigSpacing.m) {
-            Image(systemName: icon).font(.system(size: PigType.hero, weight: .semibold)).foregroundStyle(Color.pigAccentText)
-                .accessibilityHidden(true)
-            Text(title).font(.title3.bold()).multilineTextAlignment(.center)
-            Text(text).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }
-        .padding(.vertical, PigSpacing.empty).padding(.horizontal, PigSpacing.xl).frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-}
 #endif

@@ -76,26 +76,38 @@ struct SportEventsContent: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let hidden = preferences.hidesSpoilers || pageHidesSpoilers
-        if let page = model.pages[league], page.available {
-            VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
-                switch page.kind {
-                case "race":
-                    SportRaceContent(app: app, page: page, label: label, front: front, hidden: hidden)
-                case "fight":
-                    fight(page, now: now, hidden: hidden)
-                case "golf":
-                    golf(page, now: now, hidden: hidden)
-                default:
-                    tennis(page, now: now, hidden: hidden)
+        // #280: the league page's state; `available: false` is "not available right now" (before, it spun for ever). An
+        // empty week is drawn by each kind (golf's other tours, a race's last winner and next race still show).
+        let state = model.state(league, label: label)
+        switch state {
+        case .loading:
+            SportLeaguePlaceholder(kind: .events)
+        case .failed(let failure):
+            PigErrorState(failure: failure, retry: retry, identifier: "sport.events.error",
+                           schedule: model.schedules[league])
+        case .content, .stale, .empty:
+            if let page = model.pages[league] {
+                VStack(alignment: .leading, spacing: SportPageMetrics.spacing) {
+                    if case .stale(let since) = state {
+                        PigStaleNotice(since: since, retry: retry, identifier: "sport.events.stale")
+                    }
+                    switch page.kind {
+                    case "race":
+                        SportRaceContent(app: app, page: page, label: label, front: front, hidden: hidden)
+                    case "fight":
+                        fight(page, now: now, hidden: hidden)
+                    case "golf":
+                        golf(page, now: now, hidden: hidden)
+                    default:
+                        tennis(page, now: now, hidden: hidden)
+                    }
                 }
             }
-        } else if !model.loaded.contains(league) || model.pages[league]?.available == false {
-            ProgressView("Loading \(label)…").frame(maxWidth: .infinity).padding(.top, PigSpacing.empty)
-        } else {
-            Text("\(label) is unavailable right now.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
         }
     }
+
+    /// Asks again (the preferences first, as every refresh).
+    private func retry() async { await model.refresh(league, preferences: preferences) }
 
     // MARK: The event's card (Watch, Record)
 
@@ -476,8 +488,8 @@ struct SportEventsContent: View {
         .accessibilityIdentifier("sport.alsoThisWeek")
     }
 
+    /// #280 (E1): the league's one action, Open the TV Guide (SportLeagueEmpty).
     private var emptyWeek: some View {
-        Text("Nothing in \(label) this week.").font(SportPageMetrics.cardTitle).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity).padding(.vertical, PigSpacing.empty)
+        SportLeagueEmpty(app: app, title: PageWords.emptyWeekTitle(label), text: PageWords.emptyWeekText, identifier: "sport.events.empty")
     }
 }
