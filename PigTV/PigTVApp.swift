@@ -174,6 +174,7 @@ private struct SportFrontTestScreen: View {
             .fullScreenCover(isPresented: Binding(get: { Self.cricket != nil && model.playerPresented },
                                                   set: { model.playerPresented = $0 })) {
                 PlayerHost(app: model).tint(Color("AccentColor"))
+                    .environment(\.pigCoveredByPlayer, false)
             }
     }
 
@@ -276,6 +277,7 @@ private struct HomeTestScreen: View {
             .fullScreenCover(isPresented: Binding(get: { Self.presentsPlayer && model.playerPresented },
                                                   set: { model.playerPresented = $0 })) {
                 PlayerHost(app: model).tint(Color("AccentColor"))
+                    .environment(\.pigCoveredByPlayer, false)
             }
             .preferredColorScheme(fixtureScheme)
     }

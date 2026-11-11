@@ -63,6 +63,8 @@ struct ContentView: View {
             else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
             else { OnboardingView(model: model).tint(Color("AccentColor")) }
         }
+        // Audit F4: the pages under the player do no polling while it is up (WhileVisible).
+        .environment(\.pigCoveredByPlayer, model.playerPresented)
         // The splash never holds the app back: when start-up finishes it fades out at once.
         .animation(PigMotion.standard, value: initialRestoreFinished)
         #if os(tvOS)
@@ -106,6 +108,7 @@ struct ContentView: View {
         } message: { Text(model.error ?? "") }
         .fullScreenCover(isPresented: $model.playerPresented) {
             PlayerHost(app: model).tint(Color("AccentColor"))
+                .environment(\.pigCoveredByPlayer, false) // inside the player, whileVisible work keeps running
         }
     }
 }
