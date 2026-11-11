@@ -32,8 +32,13 @@ struct SportFrontPhonePage: View {
     @StateObject private var flow = SportRecordFlow()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// #264: how far the page has scrolled, and the carousel's height: past it, the hero shows as the strip.
-    @State private var scrolled: CGFloat = 0
+    @State private var pastBanner = false
     @State private var carouselHeight: CGFloat = 0
+
+    private var stripShows: Bool {
+        guard let front = model.front, !front.isEmpty else { return false }
+        return pastBanner
+    }
 
     init(app: AppModel, browse: BrowseModel, open: @escaping (String) -> Void) {
         self.app = app
@@ -79,10 +84,6 @@ struct SportFrontPhonePage: View {
 
     static let carouselID = "sport.front.carousel"
 
-    private var stripShows: Bool {
-        guard let front = model.front, !front.isEmpty else { return false }
-        return SportHeroStrip.shows(scrolled: scrolled, bannerHeight: carouselHeight, stripHeight: SportHeroStripMetrics.height)
-    }
 
     /// #264: the hero's words, slim (the carousel's first card is the hero's follow).
     private func strip(_ front: SportFront, now: Date) -> SportHeroStrip {
@@ -140,7 +141,9 @@ struct SportFrontPhonePage: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
+        .onScrollGeometryChange(for: Bool.self) { [carouselHeight] in
+            SportHeroStrip.shows(scrolled: $0.contentOffset.y + $0.contentInsets.top, bannerHeight: carouselHeight, stripHeight: SportHeroStripMetrics.height)
+        } action: { _, past in pastBanner = past }
     }
 
     /// #226: the one page header every tab draws (PigPageHeader), the scores chip trailing.

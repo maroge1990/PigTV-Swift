@@ -22,8 +22,13 @@ struct SportFrontTVPage: View {
     /// Down from the tab bar lands on the hero's first button.
     @FocusState private var heroFocused: Bool
     /// #264: how far the page has scrolled, and the banner's height: past it, the banner shows as the strip.
-    @State private var scrolled: CGFloat = 0
+    @State private var pastBanner = false
     @State private var bannerHeight: CGFloat = 0
+
+    private var stripShows: Bool {
+        guard let front = model.front, !front.isEmpty else { return false }
+        return pastBanner
+    }
 
     init(app: AppModel, browse: BrowseModel, open: @escaping (String) -> Void) {
         self.app = app
@@ -63,10 +68,6 @@ struct SportFrontTVPage: View {
         }
     }
 
-    private var stripShows: Bool {
-        guard let front = model.front, !front.isEmpty else { return false }
-        return SportHeroStrip.shows(scrolled: scrolled, bannerHeight: bannerHeight, stripHeight: SportHeroStripMetrics.height)
-    }
 
     private func scroll(now: Date) -> some View {
         // #264: once the banner has scrolled under, it shows as the strip, pinned above the rails. The strip takes its
@@ -137,7 +138,9 @@ struct SportFrontTVPage: View {
         .mask(alignment: .top) {
             SportPageTopMask(overdraw: SportFrontTVPage.overdraw)
         }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolled = y }
+        .onScrollGeometryChange(for: Bool.self) { [bannerHeight] in
+            SportHeroStrip.shows(scrolled: $0.contentOffset.y + $0.contentInsets.top, bannerHeight: bannerHeight, stripHeight: SportHeroStripMetrics.height)
+        } action: { _, past in pastBanner = past }
         .defaultFocus($heroFocused, true, priority: .userInitiated)
     }
 
