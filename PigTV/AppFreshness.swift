@@ -10,15 +10,24 @@ enum AppFreshness {
     /// Just under the interval, so each minute's pass finds them stale unless a page has just loaded them.
     static let recordingsMaxAge: TimeInterval = 55
 
-    /// One pass. `export` is the Top Shelf export (tests count it).
-    static func refresh(_ browse: BrowseModel, export: (BrowseModel) -> Void = { $0.exportTopShelf() }) async {
-        guard !browse.isFixture else { return }
+    /// Favourites change only when this device or another edits them, so the minute pass asks at most every 5 minutes
+    /// (pages that show them keep the 60 s `appearMaxAge`).
+    static let favouritesMaxAge: TimeInterval = 300
+    /// How often the loop looks again while the player is up (no request, only a flag read), so a pass follows the
+    /// player's closing within about a second.
+    static let playerPoll: Duration = .seconds(1)
+
+    /// One pass. `export` is the Top Shelf export (tests count it). #278: while the full-screen player is up nobody can
+    /// see the pages underneath, so a pass sends nothing and exports nothing (the retry clock rests with it).
+    static func refresh(_ browse: BrowseModel, playing: Bool = false,
+                        export: (BrowseModel) -> Void = { $0.exportTopShelf() }) async {
+        guard !browse.isFixture, !playing else { return }
         if browse.guide.isEmpty {
             async let guide: Void = browse.loadInitialGuide()
-            await browse.loadFavouritesIfStale()
+            await browse.loadFavouritesIfStale(maxAge: favouritesMaxAge)
             await guide
         } else {
-            await browse.loadFavouritesIfStale()
+            await browse.loadFavouritesIfStale(maxAge: favouritesMaxAge)
             await browse.refreshGuideIfStale()
         }
         // #239: recordings and schedules too, so no page needs its own idle timer for them (pages that need them sooner,
@@ -31,14 +40,28 @@ enum AppFreshness {
     }
 
     /// A pass now, then one after every `interval` until the task is cancelled (the app leaves the foreground or the
-    /// session ends). `sleep` is the clock (tests inject one).
+    /// session ends). `sleep` is the clock (tests inject one). #278: while `playing()` is true no pass runs; the loop
+    /// only looks again every `playerPoll`, and runs a pass as soon as the player has closed.
     static func run(every interval: Duration = interval,
+                    playing: () -> Bool = { false },
                     sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                     _ pass: () async -> Void) async {
-        await pass()
+        var wasPlaying = playing()
+        if !wasPlaying { await pass() }
         while !Task.isCancelled {
+            if playing() {
+                wasPlaying = true
+                do { try await sleep(playerPoll) } catch { return }
+                continue
+            }
+            if wasPlaying {
+                wasPlaying = false
+                await pass()
+                continue
+            }
             do { try await sleep(interval) } catch { return }
             guard !Task.isCancelled else { return }
+            if playing() { wasPlaying = true; continue }
             await pass()
         }
     }

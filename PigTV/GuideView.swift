@@ -61,7 +61,6 @@ struct GuideView: View {
     @AppStorage("pigtv.guide.channel") private var lastChannel = ""
     @State private var viewport = GuideNavigation.rounded(Date())
     @State private var clock = Date()
-    @State private var lastPeriodicRefresh = Date()
     /// Jump to's Show guide: the time to show once the Guide is back on screen (the page has popped).
     @State private var pendingJump: Date?
     /// The tool that opened the Search page, where a pop puts focus back (Show guide then moves the grid).
@@ -236,17 +235,6 @@ struct GuideView: View {
                 await model.loadRecordingsIfStale()
                 // #257: the long-press menu's Watch on… needs the sport events (the Sport tab may not have loaded them).
                 if model.sportEnabled && !model.sport.loaded { await model.sport.load() }
-            }
-            .whileVisible {
-                // Periodic refresh keeps the loaded day current during long sessions.
-                // Counted from the last one, not from each appearance, so
-                // visiting other tabs neither skips nor repeats it.
-                while !Task.isCancelled {
-                    let wait = max(1, 15 * 60 - Date().timeIntervalSince(lastPeriodicRefresh))
-                    do { try await Task.sleep(for: .seconds(wait)) } catch { return }
-                    lastPeriodicRefresh = Date()
-                    await model.refreshGuideIfStale() // #239: recordings come from AppFreshness
-                }
             }
             .onAppear {
                 refreshRows()

@@ -111,6 +111,74 @@ final class AppFreshnessTests: XCTestCase {
         XCTAssertEqual(passes, 3, "at once, after the first minute and after the second")
         XCTAssertEqual(slept, [.seconds(60), .seconds(60), .seconds(60)])
     }
+
+    /// #278 (audit F1): under the full-screen player nobody sees the pages, so a pass sends nothing and exports nothing.
+    func testAPassWhilePlayingSendsNothingAndExportsNothing() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client())
+        browse.guide = GuideFixtures.channels() // stale: a pass that ran would ask for it
+        var exports = 0
+        await AppFreshness.refresh(browse, playing: true) { _ in exports += 1 }
+        XCTAssertEqual(server.http.requests.count, 0, "no request of any kind while the player is up")
+        XCTAssertEqual(exports, 0, "no Top Shelf export while the player is up")
+    }
+
+    func testAPassWithoutThePlayerStillAsksAndExports() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client())
+        browse.guide = GuideFixtures.channels()
+        var exports = 0
+        await AppFreshness.refresh(browse, playing: false) { _ in exports += 1 }
+        XCTAssertFalse(server.http.requests(path: "/api/library/guide", method: "GET").isEmpty)
+        XCTAssertFalse(server.http.requests(path: "/api/recordings", method: "GET").isEmpty)
+        XCTAssertEqual(exports, 1)
+    }
+
+    /// The loop: nothing while playing (it only looks again every second), a pass as soon as the player closes, then the
+    /// minute clock as before. Opening the player mid-wait makes no pass either.
+    func testTheLoopRestsWhilePlayingAndRefreshesAtOnceWhenThePlayerCloses() async {
+        var playing = true
+        var slept: [Duration] = []
+        var passes = 0
+        struct Stop: Error {}
+        await AppFreshness.run(playing: { playing }, sleep: { duration in
+            slept.append(duration)
+            if slept.count == 3 { playing = false } // the player closes during the third second
+            if slept.count == 4 { throw Stop() }
+        }) { passes += 1 }
+        XCTAssertEqual(slept, [.seconds(1), .seconds(1), .seconds(1), .seconds(60)])
+        XCTAssertEqual(passes, 1, "none while the player was up, one the moment it closed, none yet for the next minute")
+    }
+
+    func testThePlayerOpeningDuringTheMinuteMakesNoPassWhenItWakes() async {
+        var playing = false
+        var slept: [Duration] = []
+        var passes = 0
+        struct Stop: Error {}
+        await AppFreshness.run(playing: { playing }, sleep: { duration in
+            slept.append(duration)
+            if slept.count == 1 { playing = true }
+            if slept.count == 3 { throw Stop() }
+        }) { passes += 1 }
+        XCTAssertEqual(slept, [.seconds(60), .seconds(1), .seconds(1)])
+        XCTAssertEqual(passes, 1, "only the first pass, before the player opened")
+    }
+
+    /// #278 (F1): favourites are asked at most every 5 minutes by the minute pass. BrowseModel has no clock seam, so the
+    /// age is pinned as a value, and one pass shows the pass uses it (a second, at once, asks nothing more).
+    func testTheMinutePassAsksForFavouritesOnlyEveryFiveMinutes() async throws {
+        XCTAssertEqual(AppFreshness.favouritesMaxAge, 300)
+        XCTAssertGreaterThan(AppFreshness.favouritesMaxAge, BrowseModel.appearMaxAge)
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client())
+        browse.guide = GuideFixtures.channels()
+        await AppFreshness.refresh(browse) { _ in }
+        await AppFreshness.refresh(browse) { _ in }
+        XCTAssertEqual(server.http.requests(path: "/api/library/favourites", method: "GET").count, 1)
+    }
 }
 
 /// #14: a play started from outside the screen closes open pages first, and a player that never appears does not

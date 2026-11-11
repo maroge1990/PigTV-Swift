@@ -89,7 +89,11 @@ struct ContentView: View {
             guard scenePhase == .active, let browse = model.browse else { return }
             // Apple 124: removals committed but never confirmed (the app was stopped in the background) are sent now.
             browse.replayPendingRemovals()
-            await AppFreshness.run { await AppFreshness.refresh(browse) }
+            // #278: nothing is asked while the player is up; a pass follows its closing. The task is keyed on the scene
+            // only, so opening the player restarts nothing.
+            await AppFreshness.run(playing: { model.playerPresented }) {
+                await AppFreshness.refresh(browse, playing: model.playerPresented)
+            }
         }
         // A4.1: Top Shelf items open pigtv://play.
         .onOpenURL { model.open($0) }
