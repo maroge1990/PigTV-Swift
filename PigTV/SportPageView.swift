@@ -178,7 +178,7 @@ struct SportPageView: View {
     }
 
     /// #192: the account's preference (unknown counts as on) or the answer's own spoiler-free (Apple 143).
-    private var hidesSpoilers: Bool { f1.hidesSpoilers || model.front?.spoilerFree == true }
+    private var hidesSpoilers: Bool { SportSpoilers.hidden(preference: f1.hidesSpoilers, answer: model.front?.spoilerFree, page: false) }
 
     private var heroGame: SportsGame? {
         guard let front = model.front else { return nil }

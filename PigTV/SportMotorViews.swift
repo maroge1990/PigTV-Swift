@@ -48,7 +48,7 @@ struct SportF1Content: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let spoilerFree = model.hidesSpoilers || pageHidesSpoilers
+        let spoilerFree = SportSpoilers.hidden(preference: model.hidesSpoilers, answer: nil, page: pageHidesSpoilers)
         // #280: the page's state; `available: false` is "not available right now" (before, it spun for ever).
         let state = model.state()
         switch state {

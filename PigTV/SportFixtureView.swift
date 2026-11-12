@@ -56,7 +56,7 @@ struct SportFixtureContent: View {
     @Environment(\.sportPresenter) private var presenter
     @Environment(\.sportNarrow) private var narrow
     @Environment(\.sportHidesSpoilers) private var pageHidesSpoilers
-    private var hidesSpoilers: Bool { preferences.hidesSpoilers || pageHidesSpoilers }
+    private var hidesSpoilers: Bool { SportSpoilers.hidden(preference: preferences.hidesSpoilers, answer: front?.spoilerFree, page: pageHidesSpoilers) }
     @State private var round: String?
     @State private var view: String?
     @State private var tableGroup: String?

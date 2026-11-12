@@ -140,7 +140,7 @@ struct CricketPageView: View {
 
     @ViewBuilder
     private func stack(now: Date) -> some View {
-        let spoilerFree = preferences.hidesSpoilers || pageHidesSpoilers
+        let spoilerFree = SportSpoilers.hidden(preference: preferences.hidesSpoilers, answer: nil, page: pageHidesSpoilers)
         // #280: the page's state; `available: false` is "not available right now" (before, it spun for ever).
         let state = model.state(label: "Cricket")
         VStack(alignment: .leading, spacing: CricketMetrics.spacing) {

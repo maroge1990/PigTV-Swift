@@ -283,7 +283,7 @@ struct SportPhonePage: View {
         _f1 = ObservedObject(wrappedValue: browse.f1Page)
     }
 
-    private var hidden: Bool { f1.hidesSpoilers || model.front?.spoilerFree == true }
+    private var hidden: Bool { SportSpoilers.hidden(preference: f1.hidesSpoilers, answer: model.front?.spoilerFree, page: false) }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -424,7 +424,7 @@ struct SportPhoneLeaguePage: View {
         _f1 = ObservedObject(wrappedValue: browse.f1Page)
     }
 
-    private var hidden: Bool { f1.hidesSpoilers || model.front?.spoilerFree == true }
+    private var hidden: Bool { SportSpoilers.hidden(preference: f1.hidesSpoilers, answer: model.front?.spoilerFree, page: false) }
 
     /// The league's page type, for its placeholder.
     private var placeholderKind: SportLeaguePlaceholder.Kind {

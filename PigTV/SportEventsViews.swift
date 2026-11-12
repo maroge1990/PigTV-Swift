@@ -75,7 +75,7 @@ struct SportEventsContent: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let hidden = preferences.hidesSpoilers || pageHidesSpoilers
+        let hidden = SportSpoilers.hidden(preference: preferences.hidesSpoilers, answer: front.spoilerFree, page: pageHidesSpoilers)
         // #280: the league page's state; `available: false` is "not available right now" (before, it spun for ever). An
         // empty week is drawn by each kind (golf's other tours, a race's last winner and next race still show).
         let state = model.state(league, label: label)

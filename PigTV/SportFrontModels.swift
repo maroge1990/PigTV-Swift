@@ -201,6 +201,20 @@ nonisolated enum SportFrontHero {
     }
 }
 
+/// #278 (audit D5): the one answer to "are scores hidden on this screen?". Every sport screen asks it here, with what it
+/// knows: `preference`, the account's preference as the sport pages hold it (`F1PageModel.hidesSpoilers`: unknown counts
+/// as hidden); `answer`, the front answer's own `spoilerFree` (nil before there is an answer, which adds nothing by
+/// itself: the preference is already hidden while unknown); `page`, the decision a parent page passed down (the
+/// `sportHidesSpoilers` environment value, or a `hidden:` parameter). Any one saying hidden hides: a mistake here shows a
+/// score the household asked not to see. `PigTVTests/SportSpoilersTests` checks no screen combines these inputs itself.
+nonisolated enum SportSpoilers {
+    static func hidden(preference: Bool, answer: Bool?, page: Bool) -> Bool {
+        if preference { return true }
+        if answer == true { return true }
+        return page
+    }
+}
+
 /// What the front page says. Pure.
 nonisolated enum SportFrontText {
     static let scoresUnavailable = "The scores feed isn’t available right now. The guide’s channels and times are shown."
@@ -265,7 +279,8 @@ nonisolated enum SportFrontText {
 
     static func drawn(_ game: SportsGame, in front: SportFront, hidden: Bool) -> Drawn {
         // Without the scores feed nothing is shown of a score or a clock (C-R): the guide's channel and times only.
-        let hide = hidden || front.spoilerFree
+        // `hidden` is the caller's decision (it already holds the preference); the answer's own switch still hides here.
+        let hide = SportSpoilers.hidden(preference: false, answer: front.spoilerFree, page: hidden)
         let feed = !front.scoresUnavailable
         return Drawn(scores: feed ? scores(game, spoilerFree: hide) : nil,
                      situation: feed ? situation(game, spoilerFree: hide) : nil,

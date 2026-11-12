@@ -42,8 +42,14 @@ struct SportFrontTVPage: View {
     static let overdraw: CGFloat = 200
     static let bannerID = "sport.front.banner"
 
-    /// Scores, situations and results are hidden when either the answer or the account's preference says so.
-    private var hidden: Bool { f1.hidesSpoilers }
+    /// Scores, situations and results are hidden when either the answer or the account's preference says so (#278: the
+    /// same inputs as the iPhone's front page; before, this page read the preference alone).
+    private var hidden: Bool { Self.scoresHidden(preference: f1.hidesSpoilers, front: model.front) }
+
+    /// The page's decision, pure, for the tests.
+    nonisolated static func scoresHidden(preference: Bool, front: SportFront?) -> Bool {
+        SportSpoilers.hidden(preference: preference, answer: front?.spoilerFree, page: false)
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
