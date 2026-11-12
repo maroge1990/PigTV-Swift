@@ -26,8 +26,11 @@ final class LeaguePageModel: ObservableObject {
     init(client: APIClient) { self.client = client }
 
     func hasLiveGame(_ league: String) -> Bool {
-        pages[league]?.rounds.contains { $0.games.contains { ["live", "break"].contains($0.status) } } == true
+        pages[league]?.rounds.contains { $0.games.contains { SportStatus.underWay($0.status) } } == true
     }
+
+    /// How long to wait before the next refresh of `league`: the live interval while a game is under way.
+    func pollInterval(_ league: String) -> Duration { hasLiveGame(league) ? Self.liveRefreshInterval : Self.refreshInterval }
 
     private func fetch(_ league: String) async -> Result<LeaguePage, Error>? {
         guard !isFixture else { return nil }
@@ -98,7 +101,7 @@ final class LeaguePageModel: ObservableObject {
     func keepFresh(_ league: String, preferences: F1PageModel? = nil) async {
         await refresh(league, preferences: preferences)
         while !Task.isCancelled {
-            let wait = hasLiveGame(league) ? Self.liveRefreshInterval : Self.refreshInterval
+            let wait = pollInterval(league)
             schedules[league] = RefreshSchedule(after: wait)
             do { try await Task.sleep(for: wait) } catch { return }
             await refresh(league, preferences: preferences)

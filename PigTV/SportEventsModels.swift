@@ -232,7 +232,7 @@ nonisolated struct FightBout: Decodable, Equatable, Identifiable, Sendable {
 
 /// What the event pages show, from the answer, the clock and the spoiler-free switch. Pure.
 nonisolated enum SportEventsText {
-    static let ongoing: Set<String> = ["live", "break", "suspended"]
+    static let ongoing: Set<String> = SportStatus.underWayStatuses
 
     /// A name is followed when the event's `followed` has it exactly (a doubles pair when either of its names is).
     static func followed(_ name: String?, in event: SportEventsEvent) -> Bool {

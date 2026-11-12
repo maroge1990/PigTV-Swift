@@ -169,7 +169,7 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
 /// follows list, or a long press "Make this the hero") wins over both while its game is on the page (C-R, D-39).
 nonisolated enum SportFrontHero {
     /// Statuses during which a hero stays put.
-    static let ongoing: Set<String> = ["live", "break", "suspended"]
+    static let ongoing: Set<String> = SportStatus.underWayStatuses
 
     /// Follows (by index in `front`) that are live now and were not in `previous`. None on a first answer: the server's
     /// own hero already puts a live follow first.

@@ -230,6 +230,13 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   }
 }
 
+/// The one answer to "is a game under way" (polling, liveness): `live`, `break` (half-time and the like) and `suspended`
+/// (play stopped, expected to resume). Sites that choose what to DRAW for a status keep their own words.
+nonisolated enum SportStatus {
+  static let underWayStatuses: Set<String> = ["live", "break", "suspended"]
+  static func underWay(_ status: String) -> Bool { underWayStatuses.contains(status) }
+}
+
 /// #234 (Mark, 4 Nov): a future game the guide does not list yet (no channels) can be recorded once it is: what selecting
 /// its card offers. Nil when the card has a channel (its usual Watch / details), is not a two-sided game to come,
 /// or is already set to record.
