@@ -302,6 +302,12 @@ struct CricketPageView: View {
 
     // MARK: Header
 
+    /// #278 (review L7): the Hide scores chip says what every sport screen does now: hidden while the choice is unknown
+    /// (a save on its way, or a read that failed), never the last known value. The press still turns the known value over.
+    static func scoresChipHidden(_ preferences: F1PageModel) -> Bool {
+        SportSpoilers.hidden(preference: preferences.hidesSpoilers, answer: nil, page: false)
+    }
+
     private var header: some View {
         HStack(alignment: .center, spacing: PigSpacing.m) {
             #if os(tvOS)
@@ -316,14 +322,14 @@ struct CricketPageView: View {
                     .background(Color.pigRaised, in: Capsule())
                     .accessibilityIdentifier("cricket.following")
             }
+            let hidden = Self.scoresChipHidden(preferences)
             Button { Task { await hideScores.set(!preferences.preferences.spoilerFree) } } label: {
-                Label(preferences.preferences.spoilerFree ? "Scores hidden" : "Scores shown",
-                      systemImage: preferences.preferences.spoilerFree ? "eye.slash" : "eye")
+                Label(SportPhoneLayout.scoresChip(hidden: hidden), systemImage: hidden ? "eye.slash" : "eye")
                     .font(CricketMetrics.chip).lineLimit(1)
             }
-            .buttonStyle(GuideFilterStyle(selected: preferences.preferences.spoilerFree))
+            .buttonStyle(GuideFilterStyle(selected: hidden))
             .disabled(!preferences.preferencesKnown || hideScores.saving)
-            .accessibilityLabel(preferences.preferences.spoilerFree ? "Scores are hidden" : "Scores are shown")
+            .accessibilityLabel(hidden ? "Scores are hidden" : "Scores are shown")
             .accessibilityHint("Changes it for every device")
             .accessibilityIdentifier("cricket.spoilers")
         }

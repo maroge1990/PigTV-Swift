@@ -15,6 +15,8 @@ final class SportRuleOwnerTests: XCTestCase {
         let log = Locked<[String]>([])
         /// How long the next `GET recordings/rules` answers wait, one entry per request (then none).
         let getDelays = Locked<[TimeInterval]>([])
+        /// What `GET recordings/rules` answers with (anything but 200 fails it).
+        let getStatus = Locked(200)
         /// How long a PUT's answer waits.
         let putDelay = Locked<TimeInterval>(0)
         let postStatus = Locked(200)
@@ -37,6 +39,7 @@ final class SportRuleOwnerTests: XCTestCase {
             let id = Int(request.path.split(separator: "/").last ?? "")
             switch (request.method, request.path) {
             case ("GET", "/api/recordings/rules"):
+                guard rules.getStatus.value == 200 else { return .json(#"{"error":"x"}"#, status: rules.getStatus.value) }
                 var r = LocalHTTPServer.Response.json("[" + rules.rows.value.map(rules.json).joined(separator: ",") + "]")
                 var delays = rules.getDelays.value
                 if !delays.isEmpty { r.delay = delays.removeFirst(); rules.getDelays.value = delays }
@@ -195,7 +198,8 @@ final class SportRuleOwnerTests: XCTestCase {
     func testASettingsChangeWaitsForARecordingsChangeInFlight() async throws {
         let rules = Rules()
         rules.rows.value = [(id: 5, kind: "series", match: "Gruen", sport: nil, enabled: true)]
-        rules.putDelay.value = 1.2
+        // LocalHTTPServer answers on one queue, so a held answer is a delay: 2.5 s leaves 2.2 s past the 300 ms check.
+        rules.putDelay.value = 2.5
         let http = try server(rules)
         defer { http.stop() }
         let (browse, settings) = try models(http)
@@ -218,6 +222,80 @@ final class SportRuleOwnerTests: XCTestCase {
         XCTAssertEqual(order, ["PUT /api/recordings/rules/5", "POST /api/recordings/rules"])
         XCTAssertEqual(team(browse)?.isOn, true)
         XCTAssertEqual(browse.actions.actionMessage, "Rule turned off.", "Scheduled's own line is left as it was")
+    }
+
+    /// Codex (high, on 214): while the rules cannot be read, an existing rule looks absent. On must not POST a new one
+    /// (it would be shown Off and never switched on by the POST); nothing is sent, the page says it was not saved, the
+    /// switch waits, and once the rules are read again On switches the existing rule on.
+    func testOnSendsNothingWhileTheRulesCannotBeRead() async throws {
+        let rules = Rules()
+        rules.rows.value = [(id: 3, kind: "team", match: "Arsenal", sport: "Football", enabled: false)]
+        let http = try server(rules)
+        defer { http.stop() }
+        let (browse, settings) = try models(http)
+        await browse.reloadRules()
+        XCTAssertEqual(settings.rule("Football", "Arsenal")?.isOn, false, "control: the rule is known, switched off")
+        rules.getStatus.value = 500
+        await browse.reloadRules()
+        XCTAssertFalse(settings.rulesKnown, "control: the rules could not be read")
+        XCTAssertTrue(settings.ruleIsBusy("Football", "Arsenal"), "the switch offers no change while the rules are unknown")
+        await settings.setRecording("Football", "Arsenal", on: true) { _ in XCTFail("on never asks"); return false }
+        XCTAssertEqual(rules.requests("POST /api/recordings/rules"), 0, "no new rule: \(rules.log.value)")
+        XCTAssertEqual(rules.requests("PUT /api/recordings/rules/3"), 0, "nothing decided from unknown rules")
+        XCTAssertTrue(settings.message.hasPrefix("Not saved: "), settings.message)
+        rules.getStatus.value = 200
+        await settings.loadRules()
+        XCTAssertFalse(settings.ruleIsBusy("Football", "Arsenal"), "read again: the switch can be used")
+        await settings.setRecording("Football", "Arsenal", on: true) { _ in false }
+        XCTAssertEqual(rules.requests("PUT /api/recordings/rules/3"), 1, "the existing rule is switched on: \(rules.log.value)")
+        XCTAssertEqual(rules.requests("POST /api/recordings/rules"), 0)
+        XCTAssertEqual(settings.rule("Football", "Arsenal")?.isOn, true)
+    }
+
+    /// Codex (high, on 214): a rule removed in Scheduled (Undo open) while the rules cannot be read is not brought back.
+    func testOnSendsNothingForARemovalPendingWhileTheRulesCannotBeRead() async throws {
+        let rules = Rules()
+        rules.rows.value = [(id: 3, kind: "team", match: "Arsenal", sport: "Football", enabled: true)]
+        rules.nextID.value = 4
+        let http = try server(rules)
+        defer { http.stop() }
+        let (browse, settings) = try models(http)
+        await browse.reloadRules()
+        let presenter = presenter()
+        browse.removeRuleWithUndo(try XCTUnwrap(team(browse)), presenter: presenter)
+        rules.getStatus.value = 500
+        await browse.reloadRules()
+        XCTAssertFalse(settings.rulesKnown, "control: the rules could not be read")
+        await settings.setRecording("Football", "Arsenal", on: true) { _ in false }
+        XCTAssertEqual(rules.requests("POST /api/recordings/rules") + rules.requests("PUT /api/recordings/rules/3")
+                       + rules.requests("DELETE /api/recordings/rules/3"), 0, "nothing brings it back: \(rules.log.value)")
+        XCTAssertTrue(settings.message.hasPrefix("Not saved: "), settings.message)
+    }
+
+    /// Codex (high, on 214): a Settings change that waited for another recordings change, whose reload of the rules
+    /// failed, is decided when its turn comes: from rules that cannot be read, nothing is sent.
+    func testAChangeThatWaitedBehindAFailedRulesReloadSendsNothing() async throws {
+        let rules = Rules()
+        rules.rows.value = [(id: 5, kind: "series", match: "Gruen", sport: nil, enabled: true)]
+        rules.putDelay.value = 2.5
+        let http = try server(rules)
+        defer { http.stop() }
+        let (browse, settings) = try models(http)
+        await browse.reloadRules()
+        let series = try XCTUnwrap(browse.recordingStore.rules.first)
+        rules.getStatus.value = 500 // the reload after the PUT below fails
+        async let first = browse.setRule(series, enabled: false)
+        await waitUntil { browse.mutationBusy }
+        XCTAssertTrue(settings.rulesKnown, "control: known when On is pressed")
+        async let second: Void = settings.setRecording("Football", "Arsenal", on: true) { _ in false }
+        await waitUntil { settings.ruleIsBusy("Football", "Arsenal") }
+        XCTAssertTrue(browse.mutationBusy, "control: On waits behind the other change")
+        let firstResult = await first
+        await second
+        XCTAssertTrue(firstResult)
+        XCTAssertFalse(settings.rulesKnown, "control: the other change's reload failed")
+        XCTAssertEqual(rules.requests("POST /api/recordings/rules"), 0, "nothing sent from unknown rules: \(rules.log.value)")
+        XCTAssertTrue(settings.message.hasPrefix("Not saved: "), settings.message)
     }
 
     /// Guard (decision 3): a refused change is said on the Settings page, as before, and nowhere in Recordings.

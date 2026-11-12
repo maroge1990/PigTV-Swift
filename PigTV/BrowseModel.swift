@@ -418,6 +418,11 @@ final class BrowseModel: ObservableObject {
         await loadFavourites()
     }
 
+    #if DEBUG
+    /// Tests: when the favourites were last loaded, so a test can age them without waiting.
+    func setFavouritesLoaded(at date: Date) { lastLoads["favourites"] = date }
+    #endif
+
     /// `quietly`: a refresh nobody asked for (Home's minute loop, the Guide's
     /// periodic one) does not raise `recordingsBusy`, so the Recordings tab
     /// is not re-rendered, twice, by a refresh that finds nothing new.

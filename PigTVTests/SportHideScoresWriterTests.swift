@@ -12,6 +12,8 @@ private final class HideScoresRoutes: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var putStatus = 200
     nonisolated(unsafe) static var holdPuts = false
     nonisolated(unsafe) static var holdPreferences = false
+    nonisolated(unsafe) static var holdFollowsReads = false
+    nonisolated(unsafe) static var rulesStatus = 200
     nonisolated(unsafe) private static var seen: [Seen] = []
     nonisolated(unsafe) private static var held: [HideScoresRoutes] = []
     private var stopped = false
@@ -26,6 +28,8 @@ private final class HideScoresRoutes: URLProtocol, @unchecked Sendable {
             putStatus = 200
             holdPuts = false
             holdPreferences = false
+            holdFollowsReads = false
+            rulesStatus = 200
             seen = []
             held = []
         }
@@ -74,6 +78,7 @@ private final class HideScoresRoutes: URLProtocol, @unchecked Sendable {
         switch (method, path) {
         case ("GET", "/api/sports/follows"):
             status = Self.followsStatus
+            hold = Self.holdFollowsReads
             answer = { Self.follows() }
         case ("PUT", "/api/sports/follows"):
             status = Self.putStatus
@@ -104,6 +109,7 @@ private final class HideScoresRoutes: URLProtocol, @unchecked Sendable {
         case ("GET", "/api/sports/suggestions"):
             answer = { Data(#"{"suggestions":[]}"#.utf8) }
         case ("GET", "/api/recordings/rules"):
+            status = Self.rulesStatus
             answer = { Data("[]".utf8) }
         default:
             status = 404
@@ -293,6 +299,80 @@ final class SportHideScoresWriterTests: XCTestCase {
         XCTAssertEqual(puts.count, 1, "one PUT on any route: the second press did nothing (\(puts.map(\.path)))")
         XCTAssertEqual(puts.first?.path, "/api/sports/follows")
         XCTAssertTrue(browse.f1Page.hidesSpoilers)
+    }
+
+    /// Review M1: the chip reads only what its save needs before the PUT (the follows, and the catalogue that is kept with
+    /// them on this device): not the recording rules, the suggestions or each league's names, all awaited while every
+    /// sport screen hid its scores and the chip could not be pressed.
+    func testTheChipReadsOnlyTheFollowsBeforeItsPut() async throws {
+        let browse = try makeBrowse(spoilerFree: false)
+        await browse.f1Page.revalidatePreferences()
+        await browse.hideScores.set(true)
+        let seen = HideScoresRoutes.requests
+        let put = try XCTUnwrap(seen.firstIndex { $0.method == "PUT" && $0.path == "/api/sports/follows" }, "control: the PUT was sent")
+        let before = seen[..<put].map { "\($0.method) \($0.path)" }
+        XCTAssertEqual(before.filter { $0 == "GET /api/sports/follows" }.count, 1, "one read of the follows: \(before)")
+        for path in ["/api/recordings/rules", "/api/sports/suggestions", "/api/sports/names"] {
+            XCTAssertFalse(before.contains { $0.hasSuffix(path) }, "\(path) is not read before the PUT: \(before)")
+        }
+        XCTAssertEqual(HideScoresRoutes.requests("PUT", "/api/sports/follows").count, 1)
+    }
+
+    /// Review L1: a chip press whose read of the follows a later load overtook builds no whole-list PUT from the list
+    /// held before (it could be hours old): nothing is sent.
+    func testAChipPressWhoseFollowsReadIsSupersededSendsNoPut() async throws {
+        let browse = try makeBrowse(spoilerFree: false)
+        await browse.f1Page.revalidatePreferences()
+        await browse.sportFollows.load()
+        XCTAssertNotNil(browse.sportFollows.follows, "control: an older list is held")
+        HideScoresRoutes.set { HideScoresRoutes.holdFollowsReads = true }
+        let press = Task { @MainActor in await browse.hideScores.set(true) }
+        let chipRead = await waitFor { HideScoresRoutes.heldCount == 1 }
+        XCTAssertTrue(chipRead, "control: the chip's read of the follows is held")
+        let later = Task { @MainActor in await browse.sportFollows.load() }
+        let laterRead = await waitFor { HideScoresRoutes.heldCount == 2 }
+        XCTAssertTrue(laterRead, "control: a later load's read is held too")
+        HideScoresRoutes.set { HideScoresRoutes.holdFollowsReads = false }
+        HideScoresRoutes.releaseOldest() // the chip's read answers first, overtaken
+        let pressDone = await waitFor { !browse.hideScores.saving }
+        HideScoresRoutes.releaseOldest()
+        await press.value
+        await later.value
+        XCTAssertTrue(pressDone)
+        XCTAssertTrue(HideScoresRoutes.requests("PUT", "/api/sports/follows").isEmpty, "no PUT from a superseded read")
+        XCTAssertTrue(browse.hideScores.notSaved, "the page says it was not saved")
+    }
+
+    /// Review M1: a chip press whose rules read would fail leaves Scheduled's rules state alone (it reads no rules).
+    func testAChipPressLeavesTheRecordingRulesAlone() async throws {
+        let browse = try makeBrowse(spoilerFree: false)
+        await browse.f1Page.revalidatePreferences()
+        HideScoresRoutes.set { HideScoresRoutes.rulesStatus = 500 }
+        XCTAssertNil(browse.recordingStore.rulesError, "control")
+        await browse.hideScores.set(true)
+        XCTAssertEqual(HideScoresRoutes.requests("PUT", "/api/sports/follows").count, 1, "control: it saved")
+        XCTAssertNil(browse.recordingStore.rulesError, "Scheduled shows no rules error because a chip was pressed")
+        XCTAssertTrue(HideScoresRoutes.requests("GET", "/api/recordings/rules").isEmpty)
+    }
+
+    /// Review L7: the cricket chip says what the screens do: hidden while the choice is unknown or being saved, never
+    /// the last known value.
+    func testTheChipSaysHiddenWhileTheChoiceIsUnknown() async throws {
+        let browse = try makeBrowse(spoilerFree: false)
+        XCTAssertFalse(browse.f1Page.preferencesKnown, "control: not read yet")
+        XCTAssertFalse(browse.f1Page.preferences.spoilerFree, "control: the last known value is off")
+        XCTAssertTrue(CricketPageView.scoresChipHidden(browse.f1Page), "unknown: the chip says hidden")
+        await browse.f1Page.revalidatePreferences()
+        XCTAssertFalse(CricketPageView.scoresChipHidden(browse.f1Page), "control: known off, shown")
+        HideScoresRoutes.set { HideScoresRoutes.holdPuts = true }
+        let press = Task { @MainActor in await browse.hideScores.set(true) }
+        let sent = await waitFor { HideScoresRoutes.heldCount == 1 }
+        XCTAssertTrue(sent)
+        XCTAssertFalse(browse.f1Page.preferences.spoilerFree, "control: the last known value is still off")
+        XCTAssertTrue(CricketPageView.scoresChipHidden(browse.f1Page), "while it saves: hidden, as the screens are")
+        HideScoresRoutes.set { HideScoresRoutes.holdPuts = false }
+        HideScoresRoutes.releaseOldest()
+        await press.value
     }
 
     /// The sport pages' model only reads: no write path is left in it.

@@ -120,9 +120,10 @@ final class SportFollowSettingsModel: ObservableObject {
         guard rulesKnown else { return false }
         return SportFollowLogic.ruleFor(ruleStore.rules.filter(removed), sport: sport, name: name) != nil
     }
-    /// The row's switch is busy: its own change is waiting or on its way, or its rule's removal is.
+    /// The row's switch is busy: its own change is waiting or on its way, or its rule's removal is, or the rules could not
+    /// be read (#278, Codex high on 214: it would offer a change it cannot decide, so it waits for a read that answers).
     func ruleIsBusy(_ sport: String, _ name: String) -> Bool {
-        ruleBusy.contains("\(sport)|\(name)") || ruleRemovalPending(sport, name)
+        !rulesKnown || ruleBusy.contains("\(sport)|\(name)") || ruleRemovalPending(sport, name)
     }
     /// The catalogue sports not followed yet, in its order.
     var unfollowedSports: [SportCatalog.Sport] { catalog.sports.filter { s in follows?.entry(s.sport) == nil } }
@@ -135,6 +136,32 @@ final class SportFollowSettingsModel: ObservableObject {
     /// made on another device shows.
     func load() async {
         guard !isFixture else { return }
+        switch await readFollows() {
+        case .applied, .overtaken: break
+        case .superseded, .failed: return
+        }
+        async let rulesRead: Void = loadRules()
+        async let suggestionsRead: Void = loadSuggestions()
+        async let namesRead: Void = loadNames()
+        _ = await (rulesRead, suggestionsRead, namesRead)
+    }
+
+    /// What one read of the follows came to.
+    private enum FollowsRead {
+        /// Its answer is what `follows` holds now.
+        case applied
+        /// It answered, but a save answered meanwhile (or is waiting), so its answer was not shown.
+        case overtaken
+        /// A later read began before it answered: nothing was applied.
+        case superseded
+        /// It failed: `follows` is this device's last copy (`offline`), the old list, or nothing.
+        case failed
+    }
+
+    /// The follows and the catalogue (the catalogue goes into this device's copy with them), with the load's rules: only
+    /// the latest read applies, and a failed one falls back to this device's last copy. `load` and the chip's save both
+    /// read through here (#278, review M1).
+    private func readFollows() async -> FollowsRead {
         loadGeneration += 1
         let mine = loadGeneration
         let startedAnswers = answers
@@ -142,20 +169,20 @@ final class SportFollowSettingsModel: ObservableObject {
         let followsAnswer: Result<SportFollows, Error>
         do { followsAnswer = .success(try await client.request("sports/follows")) } catch { followsAnswer = .failure(error) }
         let catalogResult: SportCatalog? = try? await catalogAnswer
-        guard mine == loadGeneration else { return }
+        guard mine == loadGeneration else { return .superseded }
         if let catalogResult { catalog = catalogResult }
         switch followsAnswer {
         case .success(let answer):
             // Apple 93 Codex round 2 (high): only an answer that is shown reopens changes; one a save overtook (or that
             // overlapped a save whose answer was lost) leaves `offline` as that save left it.
-            if answers == startedAnswers && pending == 0 {
-                follows = answer
-                offline = false
-                loadFailed = false
-                keepCopy()
-            }
+            guard answers == startedAnswers && pending == 0 else { return .overtaken }
+            follows = answer
+            offline = false
+            loadFailed = false
+            keepCopy()
+            return .applied
         case .failure(let error):
-            if UserMessage.isCancellation(error) { return }
+            if UserMessage.isCancellation(error) { return .failed }
             if let copy = lastCopy() {
                 follows = copy.follows
                 if catalogResult == nil { catalog = copy.catalog }
@@ -166,12 +193,8 @@ final class SportFollowSettingsModel: ObservableObject {
             } else {
                 offline = true
             }
-            return
+            return .failed
         }
-        async let rulesRead: Void = loadRules()
-        async let suggestionsRead: Void = loadSuggestions()
-        async let namesRead: Void = loadNames()
-        _ = await (rulesRead, suggestionsRead, namesRead)
     }
 
     private func keepCopy() {
@@ -270,10 +293,12 @@ final class SportFollowSettingsModel: ObservableObject {
 
     /// #278 (audit D5): Hide scores from a sport page's chip, which can be pressed before Settings › Sport has appeared or
     /// long after it last read the list. The follows are read first, so the whole-list PUT is never built from an empty or
-    /// old list; when they cannot be read (or only this device's last copy is there), nothing is sent.
+    /// old list; unless that read's own answer is what is shown (it failed, only this device's last copy is there, or a
+    /// later read or a save overtook it), nothing is sent. Only what the save needs is read (review M1): not the rules,
+    /// suggestions or names, which Settings › Sport reads when it appears.
     /// -> whether the server now holds the choice.
     func setSpoilerFreeFromPage(_ on: Bool) async -> Bool {
-        await load()
+        if !isFixture { guard await readFollows() == .applied else { return false } }
         guard canEdit else { return false }
         await setSpoilerFree(on)
         return !offline && follows?.spoilerFree == on
@@ -380,17 +405,35 @@ final class SportFollowSettingsModel: ObservableObject {
         for name in names {
             guard let rule = rule(sport, name), rule.isOn else { continue }
             if await ask(SportFollowLogic.keepRecordingQuestion(name)) { continue }
-            do { try await deleteRule(sport, name, asked: rule.id) } catch { left.failed.append(name) }
+            do {
+                if try await deleteRule(sport, name, asked: rule.id) == .rulesUnknown { left.unknown = true }
+            } catch { left.failed.append(name) }
         }
         return left
+    }
+
+    /// What a change through the rules' owner came to.
+    private enum RuleOutcome { case sent, unchanged, rulesUnknown }
+
+    /// #278: one change through the rules' owner, chosen by `choose` once its turn comes. Codex (high, on 214): while the
+    /// rules cannot be read (the first read has not answered, or a read failed, also one made by the change it waited
+    /// for), nothing is chosen: an existing rule would look absent, and On would POST a new one instead of switching it
+    /// on, or bring back one whose removal is pending.
+    private func changeRule(_ ruleOwner: any RecordingRuleOwner, _ choose: () -> RuleChange?) async throws -> RuleOutcome {
+        var unknown = false
+        let sent = try await ruleOwner.changeRule { [self] in
+            guard rulesKnown else { unknown = true; return nil }
+            return choose()
+        }
+        return sent ? .sent : unknown ? .rulesUnknown : .unchanged
     }
 
     /// #278: deletes the rule the user was asked about, through the owner once its turn comes, unless it has gone or
     /// been removed in Recordings meanwhile (never a second DELETE). The owner reloads the rules after it.
     @discardableResult
-    private func deleteRule(_ sport: String, _ name: String, asked id: Int) async throws -> Bool {
-        guard let ruleOwner else { return false }
-        return try await ruleOwner.changeRule { [self] in
+    private func deleteRule(_ sport: String, _ name: String, asked id: Int) async throws -> RuleOutcome {
+        guard let ruleOwner else { return .unchanged }
+        return try await changeRule(ruleOwner) { [self] in
             guard let now = rule(sport, name), now.id == id else { return nil }
             return .delete(id: id)
         }
@@ -407,20 +450,22 @@ final class SportFollowSettingsModel: ObservableObject {
         ruleBusy.insert(key)
         defer { ruleBusy.remove(key) }
         do {
-            var sent = false
+            var outcome = RuleOutcome.unchanged
             if on {
-                sent = try await ruleOwner.changeRule { [self] in
+                outcome = try await changeRule(ruleOwner) { [self] in
                     guard !ruleRemovalPending(sport, name) else { return nil }
                     if let current = rule(sport, name) { return .enable(id: current.id) }
                     return .add(RuleBody(kind: "team", match: name, sport: sport))
                 }
-                if sent { showDone("Recording every \(name) game.") }
+                if outcome == .sent { showDone("Recording every \(name) game.") }
             } else if let current = rule(sport, name), await ask(SportFollowLogic.stopRecordingQuestion(name)) {
-                sent = try await deleteRule(sport, name, asked: current.id)
-                if sent { message = "" }
+                outcome = try await deleteRule(sport, name, asked: current.id)
+                if outcome == .sent { message = "" }
             }
+            // The rules could not be read when its turn came: nothing was sent, and the page says so.
+            if outcome == .rulesUnknown { message = "Not saved: \(PageWords.rulesFailed)" }
             // Nothing sent: the rules are read again, as before #278 (the owner reloads after a change).
-            if !sent { await loadRules() }
+            if outcome != .sent { await loadRules() }
         } catch {
             message = "Not saved: \(UserMessage.text(for: error) ?? "the change was cancelled.")"
         }

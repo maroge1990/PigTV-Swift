@@ -166,18 +166,23 @@ final class AppFreshnessTests: XCTestCase {
         XCTAssertEqual(passes, 1, "only the first pass, before the player opened")
     }
 
-    /// #278 (F1): favourites are asked at most every 5 minutes by the minute pass. BrowseModel has no clock seam, so the
-    /// age is pinned as a value, and one pass shows the pass uses it (a second, at once, asks nothing more).
+    /// #278 (F1): favourites are asked at most every 5 minutes by the minute pass: loaded 2 minutes ago, a pass asks
+    /// nothing (the old 60 s age asked again); loaded 6 minutes ago, it asks once.
     func testTheMinutePassAsksForFavouritesOnlyEveryFiveMinutes() async throws {
-        XCTAssertEqual(AppFreshness.favouritesMaxAge, 300)
         XCTAssertGreaterThan(AppFreshness.favouritesMaxAge, BrowseModel.appearMaxAge)
         let server = try FakePigTVServer()
         defer { server.http.stop() }
         let browse = BrowseModel(client: try server.client())
         browse.guide = GuideFixtures.channels()
+        let asked = { server.http.requests(path: "/api/library/favourites", method: "GET").count }
         await AppFreshness.refresh(browse) { _ in }
+        XCTAssertEqual(asked(), 1, "control: a first pass asks")
+        browse.setFavouritesLoaded(at: Date().addingTimeInterval(-120))
         await AppFreshness.refresh(browse) { _ in }
-        XCTAssertEqual(server.http.requests(path: "/api/library/favourites", method: "GET").count, 1)
+        XCTAssertEqual(asked(), 1, "loaded 2 minutes ago: the minute pass asks nothing")
+        browse.setFavouritesLoaded(at: Date().addingTimeInterval(-360))
+        await AppFreshness.refresh(browse) { _ in }
+        XCTAssertEqual(asked(), 2, "loaded 6 minutes ago: it asks once")
     }
 }
 
