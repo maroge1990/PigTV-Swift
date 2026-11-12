@@ -6,14 +6,7 @@ import XCTest
 // nothing in 72 hours), with seven follows in the server's order (the two live first). Before Apple 97 the answer's
 // `sport` was not read, and the follows were re-sorted ("live first, then soonest").
 final class SportFrontLayoutTests: XCTestCase {
-    nonisolated static func fixture(_ name: String = "sport-front-0427.json") throws -> Data {
-        for bundle in Bundle.allBundles + Bundle.allFrameworks {
-            for url in bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [] where url.lastPathComponent == name {
-                return try Data(contentsOf: url)
-            }
-        }
-        throw XCTSkip("\(name) is not in the test bundle")
-    }
+    nonisolated static func fixture(_ name: String = "sport-front-0427.json") throws -> Data { try Fixture.data(name) }
 
     static func front(_ change: (inout [String: Any]) -> Void = { _ in }) throws -> SportFront {
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: fixture()) as? [String: Any])

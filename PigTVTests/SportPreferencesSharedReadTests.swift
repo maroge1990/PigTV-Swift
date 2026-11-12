@@ -42,8 +42,7 @@ private final class CountingPreferencesRoutes: URLProtocol, @unchecked Sendable 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     static func fixture(_ name: String) -> Data {
-        let url = Bundle(for: CountingPreferencesRoutes.self).urls(forResourcesWithExtension: "json", subdirectory: nil)?.first { $0.lastPathComponent == name }
-        return url.flatMap { try? Data(contentsOf: $0) } ?? Data("{}".utf8)
+        (try? Fixture.data(name)) ?? Data("{}".utf8)  // a missing fixture is an XCTFail first
     }
 
     private static func preferences(spoilerFree: Bool) -> Data {

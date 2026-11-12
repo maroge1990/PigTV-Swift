@@ -13,14 +13,7 @@ final class CricketPageTests: XCTestCase {
     /// 31 Oct 2026 01:56 UTC, when both answers were made.
     static let now = Date(timeIntervalSince1970: 1_793_411_760)
 
-    nonisolated static func fixture(_ name: String) throws -> Data {
-        for bundle in Bundle.allBundles + Bundle.allFrameworks {
-            for url in bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [] {
-                if url.lastPathComponent == "cricket-page-0387-\(name).json" { return try Data(contentsOf: url) }
-            }
-        }
-        throw XCTSkip("cricket-page-0387-\(name).json is not in the test bundle")
-    }
+    nonisolated static func fixture(_ name: String) throws -> Data { try Fixture.data("cricket-page-0387-\(name).json") }
 
     static func page(_ name: String) throws -> CricketPage { try JSONDecoder().decode(CricketPage.self, from: try fixture(name)) }
 

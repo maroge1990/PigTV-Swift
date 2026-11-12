@@ -12,14 +12,7 @@ final class SportFrontTests: XCTestCase {
     static let nba = "espn:basketball/nba:1"
     static let race = "espn:racing/f1:1"
 
-    nonisolated static func fixture() throws -> Data {
-        for bundle in Bundle.allBundles + Bundle.allFrameworks {
-            for url in bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [] {
-                if url.lastPathComponent == "sport-front-0381.json" { return try Data(contentsOf: url) }
-            }
-        }
-        throw XCTSkip("sport-front-0381.json is not in the test bundle")
-    }
+    nonisolated static func fixture() throws -> Data { try Fixture.data("sport-front-0381.json") }
 
     /// The fixture, changed as JSON first.
     private func front(_ change: (inout [String: Any]) -> Void = { _ in }) throws -> SportFront {

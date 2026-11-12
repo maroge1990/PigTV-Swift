@@ -2,20 +2,11 @@ import XCTest
 import SwiftUI
 @testable import PigTV
 
-private final class F1BundleToken {}
-
 // C-P (#21): the Formula 1 page. `f1-page-0346.json` is the server's own answer (server 0346's sportPageF1 over its
 // captured ESPN feed of 30 Oct 2026, the first session given one channel with its own airing), so the decoding is
 // checked against what the server really sends. The presentation rules are pure (`F1PageText`).
 final class F1PageTextTests: XCTestCase {
-    static func fixture() throws -> Data {
-        let bundle = Bundle(for: F1BundleToken.self)
-        let enumerator = FileManager.default.enumerator(at: bundle.bundleURL, includingPropertiesForKeys: nil)
-        while let url = enumerator?.nextObject() as? URL {
-            if url.lastPathComponent == "f1-page-0346.json" { return try Data(contentsOf: url) }
-        }
-        throw XCTSkip("f1-page-0346.json is not in the test bundle")
-    }
+    static func fixture() throws -> Data { try Fixture.data("f1-page-0346.json") }
 
     func testDecodesTheServersOwnAnswer() throws {
         let page = try JSONDecoder().decode(F1Page.self, from: Self.fixture())

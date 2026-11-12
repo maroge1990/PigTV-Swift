@@ -12,8 +12,8 @@ private final class ScriptedPreferencesRoutes: URLProtocol, @unchecked Sendable 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     static func fixture(_ name: String) -> Data {
-        let url = Bundle(for: ScriptedPreferencesRoutes.self).urls(forResourcesWithExtension: "json", subdirectory: nil)?.first { $0.lastPathComponent == name }
-        return url.flatMap { try? Data(contentsOf: $0) } ?? Data("{}".utf8)
+        // A missing fixture records an XCTFail (Fixture.data); the stub then answers an empty body so the test fails loudly.
+        (try? Fixture.data(name)) ?? Data("{}".utf8)
     }
 
     override func startLoading() {

@@ -6,14 +6,7 @@ import XCTest
 // the rest to come, one channel on Ravens at Bills, the eight divisions). Before Apple 86 there is no NFL page.
 @MainActor
 final class NFLPageTests: XCTestCase {
-    nonisolated static func fixture() throws -> Data {
-        for bundle in Bundle.allBundles + Bundle.allFrameworks {
-            for url in bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [] {
-                if url.lastPathComponent == "nfl-page-0379.json" { return try Data(contentsOf: url) }
-            }
-        }
-        throw XCTSkip("nfl-page-0379.json is not in the test bundle")
-    }
+    nonisolated static func fixture() throws -> Data { try Fixture.data("nfl-page-0379.json") }
 
     private func page() throws -> NFLPage { try JSONDecoder().decode(NFLPage.self, from: try Self.fixture()) }
 

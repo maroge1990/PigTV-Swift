@@ -13,8 +13,7 @@ private final class SportPageSpoilerRoutes: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     static func answer(_ name: String) -> Data {
-        let url = Bundle(for: SportPageSpoilerRoutes.self).urls(forResourcesWithExtension: "json", subdirectory: nil)?.first { $0.lastPathComponent == name }
-        guard let url, let data = try? Data(contentsOf: url), var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return Data("{}".utf8) }
+        guard let data = try? Fixture.data(name), var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return Data("{}".utf8) }
         json["updatedAt"] = ((json["updatedAt"] as? Double) ?? 0) + revision
         // F1 has no updatedAt: the weekend's name moves instead.
         if revision > 0, var weekend = json["weekend"] as? [String: Any] { weekend["name"] = "\(weekend["name"] ?? "") \(revision)"; json["weekend"] = weekend }
