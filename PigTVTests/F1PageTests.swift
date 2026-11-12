@@ -178,86 +178,53 @@ extension F1PageTextTests {
     }
 }
 
-/// The model against a local server: the page and the household's preferences load; a change is sent as only its
-/// own field; a refused change is put back; an older server (no preferences route) keeps them on the device.
+/// The model against a local server: the page and the account's preferences load; #278 (audit D5): it only reads them,
+/// and a server that cannot answer them (an older one's 404 too) leaves the scores hidden.
 @MainActor
 final class F1PageModelTests: XCTestCase {
-    private func server(preferences: Int = 200, put: Int = 200) throws -> (LocalHTTPServer, Locked<[Data]>) {
-        let puts = Locked<[Data]>([])
+    private func server(preferences: Int = 200) throws -> LocalHTTPServer {
         let page = try F1PageTextTests.fixture()
-        let http = try LocalHTTPServer { request in
+        return try LocalHTTPServer { request in
             switch (request.method, request.path) {
             case ("GET", "/api/sports/pages/f1"):
                 return .init(status: 200, contentType: "application/json", body: page)
             case ("GET", "/api/sports/pages/preferences"):
                 return preferences == 200 ? .json(#"{"spoilerFree":false,"following":{"F1":"Lando Norris"}}"#) : .json(#"{"error":"x"}"#, status: preferences)
-            case ("PUT", "/api/sports/pages/preferences"):
-                puts.value.append(request.body)
-                return put == 200 ? .json(#"{"spoilerFree":true,"following":{"F1":"Lando Norris"}}"#) : .json(#"{"error":"x"}"#, status: put)
             default:
                 return .notFound
             }
         }
-        return (http, puts)
-    }
-
-    private func defaults() -> UserDefaults {
-        let suite = "F1PageModelTests.\(UUID().uuidString)"
-        return UserDefaults(suiteName: suite)!
     }
 
     func testLoadsThePageAndTheHouseholdsPreferences() async throws {
-        let (http, puts) = try server()
+        let http = try server()
         defer { http.stop() }
-        let model = F1PageModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1), defaults: defaults())
+        let model = F1PageModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1))
         await model.load()
         XCTAssertTrue(model.loaded)
         XCTAssertEqual(model.page?.weekend?.name, "Mexico City Grand Prix")
         XCTAssertEqual(model.preferences.f1Following, "Lando Norris")
-        await model.setSpoilerFree(true)
-        XCTAssertTrue(model.preferences.spoilerFree)
-        let body = try JSONSerialization.jsonObject(with: try XCTUnwrap(puts.value.first)) as? [String: Any]
-        XCTAssertEqual(body?.keys.sorted(), ["spoilerFree"], "only the switch is sent, never a stale copy of the rest")
-        XCTAssertEqual(body?["spoilerFree"] as? Bool, true)
+        XCTAssertTrue(model.preferencesKnown)
+        XCTAssertFalse(model.hidesSpoilers)
     }
 
-    func testARefusedChangeIsPutBack() async throws {
-        let (http, _) = try server(put: 500)
+    func testAPreferencesRouteThatIsNotThereLeavesTheScoresHidden() async throws {
+        let http = try server(preferences: 404)
         defer { http.stop() }
-        let model = F1PageModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1), defaults: defaults())
+        let model = F1PageModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1))
         await model.load()
-        await model.setFollowing("Oscar Piastri")
-        XCTAssertEqual(model.preferences.f1Following, "Lando Norris", "the server's value stays")
-        XCTAssertNotNil(model.saveError)
-    }
-
-    func testAnOlderServerKeepsThemOnTheDevice() async throws {
-        let (http, puts) = try server(preferences: 404)
-        defer { http.stop() }
-        let store = defaults()
-        let client = APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1)
-        let model = F1PageModel(client: client, defaults: store)
-        await model.load()
-        XCTAssertEqual(model.preferences, SportPagePreferences())
-        await model.setFollowing("Oscar Piastri")
-        XCTAssertTrue(puts.value.isEmpty, "nothing is sent to a server without the route")
-        let again = F1PageModel(client: client, defaults: store)
-        await again.load()
-        XCTAssertEqual(again.preferences.f1Following, "Oscar Piastri", "kept on this device")
+        XCTAssertNotNil(model.page, "the page itself loaded")
+        XCTAssertFalse(model.preferencesKnown, "no device copy any more: the choice is unknown")
+        XCTAssertTrue(model.hidesSpoilers)
     }
 }
 
-/// #162, #163: spoiler protection holds when the preferences fail to load, and when changes overlap.
+/// #162: spoiler protection holds when the preferences fail to load.
 @MainActor
 final class F1PreferenceOrderTests: XCTestCase {
-    /// A household preferences store: PUT applies its fields (or fails for `following` when told to) and answers the
-    /// whole object; GET and PUT can be slowed.
+    /// An account's preferences store; GET can fail.
     private final class Household: @unchecked Sendable {
         let state = Locked<(spoilerFree: Bool, following: String?)>((false, "Lando Norris"))
-        let getDelay = Locked<TimeInterval>(0)
-        let failFollowing = Locked<TimeInterval?>(nil)
-        let followDelay = Locked<TimeInterval>(0)
-        let failSpoiler = Locked(false)
         let getStatus = Locked(200)
         func json() -> String {
             let s = state.value
@@ -273,22 +240,7 @@ final class F1PreferenceOrderTests: XCTestCase {
                 return .init(status: 200, contentType: "application/json", body: page)
             case ("GET", "/api/sports/pages/preferences"):
                 guard house.getStatus.value == 200 else { return .json(#"{"error":"x"}"#, status: house.getStatus.value) }
-                var r = LocalHTTPServer.Response.json(house.json())
-                r.delay = house.getDelay.value
-                return r
-            case ("PUT", "/api/sports/pages/preferences"):
-                let body = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any] ?? [:]
-                if body["following"] != nil, let delay = house.failFollowing.value {
-                    var r = LocalHTTPServer.Response.json(#"{"error":"x"}"#, status: 500)
-                    r.delay = delay
-                    return r
-                }
-                if body["spoilerFree"] != nil, house.failSpoiler.value { return .json(#"{"error":"x"}"#, status: 500) }
-                if let value = body["spoilerFree"] as? Bool { house.state.value.spoilerFree = value }
-                if let following = body["following"] as? [String: Any] { house.state.value.following = following["F1"] as? String }
-                var r = LocalHTTPServer.Response.json(house.json())
-                if body["following"] != nil { r.delay = house.followDelay.value }
-                return r
+                return .json(house.json())
             default:
                 return .notFound
             }
@@ -296,8 +248,7 @@ final class F1PreferenceOrderTests: XCTestCase {
     }
 
     private func model(_ http: LocalHTTPServer) throws -> F1PageModel {
-        F1PageModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1),
-                    defaults: UserDefaults(suiteName: "F1PreferenceOrderTests.\(UUID().uuidString)")!)
+        F1PageModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1))
     }
 
     func testResultsStayHiddenUntilThePreferencesAreKnown() async throws {
@@ -313,79 +264,7 @@ final class F1PreferenceOrderTests: XCTestCase {
         await model.load()
         XCTAssertFalse(model.hidesSpoilers, "known now: spoiler-free is off")
     }
-
-    func testAFailedEarlierSaveCannotTurnSpoilerFreeBackOff() async throws {
-        let house = Household()
-        house.failFollowing.value = 1.0
-        let http = try server(house)
-        defer { http.stop() }
-        let model = try model(http)
-        await model.load()
-        async let follow: Void = model.setFollowing("Oscar Piastri")
-        try await Task.sleep(for: .milliseconds(150))
-        await model.setSpoilerFree(true)
-        await follow
-        XCTAssertTrue(model.preferences.spoilerFree, "the later, successful change stands")
-        XCTAssertEqual(model.preferences.f1Following, "Lando Norris", "only the refused field is put back")
-        XCTAssertTrue(house.state.value.spoilerFree)
-    }
-
-    func testARefreshDoesNotOverwriteANewerChange() async throws {
-        let house = Household()
-        let http = try server(house)
-        defer { http.stop() }
-        let model = try model(http)
-        await model.load()
-        house.getDelay.value = 1.0
-        async let refresh: Void = model.load()
-        try await Task.sleep(for: .milliseconds(200))
-        await model.setSpoilerFree(true)
-        await refresh
-        XCTAssertTrue(model.preferences.spoilerFree, "the slow refresh answered with the old value; the change stands")
-    }
-
-    /// #171: a refresh answering spoiler-free on while an unrelated save is in flight still makes it known: per field.
-    func testASlowFollowSaveCannotHideTheSpoilerChoice() async throws {
-        let house = Household()
-        house.getStatus.value = 500
-        let http = try server(house)
-        defer { http.stop() }
-        let model = try model(http)
-        await model.load()
-        XCTAssertTrue(model.hidesSpoilers, "not known yet")
-        house.getStatus.value = 200
-        house.state.value.spoilerFree = true
-        house.followDelay.value = 1.0
-        async let follow: Void = model.setFollowing("Oscar Piastri")
-        try await Task.sleep(for: .milliseconds(150))
-        await model.load()
-        XCTAssertTrue(model.preferences.spoilerFree, "the refresh's spoiler-free applies though following is being saved")
-        XCTAssertTrue(model.hidesSpoilers)
-        await follow
-        XCTAssertTrue(model.hidesSpoilers, "and stays on once the save answers")
-        XCTAssertEqual(model.preferences.f1Following, "Oscar Piastri")
-    }
-
-    /// #172: a stale refresh does not become the value a refused change falls back to.
-    func testAStaleRefreshIsNotTheRollbackValue() async throws {
-        let house = Household()
-        let http = try server(house)
-        defer { http.stop() }
-        let model = try model(http)
-        await model.load()
-        house.getDelay.value = 1.0
-        async let refresh: Void = model.load()
-        try await Task.sleep(for: .milliseconds(200))
-        await model.setSpoilerFree(true) // saved: the server now has it on
-        await refresh // answers with the old "off"
-        house.getDelay.value = 0
-        house.failSpoiler.value = true
-        await model.setSpoilerFree(false) // refused
-        XCTAssertTrue(model.preferences.spoilerFree, "back to the last saved value, on")
-        XCTAssertNotNil(model.saveError)
-    }
 }
-
 
 extension F1PageTextTests {
     /// #202: Follow a driver lists the whole grid (C-P `drivers`, server 0422), not only the top ten of the standings

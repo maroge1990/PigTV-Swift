@@ -233,7 +233,7 @@ final class CricketPageRefreshTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CricketRoutes.self]
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", session: URLSession(configuration: configuration))
-        let prefs = F1PageModel(client: client, defaults: UserDefaults(suiteName: "cricket-\(UUID())")!)
+        let prefs = F1PageModel(client: client)
         let model = CricketPageModel(client: client)
         await model.refresh(preferences: prefs)
         XCTAssertEqual(model.page?.lead?.id, "1525661")
@@ -285,7 +285,7 @@ final class CricketPageSpoilerTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CricketSpoilerRoutes.self]
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", session: URLSession(configuration: configuration))
-        return (CricketPageModel(client: client), F1PageModel(client: client, defaults: UserDefaults(suiteName: "cricket-spoilers-\(UUID())")!))
+        return (CricketPageModel(client: client), F1PageModel(client: client))
     }
 
     func testNewScoresAreNeverDrawnBeforeASlowSpoilerFreeAnswer() async throws {

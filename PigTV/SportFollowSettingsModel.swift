@@ -268,6 +268,17 @@ final class SportFollowSettingsModel: ObservableObject {
         await save({ s in var n = s; n.spoilerFree = on; return n }, done: { on ? "Scores are hidden." : "Scores are shown." })
     }
 
+    /// #278 (audit D5): Hide scores from a sport page's chip, which can be pressed before Settings › Sport has appeared or
+    /// long after it last read the list. The follows are read first, so the whole-list PUT is never built from an empty or
+    /// old list; when they cannot be read (or only this device's last copy is there), nothing is sent.
+    /// -> whether the server now holds the choice.
+    func setSpoilerFreeFromPage(_ on: Bool) async -> Bool {
+        await load()
+        guard canEdit else { return false }
+        await setSpoilerFree(on)
+        return !offline && follows?.spoilerFree == on
+    }
+
     func moveSport(_ sport: String, by delta: Int) async {
         await save { SportFollowLogic.moveSport($0, sport, delta) }
     }

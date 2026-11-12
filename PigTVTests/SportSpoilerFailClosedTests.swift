@@ -53,7 +53,7 @@ final class SportSpoilerFailClosedTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ScriptedPreferencesRoutes.self]
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", session: URLSession(configuration: configuration))
-        return (client, F1PageModel(client: client, defaults: UserDefaults(suiteName: "fail-closed-\(UUID())")!))
+        return (client, F1PageModel(client: client))
     }
 
     private func waitFor(_ seconds: TimeInterval, _ condition: @MainActor () -> Bool) async -> Bool {

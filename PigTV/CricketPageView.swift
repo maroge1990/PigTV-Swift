@@ -68,6 +68,8 @@ struct CricketPageView: View {
     @ObservedObject var model: CricketPageModel
     /// The household's preferences (spoiler-free, the followed teams), shared by every sport page.
     @ObservedObject var preferences: F1PageModel
+    /// #278 (audit D5): the Hide scores chip, saved through Settings › Sport's model.
+    @ObservedObject private var hideScores: HideScoresChip
     /// Observed for the bells (a pending "watch when it starts").
     @ObservedObject private var appState: AppModel
     @Environment(\.sportPresenter) private var presenter
@@ -93,6 +95,7 @@ struct CricketPageView: View {
         self.fallback = fallback
         self.model = browse.cricketPage
         self.preferences = browse.f1Page
+        _hideScores = ObservedObject(wrappedValue: browse.hideScores)
         _appState = ObservedObject(wrappedValue: app)
     }
 
@@ -175,7 +178,7 @@ struct CricketPageView: View {
                 nothingOn
             }
             // #280: plain words, never the error's own text.
-            if preferences.saveError != nil {
+            if hideScores.notSaved {
                 Text(PageWords.notSaved).font(CricketMetrics.detail).foregroundStyle(.secondary)
             }
         }
@@ -313,13 +316,13 @@ struct CricketPageView: View {
                     .background(Color.pigRaised, in: Capsule())
                     .accessibilityIdentifier("cricket.following")
             }
-            Button { Task { await preferences.setSpoilerFree(!preferences.preferences.spoilerFree) } } label: {
+            Button { Task { await hideScores.set(!preferences.preferences.spoilerFree) } } label: {
                 Label(preferences.preferences.spoilerFree ? "Scores hidden" : "Scores shown",
                       systemImage: preferences.preferences.spoilerFree ? "eye.slash" : "eye")
                     .font(CricketMetrics.chip).lineLimit(1)
             }
             .buttonStyle(GuideFilterStyle(selected: preferences.preferences.spoilerFree))
-            .disabled(!preferences.preferencesKnown)
+            .disabled(!preferences.preferencesKnown || hideScores.saving)
             .accessibilityLabel(preferences.preferences.spoilerFree ? "Scores are hidden" : "Scores are shown")
             .accessibilityHint("Changes it for every device")
             .accessibilityIdentifier("cricket.spoilers")

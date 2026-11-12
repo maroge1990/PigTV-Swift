@@ -58,7 +58,7 @@ final class SportPageSpoilerTests: XCTestCase {
     }
 
     private func prefsModel(_ client: APIClient) -> F1PageModel {
-        F1PageModel(client: client, defaults: UserDefaults(suiteName: "sport-spoilers-\(UUID())")!)
+        F1PageModel(client: client)
     }
 
     private func waitFor(_ seconds: TimeInterval, _ condition: @MainActor () -> Bool) async -> Bool {

@@ -155,7 +155,7 @@ final class PageStateTests: XCTestCase {
     }
 
     private func f1() throws -> League {
-        let m = F1PageModel(client: try client(), defaults: UserDefaults(suiteName: "PageStateTests.f1")!)
+        let m = F1PageModel(client: try client())
         return League(route: "\(Self.base)/pages/f1", full: try fixture("f1-page-0346.json"), load: { await m.load() },
                       state: { m.state(label: "Formula 1") }, label: "Formula 1", keepFresh: { await m.keepFresh() },
                       schedule: { m.schedule }, healthy: Self.seconds(F1PageModel.refreshInterval))

@@ -54,10 +54,7 @@ private final class CountingPreferencesRoutes: URLProtocol, @unchecked Sendable 
         let path = request.url?.path ?? ""
         var reply = Reply()
         let body: Data
-        if path.hasSuffix("sports/pages/preferences"), request.httpMethod == "PUT" {
-            // A save: the server's state after it, spoiler-free on.
-            body = Self.preferences(spoilerFree: true)
-        } else if path.hasSuffix("sports/pages/preferences") {
+        if path.hasSuffix("sports/pages/preferences") {
             Self.lock.lock()
             Self.gets += 1
             reply = Self.script.isEmpty ? Self.otherwise : Self.script.removeFirst()
@@ -92,8 +89,8 @@ private final class Askers {
 
 // #278 (audit F5): a sport page runs two pollers (the front page and its league), and each asked for the household's
 // preferences on every tick, so two requests went out and one answer was thrown away. Askers that arrive while a read is
-// in flight now share it, but only while it is fresh for them: a read that began before an invalidation or a save never
-// answers for an asker after it (fail closed, never stale).
+// in flight now share it, but only while it is fresh for them: a read that began before an invalidation never answers for
+// an asker after it, and none answers during a Hide scores change (fail closed, never stale).
 @MainActor
 final class SportPreferencesSharedReadTests: XCTestCase {
     private func makeClient() throws -> APIClient {
@@ -103,7 +100,7 @@ final class SportPreferencesSharedReadTests: XCTestCase {
     }
 
     private func makePreferences(_ client: APIClient) -> F1PageModel {
-        F1PageModel(client: client, defaults: UserDefaults(suiteName: "shared-read-\(UUID())")!)
+        F1PageModel(client: client)
     }
 
     private func waitFor(_ seconds: TimeInterval = 5, _ condition: @MainActor () -> Bool) async -> Bool {
@@ -239,29 +236,34 @@ final class SportPreferencesSharedReadTests: XCTestCase {
         XCTAssertTrue(prefs.hidesSpoilers)
     }
 
-    /// A save landing while a read is in flight: an asker after the save sends its own read, and the save stands.
-    func testAReadFromBeforeASaveNeverAnswersALaterAsker() async throws {
+    /// #278 (audit D5): a Hide scores change begun while a read is in flight: neither that read nor one asked during the
+    /// change makes the choice known; once it ends, a new read does, with the server's value.
+    func testNoReadMakesTheChoiceKnownWhileAChangeIsOnItsWay() async throws {
         CountingPreferencesRoutes.reset(otherwise: .init(spoilerFree: false))
         let prefs = makePreferences(try makeClient())
         await prefs.revalidatePreferences()
         CountingPreferencesRoutes.resetCount()
-        CountingPreferencesRoutes.then([.init(spoilerFree: false, held: true), .init(spoilerFree: true, held: true)])
+        CountingPreferencesRoutes.then([.init(spoilerFree: false, held: true), .init(spoilerFree: false, held: true)],
+                                       otherwise: .init(spoilerFree: true))
 
         let poll = Task { @MainActor in await prefs.revalidatePreferences() }
         let pollAsked = await waitFor { CountingPreferencesRoutes.heldCount == 1 }
         XCTAssertTrue(pollAsked)
-        await prefs.setSpoilerFree(true)
-        XCTAssertTrue(prefs.hidesSpoilers)
+        prefs.beginChange()
+        XCTAssertTrue(prefs.hidesSpoilers, "hidden from the press on")
         let later = Task { @MainActor in await prefs.revalidatePreferences() }
         let laterAsked = await waitFor(3) { CountingPreferencesRoutes.getCount == 2 }
-        XCTAssertTrue(laterAsked, "an asker after the save sends its own read")
+        XCTAssertTrue(laterAsked, "an asker during the change sends its own read")
         let finished = await releaseUntil { CountingPreferencesRoutes.heldCount == 0 }
         XCTAssertTrue(finished)
         await poll.value
         await later.value
-        XCTAssertEqual(CountingPreferencesRoutes.getCount, 2)
-        XCTAssertTrue(prefs.preferences.spoilerFree, "the save stands")
+        XCTAssertFalse(prefs.preferencesKnown, "neither answer (scores shown) applies while the change is on its way")
         XCTAssertTrue(prefs.hidesSpoilers)
+        await prefs.endChange()
+        XCTAssertEqual(CountingPreferencesRoutes.getCount, 3, "the end of the change asks again")
+        XCTAssertTrue(prefs.preferencesKnown)
+        XCTAssertTrue(prefs.preferences.spoilerFree, "the server's value after the change")
     }
 
     /// The page went away: its only asker cancelled ends the request, and the choice is left unknown (as before sharing).

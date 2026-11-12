@@ -170,7 +170,7 @@ final class NFLPageRefreshTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [NFLRoutes.self]
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", session: URLSession(configuration: configuration))
-        let prefs = F1PageModel(client: client, defaults: UserDefaults(suiteName: "nfl-\(UUID())")!)
+        let prefs = F1PageModel(client: client)
         let model = NFLPageModel(client: client)
         await model.refresh(preferences: prefs)
         XCTAssertEqual(prefs.preferences.nflFollowing, "GB")
