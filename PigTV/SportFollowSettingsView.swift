@@ -562,8 +562,17 @@ private struct SportSuggestionRow: View {
 /// A followed sport: its place in the order, its leagues (unless the catalogue has one), and its teams or people.
 struct SportFollowScreen: View {
     @ObservedObject var model: SportFollowSettingsModel
+    /// #278: the recording rules' store (Scheduled's too), so a rule changed or removed there redraws the switches.
+    @ObservedObject private var ruleStore: RecordingsStore
     let sport: String
     let me: String?
+
+    init(model: SportFollowSettingsModel, sport: String, me: String?) {
+        self.model = model
+        _ruleStore = ObservedObject(wrappedValue: model.ruleStore)
+        self.sport = sport
+        self.me = me
+    }
     @StateObject private var questions = SportQuestionPresenter()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
@@ -711,7 +720,7 @@ struct SportFollowScreen: View {
             }
             ForEach(entry.teams, id: \.self) { name in
                 let rule = model.rule(sport, name)
-                let on = rule?.enabled == true
+                let on = rule?.isOn == true
                 let by = rule?.createdByName.flatMap { $0 != me ? " (set by \($0))" : nil } ?? ""
                 SportItemRow {
                     Label { Text(name) } icon: { Image(systemName: "star.fill").foregroundStyle(Color.pigAccent) }
@@ -721,7 +730,7 @@ struct SportFollowScreen: View {
                         Button { Task { await model.setRecording(sport, name, on: !on, ask: questions.ask) } } label: {
                             Text("Record every game\(by): \(on ? "On" : "Off")")
                         }
-                        .disabled(!model.canEdit || model.ruleBusy.contains("\(sport)|\(name)"))
+                        .disabled(!model.canEdit || model.ruleIsBusy(sport, name))
                         .accessibilityIdentifier("settings.sport.name.\(name).record")
                         .accessibilityValue(on ? "On" : "Off")
                     }
@@ -736,7 +745,7 @@ struct SportFollowScreen: View {
                     Toggle("Record every game\(by)", isOn: Binding(get: { on }, set: { value in
                         Task { await model.setRecording(sport, name, on: value, ask: questions.ask) }
                     }))
-                    .disabled(!model.canEdit || model.ruleBusy.contains("\(sport)|\(name)"))
+                    .disabled(!model.canEdit || model.ruleIsBusy(sport, name))
                     .accessibilityIdentifier("settings.sport.name.\(name).record")
                 }
                 #endif

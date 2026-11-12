@@ -536,6 +536,8 @@ final class BrowseModel: ObservableObject {
     /// the sport pages (whose preferences the F1 page model holds) ask for the choice again.
     private(set) lazy var sportFollows: SportFollowSettingsModel = {
         let model = SportFollowSettingsModel(client: client)
+        // #278: its "Record every game" switches read and change the one set of rules (Scheduled's).
+        model.ruleOwner = self
         model.onSpoilerFreeChange = { [weak self] in
             guard let pages = self?.f1Page else { return }
             pages.invalidatePreferences()
@@ -949,6 +951,35 @@ final class BrowseModel: ObservableObject {
         }
     }
 
+    /// #278 (audit D4/S1): Settings › Sport's "Record every game" changes, through this one owner of the rules. It
+    /// waits for any change in flight (never dropped; that page shows the row busy meanwhile), then makes one change,
+    /// chosen by `choose` from the rules as they are once its turn comes (nil: nothing is sent). No banner and no
+    /// haptic: that page says what happened itself, so the request's error is thrown to it. The lists are reloaded
+    /// either way, so Scheduled shows the change at once. -> whether a request was sent.
+    @discardableResult
+    func changeRule(_ choose: () -> RuleChange?) async throws -> Bool {
+        await waitForMutation()
+        guard let change = choose() else { return false }
+        struct Answer: Decodable { let id: Int? }
+        mutationBusy = true
+        defer { mutationBusy = false }
+        var failure: Error?
+        do {
+            switch change {
+            case .enable(let id):
+                let _: Answer = try await client.request("recordings/rules/\(id)", method: "PUT", body: RuleEnabledBody(enabled: true))
+            case .add(let body):
+                let _: Answer = try await client.request("recordings/rules", method: "POST", body: body)
+            case .delete(let id):
+                let _: Answer = try await client.request("recordings/rules/\(id)", method: "DELETE")
+            }
+        } catch { failure = error }
+        await loadRecordings()
+        await reloadRules()
+        if let failure { throw failure }
+        return true
+    }
+
     /// #234: "Record when it's listed": the game's `game` rule; its id, or nil (actionError says why).
     func addGameRule(_ game: SportsGame) async -> Int? {
         guard !mutationBusy else { return nil }
@@ -1097,3 +1128,23 @@ final class BrowseModel: ObservableObject {
     }
     #endif
 }
+
+/// #278 (audit D4/S1): one change to a recording rule, as Settings › Sport asks `BrowseModel.changeRule` for it. The
+/// requests are C-M's: `PUT rules/:id {enabled: true}`, `POST rules` with the body, `DELETE rules/:id`.
+nonisolated enum RuleChange: Sendable {
+    case enable(id: Int)
+    case add(RuleBody)
+    case delete(id: Int)
+}
+
+/// #278: what Settings › Sport needs of the one owner of the recording rules (`BrowseModel`, whose `RecordingsStore`
+/// Scheduled lists too): the store to read and observe, its reload (generations and tombstones) and its one-at-a-time
+/// change. Narrow, so a test can hand the page model a real `BrowseModel` over a local server.
+protocol RecordingRuleOwner: AnyObject {
+    var recordingStore: RecordingsStore { get }
+    func reloadRules() async
+    @discardableResult
+    func changeRule(_ choose: () -> RuleChange?) async throws -> Bool
+}
+
+extension BrowseModel: RecordingRuleOwner {}

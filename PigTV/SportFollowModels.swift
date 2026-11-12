@@ -139,8 +139,19 @@ nonisolated struct SportSuggestions: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey { case suggestions }
 }
 
-/// A row of `GET /api/recordings/rules` (C-M), only the fields "Record every game" needs (kind `team`, 0414).
-nonisolated struct SportTeamRule: Decodable, Equatable, Sendable {
+/// What finding a team's "Record every game" rule needs of a C-M rule row (#278: the app's rows are `RecordingRule`, from
+/// the one store Scheduled also lists).
+nonisolated protocol SportTeamRuleFields {
+    var kind: String { get }
+    var match: String { get }
+    var sport: String? { get }
+}
+
+nonisolated extension RecordingRule: SportTeamRuleFields {}
+
+/// A row of `GET /api/recordings/rules` (C-M), only the fields "Record every game" needs (kind `team`, 0414). #278: the
+/// app reads `RecordingRule` from the recordings store; this type remains for the contract checks' decoding.
+nonisolated struct SportTeamRule: Decodable, Equatable, Sendable, SportTeamRuleFields {
     let id: Int
     let kind: String
     let match: String
@@ -338,7 +349,7 @@ nonisolated enum SportFollowLogic {
     }
 
     /// The "Record every game" rule on a followed name, if any.
-    static func ruleFor(_ rules: [SportTeamRule], sport: String, name: String) -> SportTeamRule? {
+    static func ruleFor<Rule: SportTeamRuleFields>(_ rules: [Rule], sport: String, name: String) -> Rule? {
         rules.first { $0.kind == "team" && $0.sport == sport && same($0.match, name) }
     }
 

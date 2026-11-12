@@ -80,9 +80,9 @@ final class SportFollowLogicTests: XCTestCase {
     }
 
     func testTheRuleOnAName() {
-        let rules = [SportTeamRule(id: 1, kind: "sport", match: "Arsenal", sport: nil),
-                     SportTeamRule(id: 2, match: "Arsenal", sport: "Cricket"),
-                     SportTeamRule(id: 3, match: "arsenal", sport: "Football", enabled: false)]
+        let rules = [RecordingRule(id: 1, kind: "sport", match: "Arsenal"),
+                     RecordingRule(id: 2, kind: "team", match: "Arsenal", sport: "Cricket"),
+                     RecordingRule(id: 3, kind: "team", match: "arsenal", enabled: false, sport: "Football")]
         XCTAssertEqual(L.ruleFor(rules, sport: "Football", name: "Arsenal")?.id, 3, "kind team, the sport, the name in any case")
         XCTAssertNil(L.ruleFor(rules, sport: "Football", name: "Chelsea"))
     }
@@ -187,10 +187,18 @@ final class SportFollowSettingsModelTests: XCTestCase {
         }
     }
 
+    /// #278: the rules' owner each model is given (it holds the owner weakly, as `BrowseModel.sportFollows` does).
+    private var owners: [BrowseModel] = []
+
     private func model(_ http: LocalHTTPServer, defaults: UserDefaults? = nil) throws -> SportFollowSettingsModel {
         let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"3.9","apiVersion":1,"features":{"library":true,"playbackResolve":true,"sportFollows":true,"recordingRules":true}}"#.utf8))
-        return SportFollowSettingsModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: info, accountID: 1),
-                                        defaults: defaults ?? UserDefaults(suiteName: "SportFollowSettingsModelTests.\(UUID().uuidString)")!)
+        let client = APIClient(address: try ServerAddress(http.baseURL), token: "fixture", info: info, accountID: 1)
+        let model = SportFollowSettingsModel(client: client,
+                                             defaults: defaults ?? UserDefaults(suiteName: "SportFollowSettingsModelTests.\(UUID().uuidString)")!)
+        let owner = BrowseModel(client: client, accountID: 1)
+        owners.append(owner)
+        model.ruleOwner = owner
+        return model
     }
 
     private func leagues(_ body: Data) -> [String] {

@@ -5,7 +5,8 @@ import Combine
 /// owned by BrowseModel; used only with the server's `sportFollows` flag. The web's "Your sport" panel
 /// (public/js/pages/SportSettings.js) ported: every change is a whole-list `PUT sports/follows`, sent one at a time and
 /// built from the state its turn finds (so two quick changes never build on the same old list), and the server's answer
-/// is what is shown. "Record every game" is a C-M rule of kind `team`.
+/// is what is shown. "Record every game" is a C-M rule of kind `team`; #278: those rules have one owner, `BrowseModel`
+/// and its `RecordingsStore` (what Scheduled lists), which this model reads and changes through `ruleOwner`.
 @MainActor
 final class SportFollowSettingsModel: ObservableObject {
     /// Asks a question (an alert) and answers with the choice; injectable so tests choose.
@@ -18,9 +19,6 @@ final class SportFollowSettingsModel: ObservableObject {
     @Published private(set) var names: [String: [String]] = [:]
     /// League -> `team` or `person`.
     @Published private(set) var kinds: [String: String] = [:]
-    @Published private(set) var rules: [SportTeamRule] = []
-    /// False when the rules could not be read: never taken as "no rules" (web 0421).
-    @Published private(set) var rulesKnown = false
     @Published private(set) var suggestions: [SportSuggestions.Suggestion] = []
     /// The line under the controls: what the last change did, or why it was not saved.
     @Published var message = ""
@@ -62,7 +60,28 @@ final class SportFollowSettingsModel: ObservableObject {
                      failed: loadFailed, stale: offline, since: nil, failure: PageWords.sportSettingsFailed)
     }
     /// "Record every game" is offered (C-M recording rules; a fixture says whether).
-    var rulesAvailable: Bool { isFixture ? fixtureRules : true }
+    var rulesAvailable: Bool { isFixture ? fixtureRules : ruleOwner != nil }
+    /// #278: the one owner of the recording rules (set by `BrowseModel` when it makes this model).
+    weak var ruleOwner: (any RecordingRuleOwner)?
+    /// Where the rules are kept: the page observes it, so a change made in Scheduled redraws the switches.
+    var ruleStore: RecordingsStore { ruleOwner?.recordingStore ?? Self.noRules }
+    private static let noRules = RecordingsStore()
+    /// False when the rules could not be read: never taken as "no rules" (web 0421).
+    var rulesKnown: Bool {
+        if isFixture { return fixtureRules }
+        return ruleOwner != nil && ruleStore.rulesLoaded && ruleStore.rulesError == nil
+    }
+    /// The rules as this page shows them: the store's, less any removed in Recordings (its Undo still open, or the
+    /// removal sent and not yet reloaded); none while they could not be read.
+    private var rules: [RecordingRule] {
+        guard rulesKnown else { return [] }
+        let store = ruleStore
+        return store.rules.filter { !removed($0) }
+    }
+    private func removed(_ rule: RecordingRule) -> Bool {
+        let key = RecordingsHome.key(rule)
+        return ruleStore.pendingRemovals.contains(key) || ruleStore.tombstones[key] != nil
+    }
     /// After a save that changed the spoiler-free switch: the sport pages forget their copy of it.
     var onSpoilerFreeChange: (@MainActor () -> Void)?
 
@@ -94,7 +113,17 @@ final class SportFollowSettingsModel: ObservableObject {
     func entry(_ sport: String) -> SportFollows.Entry? { follows?.entry(sport) }
     func followsPeople(_ entry: SportFollows.Entry) -> Bool { SportFollowLogic.followsPeople(entry, kinds: kinds) }
     func offered(_ entry: SportFollows.Entry) -> [String] { SportFollowLogic.offered(entry, namesOf: namesOf) }
-    func rule(_ sport: String, _ name: String) -> SportTeamRule? { SportFollowLogic.ruleFor(rules, sport: sport, name: name) }
+    func rule(_ sport: String, _ name: String) -> RecordingRule? { SportFollowLogic.ruleFor(rules, sport: sport, name: name) }
+    /// #278: a team's rule removed in Recordings and not yet settled (Undo open, or the DELETE on its way): until then
+    /// its switch waits, so nothing here brings it back or sends a second DELETE.
+    func ruleRemovalPending(_ sport: String, _ name: String) -> Bool {
+        guard rulesKnown else { return false }
+        return SportFollowLogic.ruleFor(ruleStore.rules.filter(removed), sport: sport, name: name) != nil
+    }
+    /// The row's switch is busy: its own change is waiting or on its way, or its rule's removal is.
+    func ruleIsBusy(_ sport: String, _ name: String) -> Bool {
+        ruleBusy.contains("\(sport)|\(name)") || ruleRemovalPending(sport, name)
+    }
     /// The catalogue sports not followed yet, in its order.
     var unfollowedSports: [SportCatalog.Sport] { catalog.sports.filter { s in follows?.entry(s.sport) == nil } }
     /// A sport the catalogue has one league for: added with it, and no league editing.
@@ -154,17 +183,10 @@ final class SportFollowSettingsModel: ObservableObject {
         defaults.data(forKey: cacheKey).flatMap { try? JSONDecoder().decode(Copy.self, from: $0) }
     }
 
+    /// #278: the rules are read by their owner (one generation for every reader, tombstones applied).
     func loadRules() async {
-        guard !isFixture else { return }
-        guard rulesAvailable else { rules = []; rulesKnown = false; return }
-        do {
-            let rows: [FollowLossy<SportTeamRule>] = try await client.request("recordings/rules")
-            rules = rows.compactMap(\.value)
-            rulesKnown = true
-        } catch {
-            rules = []
-            rulesKnown = false
-        }
+        guard !isFixture, let ruleOwner else { return }
+        await ruleOwner.reloadRules()
     }
 
     func loadSuggestions() async {
@@ -345,46 +367,52 @@ final class SportFollowSettingsModel: ObservableObject {
         await loadRules() // what is set now, not when the section opened
         guard rulesKnown else { left.unknown = true; return left }
         for name in names {
-            guard let rule = rule(sport, name), rule.enabled else { continue }
+            guard let rule = rule(sport, name), rule.isOn else { continue }
             if await ask(SportFollowLogic.keepRecordingQuestion(name)) { continue }
-            do { try await deleteRule(rule) } catch { left.failed.append(name) }
+            do { try await deleteRule(sport, name, asked: rule.id) } catch { left.failed.append(name) }
         }
-        await loadRules()
         return left
     }
 
-    private func deleteRule(_ rule: SportTeamRule) async throws {
-        struct Deleted: Decodable { let success: Bool? }
-        let _: Deleted = try await client.request("recordings/rules/\(rule.id)", method: "DELETE")
+    /// #278: deletes the rule the user was asked about, through the owner once its turn comes, unless it has gone or
+    /// been removed in Recordings meanwhile (never a second DELETE). The owner reloads the rules after it.
+    @discardableResult
+    private func deleteRule(_ sport: String, _ name: String, asked id: Int) async throws -> Bool {
+        guard let ruleOwner else { return false }
+        return try await ruleOwner.changeRule { [self] in
+            guard let now = rule(sport, name), now.id == id else { return nil }
+            return .delete(id: id)
+        }
     }
 
     /// On: a rule switched off in Recordings is switched back on (its settings kept), else a new one. Off: asks, then
     /// deletes it (recordings already made stay).
+    /// #278: through the rules' one owner, after any recordings change in flight (the row shows busy meanwhile), and
+    /// decided from the rules as they are when its turn comes. A rule whose removal in Recordings is pending is left
+    /// alone (its switch waits for it). The owner reloads the rules after a change, so Scheduled has it at once.
     func setRecording(_ sport: String, _ name: String, on: Bool, ask: Ask) async {
         let key = "\(sport)|\(name)"
-        guard !ruleBusy.contains(key), !isFixture else { return }
+        guard !ruleBusy.contains(key), !isFixture, let ruleOwner else { return }
         ruleBusy.insert(key)
         defer { ruleBusy.remove(key) }
-        struct Enabled: Encodable { let enabled: Bool }
-        struct Create: Encodable { let kind: String; let match: String; let sport: String }
-        struct Row: Decodable { let id: Int? }
         do {
-            let current = rule(sport, name)
+            var sent = false
             if on {
-                if let current {
-                    let _: Row = try await client.request("recordings/rules/\(current.id)", method: "PUT", body: Enabled(enabled: true))
-                } else {
-                    let _: Row = try await client.request("recordings/rules", method: "POST", body: Create(kind: "team", match: name, sport: sport))
+                sent = try await ruleOwner.changeRule { [self] in
+                    guard !ruleRemovalPending(sport, name) else { return nil }
+                    if let current = rule(sport, name) { return .enable(id: current.id) }
+                    return .add(RuleBody(kind: "team", match: name, sport: sport))
                 }
-                showDone("Recording every \(name) game.")
-            } else if let current, await ask(SportFollowLogic.stopRecordingQuestion(name)) {
-                try await deleteRule(current)
-                message = ""
+                if sent { showDone("Recording every \(name) game.") }
+            } else if let current = rule(sport, name), await ask(SportFollowLogic.stopRecordingQuestion(name)) {
+                sent = try await deleteRule(sport, name, asked: current.id)
+                if sent { message = "" }
             }
+            // Nothing sent: the rules are read again, as before #278 (the owner reloads after a change).
+            if !sent { await loadRules() }
         } catch {
             message = "Not saved: \(UserMessage.text(for: error) ?? "the change was cancelled.")"
         }
-        await loadRules()
     }
 
     #if DEBUG
@@ -410,7 +438,7 @@ final class SportFollowSettingsModel: ObservableObject {
     }
 
     func setFixture(_ follows: SportFollows, catalog: SportCatalog, names: [String: SportNames.Fixture] = [:],
-                    suggestions: [SportSuggestions.Suggestion] = [], rules: [SportTeamRule]? = nil) {
+                    suggestions: [SportSuggestions.Suggestion] = [], rules: [RecordingRule]? = nil) {
         isFixture = true
         self.follows = follows
         self.catalog = catalog
@@ -418,8 +446,8 @@ final class SportFollowSettingsModel: ObservableObject {
         self.kinds = names.mapValues(\.kind)
         self.suggestions = suggestions
         fixtureRules = rules != nil
-        self.rules = rules ?? []
-        rulesKnown = rules != nil
+        // The fixture's rules go where the page reads them: the owner's store (no request is made).
+        ruleOwner?.recordingStore.rules = rules ?? []
     }
     #endif
 }
@@ -461,7 +489,7 @@ enum SportFollowFixtures {
             "Cricket": .init(kind: "team", names: ["Australia", "England", "India", "South Africa"])
         ], suggestions: [
             .init(sport: "Football", team: "Arsenal", league: "League Cup", label: "League Cup", start: soon)
-        ], rules: [SportTeamRule(id: 7, match: "Arsenal", sport: "Football", enabled: true, createdByName: "mark")])
+        ], rules: [RecordingRule(id: 7, kind: "team", match: "Arsenal", enabled: true, sport: "Football", createdByName: "mark")])
     }
 }
 #endif
