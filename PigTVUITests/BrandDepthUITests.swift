@@ -150,12 +150,17 @@ final class BrandDepthUITests: XCTestCase {
             XCTAssertTrue(app.buttons["recording.delete"].exists)
             app.terminate()
             app = launch("settings", mode)
+            // #279 (Apple 201): Account's page opens on a press of its menu row, and focus moves into it.
+            focus(app, id: "settings.menu.account")
+            XCUIRemote.shared.press(.select)
+            XCTAssertTrue(app.buttons["settings.account.signOut"].waitForExistence(timeout: 5), "the press did not open Account")
             focus(app, label: "Sign out")
             XCUIRemote.shared.press(.select)
             XCTAssertTrue(app.buttons["Stay signed in"].waitForExistence(timeout: 5))
             shot(app, "sign-out-confirmation-\(mode)")
             XCUIRemote.shared.press(.menu)
-            XCTAssertTrue(app.buttons["settings.account.signOut"].exists)
+            // Menu answers Stay signed in: the row comes back (animated), still on Account's page.
+            XCTAssertTrue(app.buttons["settings.account.signOut"].waitForExistence(timeout: 5), "Sign out is gone after Menu")
             app.terminate()
             app = launch("search", mode)
             XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 10))
