@@ -128,5 +128,39 @@ final class SportFitUITests: XCTestCase {
             app.terminate()
         }
     }
+
+    /// An iPhone at the largest text size: the Sport header's title, date and scores chip and the sports' titles stay
+    /// whole and on screen (before, "S… We… Sc…").
+    @MainActor
+    func testTheIPhoneSportHeaderAtTheLargestTextSize() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
+        XCUIDevice.shared.orientation = .portrait
+        let app = try launch(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        let any = app.descendants(matching: .any)
+        let title = app.staticTexts.matching(identifier: "page.header.title").firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 15), "the header")
+        XCTAssertTrue(any["sport.front.carousel"].waitForExistence(timeout: 15), "the page")
+        Thread.sleep(forTimeInterval: 1)
+        attach(app, "298-iphone-ax5-header")
+        let window = app.windows.firstMatch.frame
+        let chip = any["sport.front.scores"]
+        print("WIDTH298 header title \(title.frame) chip \(chip.frame) window \(window)")
+        XCTAssertLessThanOrEqual(chip.frame.maxX, window.maxX + 0.5, "the scores chip ends on screen")
+        if chip.frame.minY < title.frame.maxY && chip.frame.maxY > title.frame.minY {
+            XCTAssertGreaterThanOrEqual(chip.frame.minX, title.frame.maxX, "the chip overlaps the title")
+        }
+        // The sports' titles further down.
+        let page = app.scrollViews.containing(.any, identifier: "sport.front").firstMatch
+        for step in 0..<3 {
+            page.swipeUp(velocity: .slow)
+            Thread.sleep(forTimeInterval: 1)
+            attach(app, "298-iphone-ax5-sections-\(step)")
+        }
+        for header in app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'sport.rail.header.'")).allElementsBoundByIndex
+        where header.isHittable {
+            print("WIDTH298 section \(header.identifier) \(header.frame)")
+            XCTAssertLessThanOrEqual(header.frame.maxX, window.maxX + 0.5, "\(header.identifier) ends on screen")
+        }
+    }
     #endif
 }

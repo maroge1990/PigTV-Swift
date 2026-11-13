@@ -297,19 +297,48 @@ nonisolated enum PigHeaderDate {
 struct SportTabHeader: View {
     let now: Date
     let hidden: Bool
+    #if os(iOS)
+    @Environment(\.dynamicTypeSize) private var typeSize
+    #endif
+
     var body: some View {
-        PigPageHeader(title: "Sport", subtitle: PigHeaderDate.text(now)) {
-            Text(SportPhoneLayout.scoresChip(hidden: hidden))
-                #if os(tvOS)
-                .font(.system(size: PigType.caption))
-                #else
-                .font(.footnote)
-                #endif
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-                .background(Color.pigRaised, in: Capsule())
-                .accessibilityIdentifier("sport.front.scores")
+        #if os(iOS)
+        // #298: at the accessibility text sizes the title, the date and the chip do not fit on one line ("S… We… Sc…"):
+        // the header keeps the title, and the date and the chip go on a line of their own beneath it (under each other
+        // when they do not fit side by side).
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                PigPageHeader(title: "Sport")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: PigSpacing.m) { date; chip }
+                    VStack(alignment: .leading, spacing: PigSpacing.xs) { date; chip }
+                }
+                .padding(.horizontal, PigPageHeaderMetrics.edge)
+            }
+        } else {
+            PigPageHeader(title: "Sport", subtitle: PigHeaderDate.text(now)) { chip }
         }
+        #else
+        PigPageHeader(title: "Sport", subtitle: PigHeaderDate.text(now)) { chip }
+        #endif
+    }
+
+    private var date: some View {
+        PigHeaderDate.text(now).font(GuideTypography.body).foregroundStyle(.secondary).lineLimit(1)
+    }
+
+    private var chip: some View {
+        Text(SportPhoneLayout.scoresChip(hidden: hidden))
+            #if os(tvOS)
+            .font(.system(size: PigType.caption))
+            #else
+            .font(.footnote)
+            #endif
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
+            .background(Color.pigRaised, in: Capsule())
+            .accessibilityIdentifier("sport.front.scores")
     }
 }
 

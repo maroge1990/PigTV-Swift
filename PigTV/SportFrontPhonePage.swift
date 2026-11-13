@@ -164,13 +164,24 @@ struct SportFrontPhonePage: View {
     private func groupView(_ group: SportPhoneGroup, front: SportFront, now: Date) -> some View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             Button { open(group.sport) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
-                    Text(group.sport).font(.title3.weight(.heavy))
-                    Text("›").font(.title3.weight(.heavy)).foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
-                    Text(group.note).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                // #298: the sport, then its note on the same line; when they do not fit (the larger text sizes), the
+                // note goes under the sport, so the sport's name has the line to itself and breaks only between words
+                // (at the largest sizes it broke inside them: "Aus-/tralia/n/foot-/ball").
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
+                        sectionTitle(group.sport)
+                        Spacer(minLength: 8)
+                        Text(group.note).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+                        // Past accessibility 2 a word as long as "Australian" is wider than an iPhone: the title stops
+                        // growing there, so it breaks between words only.
+                        sectionTitle(group.sport).dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                        Text(group.note).font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal, PigSpacing.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .pigPressable()
@@ -181,6 +192,11 @@ struct SportFrontPhonePage: View {
         .padding(.horizontal, SportPhoneMetrics.edge)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("sport.front.group.\(group.sport)")
+    }
+
+    /// "Football ›".
+    private func sectionTitle(_ sport: String) -> some View {
+        (Text(sport) + Text(" ›").foregroundStyle(.secondary)).font(.title3.weight(.heavy))
     }
 
     /// Sports with nothing in the next 72 hours: a line of buttons to their pages.
