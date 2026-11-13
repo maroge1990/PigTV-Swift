@@ -28,6 +28,19 @@ extension EnvironmentValues {
     }
 }
 
+private struct PigRecordingPlayerCoverKey: EnvironmentKey {
+    static let defaultValue: @MainActor (Bool) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    /// #301: a recording plays in its own full-screen cover, not the live player's. `RecordingPlayerScreen` tells the app
+    /// through this when it appears (true) and disappears (false), so the pages beneath rest as under the live player.
+    var pigRecordingPlayerCover: @MainActor (Bool) -> Void {
+        get { self[PigRecordingPlayerCoverKey.self] }
+        set { self[PigRecordingPlayerCoverKey.self] = newValue }
+    }
+}
+
 /// When `whileVisible`'s work runs: on screen, its own condition holds, and no player covers it.
 nonisolated enum WhileVisibleRule {
     static func runs(visible: Bool, condition: Bool, covered: Bool) -> Bool { visible && condition && !covered }

@@ -30,6 +30,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var categories: [Category] = []
     @Published var playback: PlaybackModel?
     @Published var playerPresented = false
+    /// #301: recording players on screen (each has its own cover); counted so one closing as another opens cannot clear it.
+    @Published private(set) var recordingPlayers = 0
+    /// True while any full-screen player (live or a recording) covers the pages: they ask for nothing then (#278, #301).
+    var pagesCovered: Bool { playerPresented || recordingPlayers > 0 }
+    func recordingPlayer(presented: Bool) { recordingPlayers = max(0, recordingPlayers + (presented ? 1 : -1)) }
     /// C-K: the licence reminder banner (shown by ContentView).
     let providerReminders = ProviderReminderModel()
     /// #49 groundwork (Apple 105): the app-level presentation layer and its Undo toast (hosted by LibraryView and ContentView).

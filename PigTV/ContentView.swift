@@ -64,7 +64,8 @@ struct ContentView: View {
             else { OnboardingView(model: model).tint(Color("AccentColor")) }
         }
         // Audit F4: the pages under the player do no polling while it is up (WhileVisible).
-        .environment(\.pigCoveredByPlayer, model.playerPresented)
+        .environment(\.pigCoveredByPlayer, model.pagesCovered)
+        .environment(\.pigRecordingPlayerCover, { [weak model] up in model?.recordingPlayer(presented: up) })
         // The splash never holds the app back: when start-up finishes it fades out at once.
         .animation(PigMotion.standard, value: initialRestoreFinished)
         #if os(tvOS)
@@ -93,8 +94,8 @@ struct ContentView: View {
             browse.replayPendingRemovals()
             // #278: nothing is asked while the player is up; a pass follows its closing. The task is keyed on the scene
             // only, so opening the player restarts nothing.
-            await AppFreshness.run(playing: { model.playerPresented }) {
-                await AppFreshness.refresh(browse, playing: model.playerPresented)
+            await AppFreshness.run(playing: { model.pagesCovered }) {
+                await AppFreshness.refresh(browse, playing: model.pagesCovered)
             }
         }
         // A4.1: Top Shelf items open pigtv://play.

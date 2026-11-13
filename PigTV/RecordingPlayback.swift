@@ -451,6 +451,7 @@ final class RecordingPlayerModel: ObservableObject {
 struct RecordingPlayerScreen: View {
     @StateObject private var model: RecordingPlayerModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.pigRecordingPlayerCover) private var cover
     /// Runs after the player has stopped and saved its position (the caller
     /// refreshes its recordings list so tiles show the new progress).
     private let onClose: (() -> Void)?
@@ -511,6 +512,7 @@ struct RecordingPlayerScreen: View {
         .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .onAppear {
+            cover(true) // #301: the pages beneath rest while this plays
             #if DEBUG
             if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "recording-player",
                let path = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"] {
@@ -523,7 +525,8 @@ struct RecordingPlayerScreen: View {
             model.start()
             #endif
         }
-        .onDisappear { Task { await model.stop(); onClose?() } }
+        .onDisappear { cover(false); Task { await model.stop(); onClose?() } }
+        .environment(\.pigCoveredByPlayer, false) // inside the player, whileVisible work keeps running
         .forcesLandscapeOnPhone()
         #if os(tvOS)
         // While playing, the player handles Back itself (hide chrome first).
