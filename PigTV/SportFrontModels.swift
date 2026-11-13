@@ -299,8 +299,10 @@ nonisolated enum SportFrontText {
 
     /// #211: a live card's short clock: "Q4 0:17", "OT1 10:00", "2nd half 67'", "Top 5"; never the situation (the
     /// banner's line has it). The status ("LIVE", "HT") without the scores feed or a fresh clock.
-    static func cardClock(_ game: SportsGame, in front: SportFront, hidden: Bool) -> String {
-        if game.isOnAir { return onAirLine(game) }
+    /// #203: on air, "On air · starts 3:10 pm"; just "On air" where the card already shows the start (`startShown`: a
+    /// session card's time line), so the words are never cut short beside its action on the Apple TV.
+    static func cardClock(_ game: SportsGame, in front: SportFront, hidden: Bool, startShown: Bool = false) -> String {
+        if game.isOnAir { return startShown ? "On air" : onAirLine(game) }
         guard !front.scoresUnavailable, game.freshness == "fresh", game.family != .motorsport else { return game.statusLabel }
         var parts: [String] = []
         if let period = game.progress.period, period > 0 {

@@ -58,6 +58,8 @@ final class SportOnAirTests: XCTestCase {
         XCTAssertFalse(words.contains("UPCOMING"))
         XCTAssertTrue(SportFrontText.showsLive(game), "the live dot")
         XCTAssertEqual(SportFrontText.cardClock(game, in: f, hidden: false), SportFrontText.onAirLine(game))
+        XCTAssertEqual(SportFrontText.cardClock(game, in: f, hidden: false, startShown: true), "On air",
+                       "a session card shows its start on the time line, so its bottom line is just On air (never cut short)")
         XCTAssertEqual(game.statusLabel, "ON AIR", "never UPCOMING, never a result")
         XCTAssertEqual(SportFrontText.drawn(game, in: f, hidden: false).kicker, "ON AIR")
         // Without onAir the same game is upcoming, no dot.
