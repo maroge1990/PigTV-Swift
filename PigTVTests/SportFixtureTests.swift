@@ -75,6 +75,15 @@ final class SportFixtureTests: XCTestCase {
         XCTAssertTrue(games.filter { $0.status == "done" }.allSatisfy { $0.detail == "Played" })
     }
 
+    /// #278 ("seen on the way"): a game suspended and put to another day arrives `done` with detail "Suspended" (CLIENT-CONTRACT,
+    /// 0554); the card said "Final" (or "Played" with spoilers hidden), which is a result it does not have.
+    func testASuspendedGameSaysSuspendedNotFinalOrPlayed() {
+        XCTAssertEqual(FixtureText.detail("Suspended", status: "done", spoilerFree: false), "Suspended")
+        XCTAssertEqual(FixtureText.detail("Suspended", status: "done", spoilerFree: true), "Suspended", "no result to hide")
+        XCTAssertEqual(FixtureText.detail("Final", status: "done", spoilerFree: false), "Final", "control")
+        XCTAssertEqual(FixtureText.detail("Final", status: "done", spoilerFree: true), "Played", "control")
+    }
+
     func testACTLeagueHasOneTableAndItsRounds() throws {
         let league = FixtureText.league(try afl(), league: "AFL", following: [], spoilerFree: false)
         XCTAssertEqual(league.rounds.map(\.label), ["Round 20", "Round 21"])

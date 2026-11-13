@@ -174,7 +174,10 @@ nonisolated enum FixtureText {
         case "postponed": return "Postponed"
         case "cancelled": return "Cancelled"
         case "live", "break": return spoilerFree ? "Live" : (detail ?? "Live")
-        default: return spoilerFree ? "Played" : (detail ?? "Final")
+        default:
+            // #278: a game suspended and put to another day is `done` with this detail; it has no result to hide or call final.
+            if detail == "Suspended" { return "Suspended" }
+            return spoilerFree ? "Played" : (detail ?? "Final")
         }
     }
 
