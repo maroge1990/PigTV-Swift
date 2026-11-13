@@ -50,7 +50,8 @@ final class ScoreDelaySetting: ObservableObject {
     func load() async {
         guard !fixture, !saving else { return }
         // #278: the server answers this route only while its score collector or the dashboard is on; `/api/info` says which.
-        if let features = client.info?.features, features.sportFront != true, features.sportsDashboard != true {
+        // Only both flags explicitly false skip it: a server that leaves them out is asked, and its 404 decides (Codex, Apple 1).
+        if let features = client.info?.features, features.sportFront == false, features.sportsDashboard == false {
             shown = false
             return
         }
