@@ -253,6 +253,7 @@ struct SportCardMark: Equatable {
     static let sessionRow: CGFloat = 14
     /// How far below the card's top padding the icon sits, centred on the first row.
     static func topInset(teams: Bool) -> CGFloat { max(0, ((teams ? teamRow : sessionRow) - icon) / 2) }
+    static func topInset(for game: SportsGame) -> CGFloat { topInset(teams: game.competitors.count == 2) }
     #if os(tvOS)
     static let icon: CGFloat = 20
     #else
@@ -327,7 +328,7 @@ struct SportGameCard: View {
             .overlay(alignment: .topTrailing) {
                 if let mark {
                     SportCardMarkIcon(mark: mark)
-                        .padding(.top, SportCardMetrics.padding.top + SportCardMark.topInset(teams: game.competitors.count == 2))
+                        .padding(.top, SportCardMetrics.padding.top + SportCardMark.topInset(for: game))
                         .padding(.trailing, SportCardMetrics.padding.trailing)
                 }
             }
