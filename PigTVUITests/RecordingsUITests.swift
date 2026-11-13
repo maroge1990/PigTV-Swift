@@ -64,6 +64,25 @@ final class RecordingsUITests: XCTestCase {
         attach(app, "recordings-scheduled")
     }
 
+    /// maroge1990/PigTV#311: with nothing recorded, the empty message takes only the room left, so Coming up shows at the
+    /// bottom of the first screen (as it does on the iPad) instead of starting below it.
+    @MainActor
+    func testComingUpShowsOnTheFirstScreenWhenNothingIsRecorded() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-recordings"
+        app.launchEnvironment["PIGTV_UI_TEST_RECORDINGS_STATE"] = "no-recordings"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["recordings.empty"].waitForExistence(timeout: 10), "no empty state")
+        let strip = any["recordings.comingUp"]
+        XCTAssertTrue(strip.waitForExistence(timeout: 5), "no Coming up strip")
+        attach(app, "recordings-empty-coming-up")
+        let screen = app.windows.firstMatch.frame
+        XCTAssertTrue(screen.contains(strip.frame), "Coming up \(strip.frame) is not fully on the first screen \(screen)")
+        XCTAssertTrue(app.buttons["recordings.comingUp.all"].isHittable, "All is below the screen")
+    }
+
     /// D-44 (Apple 120, R5-Scheduled): Scheduled lists the rules (on/off and Remove) and what needs attention (each with
     /// Delete) beside Coming up, where a schedule names the rule that made it.
     @MainActor

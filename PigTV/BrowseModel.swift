@@ -1100,7 +1100,7 @@ final class BrowseModel: ObservableObject {
     }
 
     /// #280 (`PIGTV_UI_TEST_RECORDINGS_STATE`): Recordings and Scheduled in one of their states: `loading` (no answer
-    /// yet, the rules neither), `empty` (an answer with nothing recorded or scheduled, and no rules), `failed` (the first
+    /// yet, the rules neither), `empty` (an answer with nothing recorded or scheduled, and no rules), `no-recordings` (nothing recorded, the fixture's schedules kept), `failed` (the first
     /// load failed), `stale` (the fixture's lists, the last refresh failed 25 minutes after they came), `empty-stale` (an
     /// answer with nothing in it, the last refresh failed 25 minutes after it came).
     func setRecordingsFixtureState(_ state: String) {
@@ -1115,6 +1115,9 @@ final class BrowseModel: ObservableObject {
             recordings = []
             schedules = []
             recordingStore.rules = []
+        case "no-recordings":
+            // #311: nothing recorded, but the fixture's schedules stay (the Coming up strip has something to show)
+            recordings = []
         case "failed":
             recordings = []
             schedules = []
