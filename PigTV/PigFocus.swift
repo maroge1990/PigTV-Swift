@@ -23,6 +23,20 @@ enum PigFocus {
     #else
     static let minTarget: CGFloat = 0
     #endif
+
+    /// #293 (Codex on Apple 198–203; the owner's #279 pick, 14 Nov 2026): every focused surface takes the focus fill.
+    /// Where a style draws the surface, the fill replaces its resting colour under the content; where the content draws
+    /// its own (`drawSurface: false`), the fill goes over it (under it, the content's own background would hide it).
+    /// At rest, nothing. Pure.
+    static func fillLayer(focused: Bool, drawsSurface: Bool) -> PigFocusFillLayer {
+        guard focused else { return .none }
+        return drawsSurface ? .underContent : .overContent
+    }
+}
+
+/// Where a focused surface's focus fill is drawn (`PigFocus.fillLayer`).
+nonisolated enum PigFocusFillLayer: Equatable, Sendable {
+    case none, underContent, overContent
 }
 
 /// How far a focused item lifts. Ring, tint, timing and Reduce Motion are the same for every kind; only the lift

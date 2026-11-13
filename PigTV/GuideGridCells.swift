@@ -97,7 +97,7 @@ struct GuideGridTileView: View {
     var quality: SportQuality? = nil
 
     var body: some View {
-        ChannelTile(name: channel.name, logo: logo, client: client)
+        ChannelTile(name: channel.name, logo: logo, client: client, focused: focused)
             .overlay(alignment: .bottomTrailing) {
                 if let quality { GuideQualityBadge(quality: quality).padding(PigSpacing.xs) }
             }

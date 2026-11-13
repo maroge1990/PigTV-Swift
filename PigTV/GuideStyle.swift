@@ -12,7 +12,12 @@ struct ChannelTile: View {
     // channel's name (`ChannelNumberText`).
     let logo: String?
     let client: APIClient?
+    /// The TV Guide's pinned tile under focus (#293): the focus fill over the backing, under the logo.
+    var focused = false
     @Environment(\.colorScheme) private var scheme
+
+    /// The focus fill a focused tile takes (#293: lift, ring and tint everywhere), nil at rest.
+    static func focusFill(focused: Bool) -> Color? { focused ? PigFocus.fill : nil }
 
     var body: some View {
         ZStack {
@@ -20,6 +25,9 @@ struct ChannelTile: View {
             // tile, the same for every channel, with the logo inset so it
             // never touches the tile edge.
             RoundedRectangle(cornerRadius: PigRadius.compact).fill(Color.logoTile(scheme))
+            if let tint = Self.focusFill(focused: focused) {
+                RoundedRectangle(cornerRadius: PigRadius.compact).fill(tint)
+            }
             if logo != nil {
                 ChannelArtwork(logo: logo, client: client)
                     .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)

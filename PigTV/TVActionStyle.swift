@@ -19,21 +19,34 @@ private struct PigFocusSurface<S: InsettableShape>: ViewModifier {
     var restingFill: Color? = nil
     var lift: PigFocusLift
     func body(content: Content) -> some View {
+        // #293: `drawSurface` decides only the resting background; focused, the fill is there either way.
+        let layer = PigFocus.fillLayer(focused: focused, drawsSurface: drawSurface)
         #if os(tvOS)
         content
             .pigTarget()
             .foregroundStyle(.primary)
-            .background(drawSurface ? (focused ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
+            .background(drawSurface ? (layer == .underContent ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
+            .overlay { PigFocusTint(shape: shape, shown: layer == .overContent) }
             .modifier(PigOptionalContrastBorder(shape: shape, draws: drawSurface))
             .pigFocus(focused, in: shape, lift: lift)
         #else
         // Touch (keyboard focus on iPad): the look before brand 1.8, a pink ring inside the shape over the focus fill.
         content
             .foregroundStyle(.primary)
-            .background(drawSurface ? (focused ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
+            .background(drawSurface ? (layer == .underContent ? PigFocus.fill : restingFill ?? Color.guideCell(scheme)) : .clear, in: shape)
+            .overlay { PigFocusTint(shape: shape, shown: layer == .overContent) }
             .modifier(PigOptionalContrastBorder(shape: shape, draws: drawSurface))
             .overlay { shape.stroke(focused ? Color.pigAccent : .clear, lineWidth: 3) }
         #endif
+    }
+}
+
+/// #293: the focus fill over content that draws its own surface (`drawSurface: false`).
+private struct PigFocusTint<S: InsettableShape>: View {
+    var shape: S
+    var shown: Bool
+    var body: some View {
+        if shown { shape.fill(PigFocus.fill).allowsHitTesting(false).accessibilityHidden(true) }
     }
 }
 
