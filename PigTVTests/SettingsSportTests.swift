@@ -96,6 +96,21 @@ final class SettingsSportTests: XCTestCase {
         XCTAssertTrue(dashboardOnly.shown)
     }
 
+    /// Codex review of Apple 1 (medium): a server whose `/api/info` leaves both flags out has said nothing, so the request
+    /// and its 404 fallback still decide; only both flags explicitly `false` skip it.
+    func testAServerThatOmitsTheFlagsIsStillAsked() async throws {
+        let silent = try setting(features: "{}")
+        await silent.load()
+        XCTAssertEqual(PreferencesRoutes.gets, 1, "no flags: unknown, so ask")
+        XCTAssertTrue(silent.shown)
+        XCTAssertEqual(silent.preferences?.scoreDelaySeconds, 30)
+
+        let oneOff = try setting(features: #"{"sportFront":false}"#)
+        await oneOff.load()
+        XCTAssertEqual(PreferencesRoutes.gets, 1, "one flag false, the other unknown: ask")
+        XCTAssertTrue(oneOff.shown)
+    }
+
     func testTheDelayStepsInTensWithinZeroToThreeHundred() {
         XCTAssertEqual(ScoreDelay.stepped(30, by: 10), 40)
         XCTAssertEqual(ScoreDelay.stepped(5, by: -10), 0)
