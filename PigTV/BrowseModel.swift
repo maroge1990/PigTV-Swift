@@ -551,10 +551,6 @@ final class BrowseModel: ObservableObject {
         return model
     }()
     var sportFollowsEnabled: Bool { client.info?.features.sportFollows == true }
-    /// #278 (audit D5): the sport pages' Hide scores chip; it saves through `sportFollows`, the choice's one writer.
-    private(set) lazy var hideScores = HideScoresChip(pages: f1Page) { [weak self] on in
-        await self?.sportFollows.setSpoilerFreeFromPage(on) ?? false
-    }
 
     /// The Channel the player needs for one of an event's channels: its
     /// guide row when loaded (logo fallback, stable identity), else the

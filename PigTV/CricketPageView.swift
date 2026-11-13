@@ -68,8 +68,6 @@ struct CricketPageView: View {
     @ObservedObject var model: CricketPageModel
     /// The household's preferences (spoiler-free, the followed teams), shared by every sport page.
     @ObservedObject var preferences: F1PageModel
-    /// #278 (audit D5): the Hide scores chip, saved through Settings › Sport's model.
-    @ObservedObject private var hideScores: HideScoresChip
     /// Observed for the bells (a pending "watch when it starts").
     @ObservedObject private var appState: AppModel
     @Environment(\.sportPresenter) private var presenter
@@ -95,7 +93,6 @@ struct CricketPageView: View {
         self.fallback = fallback
         self.model = browse.cricketPage
         self.preferences = browse.f1Page
-        _hideScores = ObservedObject(wrappedValue: browse.hideScores)
         _appState = ObservedObject(wrappedValue: app)
     }
 
@@ -176,10 +173,6 @@ struct CricketPageView: View {
                 if !page.others.isEmpty { others(page.others, now: now) }
             } else {
                 nothingOn
-            }
-            // #280: plain words, never the error's own text.
-            if hideScores.notSaved {
-                Text(PageWords.notSaved).font(CricketMetrics.detail).foregroundStyle(.secondary)
             }
         }
         #if os(iOS)
@@ -302,12 +295,6 @@ struct CricketPageView: View {
 
     // MARK: Header
 
-    /// #278 (review L7): the Hide scores chip says what every sport screen does now: hidden while the choice is unknown
-    /// (a save on its way, or a read that failed), never the last known value. The press still turns the known value over.
-    static func scoresChipHidden(_ preferences: F1PageModel) -> Bool {
-        SportSpoilers.hidden(preference: preferences.hidesSpoilers, answer: nil, page: false)
-    }
-
     private var header: some View {
         HStack(alignment: .center, spacing: PigSpacing.m) {
             #if os(tvOS)
@@ -322,16 +309,6 @@ struct CricketPageView: View {
                     .background(Color.pigRaised, in: Capsule())
                     .accessibilityIdentifier("cricket.following")
             }
-            let hidden = Self.scoresChipHidden(preferences)
-            Button { Task { await hideScores.set(!preferences.preferences.spoilerFree) } } label: {
-                Label(SportPhoneLayout.scoresChip(hidden: hidden), systemImage: hidden ? "eye.slash" : "eye")
-                    .font(CricketMetrics.chip).lineLimit(1)
-            }
-            .buttonStyle(GuideFilterStyle(selected: hidden))
-            .disabled(!preferences.preferencesKnown || hideScores.saving)
-            .accessibilityLabel(hidden ? "Scores are hidden" : "Scores are shown")
-            .accessibilityHint("Changes it for every device")
-            .accessibilityIdentifier("cricket.spoilers")
         }
         .tvFocusSection()
     }

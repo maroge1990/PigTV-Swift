@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 /// C-P (#21): the Formula 1 page's data and the account's sport page preferences, read only (#278: Hide scores is
-/// written by Settings › Sport's model, `HideScoresChip` below). One per signed-in session, owned by BrowseModel; used only when the server advertises `sportPages`. Loaded when the page opens and every
+/// written only by Settings › Sport's model). One per signed-in session, owned by BrowseModel; used only when the server advertises `sportPages`. Loaded when the page opens and every
 /// 60 s while it is on screen (the server keeps ESPN's answer 10 min on a race weekend, so a reload is cheap and
 /// moves a session's status and its channels as the guide gains them).
 @MainActor
@@ -28,7 +28,7 @@ final class F1PageModel: ObservableObject {
     private var inFlight: Task<Void, Never>?
     /// Apple 90 (Codex round 2, high): moves on every preferences read and every invalidation; only the latest read applies.
     private var readGeneration = 0
-    /// #278 (audit D5): Hide scores changes on their way (`HideScoresChip`): until each has answered and been read again,
+    /// #278 (audit D5): Hide scores changes on their way: until each has answered and been read again,
     /// no read makes the choice known.
     private var changing = 0
     /// #278 (F5): the preferences read in flight. A sport page's two pollers (the front page and its league) ask at once;
@@ -215,37 +215,4 @@ final class F1PageModel: ObservableObject {
         loaded = true
     }
     #endif
-}
-
-/// #278 (audit D5): the sport pages' Hide scores chip. Settings › Sport's model is the one writer of the choice (a
-/// whole-list `PUT sports/follows`), reached through `save`; the chip only fails closed around it. On the press, before any
-/// request, the sport pages forget the choice (the scores hide at once); after the answer they ask the server again, so
-/// turning it off shows the scores only once the server has confirmed it, and a refused change ends with the server's
-/// value. A second press while one is on its way does nothing.
-@MainActor
-final class HideScoresChip: ObservableObject {
-    /// Saves the choice; -> whether the server now holds it.
-    typealias Save = @MainActor (Bool) async -> Bool
-
-    @Published private(set) var saving = false
-    /// The last change was not saved (the page says so, as it did before #278).
-    @Published private(set) var notSaved = false
-    private let pages: F1PageModel
-    private let save: Save
-
-    init(pages: F1PageModel, save: @escaping Save) {
-        self.pages = pages
-        self.save = save
-    }
-
-    func set(_ on: Bool) async {
-        guard !saving else { return }
-        saving = true
-        notSaved = false
-        pages.beginChange()
-        let saved = await save(on)
-        notSaved = !saved
-        await pages.endChange()
-        saving = false
-    }
 }
