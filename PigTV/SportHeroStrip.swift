@@ -36,7 +36,9 @@ struct SportHeroStripView: View {
     private var content: some View {
         HStack(spacing: PigSpacing.m) {
             if strip.live {
+                // #278: never squeezed out by a long title (the pill was a red bar with no word on the iPhone).
                 Text("LIVE").font(SportHeroStripMetrics.detail.weight(.heavy)).foregroundStyle(Color.pigOnAccent)
+                    .lineLimit(1).fixedSize().layoutPriority(3)
                     .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
                     .background(Color.pigDanger, in: Capsule())
             }
