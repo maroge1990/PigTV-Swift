@@ -49,6 +49,11 @@ final class ScoreDelaySetting: ObservableObject {
 
     func load() async {
         guard !fixture, !saving else { return }
+        // #278: the server answers this route only while its score collector or the dashboard is on; `/api/info` says which.
+        if let features = client.info?.features, features.sportFront != true, features.sportsDashboard != true {
+            shown = false
+            return
+        }
         do { preferences = try await client.request("sports/preferences") }
         catch where error as? PigTVError == .http(404) { shown = false }
         catch { if !UserMessage.isCancellation(error) && preferences == nil { message = "The score delay could not be loaded." } }

@@ -8,10 +8,12 @@ private final class PreferencesRoutes: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var putStatus = 200
     nonisolated(unsafe) static var getStatus = 200
     nonisolated(unsafe) static var puts: [String] = []
+    nonisolated(unsafe) static var gets = 0
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.lock.lock()
+        if request.httpMethod == "GET" { Self.gets += 1 }
         var status = request.httpMethod == "GET" ? Self.getStatus : 200
         if request.httpMethod == "PUT" {
             let body = request.httpBody ?? request.httpBodyStream.map { stream -> Data in
@@ -40,15 +42,16 @@ private final class PreferencesRoutes: URLProtocol, @unchecked Sendable {
 /// D-44 batch 6 (Apple 130): Settings › Sport's Score delay (C-O `sports/preferences`) and the logos beside your sports.
 @MainActor
 final class SettingsSportTests: XCTestCase {
-    private func setting() throws -> ScoreDelaySetting {
+    private func setting(features: String = #"{"sportFront":true}"#) throws -> ScoreDelaySetting {
         PreferencesRoutes.stored = #"{"avoidSpoilers":false,"scoreDelaySeconds":30,"revision":3}"#
         PreferencesRoutes.putStatus = 200
         PreferencesRoutes.getStatus = 200
         PreferencesRoutes.puts = []
+        PreferencesRoutes.gets = 0
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PreferencesRoutes.self]
         let info = try JSONDecoder().decode(ServerInfo.self, from: Data(
-            #"{"name":"PigTV","version":"3.9.0","build":"0503","apiVersion":1,"features":{"sportFront":true}}"#.utf8))
+            #"{"name":"PigTV","version":"3.9.0","build":"0503","apiVersion":1,"features":\#(features)}"#.utf8))
         let client = APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture",
                                session: URLSession(configuration: configuration), info: info)
         return ScoreDelaySetting(client: client)
@@ -75,6 +78,22 @@ final class SettingsSportTests: XCTestCase {
         await broken.load()
         XCTAssertTrue(broken.shown)
         XCTAssertEqual(broken.message, "The score delay could not be loaded.")
+    }
+
+    /// #278 ("seen on the way"): the server answers `sports/preferences` only while its score collector or the dashboard is on
+    /// (`/api/info` features `sportFront` / `sportsDashboard`); with both off it was asked anyway and answered 404 every time
+    /// Settings › Sport opened. The client now takes the flags' word and does not ask.
+    func testNoRequestIsSentWhenTheServerKeepsNoScoreDelay() async throws {
+        let off = try setting(features: #"{"sportFront":false,"sportsDashboard":false}"#)
+        await off.load()
+        XCTAssertEqual(PreferencesRoutes.gets, 0, "no request for a route the server has switched off")
+        XCTAssertFalse(off.shown)
+        XCTAssertEqual(off.message, "")
+
+        let dashboardOnly = try setting(features: #"{"sportsDashboard":true}"#)
+        await dashboardOnly.load()
+        XCTAssertEqual(PreferencesRoutes.gets, 1, "control: the dashboard flag alone opens it")
+        XCTAssertTrue(dashboardOnly.shown)
     }
 
     func testTheDelayStepsInTensWithinZeroToThreeHundred() {

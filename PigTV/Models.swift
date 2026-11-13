@@ -37,6 +37,10 @@ struct ServerInfo: Decodable {
         // C-U (server 0391, #193, D-41; Apple #200): per-account follows (`sports/follows`, `catalog`, `names`,
         // `suggestions`): Settings › Sport.
         var sportFollows: Bool? = nil
+        // C-O / 0446 (#49): `sports/preferences` (the score delay) answers only while the score collector (`sportFront`) or the
+        // dashboard (`sportsDashboard`) is on; otherwise it is a 404.
+        var sportFront: Bool? = nil
+        var sportsDashboard: Bool? = nil
         // C-T (server 0388, #21): `GET sports/pages/league/<league>`; an array of the leagues it answers, not a boolean.
         var sportPageLeagues: FeatureList? = nil
         // C-V (server 0428, #197, D-43): `GET sports/pages/events?league=` (tennis, golf, UFC, IndyCar, NASCAR).
