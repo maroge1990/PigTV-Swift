@@ -46,4 +46,44 @@ final class SportFitTests: XCTestCase {
             }
         }
     }
+
+    /// The hero's buttons as the front page draws them (Remind me or Watch, Record, Open <sport>) at the hero's width: on
+    /// an iPad mini in portrait about 300 pt, on an 11-inch iPad 390 (the banner less its list, 340, and padding). They
+    /// stay one line and inside the width.
+    func testTheBannersButtonsStayOneLineInTheHerosWidth() throws {
+        let front = try JSONDecoder().decode(SportFront.self, from: SportFrontLayoutTests.fixture())
+        let app = AppModel()
+        let flow = SportRecordFlow()
+        var games: [(SportsGame, Date)] = []
+        for game in front.games {
+            guard let event = SportFrontText.event(game), let best = event.best else { continue }
+            let start = event.start(on: best)
+            let before = start.addingTimeInterval(-3_600), during = start.addingTimeInterval(600)
+            if games.allSatisfy({ SportFrontText.action($0.0, now: $0.1) != .remind }), SportFrontText.action(game, now: before) == .remind {
+                games.append((game, before))
+            }
+            if games.allSatisfy({ SportFrontText.action($0.0, now: $0.1) != .watch }), SportFrontText.action(game, now: during) == .watch {
+                games.append((game, during))
+            }
+        }
+        XCTAssertEqual(Set(games.map { SportFrontText.action($0.0, now: $0.1) }), [.remind, .watch], "a game to remind and one to watch")
+        #if os(tvOS)
+        let widths: [CGFloat] = [1_100, 800]
+        #else
+        let widths: [CGFloat] = [480, 392, 302]
+        #endif
+        for (game, now) in games {
+            let buttons = SportBannerActions {
+                SportHeroButtons(game: game, now: now, app: app, flow: flow, team: nil,
+                                 open: (label: "Open Australian football", action: {}))
+            }
+            let line = size(buttons, width: 5_000).height
+            for width in widths {
+                let fitted = size(buttons, width: width)
+                let label = "\(SportFrontText.actionLabel(game, now: now)) at \(Int(width)) pt"
+                XCTAssertLessThanOrEqual(fitted.width, width + 0.5, "\(label): the buttons take \(Int(fitted.width.rounded())) pt")
+                XCTAssertLessThanOrEqual(fitted.height, line + 0.5, "\(label): the buttons are \(Int(fitted.height)) pt tall, one line is \(Int(line)): a word wrapped")
+            }
+        }
+    }
 }

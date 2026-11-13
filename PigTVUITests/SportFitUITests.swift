@@ -100,4 +100,33 @@ final class SportFitUITests: XCTestCase {
             app.terminate()
         }
     }
+
+    #if os(iOS)
+    /// An iPad's Sport front page in both orientations: the hero's buttons sit on one line (none taller than the others,
+    /// as a button whose words wrap is), inside the hero, left of the banner's list.
+    @MainActor
+    func testTheBannersButtonsKeepTheirWordsWhole() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad layout only") }
+        for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
+            XCUIDevice.shared.orientation = orientation
+            let app = try launch()
+            let any = app.descendants(matching: .any)
+            XCTAssertTrue(any["sport.banner"].waitForExistence(timeout: 15), "\(name): the banner")
+            Thread.sleep(forTimeInterval: 1)
+            attach(app, "298-banner-\(device)-\(name)")
+            let buttons = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'sport.banner.hero.'")).allElementsBoundByIndex
+            XCTAssertGreaterThanOrEqual(buttons.count, 2, "\(name): the hero's buttons")
+            let list = any["sport.banner.list"].frame
+            let heights = buttons.map(\.frame.height)
+            print("WIDTH298 banner \(name) " + buttons.map { "\($0.identifier) \($0.frame)" }.joined(separator: ", "))
+            // A wrapped label adds a line (about 20 pt); a shrunk one is a point or two shorter.
+            XCTAssertLessThanOrEqual((heights.max() ?? 0) - (heights.min() ?? 0), 4, "\(name): a button is taller (its words wrapped): \(heights)")
+            for button in buttons {
+                XCTAssertLessThanOrEqual(button.frame.height, 60, "\(name): \(button.identifier) is two lines tall")
+                if list.width > 0 { XCTAssertLessThanOrEqual(button.frame.maxX, list.minX, "\(name): \(button.identifier) runs under the list") }
+            }
+            app.terminate()
+        }
+    }
+    #endif
 }

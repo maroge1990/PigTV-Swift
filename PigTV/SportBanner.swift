@@ -146,7 +146,7 @@ struct SportBanner<Actions: View>: View {
                     Text(hero.line).font(SportBannerMetrics.line).foregroundStyle(.secondary).lineLimit(1)
                         .accessibilityIdentifier("sport.banner.hero.line")
                 }
-                HStack(spacing: PigSpacing.s) { actions() }
+                SportBannerActions(actions: actions)
                     .padding(.top, PigSpacing.xs)
                     .tvFocusSection()
             }
@@ -268,6 +268,29 @@ struct SportBanner<Actions: View>: View {
         .accessibilityLabel([item.title, item.trailing].filter { !$0.isEmpty }.joined(separator: ", "))
         .accessibilityValue(isSelected ? "Selected" : "")
         .accessibilityIdentifier("sport.banner.item.\(index)")
+    }
+}
+
+/// The hero's buttons in one row. #298: in an iPad's portrait banner the hero is about 300 pt wide, and the buttons
+/// squeezed their words onto two lines, breaking inside them ("Watc/h", "Recor/d"). The row now takes the first that
+/// fits: the buttons as drawn; without their symbols; then on one line, the words shrunk (to `minimumScale`) and, past
+/// that, cut short. A word is never broken across lines. The Apple TV's hero has room for them as drawn, and its first
+/// button is the page's default focus, so it draws the one row (no second copy of a focus binding).
+struct SportBannerActions<Actions: View>: View {
+    @ViewBuilder let actions: () -> Actions
+    static var minimumScale: CGFloat { 0.7 }
+
+    var body: some View {
+        #if os(tvOS)
+        HStack(spacing: PigSpacing.s) { actions() }.lineLimit(1)
+        #else
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: PigSpacing.s) { actions() }
+            HStack(spacing: PigSpacing.s) { actions() }.labelStyle(.titleOnly)
+            HStack(spacing: PigSpacing.s) { actions() }.labelStyle(.titleOnly)
+                .lineLimit(1).minimumScaleFactor(Self.minimumScale)
+        }
+        #endif
     }
 }
 
