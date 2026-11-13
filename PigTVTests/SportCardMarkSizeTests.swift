@@ -10,7 +10,8 @@ final class SportCardMarkSizeTests: XCTestCase {
     private func height(_ game: SportsGame, front: SportFront) -> CGFloat {
         let card = SportGameCard(game: game, front: front, hidden: false, now: Date(timeIntervalSince1970: front.now / 1000),
                                  client: nil, onSelect: {})
-        let host = UIHostingController(rootView: card)
+        // The card's own height: its Spacer would otherwise take whatever height is proposed.
+        let host = UIHostingController(rootView: card.fixedSize(horizontal: false, vertical: true))
         return host.sizeThatFits(in: CGSize(width: SportCardMetrics.width, height: 3_000)).height
     }
 

@@ -20,7 +20,8 @@ final class SportPhoneFrontUITests: XCTestCase {
     }
 
     private func launch(spoilers: Bool = false, idiom: UIUserInterfaceIdiom = .phone,
-                        environment: [String: String] = [:], frontSpoilerFree: Bool = false) throws -> XCUIApplication {
+                        environment: [String: String] = [:], frontSpoilerFree: Bool = false,
+                        front change: ((inout [String: Any]) -> Void)? = nil) throws -> XCUIApplication {
         guard UIDevice.current.userInterfaceIdiom == idiom else { throw XCTSkip("\(idiom == .pad ? "iPad" : "iPhone") layout only") }
         XCUIDevice.shared.orientation = .portrait
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -28,6 +29,10 @@ final class SportPhoneFrontUITests: XCTestCase {
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
         if frontSpoilerFree, var front = json["front"] as? [String: Any] {
             front["spoilerFree"] = true
+            json["front"] = front
+        }
+        if let change, var front = json["front"] as? [String: Any] {
+            change(&front)
             json["front"] = front
         }
         let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
@@ -139,6 +144,30 @@ final class SportPhoneFrontUITests: XCTestCase {
         XCTAssertEqual(primary.frame.width, record.frame.width, accuracy: 1, "\(primary.frame) and \(record.frame)")
         XCTAssertEqual(primary.frame.height, record.frame.height, accuracy: 1, "\(primary.frame) and \(record.frame)")
         shot(app, "225-iphone-card-buttons")
+    }
+
+    /// maroge1990/PigTV#310 (iPad): a game card with a record mark is the same size as the card without one: the mark is an
+    /// icon in its corner, not a row. Before, the marked card grew by a row.
+    @MainActor
+    func testAnIPadCardWithARecordMarkIsAsTallAsWithout() throws {
+        let id = "espn:australian-football/afl:6"
+        let card = { (app: XCUIApplication) in app.descendants(matching: .any)["sport.front.game.\(id)"] }
+        let plain = try launch(idiom: .pad)
+        XCTAssertTrue(card(plain).waitForExistence(timeout: 15), "the AFL card")
+        let before = card(plain).frame
+        shot(plain, "310-ipad-card-plain")
+        plain.terminate()
+        let marked = try launch(idiom: .pad, front: { front in
+            var games = front["games"] as? [[String: Any]] ?? []
+            for index in games.indices where games[index]["id"] as? String == id {
+                games[index]["recording"] = ["scheduleId": 93, "status": "scheduled", "ruleId": 4]
+            }
+            front["games"] = games
+        })
+        XCTAssertTrue(card(marked).waitForExistence(timeout: 15), "the AFL card, set to record")
+        XCTAssertTrue(marked.descendants(matching: .any)["sport.card.recording.\(id)"].exists, "the record mark")
+        shot(marked, "310-ipad-card-set-to-record")
+        XCTAssertEqual(card(marked).frame.height, before.height, accuracy: 0.5, "\(card(marked).frame) against \(before)")
     }
 
     /// #228 (Mark's iPad test, 4 Nov 2026): an 11-inch iPad in landscape keeps a league's standings beside the round's

@@ -219,28 +219,71 @@ private struct HeroFocus: ViewModifier {
     }
 }
 
-/// A game card in a rail or a league's games.
-/// #234: "Records when it's listed" (a dashed red ring) while a `game` rule waits for the guide; follows this device's
-/// answers at once (Apple 154), the card's `recordWhenListed` otherwise.
-struct SportFutureMark: View {
-    let game: SportsGame
-    @ObservedObject var presenter: SportPresenter
+/// maroge1990/PigTV#310 (owner, 14 Nov): a record mark is an icon in the card's top-trailing corner, never a row, so a card
+/// with one is exactly as tall as one without. Recording: a filled red dot; Set to record: a red ring; #234 "Records when
+/// it's listed": a dashed red ring; a clash turns the icon `pigWarning`. The words stay for VoiceOver.
+struct SportCardMark: Equatable {
+    enum Shape: Equatable { case recording, set, waiting }
+    let shape: Shape
+    let clash: Bool
+    let label: String
+    let identifier: String
 
-    var body: some View {
-        if presenter.futureRule(game) != nil { Self.mark(game) }
+    /// `waiting`: a `game` rule waits for the guide (this device's answer or the card's `recordWhenListed`, #234).
+    init?(_ game: SportsGame, waiting: Bool) {
+        if let mark = game.recordingMark {
+            shape = mark.isRecording ? .recording : .set
+            clash = mark.clashLine != nil
+            label = [mark.label, mark.clashLine].compactMap { $0 }.joined(separator: ", ")
+            identifier = "sport.card.recording.\(game.id)"
+        } else if waiting {
+            shape = .waiting
+            clash = false
+            label = SportFutureRecord.waitingLabel
+            identifier = "sport.card.recordWhenListed.\(game.id)"
+        } else {
+            return nil
+        }
     }
 
-    static func mark(_ game: SportsGame) -> some View {
-        HStack(spacing: PigSpacing.s) {
-            Circle().strokeBorder(Color.pigDanger, style: StrokeStyle(lineWidth: 2, dash: [3, 2]))
-                .frame(width: 12, height: 12).accessibilityHidden(true)
-            Text(SportFutureRecord.waitingLabel).font(SportCardMetrics.small.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+    /// The width a row reserves beside it (the icon and a gap).
+    static var reserved: CGFloat { icon + PigSpacing.s }
+    #if os(tvOS)
+    static let icon: CGFloat = 20
+    #else
+    static let icon: CGFloat = 16
+    #endif
+}
+
+struct SportCardMarkIcon: View {
+    let mark: SportCardMark
+
+    var body: some View {
+        let colour = mark.clash ? Color.pigWarning : Color.pigDanger
+        Group {
+            switch mark.shape {
+            case .recording: Circle().fill(colour)
+            case .set: Circle().strokeBorder(colour, lineWidth: 2.5)
+            case .waiting: Circle().strokeBorder(colour, style: StrokeStyle(lineWidth: 2.5, dash: [3, 2]))
+            }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("sport.card.recordWhenListed.\(game.id)")
+        .frame(width: SportCardMark.icon, height: SportCardMark.icon)
+        .accessibilityElement()
+        .accessibilityLabel(mark.label)
+        .accessibilityIdentifier(mark.identifier)
     }
 }
 
+/// Reads the presenter's answers, so the mark (and the room it reserves) changes at once when this device answers (Apple 154).
+private struct SportCardMarkReader<Content: View>: View {
+    @ObservedObject var presenter: SportPresenter
+    let game: SportsGame
+    @ViewBuilder let content: (SportCardMark?) -> Content
+
+    var body: some View { content(SportCardMark(game, waiting: presenter.futureRule(game) != nil)) }
+}
+
+/// A game card in a rail or a league's games.
 struct SportGameCard: View {
     /// #234: this device's "Record when it's listed" answers (Apple 154).
     @Environment(\.sportPresenter) private var presenter
@@ -256,21 +299,33 @@ struct SportGameCard: View {
     var flow: SportRecordFlow? = nil
 
     var body: some View {
+        if let presenter {
+            SportCardMarkReader(presenter: presenter, game: game) { card($0) }
+        } else {
+            card(SportCardMark(game, waiting: game.recordWhenListed != nil))
+        }
+    }
+
+    private func card(_ mark: SportCardMark?) -> some View {
         let drawn = SportFrontText.drawn(game, in: front, hidden: hidden)
         let followed = game.followed == true
         let live = SportFrontText.showsLive(game) // #203: on air before play takes the live dot too
-        Button(action: onSelect) {
+        return Button(action: onSelect) {
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
-                if game.competitors.count == 2 { teams(drawn) } else { session(drawn) }
+                if game.competitors.count == 2 { teams(drawn, reserve: mark != nil) } else { session(drawn, reserve: mark != nil) }
                 Spacer(minLength: 0)
-                if let mark = game.recordingMark { recordingMark(mark) }
-                else if let presenter { SportFutureMark(game: game, presenter: presenter) }
-                else if game.recordWhenListed != nil { SportFutureMark.mark(game) }
                 bottom(drawn, live: live)
             }
             .padding(SportCardMetrics.padding)
             .frame(width: SportCardMetrics.width, alignment: .leading)
             .frame(minHeight: SportCardMetrics.height, alignment: .topLeading)
+            .overlay(alignment: .topTrailing) {
+                if let mark {
+                    SportCardMarkIcon(mark: mark)
+                        .padding(.top, SportCardMetrics.padding.top + max(0, ((game.competitors.count == 2 ? 40 : 14) - SportCardMark.icon) / 2))
+                        .padding(.trailing, SportCardMetrics.padding.trailing)
+                }
+            }
             .overlay {
                 #if os(tvOS)
                 // Another game on now: a thin live outline. Your team is marked by its star alone (brand 1.8, #279: the
@@ -309,7 +364,8 @@ struct SportGameCard: View {
         .accessibilityIdentifier("sport.front.game.\(game.id)")
     }
 
-    private func teams(_ drawn: SportFrontText.Drawn) -> some View {
+    /// `reserve`: the room the mark's icon takes at the trailing edge of the first row, so it never covers the text.
+    private func teams(_ drawn: SportFrontText.Drawn, reserve: Bool) -> some View {
         // 176 Codex round 1 (high): every followed side is starred (both, when both teams are followed).
         #if os(tvOS)
         let stars = SportFrontLayout.cardStars(game, names: front.follows.map(\.name), firstWhenUnknown: true)
@@ -330,14 +386,17 @@ struct SportGameCard: View {
                     Text(scores[index]).font(SportCardMetrics.score).pigFigures()
                 }
             }
+            // both rows keep the room, so the scores stay in one column
+            .padding(.trailing, reserve ? SportCardMark.reserved : 0)
             .frame(height: 40)
         }
     }
 
-    private func session(_ drawn: SportFrontText.Drawn) -> some View {
+    private func session(_ drawn: SportFrontText.Drawn, reserve: Bool) -> some View {
         VStack(alignment: .leading, spacing: PigSpacing.xs) {
             Text((game.session ?? drawn.kicker).uppercased()).font(SportCardMetrics.kicker).tracking(1.4)
                 .foregroundStyle(.secondary).lineLimit(1)
+                .padding(.trailing, reserve ? SportCardMark.reserved : 0)
             HStack(spacing: PigSpacing.xs) {
                 if game.followed == true {
                     Image(systemName: "star.fill").font(SportCardMetrics.small).foregroundStyle(Color.pigAccentText)
@@ -376,25 +435,5 @@ struct SportGameCard: View {
                     .foregroundStyle(Color.pigAccentText).lineLimit(1).fixedSize().layoutPriority(2)
             }
         }
-    }
-
-    /// "Recording" (a red dot) or "Set to record" (a red ring), and "Clashes with …" when it loses its clash (C-R since
-    /// 0415, #198): not a score, so shown with spoilers hidden too.
-    private func recordingMark(_ mark: SportsGame.RecordingMark) -> some View {
-        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-            HStack(spacing: PigSpacing.s) {
-                Circle().fill(mark.isRecording ? Color.pigDanger : Color.clear)
-                    .overlay { Circle().strokeBorder(Color.pigDanger, lineWidth: 2) }
-                    .frame(width: 12, height: 12)
-                    .accessibilityHidden(true)
-                Text(mark.label).font(SportCardMetrics.small.weight(.semibold))
-                    .foregroundStyle(mark.isRecording ? Color.pigDanger : Color.secondary).lineLimit(1)
-            }
-            if let clash = mark.clashLine {
-                Text(clash).font(SportCardMetrics.small).foregroundStyle(Color.pigWarning).lineLimit(1)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("sport.card.recording.\(game.id)")
     }
 }
