@@ -81,6 +81,15 @@ final class ChannelWarmerTests: XCTestCase {
         await settle()
     }
 
+    /// Waits until `count` sends have begun. The dwell's wake-up hops between the cooperative pool and the main actor, so
+    /// a fixed number of yields after `advance` is not always enough under load (CI, 12 Nov): backgrounding before the
+    /// send had begun left nothing to cancel. Bounded at 5 s: a send that never begins fails the assertion that follows.
+    private func untilSent(_ count: Int = 1) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while sent.count < count, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(1)) }
+        await settle()
+    }
+
     private func advance(_ seconds: Double) async {
         clock.advance(.milliseconds(Int(seconds * 1000)))
         await settle()
@@ -170,6 +179,8 @@ final class ChannelWarmerTests: XCTestCase {
         let warmer = makeWarmer()
         await player(warmer, a)
         await advance(1.6)
+        await untilSent()
+        XCTAssertEqual(sent, [a], "control: the warm is in flight before the app goes to the background")
         warmer.setActive(false)
         await untilCancelled()
         XCTAssertEqual(cancelled, [a])
