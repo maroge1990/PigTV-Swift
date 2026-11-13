@@ -104,7 +104,7 @@ struct SportF1Content: View {
                     Text(tile.title).font(SportPageMetrics.tileTitle).lineLimit(1)
                     Spacer(minLength: 4)
                     if tile.state == .live {
-                        Text("LIVE").font(SportPageMetrics.kicker).foregroundStyle(Color.pigOnAccent)
+                        Text(tile.liveWord).font(SportPageMetrics.kicker).foregroundStyle(Color.pigOnAccent)
                             .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs).background(Color.pigDanger, in: Capsule())
                     } else if tile.state == .next {
                         Text("NEXT").font(SportPageMetrics.kicker).foregroundStyle(Color.pigAccentText)

@@ -37,7 +37,7 @@ struct SportHeroStripView: View {
         HStack(spacing: PigSpacing.m) {
             if strip.live {
                 // #278: never squeezed out by a long title (the pill was a red bar with no word on the iPhone).
-                Text("LIVE").font(SportHeroStripMetrics.detail.weight(.heavy)).foregroundStyle(Color.pigOnAccent)
+                Text(strip.liveWord).font(SportHeroStripMetrics.detail.weight(.heavy)).foregroundStyle(Color.pigOnAccent)
                     .lineLimit(1).fixedSize().layoutPriority(3)
                     .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
                     .background(Color.pigDanger, in: Capsule())
@@ -57,7 +57,7 @@ struct SportHeroStripView: View {
         .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel([strip.live ? "Live" : nil, strip.title, strip.line, strip.others].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityLabel([strip.live ? (strip.liveWord == "ON AIR" ? "On air" : "Live") : nil, strip.title, strip.line, strip.others].compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(onTap == nil ? "" : "Back to the top")
         .accessibilityIdentifier("sport.front.strip")
     }

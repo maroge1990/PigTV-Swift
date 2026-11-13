@@ -82,6 +82,8 @@ nonisolated struct SportBannerHero: Equatable, Sendable {
     let title: String
     /// "1–1 · 2nd half 67' · Optus Sport 1 HD".
     let line: String
+    /// The word on the live dot's pill where one is drawn (the strip): "LIVE", or "ON AIR" before play (#203).
+    var liveWord: String = "LIVE"
 }
 
 /// What fades behind the hero: the hero team's badge, or a race's circuit map (C-P `info.map`; `mapDark` in dark mode).
@@ -130,6 +132,8 @@ nonisolated struct SportHeroStrip: Equatable, Sendable {
     static let othersShown = 3
 
     let live: Bool
+    /// "LIVE", or "ON AIR" for coverage on before play (#203).
+    let liveWord: String
     let title: String
     let line: String
     /// "Oscar Piastri Race · Sat 2:27 pm  ·  Arsenal Sat 11:30 pm": up to three other follows; nil with none.
@@ -137,6 +141,7 @@ nonisolated struct SportHeroStrip: Equatable, Sendable {
 
     init(hero: SportBannerHero, items: [SportBannerItem], selected: Int?) {
         live = hero.live
+        liveWord = hero.liveWord
         title = hero.title
         line = hero.line
         let rest = items.indices.filter { $0 != selected }.prefix(Self.othersShown).map { "\(items[$0].title) \(items[$0].trailing)" }

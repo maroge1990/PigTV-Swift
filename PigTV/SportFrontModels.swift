@@ -237,6 +237,16 @@ nonisolated enum SportFrontText {
         return "\(formatter.string(from: date)) \(time)"
     }
 
+    /// #203 (D-42 point 5): a game whose coverage is on air before play: "On air · starts 3:10 pm". On air means play
+    /// starts within 30 minutes, so the time alone (the start-time formatter's same-day form).
+    static func onAirLine(_ game: SportsGame, calendar: Calendar = .current) -> String {
+        let start = date(game.start)
+        return "On air · starts \(when(start, now: start, calendar: calendar))"
+    }
+
+    /// The live dot (and Watch, and a place among live): a game under way, or on air before play (#203).
+    static func showsLive(_ game: SportsGame) -> Bool { SportStatus.underWay(game.status) || game.isOnAir }
+
     /// #218: a game of a weekly league's next round (C-R `nextRound`, past the 72 hours).
     static func isNextRound(_ game: SportsGame) -> Bool { game.nextRound == true && game.status == "scheduled" }
 
@@ -258,7 +268,7 @@ nonisolated enum SportFrontText {
     static func kicker(_ game: SportsGame) -> String {
         switch game.status {
         case "live", "break", "suspended": return "LIVE"
-        case "scheduled": return "NEXT"
+        case "scheduled": return game.isOnAir ? "ON AIR" : "NEXT"
         case "finished": return "FINAL"
         default: return game.broadcastStatus == "on-tv" ? "ON TV" : "NEXT"
         }
@@ -271,7 +281,7 @@ nonisolated enum SportFrontText {
         let scores: [String]?
         /// Neutral progress, then the situation unless hidden.
         let situation: String?
-        /// The hero's kicker ("LIVE", "NEXT", "FINAL", "ON TV").
+        /// The hero's kicker ("LIVE", "ON AIR", "NEXT", "FINAL", "ON TV").
         let kicker: String
         /// A card's status pill.
         let status: String
@@ -290,6 +300,7 @@ nonisolated enum SportFrontText {
     /// #211: a live card's short clock: "Q4 0:17", "OT1 10:00", "2nd half 67'", "Top 5"; never the situation (the
     /// banner's line has it). The status ("LIVE", "HT") without the scores feed or a fresh clock.
     static func cardClock(_ game: SportsGame, in front: SportFront, hidden: Bool) -> String {
+        if game.isOnAir { return onAirLine(game) }
         guard !front.scoresUnavailable, game.freshness == "fresh", game.family != .motorsport else { return game.statusLabel }
         var parts: [String] = []
         if let period = game.progress.period, period > 0 {
@@ -463,6 +474,11 @@ nonisolated enum SportFrontLayout {
         let game = front.game(follow.gameId)
         switch follow.state {
         case "live":
+            // #203: a follow whose game is on air before play reads "live" (C-R): worded as on air, never as live.
+            if let game, game.isOnAir {
+                let words = SportFrontText.onAirLine(game, calendar: calendar)
+                return game.session.map { "\($0) · \(words)" } ?? words
+            }
             guard let game, let other = opponent(of: follow, in: game) else { return "LIVE" }
             return "LIVE · v \(other)"
         case "next":
@@ -532,13 +548,15 @@ nonisolated enum SportFrontLayout {
         if let scores = drawn.scores, scores.count == 2 { line.append(scores.joined(separator: "–")) }
         if let situation = drawn.situation { line.append(situation) }
         if game.status == "scheduled" {
-            let when = SportFrontText.startLine(game, now: now, calendar: calendar)
+            let when = game.isOnAir ? SportFrontText.onAirLine(game, calendar: calendar)
+                : SportFrontText.startLine(game, now: now, calendar: calendar)
             line.append(game.session.map { "\($0) · \(when)" } ?? when)
         }
         if !SportFrontText.isNextRound(game) {
             line.append(game.channels.first?.name ?? (game.terminal ? game.availabilityLabel : "No TV listing found"))
         }
-        return SportBannerHero(kicker: kicker.joined(separator: " · "), live: drawn.kicker == "LIVE",
-                               title: game.title, line: line.joined(separator: " · "))
+        return SportBannerHero(kicker: kicker.joined(separator: " · "), live: SportFrontText.showsLive(game),
+                               title: game.title, line: line.joined(separator: " · "),
+                               liveWord: game.isOnAir ? "ON AIR" : "LIVE")
     }
 }

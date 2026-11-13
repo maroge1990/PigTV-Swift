@@ -47,7 +47,7 @@ nonisolated enum SportPhonePageLayout {
                                                follows: [follow.name], calendar: calendar))
         }
         let games = SportPageRules.games(league: league, in: front)
-        for game in games where SportFrontHero.ongoing.contains(game.status) && seen.insert(game.id).inserted {
+        for game in games where SportFrontText.showsLive(game) && seen.insert(game.id).inserted {
             cards.append(SportPhoneLayout.card(game, in: front, hidden: hidden, now: now, index: -1, id: game.id,
                                                league: label, follow: nil, follows: names, calendar: calendar))
         }
@@ -72,9 +72,9 @@ nonisolated enum SportPhonePageLayout {
         func rows(_ list: [SportsGame]) -> [SportFixtureRowModel] {
             list.map { SportPhoneLayout.row($0, in: front, hidden: hidden, now: now, follows: names, calendar: calendar) }
         }
-        let live = games.filter { SportFrontHero.ongoing.contains($0.status) }
+        let live = games.filter { SportFrontText.showsLive($0) }
         let ended = games.filter { $0.terminal }.sorted { $0.start > $1.start }
-        let upcoming = games.filter { !$0.terminal && !SportFrontHero.ongoing.contains($0.status) }.sorted { $0.start < $1.start }
+        let upcoming = games.filter { !$0.terminal && !SportFrontText.showsLive($0) }.sorted { $0.start < $1.start }
         let today = upcoming.filter { !SportFrontText.isNextRound($0) && calendar.isDate(SportFrontText.date($0.start), inSameDayAs: now) }
         let later = upcoming.filter { game in !today.contains { $0.id == game.id } }
         return [("Live", live), ("Later today", today), ("Coming up", later), ("Earlier", ended)]

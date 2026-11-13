@@ -123,16 +123,19 @@ nonisolated struct F1Session: Decodable, Equatable, Identifiable, Sendable {
     var status: Status
     var top: Top?
     var channels: [SportEventChannel]
+    /// C-P since 0423 (#203, D-42 point 5, additive): a scheduled session starting within 30 min whose coverage is on
+    /// air. Absent (an older server) or of another type: false.
+    var onAir: Bool = false
 
     var start: Date { Date(timeIntervalSince1970: startTime / 1000) }
     var end: Date { Date(timeIntervalSince1970: endTime / 1000) }
 
-    enum CodingKeys: String, CodingKey { case id, name, start, end, status, top, channels }
+    enum CodingKeys: String, CodingKey { case id, name, start, end, status, top, channels, onAir }
 
     init(id: String, name: String, startTime: Double, endTime: Double, status: Status, top: Top? = nil,
-         channels: [SportEventChannel] = []) {
+         channels: [SportEventChannel] = [], onAir: Bool = false) {
         self.id = id; self.name = name; self.startTime = startTime; self.endTime = endTime; self.status = status
-        self.top = top; self.channels = channels
+        self.top = top; self.channels = channels; self.onAir = onAir
     }
 
     init(from decoder: Decoder) throws {
@@ -146,6 +149,7 @@ nonisolated struct F1Session: Decodable, Equatable, Identifiable, Sendable {
         status = ((try? c.decodeIfPresent(String.self, forKey: .status)) ?? nil).flatMap(Status.init(rawValue:)) ?? .scheduled
         top = (try? c.decodeIfPresent(Top.self, forKey: .top)) ?? nil
         channels = ((try? c.decodeIfPresent(LossyList<SportEventChannel>.self, forKey: .channels)) ?? nil)?.items ?? []
+        onAir = ((try? c.decodeIfPresent(Bool.self, forKey: .onAir)) ?? nil) ?? false
     }
 }
 
@@ -297,11 +301,23 @@ nonisolated enum F1PageText {
         session.status == .live || (session.status != .done && session.start <= now && now < session.end)
     }
 
-    /// A session's pill: "LIVE", "Next", the top driver ("Pole · Antonelli") once done, "Finished" with spoilers
+    /// #203 (D-42 point 5): the coverage is on air before the session starts (the server's `onAir`, while the
+    /// session has not started by the clock either).
+    static func onAir(_ session: F1Session, now: Date) -> Bool {
+        session.onAir && session.status == .scheduled && now < session.start
+    }
+
+    /// "On air · starts 3:10 pm" (the session starts within 30 minutes: the time alone).
+    static func onAirLine(_ session: F1Session, calendar: Calendar = .current) -> String {
+        "On air · starts \(SportFrontText.when(session.start, now: session.start, calendar: calendar))"
+    }
+
+    /// A session's pill: "LIVE", "ON AIR" (#203), "Next", the top driver ("Pole · Antonelli") once done, "Finished" with spoilers
     /// hidden, or nothing for a later session.
-    enum Pill: Equatable { case live, next, done(String), none }
+    enum Pill: Equatable { case live, onAir, next, done(String), none }
     static func pill(_ session: F1Session, in weekend: F1Weekend, now: Date, spoilerFree: Bool) -> Pill {
         if live(session, now: now) { return .live }
+        if onAir(session, now: now) { return .onAir }
         if session.status == .done || session.end <= now {
             guard !spoilerFree, let top = session.top else { return .done("Finished") }
             let word = ["pole": "Pole", "winner": "Winner", "fastest": "Fastest"][top.kind] ?? "Top"
@@ -339,6 +355,7 @@ nonisolated enum F1PageText {
     static func headline(_ weekend: F1Weekend, now: Date) -> String {
         guard let session = focusSession(weekend, now: now) else { return "Weekend finished" }
         if live(session, now: now) { return "\(session.name) is live" }
+        if onAir(session, now: now) { return "\(session.name) · \(onAirLine(session))" }
         let time = session.start.formatted(date: .omitted, time: .shortened)
         let day = session.start.formatted(.dateTime.weekday(.abbreviated))
         return "\(session.name) \(countdown(to: session.start, now: now)) · \(day) \(time)"

@@ -127,14 +127,16 @@ nonisolated enum SportPhoneLayout {
         let live = row.live != nil
         let kicker: String
         if live {
-            kicker = "LIVE · \(league)"
+            kicker = "\(game.isOnAir ? "ON AIR" : "LIVE") · \(league)"
         } else if game.terminal {
             kicker = "\(game.statusLabel) · \(league)"
         } else {
             kicker = "\(league) · \(SportFrontText.startLine(game, now: now, calendar: calendar).uppercased())"
         }
         var line: [String] = []
-        if live, let clock = row.live?.dropFirst("LIVE".count).trimmingCharacters(in: .whitespaces), !clock.isEmpty {
+        if game.isOnAir {
+            line.append(SportFrontText.onAirLine(game, calendar: calendar))
+        } else if live, let clock = row.live?.dropFirst("LIVE".count).trimmingCharacters(in: .whitespaces), !clock.isEmpty {
             line.append(clock)
         } else if !live && !game.terminal {
             line.append(SportFrontText.startLine(game, now: now, calendar: calendar))
@@ -185,9 +187,11 @@ nonisolated enum SportPhoneLayout {
         let pair = two ? drawn.scores.flatMap { $0.count == 2 ? $0 : nil } : nil
         let score = pair?.joined(separator: "–")
         let short = pair.map(SportScoreText.short)
-        let ongoing = SportFrontHero.ongoing.contains(game.status)
+        // #203: on air before play takes the live dot too, worded "On air · starts 3:10 pm".
+        let ongoing = SportFrontText.showsLive(game)
         let clock = ongoing ? SportFrontText.cardClock(game, in: front, hidden: hidden) : nil
-        let live = ongoing ? ["LIVE", clock == game.statusLabel ? nil : clock].compactMap { $0 }.joined(separator: " ") : nil
+        let live = game.isOnAir ? clock
+            : ongoing ? ["LIVE", clock == game.statusLabel ? nil : clock].compactMap { $0 }.joined(separator: " ") : nil
         let channel = SportFrontText.channelLine(game)
         let sub: String
         if ongoing {

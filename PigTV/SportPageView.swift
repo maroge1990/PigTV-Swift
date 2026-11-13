@@ -84,7 +84,7 @@ nonisolated enum SportPageRules {
         }
         if let index = live.first { return Hero(gameId: front.follows[index].gameId, reason: .followLive, followIndex: index) }
         let games = games(sport, in: front)
-        if let game = games.first(where: { SportFrontHero.ongoing.contains($0.status) }) {
+        if let game = games.first(where: { SportFrontText.showsLive($0) }) {
             return Hero(gameId: game.id, reason: .leagueLive)
         }
         let next = follows.filter { front.follows[$0].state == "next" }

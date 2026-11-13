@@ -41,6 +41,12 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   var nextRound: Bool? = nil
   /// C-R since 0465 (#234): the game waits on a `game` rule to be recorded once the guide lists it.
   var recordWhenListed: RecordWhenListed? = nil
+  /// C-O/C-R since 0423 (#203, D-42 point 5, additive): the coverage is on air while play starts within 30 minutes;
+  /// `status` stays `scheduled`. Decoded leniently: absent (an older server) or of another type is not on air.
+  var onAir: Lenient<Bool>? = nil
+
+  /// #203: on air before play: worded "On air · starts 3:10 pm" with the live dot and Watch, never as a result.
+  var isOnAir: Bool { onAir?.value == true && status == "scheduled" }
 
   struct RecordWhenListed: Decodable, Equatable, Sendable {
     var ruleId: Int? = nil
@@ -158,7 +164,7 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
     case "suspended": "SUSPENDED"
     case "break": breakLabel ?? "BREAK"
     case "live" where freshness == "fresh": "LIVE"
-    case "scheduled": "UPCOMING"
+    case "scheduled": isOnAir ? "ON AIR" : "UPCOMING"
     default:
       broadcastStatus == "on-tv"
         ? "ON TV NOW" : freshness == "buffering" ? "BUFFERING" : "STATUS UNAVAILABLE"

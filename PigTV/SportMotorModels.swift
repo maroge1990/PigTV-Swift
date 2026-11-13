@@ -15,8 +15,11 @@ nonisolated enum SportMotorText {
         var title: String
         var when: Date
         var state: State
-        /// "Fastest · Leclerc", "Pole · Antonelli", "Winner · Norris"; "Finished" with spoilers hidden; "On now" live.
+        /// "Fastest · Leclerc", "Pole · Antonelli", "Winner · Norris"; "Finished" with spoilers hidden; "On now" live;
+        /// "On air · starts 3:10 pm" while the coverage is on before the session (#203).
         var line: String?
+        /// The live pill's word: "LIVE", or "ON AIR" before the session (#203: the live dot, never as live).
+        var liveWord: String = "LIVE"
     }
 
     /// The weekend's sessions as tiles, in order (five on a weekend; six on a sprint weekend's older shape).
@@ -24,6 +27,9 @@ nonisolated enum SportMotorText {
         weekend.sessions.map { session in
             switch F1PageText.pill(session, in: weekend, now: now, spoilerFree: spoilerFree) {
             case .live: return Tile(id: session.id, title: session.name, when: session.start, state: .live, line: "On now")
+            case .onAir:
+                return Tile(id: session.id, title: session.name, when: session.start, state: .live,
+                            line: F1PageText.onAirLine(session), liveWord: "ON AIR")
             case .next: return Tile(id: session.id, title: session.name, when: session.start, state: .next, line: nil)
             case .done(let text): return Tile(id: session.id, title: session.name, when: session.start, state: .done, line: text)
             case .none: return Tile(id: session.id, title: session.name, when: session.start, state: .later, line: nil)

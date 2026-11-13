@@ -258,7 +258,7 @@ struct SportGameCard: View {
     var body: some View {
         let drawn = SportFrontText.drawn(game, in: front, hidden: hidden)
         let followed = game.followed == true
-        let live = SportFrontHero.ongoing.contains(game.status)
+        let live = SportFrontText.showsLive(game) // #203: on air before play takes the live dot too
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 if game.competitors.count == 2 { teams(drawn) } else { session(drawn) }
