@@ -203,6 +203,144 @@ final class BrandRulesTests: XCTestCase {
         report(found, "a tvOS focus look drawn outside the shared treatment (use .pigFocus(_:in:lift:) and PigFocus.fill)")
     }
 
+    /// #293 (Codex on Apple 198–203, item 11): the television's focus styles and focus views, by name. Each must read
+    /// its real focus state and pass that to the shared treatment, and take the focus fill. The scan above only asked
+    /// that a style reading `isFocused` mention `.pigFocus(`: a style passing a constant (`.pigFocus(false, …)`), or one
+    /// with both its focus property and the treatment removed, passed it.
+    private static let focusStyles: Set<String> = [
+        "PigFocusSurface", "PigSecondaryButtonStyle", "PigSurfaceButtonStyle", "PigMenuRowStyle", "PigPrimaryButtonStyle",
+        "GuideFilterStyle", "SettingsMenuRowStyle", "SignInTileStyle", "GuideGridProgrammeView", "GuideGridTileView",
+    ]
+    /// Button styles that draw no focus of their own, each with its reason. Every tvOS button style is in one list.
+    private static let plainButtonStyles: [String: String] = [
+        "BlankButtonStyle": "the players: one blank focused surface, the player draws its own cursor over video",
+        "PlayerRowPressStyle": "the touch player's pressed look", "PlayerPressStyle": "the touch player's pressed look",
+        "PigPressStyle": "the touch pressed look; on the television plain cards keep the system focus effect",
+    ]
+    /// Focus styles that keep their own fill under focus, each with its reason.
+    private static let focusFillExempt: [String: String] = [
+        "PigPrimaryButtonStyle": "the one primary action keeps its accent fill (§6)",
+    ]
+
+    func testEachFocusStylePassesItsRealFocusStateAndTakesTheFill() throws {
+        let files = try sourceFiles().filter { $0.file != "PigFocus.swift" }.map { (file: $0.file, code: Self.tvOSCode($0.code)) }
+        let problems = Self.focusStyleProblems(files: files, styles: Self.focusStyles, plain: Set(Self.plainButtonStyles.keys),
+                                               fillExempt: Set(Self.focusFillExempt.keys))
+        XCTAssertTrue(problems.isEmpty, "a tvOS focus style that does not draw the real focus state (#293):\n" + problems.joined(separator: "\n"))
+    }
+
+    /// What is wrong with the focus styles in `files` (tvOS code, comments dropped): a listed style that is missing, reads
+    /// no focus state, does not hand that state to `.pigFocus`/`.pigFocusWhenFocused`/`PigFocusSurface` as its first
+    /// argument, or takes no focus fill; a button style in neither list; a plain style that reads focus; a call of the
+    /// shared treatment outside the listed styles (`.pigFocus(false, …)` in some view). Pure (negative fixtures in
+    /// `testTheFocusStyleCheckRejectsFakes`).
+    static func focusStyleProblems(files: [(file: String, code: String)], styles: Set<String>, plain: Set<String>,
+                                   fillExempt: Set<String>) -> [String] {
+        func capture(_ pattern: String, _ text: String) -> String? {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let m = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let r = Range(m.range(at: 1), in: text) else { return nil }
+            return String(text[r])
+        }
+        func has(_ pattern: String, _ text: String) -> Bool { text.range(of: pattern, options: .regularExpression) != nil }
+        var problems: [String] = []
+        var found = Set<String>()
+        for file in files {
+            var covered: [Range<Int>] = []
+            for name in styles {
+                guard let block = block(after: #"struct\s+"# + name + #"\b"#, in: file.code) else { continue }
+                found.insert(name)
+                covered.append(block.offset..<(block.offset + block.body.count))
+                let body = block.body
+                // The focus state: the environment's, or (a view or modifier handed it) a stored `focused: Bool`.
+                guard let state = capture(#"@Environment\(\\\.isFocused\)\s*(?:private\s+)?var\s+(\w+)"#, body)
+                        ?? capture(#"\b(?:let|var)\s+(focused)\s*:\s*Bool\b"#, body) else {
+                    problems.append("\(file.file): \(name) reads no focus state"); continue
+                }
+                let treatment = #"(\.pigFocus(WhenFocused)?\(|PigFocusSurface\(\s*focused:)\s*"# + state + #"\s*,"#
+                if !has(treatment, body) {
+                    problems.append("\(file.file): \(name) does not pass `\(state)` to .pigFocus(_:in:lift:) or PigFocusSurface")
+                }
+                let fill = has(#"PigFocus\.fill\b"#, body) || has(#"PigFocusSurface\(\s*focused:\s*"# + state + #"\b"#, body)
+                    || has(#"ChannelTile\([^)]*\bfocused:\s*"# + state + #"\b"#, body)
+                if !fill && !fillExempt.contains(name) { problems.append("\(file.file): \(name) takes no focus fill (PigFocus.fill)") }
+            }
+            for style in buttonStyles(in: file.code) where !styles.contains(style.name) {
+                if !plain.contains(style.name) {
+                    problems.append("\(file.file): \(style.name) is in neither list (focus styles, plain styles)")
+                } else if style.body.contains("isFocused") || has(#"\.pigFocus|PigFocusSurface\("#, style.body) {
+                    problems.append("\(file.file): \(style.name) is listed plain but draws focus")
+                }
+            }
+            let call = try! NSRegularExpression(pattern: #"\.pigFocus(WhenFocused)?\(|\bPigFocusSurface\("#)
+            for m in call.matches(in: file.code, range: NSRange(file.code.startIndex..., in: file.code)) {
+                guard let r = Range(m.range, in: file.code) else { continue }
+                let offset = file.code.distance(from: file.code.startIndex, to: r.lowerBound)
+                if !covered.contains(where: { $0.contains(offset) }) {
+                    let line = file.code.prefix(offset).filter { $0 == "\n" }.count + 1
+                    problems.append("\(file.file):\(line): the shared focus treatment outside a listed focus style")
+                }
+            }
+        }
+        for name in styles.subtracting(found).sorted() { problems.append("\(name) is listed but gone") }
+        return problems
+    }
+
+    func testTheFocusStyleCheckRejectsFakes() {
+        let all: Set<String> = ["Good", "Constant", "Removed", "Other", "NoFill", "Surface"]
+        func problems(_ code: String, styles: Set<String> = all, plain: Set<String> = []) -> [String] {
+            Self.focusStyleProblems(files: [(file: "F.swift", code: code)], styles: styles, plain: plain, fillExempt: [])
+        }
+        let good = """
+        struct Good: ButtonStyle {
+            @Environment(\\.isFocused) private var focused
+            func makeBody(configuration: Configuration) -> some View {
+                configuration.label.background(focused ? PigFocus.fill : Color.pigRaised, in: Capsule())
+                    .pigFocus(focused, in: Capsule(), lift: .control)
+            }
+        }
+        """
+        XCTAssertEqual(problems(good, styles: ["Good"]), [])
+        // A constant: the old scan passed it (it reads isFocused and mentions .pigFocus().
+        let constant = good.replacingOccurrences(of: "struct Good", with: "struct Constant")
+            .replacingOccurrences(of: ".pigFocus(focused,", with: ".pigFocus(false,")
+        XCTAssertEqual(problems(constant, styles: ["Constant"]).count, 1, "a constant focus state")
+        // Its focus property and the treatment both removed: the old scan skipped it (it no longer reads isFocused).
+        let removed = """
+        struct Removed: ButtonStyle {
+            func makeBody(configuration: Configuration) -> some View { configuration.label.background(Color.pigRaised) }
+        }
+        """
+        XCTAssertEqual(problems(removed, styles: ["Removed"]), ["F.swift: Removed reads no focus state"])
+        // Another variable passed in place of the focus state.
+        let other = good.replacingOccurrences(of: "struct Good", with: "struct Other")
+            .replacingOccurrences(of: ".pigFocus(focused,", with: ".pigFocus(selected,")
+        XCTAssertEqual(problems(other, styles: ["Other"]).count, 1)
+        // The focus state passed but no fill: lift and ring without the tint (#293 item 10).
+        let noFill = good.replacingOccurrences(of: "struct Good", with: "struct NoFill")
+            .replacingOccurrences(of: "focused ? PigFocus.fill : Color.pigRaised", with: "Color.pigRaised")
+        XCTAssertEqual(problems(noFill, styles: ["NoFill"]), ["F.swift: NoFill takes no focus fill (PigFocus.fill)"])
+        // A surface handed its state, passing it on.
+        let surface = """
+        private struct Surface<S: InsettableShape>: ViewModifier {
+            var focused: Bool
+            func body(content: Content) -> some View {
+                content.background(focused ? PigFocus.fill : .clear).pigFocus(focused, in: shape, lift: lift)
+            }
+        }
+        """
+        XCTAssertEqual(problems(surface, styles: ["Surface"]), [])
+        // A listed style that is gone; a new button style in neither list; the treatment called from a view.
+        XCTAssertEqual(problems("", styles: ["Good"]), ["Good is listed but gone"])
+        XCTAssertEqual(problems(good, styles: []).filter { $0.contains("neither list") }.count, 1)
+        XCTAssertEqual(problems(good + "\nstruct V: View { var body: some View { Text(\"x\").pigFocus(false, in: Capsule(), lift: .card) } }",
+                                styles: ["Good"]),
+                       ["F.swift:8: the shared focus treatment outside a listed focus style"])
+        // A plain style that draws focus.
+        XCTAssertTrue(problems(good.replacingOccurrences(of: "struct Good", with: "struct P"), styles: [], plain: ["P"])
+                        .contains("F.swift: P is listed plain but draws focus"))
+    }
+
     // Brand 1.8 §15: the system effect is never switched off, except by the players (their cursor is drawn).
     func testOnlyThePlayersTurnOffTheSystemFocusEffect() throws {
         report(try sourceLines().filter {
