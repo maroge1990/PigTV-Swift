@@ -45,4 +45,12 @@ final class PlayerCoverTests: XCTestCase {
         for _ in 0..<100 where log.events.count < 2 { try await Task.sleep(for: .milliseconds(50)) }
         XCTAssertEqual(log.events, [true, false], "going away clears it")
     }
+
+    func testTheTopShelfIsExportedOnceInTheBackgroundWithNoRequest() throws {
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true}}"#.utf8))
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:1"), token: "t", info: info))
+        var exports = 0
+        AppFreshness.exportOnBackground(browse, export: { _ in exports += 1 })
+        XCTAssertEqual(exports, 1)
+    }
 }

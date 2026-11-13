@@ -39,6 +39,13 @@ enum AppFreshness {
         browse.notePolls(recordingsAfter: interval, guideAfter: interval)
     }
 
+    /// #301: the Top Shelf is written once as the app goes to the background, with no request (no pass runs while a
+    /// player is up, so what the TV button shows would be as it was when playback began).
+    static func exportOnBackground(_ browse: BrowseModel, export: (BrowseModel) -> Void = { $0.exportTopShelf() }) {
+        guard !browse.isFixture else { return }
+        export(browse)
+    }
+
     /// A pass now, then one after every `interval` until the task is cancelled (the app leaves the foreground or the
     /// session ends). `sleep` is the clock (tests inject one). #278: while `playing()` is true no pass runs; the loop
     /// only looks again every `playerPoll`, and runs a pass as soon as the player has closed.

@@ -83,6 +83,7 @@ struct ContentView: View {
             model.playback?.sceneActive = phase == .active // #239: the conflict poll rests while the app is not active
             if phase == .background {
                 model.presenter.commitPendingUndo() // #49: an action waiting on its Undo is done before the app is suspended
+                if let browse = model.browse { AppFreshness.exportOnBackground(browse) } // #301: no pass wrote it while a player was up
                 Task { await model.background() }
             }
         }
