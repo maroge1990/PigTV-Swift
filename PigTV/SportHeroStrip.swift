@@ -2,8 +2,9 @@ import SwiftUI
 
 // #264 (Mark, 9 Nov 2026, option B of three side-by-side mock-ups: A the hero scrolls away, B it shrinks to a pinned
 // strip, C the full hero stays pinned; C left the rails a third of a television screen): the strip the Sport front page's
-// hero becomes once the page scrolls past it. It takes its own room between the header and the page, and the rails
-// scroll beneath it as they do under the TV Guide's header. Apple TV: it is not focusable; up from the
+// hero becomes once the page scrolls past it. It is drawn over the page's top (#312: on the Apple TV and the iPad the
+// page keeps its room as a content margin; the iPhone gives it its own room above the page), and the rails scroll
+// beneath it as they do under the TV Guide's header. Apple TV: it is not focusable; up from the
 // first rail scrolls back to the full hero, as before. iPad and iPhone: a tap scrolls back to the hero.
 
 enum SportHeroStripMetrics {
@@ -18,6 +19,8 @@ enum SportHeroStripMetrics {
     #endif
     /// The gap between the strip and the page beneath it.
     static let gap: CGFloat = PigSpacing.s
+    /// #312: the room the Apple TV and iPad page keeps at its top for the strip, whether or not it shows.
+    static var room: CGFloat { height + gap }
 }
 
 struct SportHeroStripView: View {
@@ -67,8 +70,11 @@ struct SportHeroStripView: View {
 /// first few points; sideways and below it may draw `overdraw` past its frame (a focused card grows).
 struct SportPageTopMask: View {
     var overdraw: CGFloat = 0
+    /// #312: how far down the page's top edge starts (the strip's room while it shows).
+    var top: CGFloat = 0
     var body: some View {
         VStack(spacing: 0) {
+            Color.clear.frame(height: top)
             LinearGradient(colors: [.clear, Color.pigAccent], startPoint: .top, endPoint: .bottom).frame(height: PigSpacing.s)
             Rectangle().fill(Color.pigAccent) // a mask reads only alpha: any opaque role
         }

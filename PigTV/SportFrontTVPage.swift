@@ -76,23 +76,26 @@ struct SportFrontTVPage: View {
 
 
     private func scroll(now: Date) -> some View {
-        // #264: once the banner has scrolled under, it shows as the strip, pinned above the rails. The strip takes its
-        // own room above the ScrollView (not drawn over it), so the page's visible area, and tvOS's focus scrolling with
-        // it, ends where the strip begins: a focused card is never beneath it (Codex, Apple 190 round 1, medium).
+        // #264: once the banner has scrolled under, it shows as the strip, pinned above the rails.
+        // #312 (Mark, 14 Nov 2026): the strip is drawn over the top of the page, whose frame never changes. In 191 it took
+        // its own room above the ScrollView, which shrank by the strip's height the moment it showed, and tvOS scrolled the
+        // focused card again: the row jumped. The page now keeps the strip's room at its top at all times, as a content
+        // margin (`SportHeroStripMetrics.room`), so tvOS's focus scrolling never leaves a focused card beneath the strip
+        // (Codex, Apple 190 round 1, medium); the content is drawn up into that room, so at rest the banner sits where it did.
         ScrollViewReader { reader in
-            VStack(alignment: .leading, spacing: SportHeroStripMetrics.gap) {
-                if stripShows, let front = model.front {
-                    SportHeroStripView(strip: strip(front, now: now)) {
-                        pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { reader.scrollTo(SportFrontTVPage.bannerID, anchor: .top) }
+            page(now: now)
+                .overlay(alignment: .top) {
+                    if stripShows, let front = model.front {
+                        SportHeroStripView(strip: strip(front, now: now)) {
+                            pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { reader.scrollTo(SportFrontTVPage.bannerID, anchor: .top) }
+                        }
+                        #if os(iOS)
+                        .padding(.horizontal, PigSpacing.xl)
+                        #endif
+                        .pigSlide(from: .top)
                     }
-                    #if os(iOS)
-                    .padding(.horizontal, PigSpacing.xl)
-                    #endif
-                    .pigSlide(from: .top)
                 }
-                page(now: now)
-            }
-            .pigAnimation(value: stripShows, moves: true)
+                .pigAnimation(value: stripShows, moves: true)
         }
     }
 
@@ -134,15 +137,19 @@ struct SportFrontTVPage: View {
             #if os(iOS)
             .padding(.horizontal, PigSpacing.xl)
             #endif
+            // #312: drawn up into the strip's room (the content margin below), so at the top the banner is where it was.
+            .padding(.top, -SportHeroStripMetrics.room)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
+        .contentMargins(.top, SportHeroStripMetrics.room, for: .scrollContent)
         // Cards draw outside the scroll's frame (a focused card grows past the page's edges), except at its top: #263, the
         // rails used to slide up over the header as the page scrolled. The page now ends under the header, as the
         // TV Guide's grid does, fading out over its first few points.
         .scrollClipDisabled()
         .mask(alignment: .top) {
-            SportPageTopMask(overdraw: SportFrontTVPage.overdraw)
+            // #312: while the strip shows, nothing is drawn in its room (the strip is over it).
+            SportPageTopMask(overdraw: SportFrontTVPage.overdraw, top: stripShows ? SportHeroStripMetrics.room : 0)
         }
         .onScrollGeometryChange(for: Bool.self) { [bannerHeight] in
             SportHeroStrip.shows(scrolled: $0.contentOffset.y + $0.contentInsets.top, bannerHeight: bannerHeight, stripHeight: SportHeroStripMetrics.height)

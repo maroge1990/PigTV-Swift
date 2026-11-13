@@ -123,4 +123,54 @@ final class SportHeaderPinUITests: XCTestCase {
         XCTAssertFalse(strip.exists, "up from the rails comes back to the full hero")
         #endif
     }
+
+    #if os(tvOS)
+    /// #312 (Mark, 14 Nov 2026): moving down the page, as the hero turned into the strip the focused row shifted up. The
+    /// strip took its own room above the ScrollView, so the page's frame shrank the moment it showed and tvOS scrolled the
+    /// focused card again. Down from the hero through the rails: the page's frame never changes, a focused card does not
+    /// move once its own move has settled, and it is never beneath the strip.
+    @MainActor
+    func testTheFocusedCardHoldsStillWhenTheStripShows() throws {
+        let app = try launch()
+        let page = app.scrollViews.containing(.any, identifier: "sport.front").firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 15), "the page")
+        let strip = app.descendants(matching: .any)["sport.front.strip"]
+        let focused = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
+        XCUIRemote.shared.press(.down) // off the tab bar, onto the hero
+        Thread.sleep(forTimeInterval: 1.5)
+        let frame = page.frame
+        var sawStrip = false
+        for step in 0..<8 {
+            let wasShowing = strip.exists
+            XCUIRemote.shared.press(.down)
+            // A timeline of the move: the focused control's top, every few tenths of a second.
+            var trace: [String] = []
+            var settled: CGRect = .null
+            var id = ""
+            let start = Date()
+            while Date().timeIntervalSince(start) < 2.4 {
+                if focused.exists {
+                    id = focused.identifier
+                    settled = focused.frame
+                    trace.append(String(format: "%.1fs y %.1f%@", Date().timeIntervalSince(start), settled.minY, strip.exists ? " strip" : ""))
+                }
+                Thread.sleep(forTimeInterval: 0.15)
+            }
+            print("FOCUS312 step \(step) \(id): " + trace.joined(separator: ", "))
+            if strip.exists && !wasShowing { attach(app, "312-strip-shows-step-\(step)") }
+            sawStrip = sawStrip || strip.exists
+            XCTAssertEqual(page.frame.minY, frame.minY, accuracy: 0.5, "step \(step): the page moved as the strip came or went")
+            XCTAssertEqual(page.frame.height, frame.height, accuracy: 0.5, "step \(step): the page changed height")
+            // Settled: the focused control holds still for another second.
+            Thread.sleep(forTimeInterval: 1.0)
+            if focused.exists, focused.identifier == id {
+                XCTAssertEqual(focused.frame.minY, settled.minY, accuracy: 0.5, "step \(step): \(id) moved after its move had settled")
+            }
+            if strip.exists, focused.exists {
+                XCTAssertGreaterThanOrEqual(focused.frame.minY, strip.frame.maxY - 0.5, "step \(step): \(id) is beneath the strip")
+            }
+        }
+        XCTAssertTrue(sawStrip, "the page scrolled far enough for the strip to show")
+    }
+    #endif
 }
