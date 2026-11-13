@@ -44,7 +44,9 @@ final class SportHeroStripTests: XCTestCase {
         let view = SportHeroStripView(strip: strip).frame(width: 390).environment(\.colorScheme, .dark)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
-        let image = try XCTUnwrap(renderer.uiImage?.cgImage)
+        let rendered = try XCTUnwrap(renderer.uiImage)
+        let shot = XCTAttachment(image: rendered); shot.lifetime = .keepAlways; shot.name = "strip"; add(shot)
+        let image = try XCTUnwrap(rendered.cgImage)
         let width = image.width, height = image.height
         var data = [UInt8](repeating: 0, count: width * height * 4)
         let space = CGColorSpaceCreateDeviceRGB()
