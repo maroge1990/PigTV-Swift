@@ -19,6 +19,17 @@ final class PlayerCoverTests: XCTestCase {
         XCTAssertTrue(app.pagesCovered, "a stray close never leaves a negative count")
     }
 
+    /// Opus review of Apple 1 (medium): a session that ends with a recording's cover up (signed out, or the tree replaced)
+    /// may never see its close; the next session's pages must not stay covered, so the count starts again with each one.
+    func testANewSessionStartsWithThePagesUncovered() throws {
+        let app = AppModel()
+        app.recordingPlayer(presented: true)
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{}}"#.utf8))
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture", info: info))
+        app.configureClientForTesting(browse.client, browse: browse)
+        XCTAssertFalse(app.pagesCovered, "a new session's pages poll: the old cover's count is gone")
+    }
+
     func testTheLivePlayerStillCoversThePages() {
         let app = AppModel()
         app.playerPresented = true
