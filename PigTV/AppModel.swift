@@ -54,7 +54,9 @@ final class AppModel: ObservableObject {
     }
     // The tvOS player presents these over native AVKit controls. Keeping the
     // state here lets transport-bar actions open them without resolving media.
-    @Published private(set) var browse: BrowseModel?
+    /// A new session (or none) starts with no recording cover counted: one torn down with its session never reports
+    /// its close, and would otherwise rest the next session's pages for good (Opus review of Apple 1).
+    @Published private(set) var browse: BrowseModel? { didSet { if browse !== oldValue { recordingPlayers = 0 } } }
     @Published private(set) var playbackBusy = false
     // Channels the guide was showing when playback started: the order used
     // for channel up/down inside the player. Falls back to the whole guide.
