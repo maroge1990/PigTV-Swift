@@ -9,13 +9,19 @@ import ImageIO
 enum SportMotorMetrics {
     #if os(tvOS)
     static let tileWidth: CGFloat = 262
+    /// #298: a session tile gives way to this when the row has less room (the Apple TV's page is narrower than five
+    /// 262 pt tiles and the circuit).
+    static let tileMinWidth: CGFloat = 220
     static let circuitWidth: CGFloat = 400
     static let map = CGSize(width: 150, height: 96)
     #else
     static let tileWidth: CGFloat = 190
+    /// #298: an 11-inch iPad in landscape gives the row about 1,146 pt, where five 190 pt tiles and the circuit need 1,330.
+    static let tileMinWidth: CGFloat = 150
     static let circuitWidth: CGFloat = 300
     static let map = CGSize(width: 110, height: 70)
     #endif
+    static var tileSpacing: CGFloat { PigSpacing.m }
 }
 
 /// Formula 1 under the banner.
@@ -69,95 +75,18 @@ struct SportF1Content: View {
                     if case .stale(let since) = state {
                         PigStaleNotice(since: since, retry: { await model.load() }, identifier: "f1.stale")
                     }
-                    let tiles = HStack(alignment: .top, spacing: PigSpacing.m) {
-                        ForEach(SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree)) { tile in
-                            sessionTile(tile, weekend: weekend, now: now)
+                    F1TileRow(tiles: SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree), weekend: weekend,
+                              client: browse.client) { event in
+                        if F1PageText.watchesNow(event, now: Date()) {
+                            if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
+                        } else {
+                            presenter?.open(event, .details)
                         }
-                        circuit(weekend)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    // Narrow (an iPad in portrait, the iPhone's league page): the tiles scroll sideways.
-                    if narrow {
-                        ScrollView(.horizontal) { tiles }.scrollIndicators(.hidden).scrollClipDisabled()
-                    } else {
-                        tiles.tvFocusSection()
                     }
                     lists(page, spoilerFree: spoilerFree)
                 }
             }
         }
-    }
-
-    private func sessionTile(_ tile: SportMotorText.Tile, weekend: F1Weekend, now: Date) -> some View {
-        let session = weekend.sessions.first { $0.id == tile.id }
-        let event = session.map { F1PageText.event($0, in: weekend) }
-        return Button {
-            guard let event, event.best != nil else { return }
-            if F1PageText.watchesNow(event, now: Date()) {
-                if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
-            } else {
-                presenter?.open(event, .details)
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: PigSpacing.xs) {
-                HStack(spacing: PigSpacing.s) {
-                    Text(tile.title).font(SportPageMetrics.tileTitle).lineLimit(1)
-                    Spacer(minLength: 4)
-                    if tile.state == .live {
-                        Text(tile.liveWord).font(SportPageMetrics.kicker).foregroundStyle(Color.pigOnAccent)
-                            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs).background(Color.pigDanger, in: Capsule())
-                    } else if tile.state == .next {
-                        Text("NEXT").font(SportPageMetrics.kicker).foregroundStyle(Color.pigAccentText)
-                            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
-                            .overlay(Capsule().strokeBorder(Color.pigAccent, lineWidth: 2))
-                    }
-                }
-                Text(F1PageText.when(tile.when)).font(SportPageMetrics.tileDetail).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 0)
-                if let line = tile.line {
-                    Text(line).font(SportPageMetrics.tileDetail.weight(.bold))
-                        .foregroundStyle(tile.state == .live ? Color.pigDanger : Color.primary).lineLimit(1)
-                }
-                if let best = event?.best {
-                    Text(best.name).font(SportPageMetrics.tileDetail).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            .padding(SportPageMetrics.padding)
-            .frame(width: SportMotorMetrics.tileWidth, alignment: .topLeading)
-            .frame(minHeight: SportPageMetrics.tileHeight, alignment: .topLeading)
-            .overlay {
-                if tile.state == .live {
-                    RoundedRectangle(cornerRadius: SportPageMetrics.radius, style: .continuous)
-                        .strokeBorder(Color.pigDanger.opacity(0.8), lineWidth: 2)
-                }
-            }
-        }
-        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
-        .accessibilityIdentifier("f1.session.\(tile.id)")
-    }
-
-    private func circuit(_ weekend: F1Weekend) -> some View {
-        let path = scheme == .dark ? (weekend.info?.mapDark ?? weekend.info?.map) : weekend.info?.map
-        return HStack(alignment: .top, spacing: PigSpacing.m) {
-            VStack(alignment: .leading, spacing: PigSpacing.s) {
-                ForEach(Array(F1PageText.stats(weekend.info).enumerated()), id: \.offset) { _, stat in
-                    HStack(spacing: PigSpacing.s) {
-                        Text(stat.label).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer(minLength: 6)
-                        Text(stat.value).font(SportPageMetrics.rowDetail.weight(.bold)).lineLimit(1)
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
-            CircuitMap(path: path, client: browse.client)
-                .frame(width: SportMotorMetrics.map.width, height: SportMotorMetrics.map.height)
-                .accessibilityLabel("\(weekend.circuit ?? weekend.name) circuit map")
-        }
-        .padding(SportPageMetrics.padding)
-        .frame(width: SportMotorMetrics.circuitWidth, alignment: .topLeading)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: SportPageMetrics.radius, style: .continuous))
-        .accessibilityIdentifier("f1.circuit")
     }
 
     private func lists(_ page: F1Page, spoilerFree: Bool) -> some View {
@@ -315,6 +244,114 @@ struct SportRaceContent: View {
         guard let next else { return }
         let card = front.games.first { $0.league == page.league && ($0.title == next.name || $0.start == next.start) }
         SportCardActions.select(card: card, event: nil, app: app, presenter: presenter)
+    }
+}
+
+/// Formula 1's session tiles and the circuit, in one row. #298: the tiles were a fixed width copied from the Apple TV, so
+/// the row ran 40 pt past the television's page and, on an 11-inch iPad in landscape, made the page wider than the screen
+/// (the banner and its back button went off the left). The tiles now give way, down to `tileMinWidth`, to fit the width
+/// they are given; with less room than that, or on a narrow page (an iPad in portrait, the iPhone's league page), the
+/// row keeps its full tiles and scrolls sideways.
+struct F1TileRow: View {
+    let tiles: [SportMotorText.Tile]
+    let weekend: F1Weekend
+    let client: APIClient
+    /// A session with a channel: plays it while on, else opens its details.
+    var select: (SportEvent) -> Void = { _ in }
+    @Environment(\.sportNarrow) private var narrow
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        if narrow {
+            scrolling
+        } else {
+            ViewThatFits(in: .horizontal) {
+                row(fill: true).tvFocusSection()
+                scrolling
+            }
+        }
+    }
+
+    private var scrolling: some View {
+        ScrollView(.horizontal) { row(fill: false) }.scrollIndicators(.hidden).scrollClipDisabled()
+    }
+
+    private func row(fill: Bool) -> some View {
+        HStack(alignment: .top, spacing: SportMotorMetrics.tileSpacing) {
+            ForEach(tiles) { tile in sessionTile(tile, fill: fill) }
+            circuit
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func sessionTile(_ tile: SportMotorText.Tile, fill: Bool) -> some View {
+        let session = weekend.sessions.first { $0.id == tile.id }
+        let event = session.map { F1PageText.event($0, in: weekend) }
+        return Button {
+            guard let event, event.best != nil else { return }
+            select(event)
+        } label: {
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(spacing: PigSpacing.s) {
+                    Text(tile.title).font(SportPageMetrics.tileTitle).lineLimit(1)
+                    Spacer(minLength: 4)
+                    if tile.state == .live {
+                        Text(tile.liveWord).font(SportPageMetrics.kicker).foregroundStyle(Color.pigOnAccent)
+                            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs).background(Color.pigDanger, in: Capsule())
+                    } else if tile.state == .next {
+                        Text("NEXT").font(SportPageMetrics.kicker).foregroundStyle(Color.pigAccentText)
+                            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
+                            .overlay(Capsule().strokeBorder(Color.pigAccent, lineWidth: 2))
+                    }
+                }
+                Text(F1PageText.when(tile.when)).font(SportPageMetrics.tileDetail).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                if let line = tile.line {
+                    Text(line).font(SportPageMetrics.tileDetail.weight(.bold))
+                        .foregroundStyle(tile.state == .live ? Color.pigDanger : Color.primary).lineLimit(1)
+                }
+                if let best = event?.best {
+                    Text(best.name).font(SportPageMetrics.tileDetail).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .padding(SportPageMetrics.padding)
+            .frame(minWidth: fill ? SportMotorMetrics.tileMinWidth : SportMotorMetrics.tileWidth,
+                   idealWidth: fill ? SportMotorMetrics.tileMinWidth : SportMotorMetrics.tileWidth,
+                   maxWidth: SportMotorMetrics.tileWidth, alignment: .topLeading)
+            .frame(minHeight: SportPageMetrics.tileHeight, alignment: .topLeading)
+            .overlay {
+                if tile.state == .live {
+                    RoundedRectangle(cornerRadius: SportPageMetrics.radius, style: .continuous)
+                        .strokeBorder(Color.pigDanger.opacity(0.8), lineWidth: 2)
+                }
+            }
+        }
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
+        .accessibilityIdentifier("f1.session.\(tile.id)")
+    }
+
+    private var circuit: some View {
+        let path = scheme == .dark ? (weekend.info?.mapDark ?? weekend.info?.map) : weekend.info?.map
+        return HStack(alignment: .top, spacing: PigSpacing.m) {
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                ForEach(Array(F1PageText.stats(weekend.info).enumerated()), id: \.offset) { _, stat in
+                    HStack(spacing: PigSpacing.s) {
+                        Text(stat.label).font(SportPageMetrics.note).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text(stat.value).font(SportPageMetrics.rowDetail.weight(.bold)).lineLimit(1)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            CircuitMap(path: path, client: client)
+                .frame(width: SportMotorMetrics.map.width, height: SportMotorMetrics.map.height)
+                .accessibilityLabel("\(weekend.circuit ?? weekend.name) circuit map")
+        }
+        .padding(SportPageMetrics.padding)
+        .frame(width: SportMotorMetrics.circuitWidth, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: SportPageMetrics.radius, style: .continuous))
+        .accessibilityIdentifier("f1.circuit")
     }
 }
 
