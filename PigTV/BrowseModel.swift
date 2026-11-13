@@ -705,6 +705,8 @@ final class BrowseModel: ObservableObject {
 
     /// The removals this process has committed and not yet seen confirmed (shared by every session; tests use their own).
     var removalLog = PendingRemovalLog.shared
+    /// The app's Undo presenter (set by `AppModel`), so Settings › Sport can settle a removal's open Undo (#301).
+    weak var presenter: AppPresenter?
 
     /// This server and account, for the removal log (nil without an account: then nothing is persisted).
     private var removalScope: String? {
@@ -1154,6 +1156,10 @@ protocol RecordingRuleOwner: AnyObject {
     func reloadRules() async
     @discardableResult
     func changeRule(_ choose: () -> RuleChange?) async throws -> Bool
+    /// #301: commits the removal whose Undo is open, now (a rule's Undo, before an unfollow decides about its rule).
+    func settlePendingRemovals()
 }
 
-extension BrowseModel: RecordingRuleOwner {}
+extension BrowseModel: RecordingRuleOwner {
+    func settlePendingRemovals() { presenter?.commitPendingUndo() }
+}

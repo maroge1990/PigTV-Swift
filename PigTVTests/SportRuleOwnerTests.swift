@@ -175,6 +175,27 @@ final class SportRuleOwnerTests: XCTestCase {
         XCTAssertEqual(rules.requests("DELETE /api/recordings/rules/3"), 1, "never a second DELETE: \(rules.log.value)")
     }
 
+    /// #301: unfollowing a team while its rule's Undo is open settles the removal first, so Undo cannot bring back a
+    /// rule for a team no longer followed (and there is nothing to ask: the user already removed the rule).
+    func testUnfollowingATeamSettlesItsRulesOpenUndo() async throws {
+        let rules = Rules()
+        rules.rows.value = [(id: 3, kind: "team", match: "Arsenal", sport: "Football", enabled: true)]
+        let http = try server(rules)
+        defer { http.stop() }
+        let (browse, settings) = try models(http)
+        let presenter = presenter()
+        browse.presenter = presenter
+        await browse.reloadRules()
+        await settings.loadRules()
+        browse.removeRuleWithUndo(try XCTUnwrap(team(browse)), presenter: presenter)
+        XCTAssertNotNil(presenter.pendingUndo)
+        await settings.unfollow("Football", "Arsenal") { _ in XCTFail("the rule is already being removed"); return true }
+        XCTAssertNil(presenter.pendingUndo, "the unfollow settled the Undo: it can no longer restore the rule")
+        await waitUntil { browse.recordingStore.pendingRemovals.isEmpty && !browse.mutationBusy }
+        XCTAssertEqual(rules.requests("DELETE /api/recordings/rules/3"), 1, "the removal went ahead, once")
+        XCTAssertNil(team(browse))
+    }
+
     func testAStaleReadAnsweredAfterASettingsChangeDoesNotUndoIt() async throws {
         let rules = Rules()
         let http = try server(rules)

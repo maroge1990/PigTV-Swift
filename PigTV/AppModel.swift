@@ -110,6 +110,7 @@ final class AppModel: ObservableObject {
             self.serverInfo = info
             browse?.retirePrivateCaches()
             self.browse = BrowseModel(client: authenticated, accountID: user.id)
+            self.browse?.presenter = presenter
             self.user = user
             canRestore = false
             unreachable = nil
@@ -217,6 +218,7 @@ final class AppModel: ObservableObject {
         self.serverInfo = info
         browse?.retirePrivateCaches()
         self.browse = BrowseModel(client: candidate, accountID: resolvedUser.id)
+        self.browse?.presenter = presenter
         self.user = resolvedUser
         password = ""
         pairing = nil

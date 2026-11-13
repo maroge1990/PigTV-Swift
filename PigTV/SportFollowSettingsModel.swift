@@ -341,6 +341,7 @@ final class SportFollowSettingsModel: ObservableObject {
         let (_, orphans, error) = SportFollowLogic.removeLeague(follows, sport, league, namesOf: namesOf)
         if let error { message = error; return }
         if !orphans.isEmpty, !(await ask(SportFollowLogic.removeLeagueQuestion(orphans: orphans, sport: sport, label: label))) { return }
+        settleRemovedRules(sport, orphans)
         let left = await forgetRules(sport, orphans, ask: ask)
         await save({ s in
             let removed = SportFollowLogic.removeLeague(s, sport, league)
@@ -353,6 +354,7 @@ final class SportFollowSettingsModel: ObservableObject {
     func removeSport(_ sport: String, ask: Ask) async -> Bool {
         guard let entry = entry(sport) else { return false }
         guard await ask(SportFollowLogic.stopFollowingQuestion(entry)) else { return false }
+        settleRemovedRules(sport, entry.teams)
         let left = await forgetRules(sport, entry.teams, ask: ask)
         await save({ SportFollowLogic.removeSport($0, sport) }, done: { SportFollowLogic.after("Stopped following \(sport).", left) })
         return self.entry(sport) == nil
@@ -373,6 +375,7 @@ final class SportFollowSettingsModel: ObservableObject {
     }
 
     func unfollow(_ sport: String, _ name: String, ask: Ask) async {
+        settleRemovedRules(sport, [name])
         let left = await forgetRules(sport, [name], ask: ask)
         await save({ SportFollowLogic.removeNames($0, sport, [name]) }, done: { SportFollowLogic.after("Unfollowed \(name).", left) })
     }
@@ -394,6 +397,13 @@ final class SportFollowSettingsModel: ObservableObject {
     }
 
     // MARK: Record every game (C-M kind `team`, D-41 point 11)
+
+    /// #301: a team's rule removed in Scheduled whose Undo is still open is settled (the removal goes ahead) before an
+    /// unfollow decides about its rule: otherwise no question is asked and Undo would bring back a rule for a team no
+    /// longer followed. The user has already said they do not want that rule.
+    private func settleRemovedRules(_ sport: String, _ names: [String]) {
+        if names.contains(where: { ruleRemovalPending(sport, $0) }) { ruleOwner?.settlePendingRemovals() }
+    }
 
     /// D-41 point 11: unfollowing a team asks whether to keep its "Record every game"; not kept, it is deleted. -> the
     /// names whose rule could not be stopped, or that the rules could not be read (said, never hidden behind "Unfollowed").
