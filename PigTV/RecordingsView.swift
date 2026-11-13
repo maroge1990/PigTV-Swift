@@ -171,6 +171,13 @@ struct RecordingsView: View {
     /// #280: what the page shows (the model's answer, not worked out here): the list is empty when nothing is recorded.
     private var state: PageState { model.recordingsState(isEmpty: shelf.isEmpty) }
 
+    private var isEmptyState: Bool {
+        switch state {
+        case .empty, .emptyStale: true
+        default: false
+        }
+    }
+
     @ViewBuilder
     private var status: some View {
         if state.isStale {
@@ -204,15 +211,22 @@ struct RecordingsView: View {
                                       schedule: store.schedule)
                             .pigStateFillsPage()
                     case .empty, .emptyStale:
-                        RecordingsEmpty(openGuide: openGuide).pigStateFillsPage()
                         #if os(tvOS)
+                        // #311: the message takes only the room Coming up leaves, so the strip sits at the bottom of the
+                        // first screen (the iPad's bottom inset); the column is one screen high (see below).
+                        RecordingsEmpty(openGuide: openGuide).frame(maxHeight: .infinity)
                         ComingUpStrip(items: comingUp, now: Date()) { path.append(.scheduled) }
                             .tvFocusSection()
+                        #else
+                        RecordingsEmpty(openGuide: openGuide).pigStateFillsPage()
                         #endif
                     case .content, .stale:
                         wideContent
                     }
                 }
+                #if os(tvOS)
+                .modifier(OneScreenHigh(active: isEmptyState, trailing: PigSpacing.l))
+                #endif
                 .padding(.horizontal, RecordingsMetrics.pagePadding)
                 .padding(.bottom, PigSpacing.l)
             }
@@ -712,6 +726,23 @@ private struct RecordingStackCard: View {
         .shadow(color: Color.pigShadow.opacity(0.4), radius: 20, y: 12)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("recordings.stack.card")
+    }
+}
+#endif
+
+#if os(tvOS)
+/// #311: while active, the column is as high as the scroll view shows (less the page's bottom padding), so a flexible
+/// child fills what the others leave and nothing starts below the first screen.
+private struct OneScreenHigh: ViewModifier {
+    let active: Bool
+    let trailing: CGFloat
+
+    func body(content: Content) -> some View {
+        if active {
+            content.containerRelativeFrame(.vertical, alignment: .top) { length, _ in length - trailing }
+        } else {
+            content
+        }
     }
 }
 #endif
