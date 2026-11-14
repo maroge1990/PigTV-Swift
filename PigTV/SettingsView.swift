@@ -642,11 +642,30 @@ private struct SportSettingsPage: View {
     let showsTitle: Bool
     let me: String?
     let frontFollows: [SportFront.Follow]
+    @StateObject private var delay: ScoreDelaySetting
+    @State private var route: SportSettingsRoute?
+
+    init(model: SportFollowSettingsModel, title: String, showsTitle: Bool, me: String?, frontFollows: [SportFront.Follow]) {
+        self.model = model
+        self.title = title
+        self.showsTitle = showsTitle
+        self.me = me
+        self.frontFollows = frontFollows
+        _delay = StateObject(wrappedValue: ScoreDelaySetting(client: model.client, fixture: model.isFixture))
+    }
 
     var body: some View {
         SettingsPageBody(title: title, showsTitle: showsTitle) {
-            SportSettingsSection(model: model, me: me, frontFollows: frontFollows)
+            SportSettingsSection(model: model, me: me, frontFollows: frontFollows, delay: delay, route: $route)
         }
+        #if os(iOS)
+        // #317 (Mark): the sports always show their reorder handles, so the order is dragged at any time. In edit mode a
+        // NavigationLink does not open, so the rows set `route` and the page pushes it here, outside the Form.
+        .environment(\.editMode, .constant(.active))
+        .navigationDestination(item: $route) { route in
+            SportSettingsSection.destination(route, model: model, delay: delay, me: me)
+        }
+        #endif
     }
 }
 

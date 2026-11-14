@@ -3,7 +3,9 @@ import Combine
 
 // Settings › Sport (#200, C-U, D-41): the account's sports, leagues and teams, the spoiler-free switch, league suggestions
 // and "Record every game", as the web's "Your sport" panel. tvOS first: surface rows like Labs, each sport a detail page
-// (`detailCover`); on iPad and iPhone a Form section whose rows are NavigationLinks.
+// (`detailCover`); on iPad and iPhone a Form section whose rows push their pages. #317: that Form is always in edit mode
+// (the reorder handles always show), where a NavigationLink does not open, so its rows are buttons that set a
+// `SportSettingsRoute`, which the page outside the Form pushes.
 
 // MARK: Questions
 
@@ -63,29 +65,37 @@ private extension View {
 /// people change come first (`SettingsSportOrder`): Hide scores, then your sport in your order (each with its leagues and its followed teams or people, their logos where
 /// the loaded Sport data has them, else monograms), the league suggestions and Add a sport; Score delay is one level down
 /// (a row with its value that opens its own page). On the TV a sport opens its page as a cover; on iOS it is pushed.
+/// A page one level down from Settings › Sport: a cover on the TV, pushed on iOS (by the page, outside its Form).
+enum SportSettingsRoute: Identifiable, Hashable {
+    case sport(String)
+    case addSport
+    case scoreDelay
+    var id: Self { self }
+}
+
 struct SportSettingsSection: View {
     @ObservedObject var model: SportFollowSettingsModel
     /// The signed-in user's name, for "(set by …)" on a rule someone else made.
     let me: String?
     /// The loaded Sport front page's follows, for their cached logos (C-R `follows[].logo`).
     var frontFollows: [SportFront.Follow] = []
-    @StateObject private var delay: ScoreDelaySetting
-    #if os(tvOS)
-    private enum Route: Identifiable, Hashable {
-        case sport(String)
-        case addSport
-        case scoreDelay
-        var id: Self { self }
-    }
-    @State private var route: Route?
-    #endif
+    /// Owned by the page, which pushes Score delay's page on iOS.
+    @ObservedObject var delay: ScoreDelaySetting
+    /// The page open one level down (the page owns it: on iOS it pushes it from outside the Form).
+    @Binding var route: SportSettingsRoute?
 
-    init(model: SportFollowSettingsModel, me: String?, frontFollows: [SportFront.Follow] = []) {
-        self.model = model
-        self.me = me
-        self.frontFollows = frontFollows
-        _delay = StateObject(wrappedValue: ScoreDelaySetting(client: model.client, fixture: model.isFixture))
+    #if os(iOS)
+    /// The page a route opens (iPhone, iPad).
+    @ViewBuilder
+    static func destination(_ route: SportSettingsRoute, model: SportFollowSettingsModel, delay: ScoreDelaySetting,
+                            me: String?) -> some View {
+        switch route {
+        case .sport(let sport): SportFollowScreen(model: model, sport: sport, me: me)
+        case .addSport: SportAddSportScreen(model: model) { _ in }
+        case .scoreDelay: SportScoreDelayScreen(delay: delay)
+        }
     }
+    #endif
 
     #if os(tvOS)
     /// The sport whose page opens once Add a sport has closed.
@@ -145,7 +155,7 @@ struct SportSettingsSection: View {
         if let follows = model.follows {
             Section { spoilerRow(follows.spoilerFree) }
             Section {
-                // #256 (Mark, 14 Nov 2026): always reorderable: press and drag a sport; the drop is saved at once.
+                // #317 (Mark, 14 Nov 2026): each sport always shows its reorder handle; the drop is saved at once.
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
                     .onMove(perform: model.canEdit ? { from, to in Task { await model.moveSports(from: from, to: to) } } : nil)
                 if model.state.showsEmpty {
@@ -173,9 +183,16 @@ struct SportSettingsSection: View {
         SportSurfaceRow(title: "Score delay", detail: "Clocks and scores follow it", value: value, chevron: true) { route = .scoreDelay }
             .accessibilityIdentifier("settings.sport.delay")
         #else
-        NavigationLink { SportScoreDelayScreen(delay: delay) } label: {
-            LabeledContent("Score delay") { Text(value ?? "").pigFigures() }
+        Button { route = .scoreDelay } label: {
+            HStack {
+                Text("Score delay").foregroundStyle(Color.primary)
+                Spacer(minLength: 8)
+                Text(value ?? "").pigFigures().foregroundStyle(.secondary)
+                PushChevron()
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .listRowBackground(Color.pigRaised)
         .accessibilityIdentifier("settings.sport.delay")
         #endif
@@ -281,18 +298,19 @@ struct SportSettingsSection: View {
         .accessibilityLabel([entry.sport, leagues, names.map(\.name).joined(separator: ", ")].filter { !$0.isEmpty }.joined(separator: ", "))
         .accessibilityIdentifier("settings.sport.row.\(entry.sport)")
         #else
-        return NavigationLink {
-            SportFollowScreen(model: model, sport: entry.sport, me: me)
-        } label: {
+        // #317: the reorder handle sits where the chevron was (edit mode); a tap anywhere else opens the sport.
+        return Button { route = .sport(entry.sport) } label: {
             HStack(spacing: PigSpacing.m) {
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                    Text(entry.sport).font(.headline)
+                    Text(entry.sport).font(.headline).foregroundStyle(Color.primary)
                     Text(leagues).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 FollowedNames(names: names, client: model.client)
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .listRowBackground(Color.pigRaised)
         .accessibilityIdentifier("settings.sport.row.\(entry.sport)")
         #endif
@@ -308,11 +326,15 @@ struct SportSettingsSection: View {
         .disabled(!model.canEdit)
         .accessibilityIdentifier("settings.sport.add")
         #else
-        return NavigationLink {
-            SportAddSportScreen(model: model) { _ in }
-        } label: {
-            Label("Add a sport", systemImage: "plus").foregroundStyle(Color.pigAccentText)
+        return Button { route = .addSport } label: {
+            HStack {
+                Label("Add a sport", systemImage: "plus").foregroundStyle(Color.pigAccentText)
+                Spacer(minLength: 8)
+                PushChevron()
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .listRowBackground(Color.pigRaised)
         .disabled(!model.canEdit)
         .accessibilityIdentifier("settings.sport.add")
@@ -563,9 +585,8 @@ struct SportFollowScreen: View {
     @StateObject private var questions = SportQuestionPresenter()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
-    #if os(tvOS)
+    /// Follow a team…'s search (a cover on the TV, pushed on iOS from outside the Form, which is in edit mode).
     @State private var searching = false
-    #endif
 
     var body: some View {
         page
@@ -587,6 +608,8 @@ struct SportFollowScreen: View {
         .detailCover(isPresented: $searching) { SportNameSearchScreen(model: model, sport: sport) }
         #else
         Form { content }
+            .environment(\.editMode, .constant(.active)) // #317: the leagues always show their reorder handles
+            .navigationDestination(isPresented: $searching) { SportNameSearchScreen(model: model, sport: sport) }
             .navigationTitle(sport)
             .accessibilityIdentifier("settings.sport.screen")
         #endif
@@ -624,7 +647,7 @@ struct SportFollowScreen: View {
     @ViewBuilder
     private func leagues(_ entry: SportFollows.Entry) -> some View {
         Section {
-            // Like the sports: press and drag a league (iPhone, iPad); the drop is saved at once.
+            // Like the sports: each league shows its reorder handle (iPhone, iPad); the drop is saved at once.
             ForEach(entry.leagues, id: \.self) { league in
                 SportItemRow {
                     Text(model.label(league))
@@ -736,7 +759,15 @@ struct SportFollowScreen: View {
             .disabled(!model.canEdit || full)
             .accessibilityIdentifier("settings.sport.follow")
         #else
-        NavigationLink { SportNameSearchScreen(model: model, sport: sport) } label: { Label(title, systemImage: "magnifyingglass") }
+        Button { searching = true } label: {
+            HStack {
+                Label(title, systemImage: "magnifyingglass").foregroundStyle(Color.pigAccentText)
+                Spacer(minLength: 8)
+                PushChevron()
+            }
+            .contentShape(Rectangle())
+        }
+            .buttonStyle(.plain)
             .disabled(!model.canEdit || full)
             .accessibilityIdentifier("settings.sport.follow")
         #endif
@@ -972,3 +1003,13 @@ private struct SportStatusLine: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 }
+
+#if os(iOS)
+/// The chevron of a row that pushes a page (a button row, since its Form is in edit mode: #317).
+private struct PushChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+    }
+}
+#endif

@@ -410,8 +410,10 @@ controls are not used for live play.
 - **What the account follows, synced through the server (D-41).** Only with `sportFollows`: a Sport section after
   Appearance (`SportSettingsSection`, `SportFollowSettingsView.swift`) with league suggestions (Add / No thanks), "Hide
   scores", a row per followed sport (its leagues and names) and "Add a sport". On iPhone and iPad the sports, and a sport's
-  leagues on its page, are reordered by pressing and dragging at any time (`onMove` outside edit mode, saved at the drop);
-  the Apple TV has no way to reorder (Mark, 14 Nov 2026). A sport's page (`SportFollowScreen`, a
+  leagues on its page, always show the system reorder handle and are dragged by it, saved at the drop: both Forms are
+  always in edit mode, where a NavigationLink does not open, so their rows that open a page are buttons that set a
+  `SportSettingsRoute` (or the search flag), pushed by `navigationDestination` outside the Form. The Apple TV has no way to
+  reorder (Mark, 14 Nov 2026). A sport's page (`SportFollowScreen`, a
   `detailCover` on tvOS, a NavigationLink on iOS): Stop following, its leagues (Remove, Add a league under the catalogue's headings; none for a one-league sport), its teams or players with "Record every
   game" (a C-M `team` rule; only with `recordingRules` and for team sports) and Unfollow, and "Follow a team…" (a search over
   the followed leagues' `sports/names`, 30 at most). `SportFollowLogic` (`SportFollowModels.swift`) is the web's

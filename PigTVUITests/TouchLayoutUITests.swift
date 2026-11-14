@@ -129,8 +129,8 @@ final class TouchLayoutUITests: XCTestCase {
         XCTAssertEqual(title.frame.minY, first.minY, accuracy: 1, "the header moved: \(first) then \(title.frame)")
     }
 
-    /// #256 (Mark, 14 Nov 2026): Settings › Sport's sports and a sport's leagues are always reorderable: press and drag,
-    /// no Edit order and no Move up / Move down; a tap on a sport still opens its page.
+    /// #317 (Mark, 14 Nov 2026): Settings › Sport's sports and a sport's leagues always show their reorder handles and are
+    /// dragged by them: no Edit order, no Move up / Move down, no words; a tap on a sport still opens its page.
     @MainActor
     func testPhoneSportsAndLeaguesAreReorderedByDraggingWithoutEditOrder() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
@@ -146,8 +146,11 @@ final class TouchLayoutUITests: XCTestCase {
         XCTAssertTrue(rows.element(boundBy: 1).waitForExistence(timeout: 15), "two followed sports")
         sleep(2) // the follows can be changed once loaded (dragging is off before)
         XCTAssertFalse(app.buttons["settings.sport.order"].exists, "no Edit order")
+        let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
+        XCTAssertEqual(handles.count, rows.count, "every sport shows its reorder handle: \(app.buttons.allElementsBoundByIndex.map(\.label))")
         let before = rows.allElementsBoundByIndex.map(\.identifier)
-        rows.element(boundBy: 1).press(forDuration: 1.0, thenDragTo: rows.element(boundBy: 0))
+        handles.element(boundBy: 1).press(forDuration: 0.8, thenDragTo: handles.element(boundBy: 0), withVelocity: .slow,
+                                             thenHoldForDuration: 0.5)
         XCTAssertTrue(waitUntil(5) { rows.allElementsBoundByIndex.map(\.identifier) == [before[1], before[0]] + before.dropFirst(2) },
                       "not reordered: \(rows.allElementsBoundByIndex.map(\.identifier))")
         attach(app, "iphone-sport-drag")
@@ -159,10 +162,32 @@ final class TouchLayoutUITests: XCTestCase {
         let first = app.staticTexts["Premier League"], second = app.staticTexts["Champions League"]
         XCTAssertTrue(first.waitForExistence(timeout: 5) && second.exists, "Football's two leagues")
         XCTAssertLessThan(first.frame.minY, second.frame.minY)
-        second.press(forDuration: 1.0, thenDragTo: first)
+        let leagueHandles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
+        XCTAssertEqual(leagueHandles.count, 2, "each league shows its reorder handle: \(app.buttons.allElementsBoundByIndex.map(\.label))")
+        leagueHandles.element(boundBy: 1).press(forDuration: 0.8, thenDragTo: leagueHandles.element(boundBy: 0), withVelocity: .slow,
+                                                   thenHoldForDuration: 0.5)
         XCTAssertTrue(waitUntil(5) { second.frame.minY < first.frame.minY },
                       "league not reordered: \(first.frame) \(second.frame)")
         attach(app, "iphone-sport-league-drag")
+
+        // In edit mode a NavigationLink does not open: every row that pushes a page still does.
+        let follow = app.buttons["settings.sport.follow"]
+        for _ in 0..<6 where !(follow.exists && follow.isHittable) { app.swipeUp() }
+        XCTAssertTrue(follow.isHittable, "Follow a team… not found")
+        follow.tap()
+        XCTAssertTrue(waitUntil(5) { !follow.exists || !follow.isHittable }, "Follow a team… did not open")
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(follow.waitForExistence(timeout: 5), "back on Football")
+        app.navigationBars.buttons.firstMatch.tap()
+        let add = app.buttons["settings.sport.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5), "back on Settings › Sport")
+        add.tap()
+        XCTAssertTrue(app.navigationBars["Add a sport"].waitForExistence(timeout: 5), "Add a sport did not open")
+        app.navigationBars.buttons.firstMatch.tap()
+        let delay = app.buttons["settings.sport.delay"]
+        XCTAssertTrue(delay.waitForExistence(timeout: 5), "back on Settings › Sport")
+        delay.tap()
+        XCTAssertTrue(app.navigationBars["Score delay"].waitForExistence(timeout: 5), "Score delay did not open")
     }
 
     private func attach(_ app: XCUIApplication, _ name: String) {
