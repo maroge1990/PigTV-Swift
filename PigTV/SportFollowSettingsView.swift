@@ -604,11 +604,11 @@ struct SportFollowScreen: View {
                 .padding(.horizontal, PigSpacing.section)
         }
         .accessibilityIdentifier("settings.sport.screen")
-        .detailCover(isPresented: $searching) { SportNameSearchScreen(model: model, sport: sport) }
+        .detailCover(isPresented: $searching) { SportNameSearchScreen(model: model, sport: sport).settingsPushedPage() }
         #else
         Form { content }
             .environment(\.editMode, .constant(.active)) // #317: the leagues always show their reorder handles
-            .navigationDestination(isPresented: $searching) { SportNameSearchScreen(model: model, sport: sport) }
+            .navigationDestination(isPresented: $searching) { SportNameSearchScreen(model: model, sport: sport).settingsPushedPage() }
             .navigationTitle(sport)
             .accessibilityIdentifier("settings.sport.screen")
         #endif

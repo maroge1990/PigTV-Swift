@@ -276,7 +276,8 @@ struct LibrarySettings: View {
                         detail
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .toolbar(.hidden, for: .navigationBar)
-                            .background(PigPageBackground()) // the stack paints its own white otherwise
+                            // #317: no background of its own; the stack is kept clear over the page's backdrop.
+                            .background(ClearStackBackdrop())
                     }
                     #endif
                 }
@@ -663,7 +664,7 @@ private struct SportSettingsPage: View {
         // NavigationLink does not open, so the rows set `route` and the page pushes it here, outside the Form.
         .environment(\.editMode, .constant(.active))
         .navigationDestination(item: $route) { route in
-            SportSettingsSection.destination(route, model: model, delay: delay, me: me)
+            SportSettingsSection.destination(route, model: model, delay: delay, me: me).settingsPushedPage()
         }
         #endif
     }
@@ -935,3 +936,23 @@ struct SettingsRow: View {
         #endif
     }
 }
+
+#if os(iOS)
+extension View {
+    /// A page pushed inside Settings: on the iPhone the page canvas, like the menu's pages; on the iPad, beside the menu,
+    /// clear over the one backdrop behind both columns (#317, Mark: the right-hand side has no background of its own).
+    func settingsPushedPage() -> some View { modifier(SettingsPushedPage()) }
+}
+
+private struct SettingsPushedPage: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    func body(content: Content) -> some View {
+        if sizeClass == .compact {
+            content.scrollContentBackground(.hidden).background(PigPageBackground())
+        } else {
+            content.scrollContentBackground(.hidden).background(ClearStackBackdrop())
+        }
+    }
+}
+#endif

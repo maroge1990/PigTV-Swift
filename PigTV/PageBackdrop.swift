@@ -62,8 +62,51 @@ enum PageBackdrop {
     }
 
     private static func paintContainer(_ controller: UIViewController) {
+        guard !cleared.contains(controller) else { return }
         guard let view = controller.viewIfLoaded, view.backgroundColor != .pigPage else { return }
         view.backgroundColor = .pigPage
+    }
+}
+
+extension PageBackdrop {
+    /// Controllers kept clear (`ClearStackBackdrop`): never painted the page colour.
+    static let cleared = NSHashTable<UIViewController>.weakObjects()
+
+    /// Clears the controllers holding `view` up to and including the first navigation controller, so the SwiftUI
+    /// background behind that NavigationStack shows through it.
+    static func clear(from view: UIView) {
+        var responder: UIResponder? = view
+        while let current = responder {
+            if let controller = current as? UIViewController {
+                cleared.add(controller)
+                controller.viewIfLoaded?.backgroundColor = .clear
+                if controller is UINavigationController { return }
+            }
+            responder = current.next
+        }
+    }
+}
+
+/// #317 (Mark, 14 Nov 2026: "the right hand settings shouldn't have its own background"): a zero-size view behind a
+/// page inside the iPad's Settings stack (beside the menu) that keeps that stack and the page's hosting controller clear,
+/// so the one page backdrop behind both columns shows through. Without it the stack paints white (or, once
+/// `PageBackdrop` has painted it, the flat page colour without the bloom).
+struct ClearStackBackdrop: UIViewRepresentable {
+    func makeUIView(context: Context) -> ClearView { ClearView() }
+    func updateUIView(_ view: ClearView, context: Context) {}
+
+    final class ClearView: UIView {
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            isAccessibilityElement = false
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil { PageBackdrop.clear(from: self) }
+        }
     }
 }
 
