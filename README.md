@@ -11,7 +11,7 @@ deep links. It needs a PigTV server on the local network or VPN.
 
 ## Build and run
 
-Requirements: Xcode 27 (deployment targets iOS/tvOS 26.5; tests run on the tvOS 27 simulator); physical devices need development signing, and the App Group
+Requirements: Xcode 27 (deployment targets iOS/iPadOS 17.0, tvOS 26.5; tests run on the tvOS 27 simulator); physical devices need development signing, and the App Group
 `group.au.markrogers.PigTV` registered for both the `PigTV` and `PigTVTopShelf` targets (Signing & Capabilities).
 
 Open `PigTV.xcodeproj`, choose the shared **PigTV** scheme and an Apple TV, iPad or iPhone destination, and run. From the command
