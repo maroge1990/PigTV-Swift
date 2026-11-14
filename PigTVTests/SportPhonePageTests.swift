@@ -45,7 +45,7 @@ final class SportPhonePageTests: XCTestCase {
         let nba = SportPhonePageLayout.cards(league: "NBA", in: f, hidden: false, now: now(f), calendar: calendar)
         XCTAssertEqual(nba.map(\.gameId), ["espn:basketball/nba:2"], "nobody followed, nothing live: the next to start")
         XCTAssertEqual(nba[0].team, "", "no follow, so no team named")
-        XCTAssertEqual(SportPhonePageLayout.position(0, of: 4), "1 of 4 · yours, then live")
+        XCTAssertEqual(SportPhonePageLayout.position(0, of: 4), "1 of 4", "no 'yours, then live' (Mark, 14 Nov 2026)")
     }
 
     func testGamesAreGroupedLiveLaterTodayComingUpEarlier() throws {

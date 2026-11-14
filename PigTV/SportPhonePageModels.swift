@@ -58,9 +58,9 @@ nonisolated enum SportPhonePageLayout {
         return Array(cards.prefix(maxCards))
     }
 
-    /// "1 of 4 · yours, then live".
+    /// "1 of 4" (Mark, 14 Nov 2026: no "· yours, then live").
     static func position(_ index: Int, of count: Int) -> String {
-        "\(min(index + 1, count)) of \(count) · yours, then live"
+        "\(min(index + 1, count)) of \(count)"
     }
 
     /// The league's games as fixture rows: Live, Later today, Coming up (later days, and the next round), Earlier

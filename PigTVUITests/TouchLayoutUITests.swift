@@ -129,10 +129,10 @@ final class TouchLayoutUITests: XCTestCase {
         XCTAssertEqual(title.frame.minY, first.minY, accuracy: 1, "the header moved: \(first) then \(title.frame)")
     }
 
-    /// #256: a followed sport is moved by dragging it in Settings › Sport, after Edit order (before, only by Move up /
-    /// Move down on each sport's own page).
+    /// #256 (Mark, 14 Nov 2026): Settings › Sport's sports and a sport's leagues are always reorderable: press and drag,
+    /// no Edit order and no Move up / Move down; a tap on a sport still opens its page.
     @MainActor
-    func testPhoneSportsAreReorderedByDragging() throws {
+    func testPhoneSportsAndLeaguesAreReorderedByDraggingWithoutEditOrder() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -145,18 +145,29 @@ final class TouchLayoutUITests: XCTestCase {
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settings.sport.row.'"))
         XCTAssertTrue(rows.element(boundBy: 1).waitForExistence(timeout: 15), "two followed sports")
         sleep(2) // the follows can be changed once loaded (dragging is off before)
+        XCTAssertFalse(app.buttons["settings.sport.order"].exists, "no Edit order")
         let before = rows.allElementsBoundByIndex.map(\.identifier)
-        let order = app.buttons["settings.sport.order"]
-        XCTAssertTrue(order.exists, "no Edit order")
-        order.tap()
-        sleep(1)
-        let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
-        XCTAssertGreaterThanOrEqual(handles.count, 2, "no drag handles: \(app.buttons.allElementsBoundByIndex.map(\.label))")
-        handles.element(boundBy: 1).press(forDuration: 0.5, thenDragTo: handles.element(boundBy: 0))
+        rows.element(boundBy: 1).press(forDuration: 1.0, thenDragTo: rows.element(boundBy: 0))
         XCTAssertTrue(waitUntil(5) { rows.allElementsBoundByIndex.map(\.identifier) == [before[1], before[0]] + before.dropFirst(2) },
                       "not reordered: \(rows.allElementsBoundByIndex.map(\.identifier))")
+        attach(app, "iphone-sport-drag")
+
+        app.buttons["settings.sport.row.Football"].tap()
+        XCTAssertTrue(app.buttons["settings.sport.stop"].waitForExistence(timeout: 5), "a tap opens the sport's page")
+        XCTAssertFalse(app.buttons["settings.sport.moveUp"].exists, "no Move up / Move down")
+        XCTAssertFalse(app.buttons["settings.sport.league.Champions League.up"].exists, "nor on a league")
+        let first = app.staticTexts["Premier League"], second = app.staticTexts["Champions League"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5) && second.exists, "Football's two leagues")
+        XCTAssertLessThan(first.frame.minY, second.frame.minY)
+        second.press(forDuration: 1.0, thenDragTo: first)
+        XCTAssertTrue(waitUntil(5) { second.frame.minY < first.frame.minY },
+                      "league not reordered: \(first.frame) \(second.frame)")
+        attach(app, "iphone-sport-league-drag")
+    }
+
+    private func attach(_ app: XCUIApplication, _ name: String) {
         let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "iphone-sport-edit-order"
+        shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
     }

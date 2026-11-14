@@ -53,9 +53,9 @@ final class SportSettingsUITests: XCTestCase {
         attach(app, "settings-sport-section")
         XCUIRemote.shared.press(.select)
 
-        let up = app.buttons["settings.sport.moveUp"]
-        XCTAssertTrue(up.waitForExistence(timeout: 5), "the sport's page did not open")
-        XCTAssertTrue(app.buttons["settings.sport.stop"].exists)
+        XCTAssertTrue(app.buttons["settings.sport.stop"].waitForExistence(timeout: 5), "the sport's page did not open")
+        XCTAssertFalse(app.buttons["settings.sport.moveUp"].exists, "no Move up / Move down (Mark, 14 Nov 2026)")
+        XCTAssertFalse(app.buttons["settings.sport.league.Champions League.up"].exists, "nor on a league")
         XCTAssertTrue(app.buttons["settings.sport.league.Champions League.remove"].exists, "its leagues")
         XCTAssertTrue(app.buttons["settings.sport.addLeague.League Cup"].exists, "Add a league")
         XCTAssertEqual(app.buttons["settings.sport.name.Arsenal.record"].value as? String, "On", "Record every game")

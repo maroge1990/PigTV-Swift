@@ -216,21 +216,6 @@ nonisolated enum SportFollowLogic {
         name.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 
-    /// `list` with item `index` moved by `delta` (-1 up, +1 down); unchanged at either end.
-    static func move<T>(_ list: [T], _ index: Int, _ delta: Int) -> [T] {
-        let to = index + delta
-        guard list.indices.contains(index), list.indices.contains(to) else { return list }
-        var out = list
-        out.swapAt(index, to)
-        return out
-    }
-
-    static func moveSport(_ state: SportFollows, _ sport: String, _ delta: Int) -> SportFollows {
-        var next = state
-        if let i = state.sports.firstIndex(where: { $0.sport == sport }) { next.sports = move(state.sports, i, delta) }
-        return next
-    }
-
     /// #256: a drag in the list. `order` is the sports as the list shows them after the drop; the state its save finds
     /// is put in that order (a sport the list did not have keeps its place after them), so a change made meanwhile on
     /// another device is not lost.
@@ -252,11 +237,15 @@ nonisolated enum SportFollowLogic {
         return rest
     }
 
-    static func moveLeague(_ state: SportFollows, _ sport: String, _ league: String, _ delta: Int) -> SportFollows {
+    /// A league drag on its sport's page: like `orderSports`, applied to the state its save finds (a league the page did
+    /// not show keeps its place after them).
+    static func orderLeagues(_ state: SportFollows, _ sport: String, _ order: [String]) -> SportFollows {
         var next = state
-        if let s = next.sports.firstIndex(where: { $0.sport == sport }), let i = next.sports[s].leagues.firstIndex(of: league) {
-            next.sports[s].leagues = move(next.sports[s].leagues, i, delta)
-        }
+        guard let s = next.sports.firstIndex(where: { $0.sport == sport }) else { return state }
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        next.sports[s].leagues = state.sports[s].leagues.enumerated().sorted { a, b in
+            (rank[a.element] ?? order.count + a.offset, a.offset) < (rank[b.element] ?? order.count + b.offset, b.offset)
+        }.map(\.element)
         return next
     }
 

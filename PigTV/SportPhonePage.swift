@@ -18,7 +18,7 @@ struct SportPhoneCarousel: View {
     let front: SportFront
     let now: Date
     let cards: [SportPhoneCard]
-    /// "1 of 7 follows", "1 of 4 · yours, then live".
+    /// "1 of 7 follows", "1 of 4".
     let position: (Int, Int) -> String
     /// "sport.front" or "sport.page.phone": the accessibility identifiers' prefix.
     let identifier: String

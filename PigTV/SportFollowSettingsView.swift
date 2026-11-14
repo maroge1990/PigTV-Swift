@@ -145,7 +145,7 @@ struct SportSettingsSection: View {
         if let follows = model.follows {
             Section { spoilerRow(follows.spoilerFree) }
             Section {
-                // #256: Edit order, then drag a sport by its handle (each sport's page keeps Move up / Move down).
+                // #256 (Mark, 14 Nov 2026): always reorderable: press and drag a sport; the drop is saved at once.
                 ForEach(follows.sports, id: \.sport) { entry in sportRow(entry) }
                     .onMove(perform: model.canEdit ? { from, to in Task { await model.moveSports(from: from, to: to) } } : nil)
                 if model.state.showsEmpty {
@@ -153,21 +153,7 @@ struct SportSettingsSection: View {
                     PigEmptyState(title: PageWords.noSportsTitle, text: PageWords.noSportsText, identifier: "settings.sport.empty")
                         .listRowBackground(Color.clear)
                 }
-            } header: {
-                HStack(alignment: .firstTextBaseline) {
-                    yourSportsHeading
-                    Spacer()
-                    if follows.sports.count > 1 && model.canEdit {
-                        // #256: a press and drag on the row itself goes to its button; Edit order shows the handles.
-                        Button(model.ordering ? "Done" : "Edit order") {
-                            withAnimation(PigMotion.standard) { model.ordering.toggle() }
-                        }
-                        .font(SettingsSportType.caption.weight(.semibold))
-                        .textCase(nil)
-                        .accessibilityIdentifier("settings.sport.order")
-                    }
-                }
-            }
+            } header: { yourSportsHeading }
             if !model.offline, !model.suggestions.isEmpty {
                 Section { ForEach(model.suggestions) { SportSuggestionRow(model: model, suggestion: $0) } }
             }
@@ -559,7 +545,8 @@ private struct SportSuggestionRow: View {
 
 // MARK: One sport
 
-/// A followed sport: its place in the order, its leagues (unless the catalogue has one), and its teams or people.
+/// A followed sport: Stop following, its leagues (unless the catalogue has one), and its teams or people. Its order is
+/// set by dragging in Settings › Sport (iPhone, iPad; Mark, 14 Nov 2026: no Move up / Move down here, so the TV can't).
 struct SportFollowScreen: View {
     @ObservedObject var model: SportFollowSettingsModel
     /// #278: the recording rules' store (Scheduled's too), so a rule changed or removed there redraws the switches.
@@ -608,63 +595,49 @@ struct SportFollowScreen: View {
     @ViewBuilder
     private var content: some View {
         if let entry = model.entry(sport) {
-            let index = model.follows?.sports.firstIndex { $0.sport == sport } ?? 0
-            let count = model.follows?.sports.count ?? 1
             if !model.message.isEmpty {
                 SportStatusLine(text: model.message).accessibilityIdentifier("settings.sport.message")
             }
             if model.offline {
                 SportStatusLine(text: "Can't reach the server: showing your last copy.")
             }
-            Section {
-                orderActions(index: index, count: count)
-            }
+            Section { stopAction }
             if !model.isOneLeague(sport) { leagues(entry) }
             names(entry)
         }
     }
 
     @ViewBuilder
-    private func orderActions(index: Int, count: Int) -> some View {
-        let up = Button { Task { await model.moveSport(sport, by: -1) } } label: { Label("Move up", systemImage: "arrow.up") }
-            .disabled(!model.canEdit || index == 0)
-            .accessibilityIdentifier("settings.sport.moveUp")
-        let down = Button { Task { await model.moveSport(sport, by: 1) } } label: { Label("Move down", systemImage: "arrow.down") }
-            .disabled(!model.canEdit || index >= count - 1)
-            .accessibilityIdentifier("settings.sport.moveDown")
+    private var stopAction: some View {
         let stop = Button(role: .destructive) {
             Task { if await model.removeSport(sport, ask: questions.ask) { dismiss() } }
         } label: { Label("Stop following \(sport)", systemImage: "xmark.circle") }
             .disabled(!model.canEdit)
             .accessibilityIdentifier("settings.sport.stop")
         #if os(tvOS)
-        DetailActions { up; down; stop }
+        DetailActions { stop }
         #else
-        up; down; stop
+        stop
         #endif
     }
 
     @ViewBuilder
     private func leagues(_ entry: SportFollows.Entry) -> some View {
         Section {
-            ForEach(Array(entry.leagues.enumerated()), id: \.element) { i, league in
+            // Like the sports: press and drag a league (iPhone, iPad); the drop is saved at once.
+            ForEach(entry.leagues, id: \.self) { league in
                 SportItemRow {
                     Text(model.label(league))
                 } actions: {
-                    SportRowAction(title: "Move up", systemImage: "arrow.up", id: "settings.sport.league.\(league).up") {
-                        Task { await model.moveLeague(sport, league, by: -1) }
-                    }
-                    .disabled(!model.canEdit || i == 0)
-                    SportRowAction(title: "Move down", systemImage: "arrow.down", id: "settings.sport.league.\(league).down") {
-                        Task { await model.moveLeague(sport, league, by: 1) }
-                    }
-                    .disabled(!model.canEdit || i >= entry.leagues.count - 1)
                     SportRowAction(title: "Remove", systemImage: "minus.circle", id: "settings.sport.league.\(league).remove") {
                         Task { await model.removeLeague(sport, league, ask: questions.ask) }
                     }
                     .disabled(!model.canEdit)
                 }
             }
+            #if os(iOS)
+            .onMove(perform: model.canEdit ? { from, to in Task { await model.moveLeagues(sport, from: from, to: to) } } : nil)
+            #endif
         } header: { header("Leagues") }
         let groups = unfollowedLeagues(entry)
         if !groups.isEmpty {

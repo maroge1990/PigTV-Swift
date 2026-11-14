@@ -43,14 +43,21 @@ final class SportFollowLogicTests: XCTestCase {
         XCTAssertNil(unknown.error)
     }
 
-    func testRemovingNamesAndMoving() {
+    func testRemovingNamesAndSports() {
         XCTAssertEqual(L.removeNames(state, "Football", ["ARSENAL"]).entry("Football")?.teams, ["Real Madrid"])
-        XCTAssertEqual(L.move([1, 2, 3], 0, -1), [1, 2, 3], "unchanged at the top")
-        XCTAssertEqual(L.move([1, 2, 3], 2, 1), [1, 2, 3], "and at the bottom")
-        XCTAssertEqual(L.move([1, 2, 3], 1, -1), [2, 1, 3])
-        XCTAssertEqual(L.moveSport(state, "Cricket", -1).sports.map(\.sport), ["Cricket", "Football"])
-        XCTAssertEqual(L.moveLeague(state, "Football", "Champions League", -1).entry("Football")?.leagues, ["Champions League", "Premier League"])
         XCTAssertEqual(L.removeSport(state, "Football").sports.map(\.sport), ["Cricket"])
+    }
+
+    /// A league dragged on its sport's page (Mark, 14 Nov 2026: drag like the sports, no Move up / Move down): the leagues
+    /// take the order the page showed after the drop; one added meanwhile keeps its place after them.
+    func testADragOrdersALeaguesSportAndKeepsOneAddedMeanwhile() {
+        let shown = L.moved(["Premier League", "Champions League"], from: IndexSet(integer: 1), to: 0)
+        XCTAssertEqual(L.orderLeagues(state, "Football", shown).entry("Football")?.leagues, ["Champions League", "Premier League"])
+        let meanwhile = L.addLeague(state, "Football", "League Cup")
+        XCTAssertEqual(L.orderLeagues(meanwhile, "Football", shown).entry("Football")?.leagues,
+                       ["Champions League", "Premier League", "League Cup"])
+        XCTAssertEqual(L.orderLeagues(state, "Football", shown).entry("Cricket"), state.entry("Cricket"), "other sports untouched")
+        XCTAssertEqual(L.orderLeagues(state, "Tennis", shown), state, "a sport not followed: unchanged")
     }
 
     func testAddingANameKeepsTheLimits() {
@@ -386,7 +393,7 @@ final class SportFollowSettingsModelTests: XCTestCase {
         var told = 0
         model.onSpoilerFreeChange = { told += 1 }
         await model.load()
-        await model.moveSport("Football", by: 1)
+        await model.moveSports(from: IndexSet(integer: 0), to: 2)
         XCTAssertEqual(told, 0)
         await model.setSpoilerFree(true)
         XCTAssertEqual(told, 1)
