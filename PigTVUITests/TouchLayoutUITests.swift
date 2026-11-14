@@ -146,6 +146,7 @@ final class TouchLayoutUITests: XCTestCase {
         XCTAssertTrue(rows.element(boundBy: 1).waitForExistence(timeout: 15), "two followed sports")
         sleep(2) // the follows can be changed once loaded (dragging is off before)
         XCTAssertFalse(app.buttons["settings.sport.order"].exists, "no Edit order")
+        XCTAssertFalse(app.staticTexts["in your order"].exists, "no words about the order (Mark, 14 Nov 2026)")
         let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
         XCTAssertEqual(handles.count, rows.count, "every sport shows its reorder handle: \(app.buttons.allElementsBoundByIndex.map(\.label))")
         let before = rows.allElementsBoundByIndex.map(\.identifier)

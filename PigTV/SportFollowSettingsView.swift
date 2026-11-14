@@ -62,7 +62,7 @@ private extension View {
 // MARK: Settings section
 
 /// Settings › Sport (D-44 batch 6, R5-SetSport-*), only with the server's `sportFollows` flag. #280: the choices most
-/// people change come first (`SettingsSportOrder`): Hide scores, then your sport in your order (each with its leagues and its followed teams or people, their logos where
+/// people change come first (`SettingsSportOrder`): Hide scores, then your sport (each with its leagues and its followed teams or people, their logos where
 /// the loaded Sport data has them, else monograms), the league suggestions and Add a sport; Score delay is one level down
 /// (a row with its value that opens its own page). On the TV a sport opens its page as a cover; on iOS it is pushed.
 /// A page one level down from Settings › Sport: a cover on the TV, pushed on iOS (by the page, outside its Form).
@@ -233,11 +233,10 @@ struct SportSettingsSection: View {
         HStack(alignment: .firstTextBaseline, spacing: PigSpacing.m) {
             Text("Your sport").font(SettingsSportType.heading).foregroundStyle(Color.pigText)
                 .accessibilityAddTraits(.isHeader)
+            // #317 (Mark, 14 Nov 2026): no "in your order"; the handles (iOS) show the order can be changed.
             #if os(tvOS)
-            Text("in your order · select one to change its leagues and teams").font(SettingsSportType.caption)
+            Text("Select one to change its leagues and teams").font(SettingsSportType.caption)
                 .foregroundStyle(Color.pigSecondary)
-            #else
-            Text("in your order").font(SettingsSportType.caption).foregroundStyle(Color.pigSecondary)
             #endif
         }
         .textCase(nil)
