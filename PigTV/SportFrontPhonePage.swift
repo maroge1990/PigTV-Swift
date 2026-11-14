@@ -138,12 +138,13 @@ struct SportFrontPhonePage: View {
                 }
             }
             .padding(.bottom, PigSpacing.section)
+            .pigScrollProbe()
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
-        .onScrollGeometryChange(for: Bool.self) { [carouselHeight] in
-            SportHeroStrip.shows(scrolled: $0.contentOffset.y + $0.contentInsets.top, bannerHeight: carouselHeight, stripHeight: SportHeroStripMetrics.height)
-        } action: { _, past in pastBanner = past }
+        .onScrollPast({ [carouselHeight] in
+            SportHeroStrip.shows(scrolled: $0, bannerHeight: carouselHeight, stripHeight: SportHeroStripMetrics.height)
+        }, action: { pastBanner = $0 })
     }
 
     /// #226: the one page header every tab draws (PigPageHeader), the scores chip trailing.

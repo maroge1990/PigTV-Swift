@@ -131,7 +131,7 @@ struct ProviderReminderBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
                 #if !os(tvOS)
                 Button("OK") { reminders.dismiss() }
-                    .buttonStyle(.glass)
+                    .pigGlassButton()
                     .accessibilityIdentifier("providerReminder.dismiss")
                 #endif
             }
@@ -166,7 +166,7 @@ private extension View {
         #if os(tvOS)
         background(.regularMaterial, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         #else
-        glassEffect(in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+        pigGlassBackground(in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         #endif
     }
 }

@@ -164,7 +164,7 @@ extension View {
         #if os(tvOS)
         self.buttonStyle(PigPrimaryButtonStyle())
         #else
-        self.buttonStyle(.glassProminent).tint(Color.pigAccent).foregroundStyle(Color.pigOnAccent)
+        self.pigGlassProminentButton().tint(Color.pigAccent).foregroundStyle(Color.pigOnAccent)
         #endif
     }
 }

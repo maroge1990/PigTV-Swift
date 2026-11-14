@@ -34,6 +34,16 @@ final class SportHeroStripTests: XCTestCase {
         XCTAssertFalse(SportHeroStrip.shows(scrolled: 500, bannerHeight: 0, stripHeight: 72), "no banner, no strip")
     }
 
+    // #262: on iOS 17 (no scroll geometry) the scrolled distance comes from a probe at the content's top, measured in the
+    // ScrollView's frame: at rest it is at 0, scrolled up it goes negative, pulled down (the bounce) positive.
+    func testOnIOS17TheProbeAtTheContentsTopGivesTheScrolledDistance() {
+        XCTAssertEqual(PigScrollProbe.scrolled(probeTop: 0), 0, "at rest")
+        XCTAssertEqual(PigScrollProbe.scrolled(probeTop: -249), 249, "scrolled up 249 pt")
+        XCTAssertLessThan(PigScrollProbe.scrolled(probeTop: 40), 0, "the top bounce is not a scroll")
+        XCTAssertTrue(SportHeroStrip.shows(scrolled: PigScrollProbe.scrolled(probeTop: -249), bannerHeight: 320, stripHeight: 72))
+        XCTAssertFalse(SportHeroStrip.shows(scrolled: PigScrollProbe.scrolled(probeTop: -248), bannerHeight: 320, stripHeight: 72))
+    }
+
     // #278 ("seen on the way"): on the iPhone the strip's LIVE pill was a red bar with no word in it, because a long title
     // and line took the room and left the pill's text none. The pill must keep its word at a narrow width.
     @MainActor

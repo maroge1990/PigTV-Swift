@@ -184,7 +184,7 @@ struct SportPhoneCarousel: View {
                 Button { flow.record(event, game: game, team: team) } label: {
                     Label(SportPhoneCardButtons.record, systemImage: "record.circle").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .pigGlassButton()
                 .tint(Color.pigText)
                 .accessibilityIdentifier("\(identifier).card.record")
             }

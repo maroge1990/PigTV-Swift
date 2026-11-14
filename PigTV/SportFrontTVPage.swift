@@ -134,6 +134,8 @@ struct SportFrontTVPage: View {
                 }
             }
             .padding(.bottom, PigSpacing.empty)
+            // iOS 17's scroll offset (onScrollPast below): the probe rests at the frame's top, before the #312 draw-up.
+            .pigScrollProbe()
             #if os(iOS)
             .padding(.horizontal, PigSpacing.xl)
             #endif
@@ -151,9 +153,9 @@ struct SportFrontTVPage: View {
             // #312: while the strip shows, nothing is drawn in its room (the strip is over it).
             SportPageTopMask(overdraw: SportFrontTVPage.overdraw, top: stripShows ? SportHeroStripMetrics.room : 0)
         }
-        .onScrollGeometryChange(for: Bool.self) { [bannerHeight] in
-            SportHeroStrip.shows(scrolled: $0.contentOffset.y + $0.contentInsets.top, bannerHeight: bannerHeight, stripHeight: SportHeroStripMetrics.height)
-        } action: { _, past in pastBanner = past }
+        .onScrollPast({ [bannerHeight] in
+            SportHeroStrip.shows(scrolled: $0, bannerHeight: bannerHeight, stripHeight: SportHeroStripMetrics.height)
+        }, action: { pastBanner = $0 })
         .defaultFocus($heroFocused, true, priority: .userInitiated)
     }
 

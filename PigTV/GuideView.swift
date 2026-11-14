@@ -28,6 +28,26 @@ private struct FilterStripMetrics: Equatable {
     var fadesTrailing: Bool { overflows && offset < maximumOffset - 1 }
 }
 
+/// The category strip's scroll position, for its edge fades. #262: iOS 17 has no scroll geometry, so there the strip
+/// draws without fades (cosmetic only).
+private struct FilterStripTracking: ViewModifier {
+    @Binding var metrics: FilterStripMetrics
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: FilterStripMetrics.self, of: { geometry in
+                FilterStripMetrics(offset: max(0, geometry.contentOffset.x + geometry.contentInsets.leading),
+                                   viewportWidth: geometry.containerSize.width,
+                                   contentWidth: geometry.contentSize.width + geometry.contentInsets.leading + geometry.contentInsets.trailing)
+            }) { _, metrics in
+                self.metrics = metrics
+            }
+        } else {
+            content
+        }
+    }
+}
+
 /// Build 31: the inputs of GuideView's filtered rows.
 private struct GuideRowsInput: Equatable {
     /// Guides this large are filtered off the main actor.
@@ -556,13 +576,7 @@ struct GuideView: View {
             .scrollIndicators(.hidden)
             .clipped()
             .coordinateSpace(name: "categoryStrip")
-            .onScrollGeometryChange(for: FilterStripMetrics.self, of: { geometry in
-                FilterStripMetrics(offset: max(0, geometry.contentOffset.x + geometry.contentInsets.leading),
-                                   viewportWidth: geometry.containerSize.width,
-                                   contentWidth: geometry.contentSize.width + geometry.contentInsets.leading + geometry.contentInsets.trailing)
-            }) { _, metrics in
-                filterStripMetrics = metrics
-            }
+            .modifier(FilterStripTracking(metrics: $filterStripMetrics))
             if usesGridView {
                 HStack(spacing: PigSpacing.s) { tools }
                     .buttonStyle(GuideFilterStyle())
