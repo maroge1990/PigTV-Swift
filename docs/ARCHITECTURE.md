@@ -348,7 +348,7 @@ controls are not used for live play.
 - **iPhone sport pages (`SportPhonePage`, D-44, R5-*-iPhone, #177, #186, Apple 142)**: the front page's pattern. "‹ Sport",
   the sport and the scores chip; the sport's leagues as chips (only with more than one); a 212 pt carousel of the
   selected league's games (`SportPhoneCarousel`, shared with the front page: the league's follows in the order sent, each
-  recording its own team, #49, then its other live games; with neither, the next to start; "1 of 4 · yours, then live");
+  recording its own team, #49, then its other live games; with neither, the next to start; "1 of 4");
   its games as `SportFixtureRow`s under Live, Later today, Coming up and Earlier. The league's own content (what the
   Apple TV shows under its banner: rounds and standings, Formula 1's weekend, the cricket scoreboard and tour, a
   leaderboard, order of play or fight card) is a page of its own behind that header (`SportRoute(sport:league:)`,
@@ -409,9 +409,10 @@ controls are not used for live play.
 
 - **What the account follows, synced through the server (D-41).** Only with `sportFollows`: a Sport section after
   Appearance (`SportSettingsSection`, `SportFollowSettingsView.swift`) with league suggestions (Add / No thanks), "Hide
-  scores", a row per followed sport (its leagues and names) and "Add a sport". A sport's page (`SportFollowScreen`, a
-  `detailCover` on tvOS, a NavigationLink on iOS): its place in the order, Stop following, its leagues (Move up / Move down /
-  Remove, Add a league under the catalogue's headings; none for a one-league sport), its teams or players with "Record every
+  scores", a row per followed sport (its leagues and names) and "Add a sport". On iPhone and iPad the sports, and a sport's
+  leagues on its page, are reordered by pressing and dragging at any time (`onMove` outside edit mode, saved at the drop);
+  the Apple TV has no way to reorder (Mark, 14 Nov 2026). A sport's page (`SportFollowScreen`, a
+  `detailCover` on tvOS, a NavigationLink on iOS): Stop following, its leagues (Remove, Add a league under the catalogue's headings; none for a one-league sport), its teams or players with "Record every
   game" (a C-M `team` rule; only with `recordingRules` and for team sports) and Unfollow, and "Follow a team…" (a search over
   the followed leagues' `sports/names`, 30 at most). `SportFollowLogic` (`SportFollowModels.swift`) is the web's
   `SportFollowModel` rule for rule; `SportFollowSettingsModel` (`BrowseModel.sportFollows`) loads the follows, catalogue,
