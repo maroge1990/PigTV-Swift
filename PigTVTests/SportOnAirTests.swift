@@ -105,12 +105,52 @@ final class SportOnAirTests: XCTestCase {
         let game = try XCTUnwrap(f.game(Self.chiefs))
         let now = Date(timeIntervalSince1970: (game.start - 20 * 60_000) / 1000)
         let row = SportPhoneLayout.row(game, in: f, hidden: false, now: now, follows: [], calendar: Self.utc)
-        XCTAssertEqual(row.live, SportFrontText.onAirLine(game), "the row's live dot and words")
+        XCTAssertEqual(row.live, SportFrontText.onAirLine(game, calendar: Self.utc), "the row's live dot and words, in its calendar")
         let card = SportPhoneLayout.card(game, in: f, hidden: false, now: now, index: -1, id: game.id, league: "NFL",
                                          follow: nil, follows: [], calendar: Self.utc)
         XCTAssertTrue(card.live)
         XCTAssertEqual(card.kicker, "ON AIR · NFL")
         XCTAssertTrue(card.line.hasPrefix("On air · starts \(time(game.start))"), card.line)
+    }
+
+    // MARK: #313 item 2: an on-air game counts as under way for the hero and the poll
+
+    /// The hero shows an on-air game; the next answer's server hero is another game. Before, only a game under way was
+    /// kept, so the on-air hero was replaced on the next answer.
+    func testAnOnAirHeroIsKeptOnTheNextAnswer() throws {
+        let f = try front()
+        XCTAssertNotEqual(f.hero.gameId, Self.chiefs, "the server proposes another game")
+        XCTAssertEqual(SportFrontHero.resolve(current: Self.chiefs, front: f, wentLive: [], selectedFollow: nil, pinned: nil),
+                       Self.chiefs, "the on-air hero stays")
+        let plain = try front(onAir: nil)
+        XCTAssertEqual(SportFrontHero.resolve(current: Self.chiefs, front: plain, wentLive: [], selectedFollow: nil, pinned: nil),
+                       plain.hero.gameId, "a game merely upcoming is not kept")
+    }
+
+    /// A page whose only game is on air polls as a live one does.
+    func testAnOnAirGameCountsAsALiveGame() throws {
+        let only = try front(games: [Self.chiefs]) { json in
+            json["games"] = (json["games"] as? [[String: Any]] ?? []).filter { ($0["id"] as? String) == Self.chiefs }
+        }
+        XCTAssertTrue(only.hasLiveGame, "on air")
+        let plain = try front(onAir: nil) { json in
+            json["games"] = (json["games"] as? [[String: Any]] ?? []).filter { ($0["id"] as? String) == Self.chiefs }
+        }
+        XCTAssertFalse(plain.hasLiveGame, "upcoming only")
+    }
+
+    /// The card's on-air words use the caller's calendar (its time zone), as the hero and the rows do; before, the
+    /// device's own (`.current`).
+    func testTheCardClockUsesTheCallersCalendar() throws {
+        let f = try front()
+        let game = try XCTUnwrap(f.game(Self.chiefs))
+        var far = Calendar(identifier: .gregorian)
+        far.timeZone = try XCTUnwrap(TimeZone(identifier: TimeZone.current.secondsFromGMT() == 14 * 3600 ? "Pacific/Pago_Pago" : "Pacific/Kiritimati"))
+        XCTAssertNotEqual(SportFrontText.onAirLine(game, calendar: far), SportFrontText.onAirLine(game), "the zones differ")
+        XCTAssertEqual(SportFrontText.cardClock(game, in: f, hidden: false, calendar: far), SportFrontText.onAirLine(game, calendar: far))
+        let now = Date(timeIntervalSince1970: (game.start - 20 * 60_000) / 1000)
+        XCTAssertEqual(SportPhoneLayout.row(game, in: f, hidden: false, now: now, follows: [], calendar: far).live,
+                       SportFrontText.onAirLine(game, calendar: far), "the phone row passes its calendar on")
     }
 
     // MARK: F1 sessions (C-P)

@@ -154,8 +154,8 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
     var scoresUnavailable: Bool { scores == "unavailable" }
     /// Nothing followed: the page offers to follow a sport.
     var isEmpty: Bool { sports.isEmpty }
-    /// A game is under way (live, at a break or suspended): the page polls faster.
-    var hasLiveGame: Bool { games.contains { SportFrontHero.ongoing.contains($0.status) } }
+    /// A game is under way (live, at a break or suspended) or on air before play (#313): the page polls faster.
+    var hasLiveGame: Bool { games.contains(where: SportFrontHero.holds) }
     /// #261 (187): a game under way, or not over and within an hour of its start: the page re-asks every 20 s, so a game
     /// going live shows within seconds of the server having it (not after a 60 s wait for the first live answer).
     func wantsFastRefresh(at now: Date) -> Bool {
@@ -170,6 +170,9 @@ nonisolated struct SportFront: Decodable, Equatable, Sendable {
 nonisolated enum SportFrontHero {
     /// Statuses during which a hero stays put.
     static let ongoing: Set<String> = SportStatus.underWayStatuses
+
+    /// #313 item 2: a hero stays put while its game is under way, or on air before play (#203: worded and drawn as live).
+    static func holds(_ game: SportsGame) -> Bool { ongoing.contains(game.status) || game.isOnAir }
 
     /// Follows (by index in `front`) that are live now and were not in `previous`. None on a first answer: the server's
     /// own hero already puts a live follow first.
@@ -196,7 +199,7 @@ nonisolated enum SportFrontHero {
                 return id
             }
         }
-        if let current, let game = front.game(current), ongoing.contains(game.status) { return current }
+        if let current, let game = front.game(current), holds(game) { return current }
         return front.game(front.hero.gameId)?.id
     }
 }
@@ -301,8 +304,9 @@ nonisolated enum SportFrontText {
     /// banner's line has it). The status ("LIVE", "HT") without the scores feed or a fresh clock.
     /// #203: on air, "On air · starts 3:10 pm"; just "On air" where the card already shows the start (`startShown`: a
     /// session card's time line), so the words are never cut short beside its action on the Apple TV.
-    static func cardClock(_ game: SportsGame, in front: SportFront, hidden: Bool, startShown: Bool = false) -> String {
-        if game.isOnAir { return startShown ? "On air" : onAirLine(game) }
+    static func cardClock(_ game: SportsGame, in front: SportFront, hidden: Bool, startShown: Bool = false,
+                          calendar: Calendar = .current) -> String {
+        if game.isOnAir { return startShown ? "On air" : onAirLine(game, calendar: calendar) }
         guard !front.scoresUnavailable, game.freshness == "fresh", game.family != .motorsport else { return game.statusLabel }
         var parts: [String] = []
         if let period = game.progress.period, period > 0 {

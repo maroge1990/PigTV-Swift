@@ -72,8 +72,8 @@ final class SportFrontModel: ObservableObject {
         if let pinned, answer.game(pinned).map({ $0.terminal }) ?? true { self.pinned = nil }
         if let key = selectedFollowKey {
             let index = answer.follows.firstIndex { $0.key == key }
-            let wasOn = front?.game(heroID).map { SportFrontHero.ongoing.contains($0.status) } ?? false
-            let isOn = answer.game(heroID).map { SportFrontHero.ongoing.contains($0.status) } ?? false
+            let wasOn = front?.game(heroID).map(SportFrontHero.holds) ?? false
+            let isOn = answer.game(heroID).map(SportFrontHero.holds) ?? false
             let finished = index.flatMap { answer.game(answer.follows[$0].gameId) }?.terminal ?? false
             if index == nil || (wasOn && !isOn) || finished { selectedFollowKey = nil }
         }

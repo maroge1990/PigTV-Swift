@@ -189,7 +189,7 @@ nonisolated enum SportPhoneLayout {
         let short = pair.map(SportScoreText.short)
         // #203: on air before play takes the live dot too, worded "On air · starts 3:10 pm".
         let ongoing = SportFrontText.showsLive(game)
-        let clock = ongoing ? SportFrontText.cardClock(game, in: front, hidden: hidden) : nil
+        let clock = ongoing ? SportFrontText.cardClock(game, in: front, hidden: hidden, calendar: calendar) : nil
         let live = game.isOnAir ? clock
             : ongoing ? ["LIVE", clock == game.statusLabel ? nil : clock].compactMap { $0 }.joined(separator: " ") : nil
         let channel = SportFrontText.channelLine(game)
