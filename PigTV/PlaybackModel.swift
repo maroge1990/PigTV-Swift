@@ -962,6 +962,29 @@ final class PlaybackModel: ObservableObject, Identifiable {
         Task { await client.reportPlaybackEvent(event) }
     }
 
+    // MARK: #268 sync marker (Labs)
+
+    private var syncMarkerGate = SyncMarker.Gate()
+
+    /// What the player knows now, for a sync marker. Reads only; playback is untouched.
+    func syncMarkerState(now: Date = Date()) -> SyncMarker.State {
+        let item = player.currentItem
+        let current = item.map { CMTimeGetSeconds($0.currentTime()) }
+        let end = item?.seekableTimeRanges.last.map { CMTimeGetSeconds(CMTimeRangeGetEnd($0.timeRangeValue)) }
+        let watching = playingSince.map { max(0, now.timeIntervalSince($0)) } ?? 0
+        return SyncMarker.State(currentTime: current, seekableEnd: end, watchedSec: watchedSeconds + watching,
+                                stalls: stalls, rate: Double(player.rate), catchingUp: catchingUp)
+    }
+
+    /// #268: "Sound out of step" pressed: sends one `av-desync` event with the player's state. -> false when a press in
+    /// the last 10 s was already sent (this one is ignored).
+    @discardableResult
+    func markSoundOutOfStep(now: Date = Date()) -> Bool {
+        guard syncMarkerGate.accept(at: now) else { return false }
+        report(SyncMarker.event(syncMarkerState(now: now)))
+        return true
+    }
+
     nonisolated static func errorChain(_ error: NSError?) -> [PlayerErrorCode] {
         var current = error
         var codes: [PlayerErrorCode] = []

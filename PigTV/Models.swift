@@ -492,6 +492,56 @@ struct PlaybackEvent: Encodable {
     var origin: String?
     // #36 (Apple 174, server 0487), play-start only: where the start went, ms since the play began.
     var phases: StartPhases?
+    // #268, av-desync only (Labs › Sync marker button): the player's rate (0.97 while it builds its hold, else 1), how
+    // far behind the live edge it plays (seekable end − current time, s) and whether it is still catching up (#7).
+    var rate: Double?
+    var behindLive: Double?
+    var catchingUp: Bool?
+}
+
+/// #268: the "Sound out of step" press (Labs › Sync marker button). One `av-desync` event with what the player knows at
+/// that moment; at most one every `minimumGap` seconds, the rest ignored. Pure.
+nonisolated enum SyncMarker {
+    static let event = "av-desync"
+    static let minimumGap: TimeInterval = 10
+    static let label = "Sound out of step"
+    static let confirmation = "Noted"
+
+    /// What the player knows at the press.
+    struct State: Equatable, Sendable {
+        var currentTime: Double?
+        /// The end of the seekable range (the live edge).
+        var seekableEnd: Double?
+        var watchedSec: Double
+        var stalls: Int
+        var rate: Double
+        var catchingUp: Bool
+    }
+
+    static func event(_ state: State) -> PlaybackEvent {
+        var event = PlaybackEvent(event: Self.event)
+        let current = state.currentTime.flatMap { $0.isFinite ? $0 : nil }
+        let end = state.seekableEnd.flatMap { $0.isFinite ? $0 : nil }
+        event.currentTime = current
+        event.bufferedEnd = end
+        event.watchedSec = state.watchedSec.isFinite ? max(0, state.watchedSec) : nil
+        event.stalls = state.stalls
+        event.rate = state.rate.isFinite ? state.rate : nil
+        if let current, let end { event.behindLive = max(0, end - current) }
+        event.catchingUp = state.catchingUp
+        return event
+    }
+
+    /// One press per `minimumGap`: a press is accepted when none was accepted in the `minimumGap` seconds before it.
+    struct Gate: Equatable, Sendable {
+        private(set) var last: Date?
+
+        mutating func accept(at now: Date) -> Bool {
+            if let last, now >= last, now.timeIntervalSince(last) < SyncMarker.minimumGap { return false }
+            last = now
+            return true
+        }
+    }
 }
 
 /// #36: a play's start, step by step (ms since the play began; each optional): the server's answer, the item ready to

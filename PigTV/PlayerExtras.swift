@@ -127,6 +127,8 @@ struct TouchPlayerChrome: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// #268: Labs › Sync marker button.
+    @AppStorage(Labs.syncMarker) private var syncMarker = false
 
     init(playback: PlaybackModel, app: AppModel, browse: BrowseModel, pip: PiPHandle? = nil, close: @escaping () -> Void,
          openChannels: @escaping () -> Void, enterNumber: @escaping () -> Void,
@@ -183,6 +185,14 @@ struct TouchPlayerChrome: View {
                 if let pip, pip.supported {
                     PlayerCircleButton(icon: "pip.enter", label: "Picture in Picture", size: 44) { touch(); pip.start() }
                         .accessibilityIdentifier("player.pip")
+                }
+                if syncMarker {
+                    // #268: stamps the moment into the server log; the secondary pill, its label the same words.
+                    PlayerPillButton(title: SyncMarker.label, icon: "waveform.badge.exclamationmark", compactLabel: true) {
+                        touch()
+                        if playback.markSoundOutOfStep() { notice = SyncMarker.confirmation }
+                    }
+                    .accessibilityIdentifier("player.syncMarker")
                 }
                 PlayerPillButton(title: "Channels", icon: "list.bullet.rectangle", prominent: true) {
                     touch(); openChannels()

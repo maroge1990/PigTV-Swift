@@ -580,6 +580,60 @@ final class PlaybackLifecycleTests: XCTestCase {
         PlaybackModel.setExternalMetadata([title], on: item)
     }
 
+    // MARK: #268 sync marker (Labs › Sync marker button)
+
+    /// The event carries what the player knows: its time, the live edge, how far behind it plays, its rate and whether it
+    /// is still building its hold, with the watched time and stalls.
+    func testASyncMarkerCarriesThePlayersState() throws {
+        let event = SyncMarker.event(.init(currentTime: 1_000, seekableEnd: 1_031.5, watchedSec: 1_800, stalls: 3,
+                                           rate: 0.97, catchingUp: true))
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(event)) as? [String: Any])
+        XCTAssertEqual(json["event"] as? String, "av-desync")
+        XCTAssertEqual(json["currentTime"] as? Double, 1_000)
+        XCTAssertEqual(json["bufferedEnd"] as? Double, 1_031.5)
+        XCTAssertEqual(json["behindLive"] as? Double, 31.5)
+        XCTAssertEqual(json["watchedSec"] as? Double, 1_800)
+        XCTAssertEqual(json["stalls"] as? Int, 3)
+        XCTAssertEqual(json["rate"] as? Double, 0.97)
+        XCTAssertEqual(json["catchingUp"] as? Bool, true)
+        // Nothing known (no item yet): no times and no distance, never a NaN.
+        let empty = SyncMarker.event(.init(currentTime: .nan, seekableEnd: nil, watchedSec: 0, stalls: 0, rate: 0, catchingUp: false))
+        let bare = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(empty)) as? [String: Any])
+        XCTAssertNil(bare["currentTime"]); XCTAssertNil(bare["bufferedEnd"]); XCTAssertNil(bare["behindLive"])
+        XCTAssertEqual(bare["catchingUp"] as? Bool, false)
+    }
+
+    func testOneSyncMarkerEveryTenSeconds() {
+        var gate = SyncMarker.Gate()
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(gate.accept(at: t0))
+        XCTAssertFalse(gate.accept(at: t0.addingTimeInterval(1)))
+        XCTAssertFalse(gate.accept(at: t0.addingTimeInterval(9.9)))
+        XCTAssertTrue(gate.accept(at: t0.addingTimeInterval(10)), "ten seconds on, the next is sent")
+        XCTAssertFalse(gate.accept(at: t0.addingTimeInterval(15)), "counted from the last one sent, not the last press")
+        XCTAssertTrue(gate.accept(at: t0.addingTimeInterval(20.5)))
+    }
+
+    /// Pressed twice within 10 s, the player sends one av-desync event to the client-event route, and nothing else.
+    func testPressingTheSyncMarkerTwiceSendsOneEvent() async throws {
+        let server = SyntheticServer { _, _, _ in .init(status: 200, json: "{}") }
+        let playback = model(try client(server, modern: true))
+        let t0 = Date()
+        XCTAssertTrue(playback.markSoundOutOfStep(now: t0))
+        XCTAssertFalse(playback.markSoundOutOfStep(now: t0.addingTimeInterval(4)), "ignored")
+        try await eventually { server.captured.contains { $0.path == "/api/playback/client-event" } }
+        try await Task.sleep(for: .milliseconds(200))
+        let sent = server.captured.filter { $0.path == "/api/playback/client-event" }
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(server.captured.count, 1, "nothing else is asked: playback is untouched")
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(sent.first).body) as? [String: Any])
+        XCTAssertEqual(json["event"] as? String, "av-desync")
+        XCTAssertEqual(json["catchingUp"] as? Bool, false)
+        XCTAssertEqual(json["rate"] as? Double, 0)
+        XCTAssertEqual(json["stalls"] as? Int, 0)
+        XCTAssertTrue(playback.markSoundOutOfStep(now: t0.addingTimeInterval(11)), "after 10 s, another")
+    }
+
     #if os(tvOS)
     // The TV switches display mode through UIWindow.avDisplayManager, an AVKit
     // category. If AVKit stops being loaded, that call crashes at channel start.

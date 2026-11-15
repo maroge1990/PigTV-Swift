@@ -28,7 +28,7 @@ enum PlayerChrome: Equatable {
 }
 
 private enum PlayerAction: CaseIterable {
-    case favourite, record, tracks, channels, live, lastChannel
+    case favourite, record, tracks, channels, live, lastChannel, syncMarker
 }
 
 struct CustomPlayerView: View {
@@ -52,6 +52,8 @@ struct CustomPlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // A4.2: Labs → Stream info overlay.
     @AppStorage(Labs.streamInfo) private var showsStreamInfo = false
+    // #268: Labs → Sync marker button.
+    @AppStorage(Labs.syncMarker) private var syncMarker = false
 
     private var browse: BrowseModel? { app.browse }
     private var channels: [Channel] { app.playerChannels }
@@ -64,6 +66,7 @@ struct CustomPlayerView: View {
             case .tracks: return playback.hasTrackChoice
             case .live: return playback.behindLive || paused
             case .lastChannel: return app.previousChannel.map { $0.id != playback.channel.id } ?? false
+            case .syncMarker: return syncMarker
             default: return true
             }
         }
@@ -226,6 +229,9 @@ struct CustomPlayerView: View {
             notice = "Back to live"
         case .lastChannel:
             app.returnToPreviousChannel()
+        case .syncMarker:
+            // #268: one av-desync event; a second press within 10 s is ignored.
+            if playback.markSoundOutOfStep() { notice = SyncMarker.confirmation }
         case .favourite:
             guard let browse, !busy else { return }
             let value = !favourite
@@ -339,6 +345,7 @@ struct CustomPlayerView: View {
         case .channels: return "list.bullet"
         case .live: return "dot.radiowaves.left.and.right"
         case .lastChannel: return "arrow.uturn.backward"
+        case .syncMarker: return "waveform.badge.exclamationmark"
         }
     }
 
@@ -350,6 +357,7 @@ struct CustomPlayerView: View {
         case .channels: return "Channels"
         case .live: return "Go to live"
         case .lastChannel: return "Last channel"
+        case .syncMarker: return SyncMarker.label
         }
     }
 

@@ -135,7 +135,13 @@ enum ContractChecks {
         labsDefaults.set(true, forKey: Labs.streamInfo)
         try expect(Labs.isOn(Labs.streamInfo, in: labsDefaults), "Labs switches persist")
         labsDefaults.removePersistentDomain(forName: "pigtv.contract.labs")
-        try expect(Labs.toggles.map(\.key) == ["pigtv.labs.streamInfo"], "Labs keys match contract C-F")
+        try expect(Labs.toggles.map(\.key) == ["pigtv.labs.streamInfo", "pigtv.labs.syncMarker"], "Labs keys match contract C-F")
+        // #268: the sync marker's event, its three new fields, nothing else beyond the payload's own.
+        let marker = SyncMarker.event(.init(currentTime: 100, seekableEnd: 130.5, watchedSec: 600, stalls: 2, rate: 0.97, catchingUp: true))
+        let markerJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(marker)) as! [String: Any]
+        try expect(markerJSON["event"] as? String == "av-desync" && markerJSON["behindLive"] as? Double == 30.5
+                   && markerJSON["rate"] as? Double == 0.97 && markerJSON["catchingUp"] as? Bool == true,
+                   "#268: av-desync carries rate, behindLive and catchingUp")
         let request = ResolveBody(sourceId: 3, channelId: "42", capabilities: capable)
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as! [String: Any]
         try expect(json["force"] as? Bool == false, "Normal playback must never stop a recording implicitly")
