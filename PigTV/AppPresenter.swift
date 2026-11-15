@@ -88,6 +88,8 @@ final class AppPresenter {
         let message: String
         /// The toast's second line (D-44 R5-Undo: "Undo for 10 seconds" when nil).
         var detail: String? = nil
+        /// #313 item 3: what the action removes (`PendingRemoval.key`, "rule:7"), so a caller can settle this one only.
+        var key: String? = nil
         fileprivate let commit: () -> Void
         /// Apple 122: puts back what the action hid at once (Undo).
         fileprivate var undone: (() -> Void)? = nil
@@ -103,9 +105,11 @@ final class AppPresenter {
     /// Shows the toast; `commit` runs when the 10 s end or the app goes to the background, never after Undo. A new
     /// offer commits the one before it first.
     /// `undone` runs on Undo instead (Apple 122: it shows again what the action hid at once).
-    func offerUndo(_ message: String, detail: String? = nil, undone: (() -> Void)? = nil, commit: @escaping () -> Void) {
+    /// `key` names what it removes (`commitPendingUndo(key:)`).
+    func offerUndo(_ message: String, detail: String? = nil, key: String? = nil, undone: (() -> Void)? = nil,
+                   commit: @escaping () -> Void) {
         commitPendingUndo()
-        let pending = PendingUndo(message: message, detail: detail, commit: commit, undone: undone)
+        let pending = PendingUndo(message: message, detail: detail, key: key, commit: commit, undone: undone)
         pendingUndo = pending
         let sleep = self.sleep
         undoTimer = Task { [weak self] in
@@ -122,6 +126,12 @@ final class AppPresenter {
         let undone = pendingUndo?.undone
         pendingUndo = nil
         undone?()
+    }
+
+    /// #313 item 3: runs the pending action now only when it removes `key` (another action's Undo stays open).
+    func commitPendingUndo(key: String) {
+        guard pendingUndo?.key == key else { return }
+        commitPendingUndo()
     }
 
     /// Runs the pending action now (its time is up, or the app is going to the background).

@@ -385,8 +385,15 @@ final class SportFollowSettingsModel: ObservableObject {
     /// #301: a team's rule removed in Scheduled whose Undo is still open is settled (the removal goes ahead) before an
     /// unfollow decides about its rule: otherwise no question is asked and Undo would bring back a rule for a team no
     /// longer followed. The user has already said they do not want that rule.
+    /// #313 item 3: only those teams' rules: another action's open Undo is not committed by it.
     private func settleRemovedRules(_ sport: String, _ names: [String]) {
-        if names.contains(where: { ruleRemovalPending(sport, $0) }) { ruleOwner?.settlePendingRemovals() }
+        guard rulesKnown, let ruleOwner else { return }
+        let pending = ruleStore.rules.filter(removed)
+        for name in names {
+            if let rule = SportFollowLogic.ruleFor(pending, sport: sport, name: name) {
+                ruleOwner.settlePendingRemoval(RecordingsHome.key(rule))
+            }
+        }
     }
 
     /// D-41 point 11: unfollowing a team asks whether to keep its "Record every game"; not kept, it is deleted. -> the

@@ -723,7 +723,7 @@ final class BrowseModel: ObservableObject {
         recordingStore.pendingRemovals.insert(key)
         // Apple 126 (Codex 5b round 2, high): while its Undo is open, a logged removal of this item is never replayed.
         openUndoKeys.insert(key)
-        presenter.offerUndo(message, undone: { [weak self] in
+        presenter.offerUndo(message, key: key, undone: { [weak self] in
             guard let self else { return }
             self.openUndoKeys.remove(key)
             self.recordingStore.pendingRemovals.remove(key)
@@ -1155,10 +1155,11 @@ protocol RecordingRuleOwner: AnyObject {
     func reloadRules() async
     @discardableResult
     func changeRule(_ choose: () -> RuleChange?) async throws -> Bool
-    /// #301: commits the removal whose Undo is open, now (a rule's Undo, before an unfollow decides about its rule).
-    func settlePendingRemovals()
+    /// #301: commits the removal of `key` (`PendingRemoval.key`) now when its Undo is open (a rule's Undo, before an
+    /// unfollow decides about its rule). #313: only that one; another action's open Undo is left as it is.
+    func settlePendingRemoval(_ key: String)
 }
 
 extension BrowseModel: RecordingRuleOwner {
-    func settlePendingRemovals() { presenter?.commitPendingUndo() }
+    func settlePendingRemoval(_ key: String) { presenter?.commitPendingUndo(key: key) }
 }

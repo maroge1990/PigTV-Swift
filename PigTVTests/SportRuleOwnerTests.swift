@@ -196,6 +196,28 @@ final class SportRuleOwnerTests: XCTestCase {
         XCTAssertNil(team(browse))
     }
 
+    /// #313 item 3: the team's rule removal is pending (its Undo already settled, the DELETE on its way) while another
+    /// action's Undo is open. Unfollowing the team settles only that team's removal: the other Undo stays open. Before,
+    /// the unfollow committed whatever Undo was open.
+    func testUnfollowingATeamLeavesAnotherActionsUndoOpen() async throws {
+        let rules = Rules()
+        rules.rows.value = [(id: 3, kind: "team", match: "Arsenal", sport: "Football", enabled: true)]
+        let http = try server(rules)
+        defer { http.stop() }
+        let (browse, settings) = try models(http)
+        let presenter = presenter()
+        browse.presenter = presenter
+        await browse.reloadRules()
+        await settings.loadRules()
+        browse.recordingStore.pendingRemovals.insert("rule:3") // its DELETE is on its way
+        XCTAssertTrue(settings.ruleRemovalPending("Football", "Arsenal"))
+        var committed = false
+        presenter.offerUndo("Recording deleted", commit: { committed = true })
+        await settings.unfollow("Football", "Arsenal") { _ in XCTFail("the rule is already being removed"); return true }
+        XCTAssertFalse(committed, "another action's Undo is not committed by the unfollow")
+        XCTAssertEqual(presenter.pendingUndo?.message, "Recording deleted", "it is still open")
+    }
+
     func testAStaleReadAnsweredAfterASettingsChangeDoesNotUndoIt() async throws {
         let rules = Rules()
         let http = try server(rules)
