@@ -57,11 +57,38 @@ final class PlayerCoverTests: XCTestCase {
         XCTAssertEqual(log.events, [true, false], "going away clears it")
     }
 
-    func testTheTopShelfIsExportedOnceInTheBackgroundWithNoRequest() throws {
+    func testTheTopShelfIsExportedOnceInTheBackgroundWithNoRequest() async throws {
         let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true,"playbackResolve":true,"channelNumbers":true}}"#.utf8))
         let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:1"), token: "t", info: info))
         var exports = 0
-        AppFreshness.exportOnBackground(browse, export: { _ in exports += 1 })
+        AppFreshness.exportOnBackground(browse, export: { _ in exports += 1 }, hold: { _, work in Task { await work() } })
+        for _ in 0..<100 where exports == 0 { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(exports, 1)
+    }
+
+    /// #313 item 1: the background export holds a background task from before it starts until its snapshot is written.
+    func testTheBackgroundExportHoldsABackgroundTaskUntilWritten() async throws {
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{"library":true}}"#.utf8))
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:1"), token: "t", info: info))
+        var log: [String] = []
+        var write: CheckedContinuation<Void, Never>?
+        var held: (@MainActor () async -> Void)?
+        AppFreshness.exportOnBackground(browse, export: { _ in
+            log.append("export began")
+            await withCheckedContinuation { write = $0 }
+            log.append("written")
+        }, hold: { name, work in
+            log.append("held: \(name)")
+            held = work
+        })
+        XCTAssertEqual(log, ["held: PigTV: Top Shelf export"], "the background task is taken before the export starts")
+        let work = try XCTUnwrap(held)
+        let running = Task { await work(); log.append("released") }
+        for _ in 0..<100 where write == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(log.last, "export began")
+        XCTAssertFalse(log.contains("released"), "still held while the snapshot is being written")
+        write?.resume()
+        await running.value
+        XCTAssertEqual(log, ["held: PigTV: Top Shelf export", "export began", "written", "released"])
     }
 }

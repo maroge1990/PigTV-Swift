@@ -247,7 +247,8 @@ enum TopShelfCardExport {
             let rendered = await render(snapshot, logoSources: logoSources, loader: loader, container: container, generation: generation)
             guard !Task.isCancelled, generation == TopShelfPublication.shared.current else { return }
             lastRendered = rendered
-            TopShelfExport.save(rendered, pruneCardsIn: container, generation: generation, container: container)
+            // #313: the run ends once the snapshot is on disk (`finish()` waits for it).
+            await TopShelfExport.save(rendered, pruneCardsIn: container, generation: generation, container: container)?.value
         }
     }
 
@@ -257,7 +258,7 @@ enum TopShelfCardExport {
         task = nil
     }
 
-    /// Waits for the current run (fixtures and tests).
+    /// Waits for the current run, its snapshot written (fixtures, tests and the background export).
     static func finish() async { await task?.value }
 
     /// The snapshot with each entry's cards, rendering only cards whose files

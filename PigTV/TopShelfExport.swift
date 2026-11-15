@@ -99,6 +99,15 @@ extension BrowseModel {
         return client.artworkRequest(logo)?.url
     }
 
+    /// #313 item 1: the export, finished only once its snapshot is written (or there was nothing to write). The
+    /// background export waits on this while it holds a background task, so the app is not suspended halfway.
+    func exportTopShelfUntilWritten() async {
+        exportTopShelf()
+        #if os(tvOS)
+        await TopShelfCardExport.finish()
+        #endif
+    }
+
     /// Saves the snapshot when its content changed, and tells the Top Shelf.
     /// Build 32, tvOS: first renders its card images (TopShelfCards.swift),
     /// so the saved snapshot points at them.
@@ -124,12 +133,14 @@ enum TopShelfExport {
     /// Writes `snapshot` unless it is unchanged, then (build 32) deletes card
     /// images it no longer points at, and tells the Top Shelf.
     /// A2: only for the session `generation`, checked again on the file queue right before writing.
+    /// #313: returns the write (nil when there is nothing to write), so a card run can finish only once it is on disk.
+    @discardableResult
     @MainActor static func save(_ snapshot: TopShelfSnapshot, pruneCardsIn cards: URL? = nil, generation: Int,
-                                container: URL? = TopShelfSnapshot.containerURL) {
-        guard generation == TopShelfPublication.shared.current else { return }
-        guard !snapshot.sameContent(as: lastWritten) else { return }
+                                container: URL? = TopShelfSnapshot.containerURL) -> Task<Void, Never>? {
+        guard generation == TopShelfPublication.shared.current else { return nil }
+        guard !snapshot.sameContent(as: lastWritten) else { return nil }
         lastWritten = snapshot
-        Task.detached(priority: .utility) {
+        return Task.detached(priority: .utility) {
             let written = await TopShelfPublication.shared.run(ifCurrent: generation, label: "save") { () -> Bool in
                 guard snapshot.write(container: container) else { return false }
                 if let cards {

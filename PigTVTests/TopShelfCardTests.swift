@@ -187,6 +187,20 @@ final class TopShelfCardTests: XCTestCase {
         XCTAssertEqual(a2Files(container), [], "no snapshot and no card of the signed-out account")
     }
 
+    /// #313 item 1: the background export waits on `TopShelfCardExport.finish()` while it holds a background task, so the
+    /// run must not finish before the snapshot is on disk. Before, the save went on in a detached task after the run had
+    /// finished, and the app could be suspended between the two.
+    func testARunIsFinishedOnlyOnceItsSnapshotIsWritten() async throws {
+        let container = try a2Container()
+        defer { try? FileManager.default.removeItem(at: container) }
+        TopShelfExport.lastWritten = nil
+        TopShelfCardExport.schedule(a2Snapshot("Written"), logoSources: [:], loader: { _ in nil },
+                                    container: container, generation: TopShelfPublication.shared.current)
+        await TopShelfCardExport.finish()
+        XCTAssertEqual(TopShelfSnapshot.read(container: container)?.channels.first?.name, "Written",
+                       "on disk when the run says it has finished")
+    }
+
     func testASaveFromARetiredSessionIsDropped() async throws {
         let container = try a2Container()
         defer { try? FileManager.default.removeItem(at: container) }

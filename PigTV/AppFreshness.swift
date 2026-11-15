@@ -41,9 +41,14 @@ enum AppFreshness {
 
     /// #301: the Top Shelf is written once as the app goes to the background, with no request (no pass runs while a
     /// player is up, so what the TV button shows would be as it was when playback began).
-    static func exportOnBackground(_ browse: BrowseModel, export: (BrowseModel) -> Void = { $0.exportTopShelf() }) {
+    /// #313 item 1: the export runs as background work (a UIApplication background task, `BackgroundWork`), held until
+    /// the snapshot is written, so the app is not suspended between the logo loads and the write. `export` and `hold`
+    /// are the export and the background task (tests inject them).
+    static func exportOnBackground(_ browse: BrowseModel,
+                                   export: @escaping @MainActor (BrowseModel) async -> Void = { await $0.exportTopShelfUntilWritten() },
+                                   hold: @MainActor (String, @escaping @MainActor () async -> Void) -> Void = BackgroundWork.run) {
         guard !browse.isFixture else { return }
-        export(browse)
+        hold("PigTV: Top Shelf export") { await export(browse) }
     }
 
     /// A pass now, then one after every `interval` until the task is cancelled (the app leaves the foreground or the
