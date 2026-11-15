@@ -55,7 +55,11 @@ build stops opening after 7 days; installing again renews it.
 
 TestFlight is the normal route. `Tools/testflight.sh` refuses to upload unless the git-ignored marker `.ui-full-passed`
 equals HEAD and the tree is clean (D-49). So run `sh Tools/test.sh all` and then the script from the Mac's real clone
-(`/Users/markrogers/Documents/GitHub/PigTV-Swift`), never from an rsync copy without `.git`.
+(`/Users/markrogers/Documents/GitHub/PigTV-Swift`), never from an rsync copy without `.git`. It runs over plain SSH
+(`ssh mac 'cd ~/Documents/GitHub/PigTV-Swift && sh Tools/testflight.sh both'`), with no keychain: the archive is unsigned
+and the export is cloud-signed by Apple through the Admin-role API key in `~/.pigtv-testflight.env` (names in
+`.env.example`; an App Manager key fails with "Cloud signing permission error"). `--export` cloud-signs without uploading.
+Success ends with "Upload succeeded" and "EXPORT SUCCEEDED"; processing then takes 10-30 minutes (D-64).
 
 ## How changes ship
 
