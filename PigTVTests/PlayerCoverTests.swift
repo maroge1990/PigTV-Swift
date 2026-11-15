@@ -91,4 +91,97 @@ final class PlayerCoverTests: XCTestCase {
         await running.value
         XCTAssertEqual(log, ["held: PigTV: Top Shelf export", "export began", "written", "released"])
     }
+
+    // MARK: #313 item 5: ContentView's wiring (`AppRootCover`), which no test exercised
+
+    private func host<V: View>(_ view: V) throws -> UIWindow {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 400, height: 300)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.makeKeyAndVisible()
+        return window
+    }
+
+    private func until(_ condition: () -> Bool) async throws {
+        for _ in 0..<100 where !condition() { try await Task.sleep(for: .milliseconds(20)) }
+    }
+
+    /// The pages see `pigCoveredByPlayer` follow the live player and a recording's cover, and a recording's screen
+    /// reaches the model through `pigRecordingPlayerCover`.
+    func testTheRootTellsThePagesWhileAPlayerCoversThem() async throws {
+        let app = AppModel()
+        final class Seen { var covered: [Bool] = []; var report: (@MainActor (Bool) -> Void)? }
+        let seen = Seen()
+        let window = try host(CoverProbe(seen: { seen.covered.append($0) }, report: { seen.report = $0 })
+            .modifier(AppRootCover(model: app)))
+        defer { window.rootViewController = nil; window.isHidden = true }
+        try await until { seen.covered == [false] && seen.report != nil }
+        XCTAssertEqual(seen.covered, [false], "uncovered at first")
+        app.playerPresented = true
+        try await until { seen.covered.last == true }
+        XCTAssertEqual(seen.covered.last, true, "the live player covers the pages")
+        app.playerPresented = false
+        try await until { seen.covered.last == false }
+        XCTAssertEqual(seen.covered.last, false)
+        seen.report?(true)
+        XCTAssertTrue(app.pagesCovered, "a recording's screen reaches the model")
+        try await until { seen.covered.last == true }
+        XCTAssertEqual(seen.covered.last, true, "and the pages are told")
+        seen.report?(false)
+        XCTAssertFalse(app.pagesCovered)
+    }
+
+    /// Going to the background settles the open Undo and exports the Top Shelf once, for the session's guide; other
+    /// phases do neither.
+    func testGoingToTheBackgroundExportsTheTopShelfOnce() throws {
+        let app = AppModel()
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{}}"#.utf8))
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:1"), token: "t", info: info))
+        app.configureClientForTesting(browse.client, browse: browse)
+        var exported: [ObjectIdentifier] = []
+        var committed = false
+        app.presenter.sleep = { _ in try await Task.sleep(for: .seconds(3600)) }
+        app.presenter.offerUndo("Recording deleted", commit: { committed = true })
+        AppRootCover.sceneChanged(to: .inactive, model: app, exportOnBackground: { exported.append(ObjectIdentifier($0)) })
+        XCTAssertTrue(exported.isEmpty)
+        XCTAssertFalse(committed)
+        AppRootCover.sceneChanged(to: .background, model: app, exportOnBackground: { exported.append(ObjectIdentifier($0)) })
+        XCTAssertEqual(exported, [ObjectIdentifier(browse)], "once, for the session's guide")
+        XCTAssertTrue(committed, "the open Undo is settled first")
+        AppRootCover.sceneChanged(to: .active, model: app, exportOnBackground: { exported.append(ObjectIdentifier($0)) })
+        XCTAssertEqual(exported.count, 1)
+    }
+
+    /// The minute pass rests while a recording's cover is up (not only the live player's) and runs once it closes.
+    func testTheMinutePassRestsWhileARecordingCoversThePages() async throws {
+        let app = AppModel()
+        let info = try JSONDecoder().decode(ServerInfo.self, from: Data(#"{"name":"PigTV","version":"4.0.0","apiVersion":1,"features":{}}"#.utf8))
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:1"), token: "t", info: info))
+        app.recordingPlayer(presented: true)
+        var passes: [Bool] = []
+        let loop = Task { @MainActor in
+            await AppRootCover.keepFresh(browse, model: app, sleep: { _ in try await Task.sleep(for: .milliseconds(5)) },
+                                         pass: { passes.append($0) })
+        }
+        defer { loop.cancel() }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(passes.isEmpty, "no pass while the recording plays")
+        app.recordingPlayer(presented: false)
+        try await until { !passes.isEmpty }
+        XCTAssertEqual(passes.first, false, "a pass once it has closed, with the pages uncovered")
+    }
+}
+
+/// Reads what `AppRootCover` puts in the environment.
+private struct CoverProbe: View {
+    @Environment(\.pigCoveredByPlayer) private var covered
+    @Environment(\.pigRecordingPlayerCover) private var cover
+    let seen: (Bool) -> Void
+    let report: (@escaping @MainActor (Bool) -> Void) -> Void
+    var body: some View {
+        Color.clear
+            .onChange(of: covered, initial: true) { _, value in seen(value) }
+            .onAppear { report(cover) }
+    }
 }

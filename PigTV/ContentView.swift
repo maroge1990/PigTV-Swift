@@ -63,9 +63,7 @@ struct ContentView: View {
             else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
             else { OnboardingView(model: model).tint(Color("AccentColor")) }
         }
-        // Audit F4: the pages under the player do no polling while it is up (WhileVisible).
-        .environment(\.pigCoveredByPlayer, model.pagesCovered)
-        .environment(\.pigRecordingPlayerCover, { [weak model] up in model?.recordingPlayer(presented: up) })
+        .modifier(AppRootCover(model: model))
         // The splash never holds the app back: when start-up finishes it fades out at once.
         .animation(PigMotion.standard, value: initialRestoreFinished)
         #if os(tvOS)
@@ -78,15 +76,7 @@ struct ContentView: View {
             await model.restore()
             initialRestoreFinished = true
         }
-        .onChange(of: scenePhase) { _, phase in
-            model.warmer.setActive(phase == .active) // R11: any other phase cancels warming
-            model.playback?.sceneActive = phase == .active // #239: the conflict poll rests while the app is not active
-            if phase == .background {
-                model.presenter.commitPendingUndo() // #49: an action waiting on its Undo is done before the app is suspended
-                if let browse = model.browse { AppFreshness.exportOnBackground(browse) } // #301: no pass wrote it while a player was up
-                Task { await model.background() }
-            }
-        }
+        .onChange(of: scenePhase) { _, phase in AppRootCover.sceneChanged(to: phase, model: model) }
         // #46, #216: while active and signed in, the guide is kept current and the Top Shelf exported, now and every
         // minute, whichever tab shows (returning to the foreground restarts it, so a stale guide is fixed at once).
         .task(id: scenePhase == .active ? model.browse.map(ObjectIdentifier.init) : nil) {
@@ -95,9 +85,7 @@ struct ContentView: View {
             browse.replayPendingRemovals()
             // #278: nothing is asked while the player is up; a pass follows its closing. The task is keyed on the scene
             // only, so opening the player restarts nothing.
-            await AppFreshness.run(playing: { model.pagesCovered }) {
-                await AppFreshness.refresh(browse, playing: model.pagesCovered)
-            }
+            await AppRootCover.keepFresh(browse, model: model)
         }
         // A4.1: Top Shelf items open pigtv://play.
         .onOpenURL { model.open($0) }
@@ -685,3 +673,38 @@ struct NativePlayer: UIViewRepresentable {
     }
 }
 #endif
+
+/// #313 item 5: the app root's wiring of the player cover and the scene phase, apart from `ContentView` (which owns its
+/// own `AppModel`), so a test can host it with a model of its own (`PlayerCoverTests`).
+struct AppRootCover: ViewModifier {
+    @ObservedObject var model: AppModel
+
+    func body(content: Content) -> some View {
+        content
+            // Audit F4: the pages under the player do no polling while it is up (WhileVisible).
+            .environment(\.pigCoveredByPlayer, model.pagesCovered)
+            .environment(\.pigRecordingPlayerCover, { [weak model] up in model?.recordingPlayer(presented: up) })
+    }
+
+    /// The scene phase changed. `exportOnBackground` is the Top Shelf's background export (tests count it).
+    static func sceneChanged(to phase: ScenePhase, model: AppModel,
+                             exportOnBackground: (BrowseModel) -> Void = { AppFreshness.exportOnBackground($0) }) {
+        model.warmer.setActive(phase == .active) // R11: any other phase cancels warming
+        model.playback?.sceneActive = phase == .active // #239: the conflict poll rests while the app is not active
+        if phase == .background {
+            model.presenter.commitPendingUndo() // #49: an action waiting on its Undo is done before the app is suspended
+            if let browse = model.browse { exportOnBackground(browse) } // #301: no pass wrote it while a player was up
+            Task { await model.background() }
+        }
+    }
+
+    /// #46, #216, #278: the minute pass while active, resting while any player covers the pages. `sleep` and `pass`
+    /// are the clock and the pass (tests inject them).
+    static func keepFresh(_ browse: BrowseModel, model: AppModel,
+                          sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                          pass: ((Bool) async -> Void)? = nil) async {
+        await AppFreshness.run(playing: { model.pagesCovered }, sleep: sleep) {
+            if let pass { await pass(model.pagesCovered) } else { await AppFreshness.refresh(browse, playing: model.pagesCovered) }
+        }
+    }
+}
