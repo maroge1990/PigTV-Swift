@@ -104,3 +104,50 @@ final class RecordingsHomeTests: XCTestCase {
         XCTAssertEqual(RecordingFacts.facts(live).map(\.0), ["Channel"])
     }
 }
+
+#if os(tvOS)
+import SwiftUI
+
+/// #313 item 6: the empty Recordings page's column is one screen high at least (#311), but content taller than that
+/// (large text) keeps its height. Before, the height was fixed at one screen and taller content overflowed it.
+private final class HeightBox { var height: CGFloat = 0 }
+
+@MainActor
+final class OneScreenHighTests: XCTestCase {
+    private func height<V: View>(of content: V, screen: CGFloat, trailing: CGFloat) async throws -> CGFloat {
+        let box = HeightBox()
+        let view = ScrollView {
+            content
+                .modifier(OneScreenHigh(active: true, trailing: trailing))
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { box.height = $0 }
+        }
+        .frame(width: 600, height: screen)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 600, height: screen)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.makeKeyAndVisible()
+        defer { window.rootViewController = nil; window.isHidden = true }
+        var last: CGFloat = -1
+        // Settled: the same height twice in a row (the screen is measured after the first layout).
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(30))
+            if box.height > 0, box.height == last { break }
+            last = box.height
+        }
+        return box.height
+    }
+
+    func testAShortColumnFillsOneScreen() async throws {
+        let short = VStack(spacing: 0) { Color.red.frame(height: 100); Color.blue.frame(maxHeight: .infinity) }
+        let height = try await height(of: short, screen: 400, trailing: 20)
+        XCTAssertEqual(height, 380, accuracy: 0.5, "the screen less the bottom padding")
+    }
+
+    func testATallerColumnKeepsItsHeight() async throws {
+        let tall = VStack(spacing: 0) { Color.red.frame(height: 900); Color.blue.frame(maxHeight: .infinity) }
+        let height = try await height(of: tall, screen: 400, trailing: 20)
+        XCTAssertGreaterThanOrEqual(height, 900, "never cut to one screen")
+    }
+}
+#endif

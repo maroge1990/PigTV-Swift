@@ -28,9 +28,6 @@ final class F1PageModel: ObservableObject {
     private var inFlight: Task<Void, Never>?
     /// Apple 90 (Codex round 2, high): moves on every preferences read and every invalidation; only the latest read applies.
     private var readGeneration = 0
-    /// #278 (audit D5): Hide scores changes on their way: until each has answered and been read again,
-    /// no read makes the choice known.
-    private var changing = 0
     /// #278 (F5): the preferences read in flight. A sport page's two pollers (the front page and its league) ask at once;
     /// the later asker awaits this read instead of sending its own, while it is still fresh for it: no invalidation or
     /// newer read since it began (`read`). Otherwise a new read is sent, and this one's answer is superseded. `waiters`
@@ -150,8 +147,8 @@ final class F1PageModel: ObservableObject {
     private func readPreferences(read: Int) async -> PreferencesRead {
         do {
             let answer: SportPagePreferences = try await client.request("sports/pages/preferences")
-            // #278 (D5): a read answering while a Hide scores change is on its way may predate it: it changes nothing.
-            guard read == readGeneration, changing == 0 else { return .superseded }
+            // A read overtaken by an invalidation (a Hide scores change saved in Settings › Sport) changes nothing.
+            guard read == readGeneration else { return .superseded }
             if answer != preferences { preferences = answer }
             preferencesKnown = true
             return .answered
@@ -160,20 +157,6 @@ final class F1PageModel: ObservableObject {
             // Anything else keeps what is on screen, and an unknown choice stays unknown (#162).
             return .failed
         }
-    }
-
-    /// #278 (audit D5): a Hide scores change is about to be sent (by Settings › Sport's model, the one writer). From now
-    /// until `endChange()`, the choice is unknown and no read makes it known: every sport screen hides the scores.
-    func beginChange() {
-        changing += 1
-        invalidatePreferences()
-    }
-
-    /// The change has answered (saved or not): the choice is read again, and the screens show what the server says.
-    func endChange() async {
-        changing = max(0, changing - 1)
-        invalidatePreferences()
-        await revalidatePreferences()
     }
 
     /// Loads now, then every 60 s until the calling task is cancelled (the page went away).

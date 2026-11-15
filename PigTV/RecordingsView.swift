@@ -731,18 +731,45 @@ private struct RecordingStackCard: View {
 #endif
 
 #if os(tvOS)
-/// #311: while active, the column is as high as the scroll view shows (less the page's bottom padding), so a flexible
-/// child fills what the others leave and nothing starts below the first screen.
-private struct OneScreenHigh: ViewModifier {
+/// #311: while active, the column is at least as high as the scroll view shows (less the page's bottom padding), so a
+/// flexible child fills what the others leave and nothing starts below the first screen. #313 item 6: at least, not
+/// exactly: content taller than one screen (large text) keeps its height and scrolls, where a fixed height let it
+/// overflow the column.
+struct OneScreenHigh: ViewModifier {
     let active: Bool
     let trailing: CGFloat
+    /// The scroll view's height, measured.
+    @State private var screen: CGFloat = 0
 
     func body(content: Content) -> some View {
         if active {
-            content.containerRelativeFrame(.vertical, alignment: .top) { length, _ in length - trailing }
+            AtLeastHigh(minimum: max(0, screen - trailing)) { content }
+                .background(alignment: .top) {
+                    Color.clear
+                        .containerRelativeFrame(.vertical)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screen = $0 }
+                }
         } else {
             content
         }
+    }
+}
+
+/// Its content at its own height, or `minimum` when that is more (the content is then offered `minimum`, so a flexible
+/// child fills it).
+struct AtLeastHigh: Layout {
+    let minimum: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let own = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        let height = max(own.height, minimum)
+        return CGSize(width: proposal.width ?? own.width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 #endif

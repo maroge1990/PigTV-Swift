@@ -273,7 +273,8 @@ struct F1TileRow: View {
     }
 
     private var scrolling: some View {
-        ScrollView(.horizontal) { row(fill: false) }.scrollIndicators(.hidden).scrollClipDisabled()
+        // #313 item 6: one focus section either way, so up and down leave the row as from the fitted one.
+        ScrollView(.horizontal) { row(fill: false) }.scrollIndicators(.hidden).scrollClipDisabled().tvFocusSection()
     }
 
     private func row(fill: Bool) -> some View {
