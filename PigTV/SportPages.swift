@@ -352,6 +352,10 @@ private struct SportChannelTitle: View {
     var isBest = false
     var scheduled = false
     var ended = false
+    /// iPhone (D-65): the row's best quality, on the line under the name.
+    var chip: QualityChip? = nil
+    /// iPhone: the line under the name yields (Recommended truncates) before the name does.
+    var compact = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: PigSpacing.xs) {
@@ -361,7 +365,14 @@ private struct SportChannelTitle: View {
                     ChannelNumberText(number: String(number), font: DetailType.rowDetail).fixedSize()
                 }
             }
-            if isBest {
+            if compact, chip != nil || isBest {
+                HStack(spacing: PigSpacing.s) {
+                    if let chip { QualityBadge(chip: chip).layoutPriority(1) }
+                    if isBest {
+                        Text("Recommended").font(DetailType.rowDetail).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+            } else if isBest {
                 Text("Recommended").font(DetailType.rowDetail).foregroundStyle(.secondary).lineLimit(1).fixedSize()
             }
             if scheduled {
@@ -504,9 +515,12 @@ struct SportChannelPhoneRow: View {
         VStack(alignment: .leading, spacing: PigSpacing.m) {
             HStack(spacing: PigSpacing.l) {
                 ChannelLogoTile(logo: browse.logo(for: best), client: browse.client, name: best.name, size: SportMetrics.rowLogo)
-                SportChannelTitle(channel: best, isBest: isBest, scheduled: scheduled, ended: bestAction == .ended)
-                Spacer(minLength: 16)
-                if let chip = group.best.chip { QualityBadge(chip: chip) }
+                // The name has the room: the badge and Recommended share the line under it and yield first. The badge
+                // shows only on a closed row; an open row's first chip shows it (as on the web).
+                SportChannelTitle(channel: best, isBest: isBest, scheduled: scheduled, ended: bestAction == .ended,
+                                  chip: open && group.choosesQuality ? nil : group.best.chip, compact: true)
+                    .layoutPriority(1)
+                Spacer(minLength: PigSpacing.s)
                 Image(systemName: open ? "chevron.up" : sportChannelIcon(bestAction, scheduled: true))
                     .foregroundStyle(.secondary).accessibilityHidden(true)
             }
