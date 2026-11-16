@@ -15,18 +15,60 @@ import AVFoundation
 //   Last channel, channel down/up, Go to number). All targets ≥ 44 pt, white
 //   glyphs on dark translucent circles and pills.
 // - `PlayerChannelPanel`: the TV's side channel list, as a translucent side
-//   panel on iPad (regular width) or a bottom sheet on iPhone, opened from
-//   Channels; tap a row to switch (switchPlayback, which releases the old
-//   stream first).
+//   panel on iPad (regular width) or the same panel from the bottom edge on
+//   iPhone (#334), opened from Channels; tap a row to switch (switchPlayback,
+//   which releases the old stream first). A play from Sport lists the live
+//   games there instead (#334).
 
-/// The channel list: current channel highlighted and scrolled to.
+/// The channel list: current channel highlighted and scrolled to. #334: for a play from Sport, the live games instead
+/// (selecting one plays it on its preferred channel), on the same rows' panels.
 struct PlayerChannelPanel: View {
     @ObservedObject var app: AppModel
     let close: () -> Void
 
     var body: some View {
+        if app.playerShowsGames, let browse = app.browse {
+            gamesList(browse)
+        } else {
+            channelList
+        }
+    }
+
+    private func gamesList(_ browse: BrowseModel) -> some View {
+        PlayerGamesReader(front: browse.sportFront, preferences: browse.f1Page) { games in
+            let playing = PlayerGames.playing(games, eventID: app.sportPlay?.eventID, channelID: app.playback?.channel.id)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: PigSpacing.s) {
+                        ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
+                            let isPlaying = index == playing
+                            Button {
+                                if !isPlaying { app.playSportGame(game) }
+                                close()
+                            } label: {
+                                PlayerGameRow(game: game, client: browse.client, highlighted: isPlaying, playing: isPlaying)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlayerRowPressStyle())
+                            .id(game.id)
+                        }
+                    }
+                    .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
+                }
+                .scrollIndicators(.hidden)
+                .onAppear {
+                    if let playing, games.indices.contains(playing) { proxy.scrollTo(games[playing].id, anchor: .center) }
+                }
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        // Kept fresh while the panel is open (the Sport pages rest under the player).
+        .task { await browse.sportFront.keepFresh(preferences: browse.f1Page) }
+    }
+
+    private var channelList: some View {
         let current = app.playback?.channel.id
-        TimelineView(.periodic(from: .now, by: 30)) { context in
+        return TimelineView(.periodic(from: .now, by: 30)) { context in
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: PigSpacing.s) {
@@ -58,41 +100,65 @@ struct PlayerChannelPanel: View {
 
 /// iPad: the panel slides in from the leading edge over the picture (like
 /// the TV's), with a header and close button; a tap beside it closes it.
+/// #334: on iPhone (`bottom`) the same see-through panel rises from the bottom edge, in place of the opaque system sheet.
 struct PlayerSidePanel: View {
     @ObservedObject var app: AppModel
+    var bottom = false
     let close: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
+    /// "Live games" for a play from Sport (#334), else "Channels".
+    private var title: String { app.playerShowsGames ? PlayerGames.header : PlayerGames.channelsHeader }
+
     var body: some View {
-        ZStack(alignment: .leading) {
+        ZStack(alignment: bottom ? .bottom : .leading) {
             Color.pigMediaCanvas.opacity(0.2).ignoresSafeArea() // brand: scrim (dims the video behind the panel; not a panel)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Channels").font(.title2.bold())
+                    Text(title).font(.title2.bold())
                     Spacer()
-                    Button(action: close) { Image(systemName: "xmark.circle.fill").font(.title2) }
-                        .accessibilityLabel("Close channels")
+                    Button(action: close) { Image(systemName: "xmark.circle.fill").font(.title2).pigTouchTarget() }
+                        .accessibilityLabel("Close \(title.lowercased())")
                 }
-                .padding(.horizontal, PigSpacing.xl).padding(.top, PigSpacing.l).padding(.bottom, PigSpacing.xs)
+                .padding(.horizontal, bottom ? PigSpacing.l : PigSpacing.xl).padding(.top, PigSpacing.l).padding(.bottom, PigSpacing.xs)
                 PlayerChannelPanel(app: app, close: close)
             }
             .foregroundStyle(.white)
-            .frame(width: 420)
-            .frame(maxHeight: .infinity)
+            .frame(width: bottom ? nil : 420)
+            .frame(maxWidth: bottom ? .infinity : nil, maxHeight: .infinity)
+            .modifier(PhonePanelHeight(active: bottom))
             .background {
-                if reduceTransparency { Color.pigMediaSolidPanel.ignoresSafeArea() }
-                else {
-                    ZStack {
-                        Rectangle().fill(.ultraThinMaterial)
-                        Color.pigMediaPanel
+                // iPhone: the panel's top corners are rounded; the iPad's side panel is square.
+                let shape = UnevenRoundedRectangle(topLeadingRadius: bottom ? PigRadius.hero : 0,
+                                                   topTrailingRadius: bottom ? PigRadius.hero : 0, style: .continuous)
+                Group {
+                    if reduceTransparency { shape.fill(Color.pigMediaSolidPanel) }
+                    else {
+                        ZStack {
+                            shape.fill(.ultraThinMaterial)
+                            shape.fill(Color.pigMediaPanel)
+                        }
                     }
-                    .ignoresSafeArea()
                 }
+                .ignoresSafeArea()
             }
             .environment(\.colorScheme, .dark)
+        }
+    }
+}
+
+/// #334: the iPhone's panel takes the lower part of the screen, so the picture stays in view above it.
+private struct PhonePanelHeight: ViewModifier {
+    let active: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if active {
+            content.containerRelativeFrame(.vertical) { height, _ in height * 0.62 }
+        } else {
+            content
         }
     }
 }
@@ -194,14 +260,27 @@ struct TouchPlayerChrome: View {
                     }
                     .accessibilityIdentifier("player.syncMarker")
                 }
-                PlayerPillButton(title: "Channels", icon: "list.bullet.rectangle", prominent: true) {
-                    touch(); openChannels()
+                // #334: "Live games" for a play from Sport; with no other game live it says so instead of opening.
+                PlayerPillButton(title: app.playerShowsGames ? PlayerGames.header : PlayerGames.channelsHeader,
+                                 icon: "list.bullet.rectangle", prominent: true) {
+                    touch()
+                    if app.playerShowsGames, !PlayerGames.hasOthers(liveGames, playing: playingGame(liveGames)) {
+                        notice = PlayerGames.noOthers
+                    } else {
+                        openChannels()
+                    }
                 }
                 .accessibilityIdentifier("player.channels")
             }
             // iPhone upright: the channel gets its own line under the buttons.
             if !regular && !short { channelTitle.padding(.leading, PigSpacing.xs) }
         }
+    }
+
+    /// #334: the live games as they are now (read at the press).
+    private var liveGames: [PlayerGame] { PlayerGames.current(front: browse.sportFront, preferences: browse.f1Page) }
+    private func playingGame(_ games: [PlayerGame]) -> Int? {
+        PlayerGames.playing(games, eventID: app.sportPlay?.eventID, channelID: playback.channel.id)
     }
 
     private var channelTitle: some View {

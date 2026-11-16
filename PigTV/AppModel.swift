@@ -60,7 +60,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var playbackBusy = false
     // Channels the guide was showing when playback started: the order used
     // for channel up/down inside the player. Falls back to the whole guide.
-    @Published var zapList: [Channel] = []
+    /// #334: setting a list (a guide play, a Top Shelf channel, the end of a play) also leaves the live games list
+    /// (`sportPlay`); a play from Sport sets its own after its list.
+    @Published var zapList: [Channel] = [] { didSet { sportPlay = nil } }
+    /// #334 (D-67): the live play began from Sport (a front card or a sport page), so the player's list shows the live
+    /// games instead of the channels (`playerShowsGames`). Cleared with the play.
+    @Published private(set) var sportPlay: SportPlay?
     // Set by the player's transport-bar menu; the player screen presents the
     // channel list sheet and clears it.
     // A1.2: the channel switchPlayback(to:) most recently switched away from,
@@ -563,17 +568,31 @@ final class AppModel: ObservableObject {
 
     /// Plays one of an event's channels (the best, first, by default) with
     /// the event's channels as the zap list. Switches when already playing.
-    func playSportEvent(_ event: SportEvent, channel: SportEventChannel? = nil, origin: String? = nil) {
+    /// `fromSport` (#334): the play starts from the Sport section, so the player lists the live games (the TV Guide's
+    /// "Watch on" passes false: that play lists channels).
+    func playSportEvent(_ event: SportEvent, channel: SportEventChannel? = nil, origin: String? = nil,
+                        fromSport: Bool = true) {
         guard let browse else { return }
         let channels = event.channels.map(browse.playable)
         guard let chosen = channel.map(browse.playable) ?? channels.first else { return }
         if pendingWatch?.eventID == event.id { cancelPendingWatch() }
         zapList = channels
+        sportPlay = fromSport ? SportPlay(eventID: event.id) : nil
         if let currentPlayback {
             if currentPlayback.channel.id != chosen.id { switchPlayback(to: chosen, origin: origin) }
         } else {
             beginPlayback(chosen, origin: origin)
         }
+    }
+
+    /// #334: the player's list shows the live games: a play from Sport, on a server with the Sport front page (C-R).
+    var playerShowsGames: Bool { sportPlay != nil && serverInfo?.features.sportFront == true }
+
+    /// #334: a game chosen in the player's live games list plays on its preferred channel (the first), with no channel
+    /// picker, and the list stays the live games.
+    func playSportGame(_ game: PlayerGame) {
+        guard let event = SportFrontText.event(game.game) else { return }
+        playSportEvent(event)
     }
 
     /// "Watch <channel> when it starts": plays at once when the event starts
@@ -622,6 +641,7 @@ final class AppModel: ObservableObject {
             playerPresented = false
             // #13: the next play sets its own list; one that sets none zaps through the guide.
             zapList = []
+            sportPlay = nil // #334: and lists channels unless it starts from Sport
             warmer.playerClosed()
             if let message { error = message }
         }
@@ -782,6 +802,11 @@ final class AppModel: ObservableObject {
         user = GuideFixtures.user()
     }
     #endif
+}
+
+/// #334: a live play started from Sport: the event played (its id marks the playing game in the player's list).
+nonisolated struct SportPlay: Equatable, Sendable {
+    let eventID: String
 }
 
 /// An upcoming event the user asked to watch when it starts.

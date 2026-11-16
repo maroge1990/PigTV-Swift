@@ -19,6 +19,8 @@ import AVKit
 //                     Actions include "Last channel" (A1.2) when a previous
 //                     channel is remembered and differs from the current one.
 //   Channel list:     Up/Down → move · Select → switch · Back → close
+//   #334: a play started from Sport lists the live games in the channel list's place (Select plays the game on its
+//   preferred channel); with no other game live, Up/Down says so instead of opening it.
 // Overlays hide themselves after a few idle seconds.
 // A1.2: a long-press-Select shortcut for "last channel" while hidden was
 // considered and rejected — see the note above `select()`.
@@ -57,6 +59,18 @@ struct CustomPlayerView: View {
 
     private var browse: BrowseModel? { app.browse }
     private var channels: [Channel] { app.playerChannels }
+    /// #334: the list shows the live games (a play from Sport).
+    private var gamesMode: Bool { app.playerShowsGames && browse != nil }
+    /// The live games as they are now (read at a press; the list itself observes the models).
+    private var games: [PlayerGame] {
+        guard let browse else { return [] }
+        return PlayerGames.current(front: browse.sportFront, preferences: browse.f1Page)
+    }
+    private func playingGame(in games: [PlayerGame]) -> Int? {
+        PlayerGames.playing(games, eventID: app.sportPlay?.eventID, channelID: playback.channel.id)
+    }
+    /// How many rows the open list has.
+    private var listCount: Int { gamesMode ? games.count : channels.count }
     // Channels are reached with Up/Down (the side list), so the action row no
     // longer carries a Channels button. Go to live only appears when behind.
     private var actions: [PlayerAction] {
@@ -122,6 +136,16 @@ struct CustomPlayerView: View {
         // #132: the tuning card held focus until the first picture.
         .onChange(of: playback.hasPlayed) { _, played in if played { focused = true } }
         .task(id: playback.ready) { if playback.ready { await playback.loadTracks() } }
+        // #334: the live games are read again when a play from Sport begins (the Sport pages rest under the player),
+        // and kept fresh while the list is open.
+        .task(id: app.sportPlay) {
+            guard gamesMode, let browse else { return }
+            await browse.sportFront.refresh(preferences: browse.f1Page)
+        }
+        .task(id: chrome == .channels && gamesMode) {
+            guard chrome == .channels, gamesMode, let browse else { return }
+            await browse.sportFront.keepFresh(preferences: browse.f1Page)
+        }
         .onMoveCommand(perform: move)
         .onPlayPauseCommand(perform: togglePause)
         .onExitCommand(perform: back)
@@ -135,8 +159,7 @@ struct CustomPlayerView: View {
         touch()
         switch (chrome, direction) {
         case (.hidden, .up), (.hidden, .down):
-            cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
-            chrome = .channels
+            openList()
         case (.hidden, .left), (.scrub, .left):
             seek(-15)
         case (.hidden, .right), (.scrub, .right):
@@ -152,9 +175,11 @@ struct CustomPlayerView: View {
         case (.info, _):
             chrome = .hidden
         case (.channels, .up):
-            if !channels.isEmpty { cursor = (cursor - 1 + channels.count) % channels.count }
+            let count = listCount
+            if count > 0 { cursor = (cursor - 1 + count) % count }
         case (.channels, .down):
-            if !channels.isEmpty { cursor = (cursor + 1) % channels.count }
+            let count = listCount
+            if count > 0 { cursor = (cursor + 1) % count }
         case (.channels, _):
             break
         case (.tracks, .up):
@@ -184,6 +209,14 @@ struct CustomPlayerView: View {
             guard actions.indices.contains(action) else { return }
             run(actions[action])
         case .channels:
+            if gamesMode {
+                let games = self.games
+                guard games.indices.contains(cursor) else { return }
+                chrome = .hidden
+                // #334: the game on its preferred channel, no picker; the list stays the live games.
+                if cursor != playingGame(in: games) { app.playSportGame(games[cursor]) }
+                return
+            }
             guard channels.indices.contains(cursor) else { return }
             let target = channels[cursor]
             chrome = .hidden
@@ -203,6 +236,23 @@ struct CustomPlayerView: View {
         if chrome == .hidden { exit() } else { chrome = .hidden }
     }
 
+    /// Opens the side list on the row playing. #334: the live games for a play from Sport; with no other game live the
+    /// list stays closed and the notice says so.
+    private func openList() {
+        if gamesMode {
+            let games = self.games
+            let playing = playingGame(in: games)
+            guard PlayerGames.hasOthers(games, playing: playing) else {
+                notice = PlayerGames.noOthers
+                return
+            }
+            cursor = playing ?? 0
+        } else {
+            cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
+        }
+        chrome = .channels
+    }
+
     private func togglePause() {
         touch()
         if playback.player.rate == 0 { playback.player.play(); paused = false }
@@ -219,8 +269,7 @@ struct CustomPlayerView: View {
     private func run(_ item: PlayerAction) {
         switch item {
         case .channels:
-            cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
-            chrome = .channels
+            openList()
         case .tracks:
             trackCursor = max(0, allTracks.firstIndex { $0.selected } ?? 0)
             chrome = .tracks
@@ -354,7 +403,7 @@ struct CustomPlayerView: View {
         case .favourite: return favourite ? "Unfavourite" : "Favourite"
         case .tracks: return "Audio & subtitles"
         case .record: return "Record"
-        case .channels: return "Channels"
+        case .channels: return gamesMode ? PlayerGames.header : PlayerGames.channelsHeader
         case .live: return "Go to live"
         case .lastChannel: return "Last channel"
         case .syncMarker: return SyncMarker.label
@@ -483,8 +532,19 @@ struct CustomPlayerView: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
                     LazyVStack(spacing: PigSpacing.xs) {
-                        ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
-                            channelRow(channel, highlighted: index == cursor, now: now).id(index)
+                        if gamesMode, let browse {
+                            // #334: the live games, on the channel rows' panels.
+                            PlayerGamesReader(front: browse.sportFront, preferences: browse.f1Page) { games in
+                                let playing = playingGame(in: games)
+                                ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
+                                    PlayerGameRow(game: game, client: browse.client, highlighted: index == cursor,
+                                                  playing: index == playing).id(index)
+                                }
+                            }
+                        } else {
+                            ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
+                                channelRow(channel, highlighted: index == cursor, now: now).id(index)
+                            }
                         }
                     }.padding(.vertical, Self.channelListOverscroll)
                 }

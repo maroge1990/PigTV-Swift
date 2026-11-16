@@ -484,21 +484,6 @@ struct PlayerScreen: View {
                     .accessibilityIdentifier("player.pauseNotice")
             }
         }
-        #if os(iOS)
-        // Build 29: iPhone (compact width) opens the channel list as a
-        // bottom sheet (the system Liquid Glass sheet: no custom background); iPad uses the side panel (touchPlayer).
-        .sheet(isPresented: Binding(get: { showingGuide && sizeClass != .regular },
-                                    set: { if !$0 { showingGuide = false } })) {
-            NavigationStack {
-                PlayerChannelPanel(app: app) { showingGuide = false }
-                    .navigationTitle("Channels")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar { Button("Done") { showingGuide = false } }
-            }
-            .presentationDetents([.medium, .large])
-            .environment(\.colorScheme, .dark)
-        }
-        #endif
         #if DEBUG && os(iOS)
         .onAppear {
             // Fixture (PIGTV_UI_TEST_SCREEN=player-channels): open the panel.
@@ -570,9 +555,16 @@ struct PlayerScreen: View {
                                   touch: { lastInput = Date() })
                     .transition(.opacity)
             }
-            if showingGuide && sizeClass == .regular {
-                PlayerSidePanel(app: app) { showingGuide = false; lastInput = Date() }
-                    .pigSlide(from: .leading)
+            // The channel list (#334: the live games for a play from Sport): the iPad's side panel, and on iPhone
+            // (compact width) the same see-through panel from the bottom edge (it was the opaque system sheet).
+            if showingGuide {
+                if sizeClass == .regular {
+                    PlayerSidePanel(app: app) { showingGuide = false; lastInput = Date() }
+                        .pigSlide(from: .leading)
+                } else {
+                    PlayerSidePanel(app: app, bottom: true) { showingGuide = false; lastInput = Date() }
+                        .pigSlide(from: .bottom)
+                }
             }
         }
         .pigAnimation(value: chromeVisible)

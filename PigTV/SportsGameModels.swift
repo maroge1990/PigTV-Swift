@@ -102,6 +102,28 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let logo: String?
+    /// C-O (#334, additive): the team's short code ("GB"), for the player's live games list. Absent on older servers;
+    /// one that is empty or of another type is left out, never the competitor.
+    var abbreviation: String? = nil
+
+    enum CodingKeys: String, CodingKey { case id, name, logo, abbreviation }
+
+    init(id: String, name: String, logo: String?, abbreviation: String? = nil) {
+      self.id = id
+      self.name = name
+      self.logo = logo
+      self.abbreviation = abbreviation
+    }
+
+    init(from decoder: Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      id = try c.decode(String.self, forKey: .id)
+      name = try c.decode(String.self, forKey: .name)
+      logo = try c.decodeIfPresent(String.self, forKey: .logo)
+      let code = ((try? c.decodeIfPresent(String.self, forKey: .abbreviation)) ?? nil)?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      abbreviation = code?.isEmpty == false ? code : nil
+    }
     /// Only use cached same-server logos. Never fetch source URLs from a card.
     var cachedLogo: String? {
       logo.flatMap {

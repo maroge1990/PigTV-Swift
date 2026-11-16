@@ -218,7 +218,7 @@ struct GuideView: View {
                 ForEach(WatchOn.onAir(event, now: Date()).channels) { channel in
                     Button(WatchOn.label(channel)) {
                         if let current = WatchOn.play(event, on: channel, now: Date()) {
-                            app.playSportEvent(current, channel: channel, origin: "TV Guide")
+                            app.playSportEvent(current, channel: channel, origin: "TV Guide", fromSport: false)
                         }
                     }
                     .accessibilityIdentifier("watchOn.\(channel.id)")

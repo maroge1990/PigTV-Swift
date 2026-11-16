@@ -14,6 +14,9 @@ enum PlayerMetrics {
     static let rowLogo = CGSize(width: 120, height: 66)
     static let rowName: CGFloat = 23, rowNumber: CGFloat = 23, rowTitle: CGFloat = 24, rowIcon: CGFloat = 16
     static let rowPadding = CGSize(width: 16, height: 10), rowRadius = PigRadius.compact, rowBar: CGFloat = 4
+    /// #334: a live game row's score bug, in fixed columns (badge, team code, score) so the divider after it is at the
+    /// same x on every row.
+    static let gameBadge: CGFloat = 28, gameCode: CGFloat = 72, gameScore: CGFloat = 52, gameDivider: CGFloat = 2
     #else
     static let tuningLogo = CGSize(width: 150, height: 84)
     static let tuningName: CGFloat = 17, tuningTitle: CGFloat = 22, tuningDetail: CGFloat = 14
@@ -21,7 +24,10 @@ enum PlayerMetrics {
     static let rowLogo = CGSize(width: 92, height: 52)
     static let rowName: CGFloat = 14, rowNumber: CGFloat = 12, rowTitle: CGFloat = 17, rowIcon: CGFloat = 13
     static let rowPadding = CGSize(width: 12, height: 8), rowRadius = PigRadius.compact, rowBar: CGFloat = 3
+    static let gameBadge: CGFloat = 20, gameCode: CGFloat = 44, gameScore: CGFloat = 32, gameDivider: CGFloat = 1
     #endif
+    /// The score bug's width: its three columns and the two gaps between them.
+    static var gameBug: CGFloat { gameBadge + gameCode + gameScore + 2 * PigSpacing.s }
 }
 
 /// Pure text and numbers for the player's overlays (tested in
@@ -194,21 +200,197 @@ struct PlayerChannelRow: View {
             }
             Spacer(minLength: 0)
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, PlayerMetrics.rowPadding.width).padding(.vertical, PlayerMetrics.rowPadding.height)
-        .background(highlighted ? Color.pigMediaAccent.opacity(0.14) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
-        .background(Color.pigMediaPanel,
-                    in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius)
-                .strokeBorder(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3)
+        .modifier(PlayerRowPanel(highlighted: highlighted, playing: playing))
+    }
+}
+
+/// The panel every row of the player's list sits on (#334: the channel rows and the live game rows share it, so the two
+/// lists look the same): padding, the black panel, the accent tint and stroke when highlighted, the TV's lift.
+struct PlayerRowPanel: ViewModifier {
+    let highlighted: Bool
+    let playing: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(.white)
+            .padding(.horizontal, PlayerMetrics.rowPadding.width).padding(.vertical, PlayerMetrics.rowPadding.height)
+            .background(highlighted ? Color.pigMediaAccent.opacity(0.14) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
+            .background(Color.pigMediaPanel,
+                        in: RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: PlayerMetrics.rowRadius)
+                    .strokeBorder(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3)
+            }
+            #if os(tvOS)
+            .scaleEffect(highlighted ? 1.03 : 1, anchor: .leading)
+            #endif
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(playing ? .isSelected : [])
+    }
+}
+
+/// #334 (D-67): one live game in the player's list, as drawn. Pure (`PlayerGames`, tests `PlayerGamesTests`).
+nonisolated struct PlayerGame: Equatable, Identifiable, Sendable {
+    struct Side: Equatable, Sendable {
+        let name: String
+        /// The competitor's abbreviation, else the first three letters of its name in capitals.
+        let code: String
+        /// A same-server logo path, or nil (the monogram disc).
+        let logo: String?
+        /// Nil: no score drawn (hidden, recording, no scores feed, or none sent).
+        let score: String?
+    }
+
+    let game: SportsGame
+    let league: String
+    /// Where the game is up to ("Q4 0:17", "2nd half 67'", "On air · starts 3:10 pm", "LIVE").
+    let clock: String
+    /// Both competitors in the server's order; nil for a game without two (a race): its title and clock only.
+    let sides: [Side]?
+    /// Someone in the household is recording it: "Recording" shows and no score does (D-66).
+    let recording: Bool
+
+    var id: String { game.id }
+    var title: String { game.title }
+}
+
+/// #334 (D-67): a live play started from Sport lists the live games instead of the channels: the Sport front page's
+/// games that are under way (live, at a break, suspended) or on air before play, with a channel to play them on,
+/// followed games first, each group in the answer's order. Scores follow D-66: hidden when the household hides them
+/// (or the preference is unknown), when the game is being recorded, without the scores feed, or when the server sent
+/// none (fail closed).
+nonisolated enum PlayerGames {
+    static let header = "Live games"
+    static let channelsHeader = "Channels"
+    static let noOthers = "No other games live"
+    static let recordingTag = "Recording"
+
+    /// `hidden`: the screen's decision (`SportSpoilers.hidden`, from the account's preference); the answer's own switch
+    /// still hides here. `labels`: the catalogue's league names.
+    static func list(_ front: SportFront?, hidden: Bool, labels: [String: String] = [:],
+                     calendar: Calendar = .current) -> [PlayerGame] {
+        guard let front else { return [] }
+        let live = front.games.filter { SportFrontText.showsLive($0) && !$0.channels.isEmpty }
+        let ordered = live.filter { $0.followed == true } + live.filter { $0.followed != true }
+        let withheld = SportSpoilers.hidden(preference: hidden, answer: front.spoilerFree, page: false)
+        return ordered.map { row($0, in: front, hidden: withheld, labels: labels, calendar: calendar) }
+    }
+
+    static func row(_ game: SportsGame, in front: SportFront, hidden: Bool, labels: [String: String] = [:],
+                    calendar: Calendar = .current) -> PlayerGame {
+        let recording = game.recording != nil
+        let withheld = hidden || recording
+        let scores = SportFrontText.drawn(game, in: front, hidden: withheld).scores
+        var sides: [PlayerGame.Side]?
+        if game.competitors.count == 2, game.family != .motorsport {
+            sides = game.competitors.enumerated().map { index, team in
+                PlayerGame.Side(name: team.name, code: code(team), logo: team.cachedLogo,
+                                score: scores.flatMap { $0.indices.contains(index) ? $0[index] : nil })
+            }
         }
-        #if os(tvOS)
-        .scaleEffect(highlighted ? 1.03 : 1, anchor: .leading)
-        #endif
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(playing ? .isSelected : [])
+        return PlayerGame(game: game, league: labels[game.league] ?? game.league,
+                          clock: SportFrontText.cardClock(game, in: front, hidden: withheld, calendar: calendar),
+                          sides: sides, recording: recording)
+    }
+
+    /// The competitor's abbreviation, else the first three letters (or digits) of its name in capitals.
+    static func code(_ team: SportsGame.Competitor) -> String {
+        if let abbreviation = team.abbreviation { return abbreviation }
+        let letters = String(team.name.filter { $0.isLetter || $0.isNumber }.prefix(3)).uppercased()
+        return letters.isEmpty ? "?" : letters
+    }
+
+    /// The row of the game playing: the event the play began with, else the game whose preferred channel is the one
+    /// playing, else one that is on it at all.
+    static func playing(_ games: [PlayerGame], eventID: String?, channelID: String?) -> Int? {
+        if let eventID, let index = games.firstIndex(where: { $0.id == eventID || SportFrontText.event($0.game)?.id == eventID }) {
+            return index
+        }
+        guard let channelID else { return nil }
+        return games.firstIndex { $0.game.channels.first?.id == channelID }
+            ?? games.firstIndex { $0.game.channels.contains { $0.id == channelID } }
+    }
+
+    /// Whether there is another game to go to: with only the one playing (or none), the list does not open and the player
+    /// says `noOthers`.
+    static func hasOthers(_ games: [PlayerGame], playing: Int?) -> Bool {
+        games.indices.contains { $0 != playing }
+    }
+}
+
+/// #334: reads the live games for the player's list from the Sport front page's model and the account's preference,
+/// observing both (a refreshed answer or a changed Hide scores redraws the rows).
+struct PlayerGamesReader<Content: View>: View {
+    @ObservedObject var front: SportFrontModel
+    @ObservedObject var preferences: F1PageModel
+    @ViewBuilder let content: ([PlayerGame]) -> Content
+
+    var body: some View { content(PlayerGames.current(front: front, preferences: preferences)) }
+}
+
+extension PlayerGames {
+    /// The list from the models as they are now (the TV player's remote reads it at the moment of a press).
+    @MainActor static func current(front: SportFrontModel, preferences: F1PageModel) -> [PlayerGame] {
+        let hidden = SportSpoilers.hidden(preference: preferences.hidesSpoilers, answer: front.front?.spoilerFree, page: false)
+        return list(front.front, hidden: hidden, labels: front.labels)
+    }
+}
+
+/// #334 (D-67): one row of the player's live games list. The channel row's panel exactly (`PlayerRowPanel`); only the
+/// content differs: a score bug in fixed columns (badge, code, score for each side, two lines), a divider at the same x
+/// on every row, then the league, the Recording tag and the playing marker, and where the game is up to. A game without
+/// two sides (a race) has its title in the bug's place.
+struct PlayerGameRow: View {
+    let game: PlayerGame
+    let client: APIClient?
+    let highlighted: Bool
+    let playing: Bool
+
+    var body: some View {
+        HStack(spacing: PlayerMetrics.rowPadding.width) {
+            Group {
+                if let sides = game.sides {
+                    VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                        ForEach(Array(sides.enumerated()), id: \.offset) { _, side in sideLine(side) }
+                    }
+                } else {
+                    Text(game.title).font(.system(size: PlayerMetrics.rowName, weight: .semibold)).lineLimit(2)
+                }
+            }
+            .frame(width: PlayerMetrics.gameBug, height: PlayerMetrics.rowLogo.height, alignment: .leading)
+            Rectangle().fill(Color.white.opacity(0.3))
+                .frame(width: PlayerMetrics.gameDivider, height: PlayerMetrics.rowLogo.height)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
+                    Text(game.league).font(.system(size: PlayerMetrics.rowName)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+                    if game.recording {
+                        Label(PlayerGames.recordingTag, systemImage: "record.circle.fill")
+                            .font(.system(size: PlayerMetrics.rowName, weight: .semibold)).foregroundStyle(Color.pigDanger)
+                            .lineLimit(1)
+                    }
+                    if playing {
+                        Image(systemName: "play.fill").font(.system(size: PlayerMetrics.rowIcon)).foregroundStyle(Color.pigMediaAccent)
+                    }
+                }
+                Text(game.clock).font(.system(size: PlayerMetrics.rowTitle, weight: .semibold)).pigFigures().lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .modifier(PlayerRowPanel(highlighted: highlighted, playing: playing))
+    }
+
+    private func sideLine(_ side: PlayerGame.Side) -> some View {
+        HStack(spacing: PigSpacing.s) {
+            SportBadge(name: side.name, logo: side.logo, league: game.game.league, client: client, size: PlayerMetrics.gameBadge)
+                .frame(width: PlayerMetrics.gameBadge)
+            Text(side.code).font(.system(size: PlayerMetrics.rowName, weight: .semibold)).lineLimit(1)
+                .frame(width: PlayerMetrics.gameCode, alignment: .leading)
+                .accessibilityLabel(side.name)
+            Text(side.score ?? "").font(.system(size: PlayerMetrics.rowTitle, weight: .bold)).pigFigures().lineLimit(1)
+                .frame(width: PlayerMetrics.gameScore, alignment: .trailing)
+        }
     }
 }
 
