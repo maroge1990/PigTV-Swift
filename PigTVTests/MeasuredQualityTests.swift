@@ -65,4 +65,24 @@ final class MeasuredQualityTests: XCTestCase {
         let airing = browse.recordRequest(event: event, now: Date(timeIntervalSince1970: 0))?.airings.first
         XCTAssertEqual(airing?.chip?.text, "4K · 50")
     }
+
+    // D-67: the players' tag is the playing channel's measured badge, else the decoded picture's height.
+    func testThePlayerTagPrefersTheMeasurement() {
+        XCTAssertEqual(PlayerQualityTag.chip(measured: .init(label: .fhd, fps: 50))?.text, "1080 · 50")
+        XCTAssertNil(PlayerQualityTag.chip(measured: nil))
+        XCTAssertNil(PlayerQualityTag.chip(measured: .init(label: nil, fps: 50)))
+        XCTAssertEqual([2160, 1440, 1080, 720, 576, 360, 0].map { PlayerQualityTag.decoded(height: CGFloat($0)) },
+                       ["4K", "1440p", "1080p", "720p", "576p", "SD", nil])
+    }
+
+    func testAPlayedChannelCarriesItsMeasurement() throws {
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("https://fixture.invalid"), token: "fixture"))
+        let event = SportEventChannel(sourceId: 1, rawID: "a", name: "Sky Sports F1", measured: .init(label: .uhd, fps: 50))
+        let played = browse.playable(event)
+        XCTAssertEqual(played.measured, MeasuredQuality(label: .uhd, fps: 50))
+        XCTAssertEqual(browse.measured(for: played), MeasuredQuality(label: .uhd, fps: 50))
+        let guide = GuideChannel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, programmes: [],
+                                 measured: .init(label: .sd, fps: 25))
+        XCTAssertEqual(browse.asChannel(guide).measured, MeasuredQuality(label: .sd, fps: 25))
+    }
 }

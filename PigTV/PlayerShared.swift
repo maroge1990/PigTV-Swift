@@ -199,8 +199,30 @@ struct PlayerChannelRow: View {
                 }
             }
             Spacer(minLength: 0)
+            // D-67: the channel's measured quality, small and trailing (nothing when it has not been measured).
+            if let chip = PlayerQualityTag.chip(measured: browse?.measured(for: channel) ?? channel.measured) {
+                QualityBadge(chip: chip, font: .system(size: PlayerMetrics.rowNumber, weight: .bold), onDark: true)
+            }
         }
         .modifier(PlayerRowPanel(highlighted: highlighted, playing: playing))
+    }
+}
+
+/// D-67 (#265): the players' quality tag: the playing channel's measured badge when the server has measured it, else
+/// the decoded picture's height ("1080p"), else nothing (before the first frame is sized).
+struct PlayerQualityBadge: View {
+    let measured: MeasuredQuality?
+    let decodedHeight: CGFloat
+    let font: Font
+
+    var body: some View {
+        if let chip = PlayerQualityTag.chip(measured: measured) {
+            QualityBadge(chip: chip, font: font, onDark: true)
+        } else if let tag = PlayerQualityTag.decoded(height: decodedHeight) {
+            Text(tag).font(font).foregroundStyle(.white)
+                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
+                .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: PigRadius.inner))
+        }
     }
 }
 
@@ -386,6 +408,10 @@ struct PlayerGameRow: View {
                 Text(game.clock).font(.system(size: PlayerMetrics.rowTitle, weight: .semibold)).pigFigures().lineLimit(1)
             }
             Spacer(minLength: 0)
+            // D-67: the channel's measured quality, small and trailing (nothing when it has not been measured).
+            if let chip = PlayerQualityTag.chip(measured: browse?.measured(for: channel) ?? channel.measured) {
+                QualityBadge(chip: chip, font: .system(size: PlayerMetrics.rowNumber, weight: .bold), onDark: true)
+            }
         }
         .modifier(PlayerRowPanel(highlighted: highlighted, playing: playing))
     }

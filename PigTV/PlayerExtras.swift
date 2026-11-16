@@ -363,9 +363,15 @@ struct TouchPlayerChrome: View {
                 VStack(alignment: .leading, spacing: PigSpacing.xs) {
                     Text(programme?.title ?? "No programme information")
                         .font(regular ? .title2.bold() : .headline).lineLimit(1)
-                    if let programme {
-                        Text("\(PlayerInfoText.timeRange(programme)) · \(PlayerInfoText.remaining(programme, at: watching))")
-                            .font(regular ? .subheadline : .footnote).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+                    HStack(spacing: PigSpacing.s) {
+                        if let programme {
+                            Text("\(PlayerInfoText.timeRange(programme)) · \(PlayerInfoText.remaining(programme, at: watching))")
+                                .font(regular ? .subheadline : .footnote).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+                        }
+                        // D-67: the measured quality when known, else the decoded picture's height (as the Apple TV's).
+                        PlayerQualityBadge(measured: browse.measured(for: playback.channel) ?? playback.channel.measured,
+                                           decodedHeight: playback.player.currentItem?.presentationSize.height ?? 0,
+                                           font: (regular ? Font.caption : Font.caption2).weight(.semibold))
                     }
                     if !short, let next = PlayerInfoText.next(next) {
                         Text(next).font(.footnote).foregroundStyle(.white.opacity(0.7)).lineLimit(1)

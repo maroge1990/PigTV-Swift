@@ -345,13 +345,10 @@ struct CustomPlayerView: View {
                                 .lineLimit(2).frame(maxWidth: 1000, alignment: .leading)
                         }
                     }
-                    HStack(spacing: PigSpacing.xs) {
-                        ForEach(qualityTags, id: \.self) { tag in
-                            Text(tag).font(.system(size: PigType.caption, weight: .semibold))
-                                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
-                                .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: PigRadius.inner))
-                        }
-                    }
+                    // D-67: the measured quality when known, else the decoded picture's height.
+                    PlayerQualityBadge(measured: browse?.measured(for: playback.channel) ?? playback.channel.measured,
+                                       decodedHeight: playback.player.currentItem?.presentationSize.height ?? 0,
+                                       font: .system(size: PigType.caption, weight: .semibold))
                     if showsStreamInfo { StreamInfoLine(playback: playback) }
                 }
                 Spacer()
@@ -373,20 +370,6 @@ struct CustomPlayerView: View {
         // left a visible gap below the overlay.
         .ignoresSafeArea(edges: .bottom)
         .transition(.opacity)
-    }
-
-    // Feed resolution, read from the decoded video once playback starts. Empty
-    // until the first frame is sized, so nothing tacky is shown speculatively.
-    private var qualityTags: [String] {
-        let size = playback.player.currentItem?.presentationSize ?? .zero
-        let height = max(size.height, 0)
-        if height >= 2000 { return ["4K"] }
-        if height >= 1400 { return ["1440p"] }
-        if height >= 1030 { return ["1080p"] }
-        if height >= 700 { return ["720p"] }
-        if height >= 560 { return ["576p"] }
-        if height > 0 { return ["SD"] }
-        return []
     }
 
     private var actionRow: some View {

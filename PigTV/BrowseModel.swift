@@ -379,6 +379,10 @@ final class BrowseModel: ObservableObject {
     func guideQuality(of channel: GuideChannel) -> SportQuality? {
         quality(of: channel).flatMap { $0 == .uhd || $0 == .sd ? $0 : nil }
     }
+    /// D-67 (#265): a channel's measured quality: its own, else its guide row's; nil when the server has not measured it.
+    func measured(for channel: Channel) -> MeasuredQuality? {
+        channel.measured?.known ?? guideChannel(id: channel.id)?.measured?.known
+    }
     // The row's own logo, or nil when it has none.
     func logo(for channel: GuideChannel) -> String? { logo(current: channel.logo) }
     func logo(for channel: Channel) -> String? { logo(current: channel.logo) }
