@@ -231,6 +231,7 @@ enum PlayerCommands {
         }
         let ok = await browse.schedule(channel: channel, programme: programme, before: 0, after: 0)
         guard ok else { return browse.actionError ?? "Couldn't schedule the recording" }
+        if let already = browse.scheduleAlready { return already } // #329
         // #148 (D-28): a clash is said at once, in the player too.
         return browse.scheduleClash.map { "Recording \(programme.title). \($0)" } ?? "Recording \(programme.title)"
     }

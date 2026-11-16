@@ -86,6 +86,16 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     var rule_id: Int? = nil
     /// C-N: the programme's artwork (`/api/logo/<key>`), or nil.
     var image: String? = nil
+    /// #329 (C-M): on the answer to POST recordings/schedule only, true when the game (`gameId`) already had an active
+    /// schedule: this row is that schedule, and nothing new was made. Absent (or not a boolean) otherwise.
+    var alreadyScheduled: Lenient<Bool>? = nil
+    var wasAlreadyScheduled: Bool { alreadyScheduled?.value == true }
+    /// #329: what the app says when a schedule found the existing one, nil when it made a new one.
+    var alreadyScheduledText: String? {
+        guard wasAlreadyScheduled else { return nil }
+        guard let name = channel_name, !name.isEmpty else { return "Already set to record." }
+        return "Already set to record on \(name)."
+    }
     var start: Date { Date(timeIntervalSince1970: program_start / 1000) }
     var end: Date { Date(timeIntervalSince1970: program_end / 1000) }
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }

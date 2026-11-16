@@ -34,6 +34,8 @@ final class BrowseModel: ObservableObject {
     var actionMessage: String? { get { actions.actionMessage } set { actions.change(\.actionMessage, to: newValue) } }
     /// #148: the clash the last successful schedule() found (nil when none), for callers that word their own notice.
     private(set) var scheduleClash: String?
+    /// #329: the last schedule found the game already set to record: what to say instead of "scheduled".
+    private(set) var scheduleAlready: String?
     var actionError: String? { get { actions.actionError } set { actions.change(\.actionError, to: newValue) } }
     var scheduledKeys: Set<String> { marks.scheduledKeys }
     var recordingChannels: Set<String> { marks.recordingChannels }
@@ -611,6 +613,7 @@ final class BrowseModel: ObservableObject {
         actionError = nil
         actionMessage = nil
         scheduleClash = nil
+        scheduleAlready = nil
         defer { mutationBusy = false }
         do {
             let made: ScheduledRecording = try await client.request("recordings/schedule", method: "POST",
@@ -619,8 +622,12 @@ final class BrowseModel: ObservableObject {
                     description: programme.description, programStart: programme.startTime,
                     programEnd: programme.endTime, preBufferMin: before, postBufferMin: after, gameId: gameId))
             await loadRecordings()
-            // #12 (D-28): a clash is said when scheduling, never found later as a wait or a miss.
-            if let clash = made.clashText(in: schedules) {
+            // #329: the game was already set to record (perhaps on another channel): that one stands, nothing new.
+            if let already = made.alreadyScheduledText {
+                scheduleAlready = already
+                actionMessage = already
+            } else if let clash = made.clashText(in: schedules) {
+                // #12 (D-28): a clash is said when scheduling, never found later as a wait or a miss.
                 scheduleClash = clash
                 actionMessage = "Recording scheduled. \(clash)"
             } else {
