@@ -190,6 +190,36 @@ final class PlayerGamesTests: XCTestCase {
         XCTAssertNil(app.sportPlay, "ending the play forgets it")
     }
 
+    /// Codex (medium): a row may come from a cached answer. A game whose preferred channel's airing has ended is not
+    /// played when picked: the player says so and the list leaves it out.
+    func testAGameWhoseAiringHasEndedIsNotPlayed() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let app = AppModel()
+        app.injectHomeFixture(sportFront: true)
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        var ended = Self.channel(browse.guide[1].rawID, browse.guide[1].name)
+        ended["sourceId"] = browse.guide[1].sourceId
+        ended["start"] = Self.now - 7_200_000
+        ended["end"] = Self.now - 60_000
+        var playing = Self.channel(browse.guide[0].rawID, browse.guide[0].name)
+        playing["sourceId"] = browse.guide[0].sourceId
+        playing["start"] = Self.now - 7_200_000
+        let front = try Self.front([Self.game("on", channels: [playing]), Self.game("over", channels: [ended])])
+        let cached = PlayerGames.list(front, hidden: false, now: Date(timeIntervalSince1970: (Self.now - 3_600_000) / 1000))
+        XCTAssertEqual(cached.map(\.id), ["on", "over"], "control: an hour ago both were on air")
+        XCTAssertEqual(PlayerGames.list(front, hidden: false).map(\.id), ["on"], "now the ended one is left out")
+
+        app.playSportEvent(try XCTUnwrap(SportFrontText.event(cached[0].game)))
+        let before = app.playback?.channel.id
+        XCTAssertFalse(app.playSportGame(cached[1]))
+        XCTAssertEqual(app.playback?.channel.id, before, "not switched")
+        XCTAssertEqual(app.playerNotice, "Game over isn’t on air now")
+        XCTAssertTrue(app.playSportGame(cached[0]), "control: one on air plays")
+        if let playback = app.playback { await app.endPlayback(playback) }
+    }
+
     /// The games list needs the server's Sport front page: without it the player lists the event's channels as before.
     func testWithoutTheSportFrontPageThePlayerListsChannels() async throws {
         let server = try FakePigTVServer()

@@ -266,12 +266,18 @@ nonisolated enum PlayerGames {
     static let noOthers = "No other games live"
     static let recordingTag = "Recording"
 
+    /// A game picked from the list is no longer on air on its channel.
+    static func notOnAir(_ title: String) -> String { "\(title) isn’t on air now" }
+
     /// `hidden`: the screen's decision (`SportSpoilers.hidden`, from the account's preference); the answer's own switch
     /// still hides here. `labels`: the catalogue's league names.
+    /// `now`: a game whose preferred channel no longer airs it (a cached answer) is left out (`SportFrontText.playable`).
     static func list(_ front: SportFront?, hidden: Bool, labels: [String: String] = [:],
-                     calendar: Calendar = .current) -> [PlayerGame] {
+                     calendar: Calendar = .current, now: Date = Date()) -> [PlayerGame] {
         guard let front else { return [] }
-        let live = front.games.filter { SportFrontText.showsLive($0) && !$0.channels.isEmpty }
+        let live = front.games.filter {
+            SportFrontText.showsLive($0) && !$0.channels.isEmpty && SportFrontText.playable($0, at: now) != nil
+        }
         let ordered = live.filter { $0.followed == true } + live.filter { $0.followed != true }
         let withheld = SportSpoilers.hidden(preference: hidden, answer: front.spoilerFree, page: false)
         return ordered.map { row($0, in: front, hidden: withheld, labels: labels, calendar: calendar) }

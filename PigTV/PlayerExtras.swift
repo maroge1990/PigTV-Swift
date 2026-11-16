@@ -233,6 +233,12 @@ struct TouchPlayerChrome: View {
         .foregroundStyle(.white)
         .background { shades.allowsHitTesting(false) }
         .environment(\.colorScheme, .dark)
+        // #334: a game picked from the live games list that is no longer on air.
+        .onChange(of: app.playerNotice) { _, text in
+            guard let text else { return }
+            notice = text
+            app.playerNotice = nil
+        }
         .task(id: notice) {
             guard notice != nil else { return }
             try? await Task.sleep(for: .seconds(3))

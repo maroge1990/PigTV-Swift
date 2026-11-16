@@ -66,6 +66,9 @@ final class AppModel: ObservableObject {
     /// #334 (D-67): the live play began from Sport (a front card or a sport page), so the player's list shows the live
     /// games instead of the channels (`playerShowsGames`). Cleared with the play.
     @Published private(set) var sportPlay: SportPlay?
+    /// #334: a notice for the player's capsule from something the model refused (a game no longer on air); the player
+    /// shows it and clears it.
+    @Published var playerNotice: String?
     // Set by the player's transport-bar menu; the player screen presents the
     // channel list sheet and clears it.
     // A1.2: the channel switchPlayback(to:) most recently switched away from,
@@ -589,10 +592,17 @@ final class AppModel: ObservableObject {
     var playerShowsGames: Bool { sportPlay != nil && serverInfo?.features.sportFront == true }
 
     /// #334: a game chosen in the player's live games list plays on its preferred channel (the first), with no channel
-    /// picker, and the list stays the live games.
-    func playSportGame(_ game: PlayerGame) {
-        guard let event = SportFrontText.event(game.game) else { return }
+    /// picker, and the list stays the live games. The row may be from a cached answer: it is checked for a current
+    /// airing at the press (`SportFrontText.playable`, as a Watch on a card is); one that is not on air is not played,
+    /// and the player says so (`playerNotice`). Returns whether it played.
+    @discardableResult
+    func playSportGame(_ game: PlayerGame, now: Date = Date()) -> Bool {
+        guard let event = SportFrontText.playable(game.game, at: now) else {
+            playerNotice = PlayerGames.notOnAir(game.title)
+            return false
+        }
         playSportEvent(event)
+        return true
     }
 
     /// "Watch <channel> when it starts": plays at once when the event starts

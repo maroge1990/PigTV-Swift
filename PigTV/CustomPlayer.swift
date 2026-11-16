@@ -136,6 +136,13 @@ struct CustomPlayerView: View {
         // #132: the tuning card held focus until the first picture.
         .onChange(of: playback.hasPlayed) { _, played in if played { focused = true } }
         .task(id: playback.ready) { if playback.ready { await playback.loadTracks() } }
+        // #334: a game picked from the list that is no longer on air.
+        .onChange(of: app.playerNotice) { _, text in
+            guard let text else { return }
+            notice = text
+            touch()
+            app.playerNotice = nil
+        }
         // #334: the live games are read again when a play from Sport begins (the Sport pages rest under the player),
         // and kept fresh while the list is open.
         .task(id: app.sportPlay) {
