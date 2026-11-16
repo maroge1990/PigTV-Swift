@@ -10,6 +10,13 @@ nonisolated enum LibrarySearchSection: String, CaseIterable, Identifiable, Senda
     case teams, games, programmes, channels, recordings
     var id: String { rawValue }
 
+    /// Before typing, with no recent searches: what the server's search finds; the guide's words only for an older server
+    /// (404), whose search looks through the loaded guide.
+    static func hint(guideOnly: Bool) -> String {
+        guideOnly ? "Type two letters or more: channels by name, and programmes in the next 24 hours."
+                  : "Search programmes, channels, teams, games and recordings"
+    }
+
     /// The group's heading. The guide's search (an older server) keeps its words for programmes: it looks a day ahead.
     func title(count: Int, source: LibrarySearchResults.Source = .server) -> String {
         if self == .programmes && source == .guide { return "Programmes · next 24 hours" }

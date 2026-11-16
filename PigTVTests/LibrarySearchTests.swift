@@ -327,4 +327,22 @@ final class LibrarySearchTests: XCTestCase {
         XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.map(\.value),
                        ["swans v giants", "20"])
     }
+
+    // #57: the server's search says what it finds before typing; only the 404 fallback keeps the guide's words.
+    func testTheHintBeforeTypingNamesWhatTheSearchFinds() {
+        XCTAssertEqual(LibrarySearchSection.hint(guideOnly: false), "Search programmes, channels, teams, games and recordings")
+        XCTAssertTrue(LibrarySearchSection.hint(guideOnly: true).contains("next 24 hours"))
+    }
+
+    // #57: a followed team says so: in its line on touch (where Following is an icon), beside the row on the TV.
+    func testAFollowedTeamSaysFollowing() {
+        XCTAssertEqual(SearchRowWords.teamDetail(league: "AFL", followed: true, touch: true), "AFL · Following")
+        XCTAssertEqual(SearchRowWords.teamDetail(league: "AFL", followed: true, touch: false), "AFL")
+        XCTAssertEqual(SearchRowWords.teamDetail(league: "AFL", followed: false, touch: true), "AFL")
+    }
+
+    // #57: every Jump to time chip fits whole ("12 pm" was "12…" six a row on the TV).
+    func testJumpToHasFourHoursARow() {
+        XCTAssertEqual(GuideJump.hourColumns, 4)
+    }
 }

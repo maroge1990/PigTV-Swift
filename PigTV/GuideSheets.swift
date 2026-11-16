@@ -43,6 +43,9 @@ nonisolated enum GuideSearch {
 
 /// Jump to's days and hours. Pure; tested.
 nonisolated enum GuideJump {
+    /// The time chips a row in Jump to (#57: four, so every label fits whole, "12 pm" included, on the TV as on touch).
+    static let hourColumns = 4
+
     /// "Today", "Tomorrow", then "Wed 5"…, seven days from today.
     static func days(now: Date, calendar: Calendar = .current) -> [(date: Date, title: String)] {
         let today = calendar.startOfDay(for: now)
@@ -256,8 +259,7 @@ struct GuideSearchPage: View {
     @ViewBuilder
     private var recentSearches: some View {
         if recent.isEmpty {
-            Text(runner.usesGuide ? "Type two letters or more: channels by name, and programmes in the next 24 hours."
-                                  : "Type two letters or more: teams, games, programmes, channels and recordings.")
+            Text(LibrarySearchSection.hint(guideOnly: runner.usesGuide))
                 .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
         } else {
             HStack(spacing: PigSpacing.m) {
@@ -352,11 +354,15 @@ struct GuideSearchPage: View {
         return SearchRowCard {
             SportBadge(name: team.name, logo: team.cachedLogo, league: team.league, client: model.client,
                        size: SearchRowMetrics.badge)
-            SearchRowText(title: team.name, detail: team.league)
-        } trailing: {
+            SearchRowText(title: team.name, detail: SearchRowWords.teamDetail(league: team.league, followed: followed))
+        } watch: {
+            EmptyView()
+        } other: {
             if followed {
-                Label("Following", systemImage: "checkmark").labelStyle(.titleAndIcon)
+                // A state, not an action: on touch its icon (the detail line says "Following").
+                Label(SearchRowWords.following, systemImage: "checkmark")
                     .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
+                    .accessibilityIdentifier("search.team.following")
             } else if let sport {
                 Button("Follow", systemImage: "plus") { follow(team, sport: sport) }
                     .pigSecondaryButton()
@@ -386,12 +392,13 @@ struct GuideSearchPage: View {
         return SearchRowCard {
             SportBadge(name: event.title, logo: nil, league: event.league, client: model.client, size: SearchRowMetrics.badge)
             SearchRowText(title: event.title, detail: detail, tags: ProgrammeTags(live: live))
-        } trailing: {
+        } watch: {
             if live {
                 Button("Watch", systemImage: "play.fill") { remember(); actions.watchGame(event) }
                     .pigSecondaryButton()
                     .accessibilityLabel("Watch \(event.title)")
             }
+        } other: {
             if event.end > now {
                 Button("Record", systemImage: "record.circle") { remember(); actions.recordGame(event) }
                     .pigSecondaryButton()
@@ -410,10 +417,12 @@ struct GuideSearchPage: View {
             ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name,
                             size: SearchRowMetrics.logo)
             SearchRowText(title: channel.name, detail: now.map { "On now: \($0.title)" })
-        } trailing: {
+        } watch: {
             Button("Watch", systemImage: "play.fill") { remember(); actions.watchChannel(channel) }
                 .pigSecondaryButton()
                 .accessibilityLabel("Watch \(channel.name)")
+        } other: {
+            EmptyView()
         }
         .accessibilityIdentifier("search.channel.\(channel.id)")
     }
@@ -426,7 +435,9 @@ struct GuideSearchPage: View {
             ChannelLogoTile(logo: recording.image ?? recording.channel_logo, client: model.client,
                             name: recording.channel_name ?? recording.title, size: SearchRowMetrics.logo)
             SearchRowText(title: recording.title, detail: detail.isEmpty ? nil : detail)
-        } trailing: {
+        } watch: {
+            EmptyView()
+        } other: {
             Image(systemName: "play.fill").font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
                 .accessibilityHidden(true)
         }
@@ -475,13 +486,8 @@ struct GuideSearchPage: View {
         .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
     }
 
-    private var hourColumns: Int {
-        #if os(tvOS)
-        6
-        #else
-        4
-        #endif
-    }
+    /// Four hours a row on every device: six on the TV cut "12 pm" to "12…" in the 640 pt panel.
+    private var hourColumns: Int { GuideJump.hourColumns }
 }
 
 /// Chips that wrap onto more lines when the row is full.
@@ -538,21 +544,25 @@ private struct SearchRowText: View {
     }
 }
 
-/// A result row: the row itself (a button when it opens or plays something), then its actions beside it. On the TV the
-/// row and each action are separate focus targets in one line.
-private struct SearchRowCard<Leading: View, Trailing: View>: View {
+/// A result row: the row itself (a button when it opens or plays something), then its actions in a fixed column at the
+/// trailing edge: a Watch slot, then one for Record, Follow / Following or Play. Each slot keeps the width of its widest
+/// action whether it has one or not, so every row's card is the same width and each action sits at the same x on every
+/// row. On the TV the row and each action are separate focus targets in one line.
+private struct SearchRowCard<Leading: View, Watch: View, Other: View>: View {
     var action: (() -> Void)? = nil
     /// What VoiceOver (and the focus) reads for the row; nil: its texts.
     var label: String? = nil
     @ViewBuilder var leading: Leading
-    @ViewBuilder var trailing: Trailing
+    @ViewBuilder var watch: Watch
+    @ViewBuilder var other: Other
 
     init(action: (() -> Void)? = nil, label: String? = nil, @ViewBuilder leading: () -> Leading,
-         @ViewBuilder trailing: () -> Trailing) {
+         @ViewBuilder watch: () -> Watch, @ViewBuilder other: () -> Other) {
         self.action = action
         self.label = label
         self.leading = leading()
-        self.trailing = trailing()
+        self.watch = watch()
+        self.other = other()
     }
 
     var body: some View {
@@ -566,15 +576,27 @@ private struct SearchRowCard<Leading: View, Trailing: View>: View {
                     .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
                     .accessibilityElement(children: .combine)
             }
-            trailing
-                #if os(iOS)
-                // Touch: Search's column is narrow (iPad beside Jump to, the iPhone): the actions are their icons (each
-                // keeps its spoken label), so the row's title keeps the room.
-                .labelStyle(.iconOnly)
-                #endif
+            HStack(spacing: PigSpacing.s) {
+                SearchActionSlot(template: { Self.button("Watch", "play.fill") }) { watch }
+                SearchActionSlot(template: {
+                    Self.button("Record", "record.circle")
+                    Self.button("Follow", "plus")
+                    Label(SearchRowWords.following, systemImage: "checkmark").font(DetailType.rowDetail)
+                }) { other }
+            }
+            #if os(iOS)
+            // Touch: Search's column is narrow (iPad beside Jump to, the iPhone): the actions are their icons (each
+            // keeps its spoken label), so the row's title keeps the room.
+            .labelStyle(.iconOnly)
+            #endif
         }
         // The row's identifier (set by its caller) names the row, not each control in it.
         .accessibilityElement(children: .contain)
+    }
+
+    /// A slot's sizing copy of an action (never drawn, focused or read).
+    private static func button(_ title: String, _ icon: String) -> some View {
+        Button(title, systemImage: icon) {}.pigSecondaryButton()
     }
 
     private var content: some View {
@@ -592,6 +614,41 @@ private struct SearchRowCard<Leading: View, Trailing: View>: View {
     }
 }
 
+/// One action slot of a result row: as wide as the widest action it can hold (its hidden `template`), the action (or
+/// nothing) at its trailing edge.
+private struct SearchActionSlot<Template: View, Content: View>: View {
+    @ViewBuilder var template: Template
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            ZStack { template }
+                .hidden()
+                .disabled(true)
+                .accessibilityHidden(true)
+            content
+        }
+    }
+}
+
+/// Search's row words. Pure; tested (LibrarySearchTests).
+nonisolated enum SearchRowWords {
+    static let following = "Following"
+
+    /// A team's line: its league; on touch, where Following is only an icon, "AFL · Following" when it is followed.
+    static func teamDetail(league: String, followed: Bool, touch: Bool = SearchRowWords.isTouch) -> String {
+        followed && touch ? "\(league) · \(following)" : league
+    }
+
+    static var isTouch: Bool {
+        #if os(tvOS)
+        false
+        #else
+        true
+        #endif
+    }
+}
+
 /// A programme found: opens its page; Watch while it is on, Record until it ends (not when already scheduled).
 private struct SearchResultRow: View {
     let model: BrowseModel
@@ -606,7 +663,7 @@ private struct SearchResultRow: View {
         #if os(tvOS)
         ""
         #else
-        live ? "On now · " : ""
+        ProgrammeTags.showsOnNow(live: live, tags: ProgrammeTags(programme)) ? "On now · " : ""
         #endif
     }
 
@@ -624,7 +681,7 @@ private struct SearchResultRow: View {
                 #if os(tvOS)
                 HStack(spacing: PigSpacing.s) {
                     Text(programme.title).font(DetailType.rowTitle).lineLimit(1)
-                    if live { StatusPill(text: "On now", colour: .pigAccent).fixedSize() }
+                    if ProgrammeTags.showsOnNow(live: live, tags: tags) { StatusPill(text: "On now", colour: .pigAccent).fixedSize() }
                 }
                 ProgrammeTagsRow(tags: tags, title: programme.title, font: DetailType.rowDetail)
                 #else
@@ -634,12 +691,13 @@ private struct SearchResultRow: View {
                 #endif
                 Text(touchOnNow(live) + line).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
             }
-        } trailing: {
+        } watch: {
             if live, let watch {
                 Button("Watch", systemImage: "play.fill", action: watch)
                     .pigSecondaryButton()
                     .accessibilityLabel("Watch \(programme.title) on \(channel.name)")
             }
+        } other: {
             if programme.end > now, let record {
                 Button("Record", systemImage: "record.circle", action: record)
                     .pigSecondaryButton()

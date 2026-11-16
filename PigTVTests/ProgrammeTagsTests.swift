@@ -71,4 +71,11 @@ final class ProgrammeTagsTests: XCTestCase {
         XCTAssertNil(ProgrammeTags().spoken())
         XCTAssertFalse(ProgrammeTags(new: true).isEmpty)
     }
+
+    // #57: one live marker on a programme row: LIVE when the guide says live broadcast, else On now while it is on.
+    func testARowShowsOneLiveMarker() {
+        XCTAssertFalse(ProgrammeTags.showsOnNow(live: true, tags: ProgrammeTags(live: true)))
+        XCTAssertTrue(ProgrammeTags.showsOnNow(live: true, tags: ProgrammeTags(new: true)))
+        XCTAssertFalse(ProgrammeTags.showsOnNow(live: false, tags: ProgrammeTags()))
+    }
 }

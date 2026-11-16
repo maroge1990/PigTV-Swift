@@ -455,6 +455,15 @@ enum GuideFixtures {
         return copy
     }
 
+    /// PIGTV_UI_TEST_LIBRARY_SEARCH=1: the account follows AFL and Collingwood, so a team row in AFL offers Follow (a team
+    /// in a league not followed offers nothing: Settings › Sport adds the league first).
+    @MainActor static func applySearchFollows(to model: BrowseModel) {
+        model.sportFollows.setFixture(
+            SportFollows(spoilerFree: false, sports: [.init(sport: "Australian Football", leagues: ["AFL"], teams: ["Collingwood"])]),
+            catalog: SportCatalog(sports: [.init(sport: "Australian Football", leagues: [.init(league: "AFL")])]),
+            names: ["AFL": .init(kind: "team", names: ["Carlton", "Collingwood", "Geelong Cats"])])
+    }
+
     /// The teams the fixture's search knows (Collingwood followed, as the fixture's rules).
     static let searchTeams = [
         LibrarySearchTeam(id: "17", name: "Collingwood", league: "AFL", followed: true),

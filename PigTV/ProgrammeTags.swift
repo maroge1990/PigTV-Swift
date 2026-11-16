@@ -26,6 +26,10 @@ nonisolated struct ProgrammeTags: Equatable, Sendable {
     /// Nothing to draw.
     var isEmpty: Bool { !live && !new && episodeLine() == nil }
 
+    /// One live marker on a programme row (#57): its LIVE badge when the guide says it is a live broadcast, else an
+    /// "On now" marker while it is on.
+    static func showsOnNow(live isOn: Bool, tags: ProgrammeTags) -> Bool { isOn && !tags.live }
+
     /// The badges, in order: LIVE before NEW.
     var badges: [Badge] { (live ? [Badge.live] : []) + (new ? [Badge.new] : []) }
 

@@ -340,7 +340,10 @@ private struct DesignTestScreen: View {
         .overlay(alignment: .bottom) { UndoToast(presenter: app.presenter) }
         .task {
             // The record pages with the server's per-account follows (C-U).
-            app.injectHomeFixture(sportFollows: ["record", "record-change", "record-sport"].contains(screen))
+            let librarySearch = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LIBRARY_SEARCH"] == "1"
+            app.injectHomeFixture(sportFollows: ["record", "record-change", "record-sport"].contains(screen) || librarySearch)
+            // #57: Search's team rows: AFL followed, Collingwood with it (Following), so Carlton offers Follow.
+            if librarySearch, let browse = app.browse { GuideFixtures.applySearchFollows(to: browse) }
             app.serverText = "http://pigtv.local:3000"
             if screen == "pairing" { app.injectPairingReview() }
             // D-44 batch 6: Sign in's step 1 (the server), as after "Use a different server".
