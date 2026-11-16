@@ -182,7 +182,11 @@ struct GuideSearchPage: View {
             #endif
         }
         .defaultFocus($focus, startWithJump && canJump ? .day(selectedDay) : .field)
-        .onAppear { recent = RecentSearches().all }
+        .onAppear {
+            recent = RecentSearches().all
+            // Back from a result's page: a search that leaving interrupted runs again.
+            runner.resume(query)
+        }
         .task {
             guard model.sportFollowsEnabled else { return }
             if model.sportFollows.follows == nil { await model.sportFollows.load() }
@@ -215,9 +219,10 @@ struct GuideSearchPage: View {
                 .focused($focus, equals: .field)
                 .onSubmit { remember() }
                 .accessibilityIdentifier("search.field")
-            let results = runner.results
+            // Only the answer for the query on screen: an earlier query's rows are never shown under a newer one.
+            let results = runner.results(for: query)
             // The server's search does not need the guide; the guide's search waits for it (and fails with it).
-            let state = PageState.search(query: query, searched: runner.searched, found: results.map { !$0.isEmpty } ?? false,
+            let state = PageState.search(query: query, searched: results?.query, found: results.map { !$0.isEmpty } ?? false,
                                          guide: runner.usesGuide ? model.guideState : .content)
             if trimmed.count < LibrarySearchRunner.minimumLength {
                 recentSearches

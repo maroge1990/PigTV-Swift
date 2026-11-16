@@ -162,6 +162,39 @@ final class LibrarySearchTests: XCTestCase {
         XCTAssertEqual(runner.results?.teams.map(\.id), ["swans"])
     }
 
+    /// Codex: A's rows stayed (and could be acted on) under B's text, and leaving for a result cancelled B for good.
+    func testAnInterruptedSearchResumesAndAnEarlierAnswerIsNotShown() async {
+        let calls = Calls()
+        let runner = LibrarySearchRunner(fetch: { text in
+            calls.fetched.append(text)
+            if text == "giants" && calls.fetched.filter({ $0 == "giants" }).count == 1 {
+                // B's first request is still out when the viewer opens a result.
+                await withCheckedContinuation { done in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { done.resume() }
+                }
+            }
+            return LibrarySearchResponse(q: text, teams: [LibrarySearchTeam(id: text, name: text, league: "AFL")])
+        }, fallback: { text, failed in self.guideResults(text, failed: failed) }, debounce: .zero)
+        runner.update("swans")
+        await waitFor { runner.searched == "swans" }
+        XCTAssertEqual(runner.results(for: "swans")?.teams.map(\.id), ["swans"])
+        runner.update("giants")
+        await waitFor { calls.fetched == ["swans", "giants"] }
+        XCTAssertNil(runner.results(for: "giants"), "A's rows are not shown under B's text")
+        XCTAssertNil(runner.results(for: "giants "), "nor under B with a trailing space")
+        runner.cancel() // a result's page opened: the page left the screen
+        XCTAssertFalse(runner.busy)
+        runner.resume("giants") // back before B's first answer came
+        await waitFor { runner.searched == "giants" }
+        XCTAssertEqual(calls.fetched, ["swans", "giants", "giants"], "B was searched again")
+        XCTAssertEqual(runner.results(for: "giants")?.teams.map(\.id), ["giants"])
+        try? await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(runner.results(for: "giants")?.teams.map(\.id), ["giants"], "the interrupted answer is dropped")
+        runner.resume("giants")
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(calls.fetched.count, 3, "a query with its own results is not searched again")
+    }
+
     func testClearingTheQueryClearsTheResultsAndCancels() async {
         let calls = Calls()
         let runner = LibrarySearchRunner(fetch: { text in calls.fetched.append(text); return LibrarySearchResponse(q: text) },

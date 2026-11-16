@@ -327,6 +327,22 @@ final class LibrarySearchRunner: ObservableObject {
     /// Searches again now (the guide finished loading, or a retry).
     func refresh(_ query: String) { update(query) }
 
+    /// The results for `query` as it is on screen, or nil: an answer for an earlier query is never shown (or acted on)
+    /// under a newer one; the page shows that it is searching instead.
+    func results(for query: String) -> LibrarySearchResults? {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let results, searched == text, text.count >= Self.minimumLength else { return nil }
+        return results
+    }
+
+    /// The page is back on screen (a result's page was popped): a query whose search was interrupted (`cancel` on
+    /// leaving) and has no results of its own is searched again.
+    func resume(_ query: String) {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= Self.minimumLength, results(for: text) == nil, !busy else { return }
+        update(query)
+    }
+
     func cancel() {
         task?.cancel()
         task = nil
