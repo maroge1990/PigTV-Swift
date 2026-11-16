@@ -220,6 +220,8 @@ nonisolated enum SportPhoneLayout {
 
     /// The header chip: what spoiler-free does to the page.
     static func scoresChip(hidden: Bool) -> String { hidden ? "Scores hidden" : "Scores shown" }
+    /// The chip's icon, alone on a compact iPhone header (beside the title and the magnifier); its words are its label.
+    static func scoresIcon(hidden: Bool) -> String { hidden ? "eye.slash" : "eye" }
 
     /// "1 of 10 follows".
     static func position(_ index: Int, of count: Int) -> String {

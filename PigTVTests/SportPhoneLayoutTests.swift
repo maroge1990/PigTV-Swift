@@ -52,6 +52,9 @@ final class SportPhoneLayoutTests: XCTestCase {
         }
         XCTAssertEqual(SportPhoneLayout.scoresChip(hidden: true), "Scores hidden")
         XCTAssertEqual(SportPhoneLayout.scoresChip(hidden: false), "Scores shown")
+        // #57: the compact iPhone header draws the chip as its icon.
+        XCTAssertEqual(SportPhoneLayout.scoresIcon(hidden: true), "eye.slash")
+        XCTAssertEqual(SportPhoneLayout.scoresIcon(hidden: false), "eye")
     }
 
     func testOneCardPerSportWithFixtureRows() throws {

@@ -301,6 +301,7 @@ struct SportTabHeader: View {
     let hidden: Bool
     #if os(iOS)
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
     var body: some View {
@@ -329,8 +330,24 @@ struct SportTabHeader: View {
         PigHeaderDate.text(now).font(GuideTypography.body).foregroundStyle(.secondary).lineLimit(1)
     }
 
-    private var chip: some View {
+    @ViewBuilder
+    private var chipFace: some View {
+        #if os(iOS)
+        // #57: on a compact iPhone the header also holds the magnifier, so the chip is its icon (eye / eye.slash) and its
+        // words are what VoiceOver reads; at the accessibility sizes it has its own line and keeps them.
+        if sizeClass == .compact && !typeSize.isAccessibilitySize {
+            Image(systemName: SportPhoneLayout.scoresIcon(hidden: hidden))
+                .accessibilityLabel(SportPhoneLayout.scoresChip(hidden: hidden))
+        } else {
+            Text(SportPhoneLayout.scoresChip(hidden: hidden))
+        }
+        #else
         Text(SportPhoneLayout.scoresChip(hidden: hidden))
+        #endif
+    }
+
+    private var chip: some View {
+        chipFace
             #if os(tvOS)
             .font(.system(size: PigType.caption))
             #else
