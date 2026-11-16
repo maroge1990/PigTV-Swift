@@ -355,7 +355,8 @@ struct GuideSearchPage: View {
             SearchRowText(title: team.name, detail: team.league)
         } trailing: {
             if followed {
-                Label("Following", systemImage: "checkmark").font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
+                Label("Following", systemImage: "checkmark").labelStyle(.titleAndIcon)
+                    .font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary)
             } else if let sport {
                 Button("Follow", systemImage: "plus") { follow(team, sport: sport) }
                     .pigSecondaryButton()
@@ -566,6 +567,11 @@ private struct SearchRowCard<Leading: View, Trailing: View>: View {
                     .accessibilityElement(children: .combine)
             }
             trailing
+                #if os(iOS)
+                // Touch: Search's column is narrow (iPad beside Jump to, the iPhone): the actions are their icons (each
+                // keeps its spoken label), so the row's title keeps the room.
+                .labelStyle(.iconOnly)
+                #endif
         }
         // The row's identifier (set by its caller) names the row, not each control in it.
         .accessibilityElement(children: .contain)
@@ -595,6 +601,15 @@ private struct SearchResultRow: View {
     var watch: (() -> Void)? = nil
     var record: (() -> Void)? = nil
 
+    /// "On now · " before the detail line on touch (the TV draws the pill beside the title).
+    private func touchOnNow(_ live: Bool) -> String {
+        #if os(tvOS)
+        ""
+        #else
+        live ? "On now · " : ""
+        #endif
+    }
+
     var body: some View {
         let now = Date()
         let live = programme.isLive(at: now)
@@ -606,12 +621,18 @@ private struct SearchResultRow: View {
         SearchRowCard(action: action, label: spoken) {
             ChannelLogoTile(logo: model.logo(for: channel), client: model.client, name: channel.name, size: SearchRowMetrics.logo)
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                #if os(tvOS)
                 HStack(spacing: PigSpacing.s) {
                     Text(programme.title).font(DetailType.rowTitle).lineLimit(1)
-                    if live { StatusPill(text: "On now", colour: .pigAccent) }
+                    if live { StatusPill(text: "On now", colour: .pigAccent).fixedSize() }
                 }
                 ProgrammeTagsRow(tags: tags, title: programme.title, font: DetailType.rowDetail)
-                Text(line).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                #else
+                // Touch: the column is narrow, so the title has its line to itself and On now leads the detail line.
+                Text(programme.title).font(DetailType.rowTitle).lineLimit(1)
+                ProgrammeTagsRow(tags: tags, title: programme.title, font: DetailType.rowDetail)
+                #endif
+                Text(touchOnNow(live) + line).font(DetailType.rowDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
             }
         } trailing: {
             if live, let watch {
