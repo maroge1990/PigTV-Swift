@@ -248,8 +248,14 @@ nonisolated enum PageWords {
         return filter == "favourites" ? (noFavouritesTitle, noFavouritesText, true) : (noMatchingTitle, noMatchingText, true)
     }
 
-    static func searchNothingTitle(_ query: String) -> String { "Nothing matches “\(query)”" }
+    /// D-66 (#57): "Nothing found for “curling”".
+    static func searchNothingTitle(_ query: String) -> String { "Nothing found for “\(query)”" }
+    /// The guide's search (an older server).
     static let searchNothingText = "No channel, and no programme in the next 24 hours, has that in its name. Check the spelling, or try another word."
+    /// The server's search (#57).
+    static let searchNothingAnywhereText = "No team, game, programme, channel or recording has that in its name. Check the spelling, or try another word."
+    /// The server's search did not answer: the results are the loaded guide's.
+    static let searchGuideOnly = "Showing channels and programmes from the guide only. Search will try the server again as you type."
     static let clearSearch = "Clear search"
 
     // MARK: Recordings and Scheduled

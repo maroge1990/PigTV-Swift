@@ -109,7 +109,7 @@ final class PageStatesTests: XCTestCase {
         XCTAssertEqual(PageState.search(query: "curling", searched: "curling", found: false, guide: .content), .empty)
         XCTAssertEqual(PageState.search(query: "curling", searched: "curl", found: true, guide: .stale(since: nil)), .content,
                        "while the next search waits, the last results stay")
-        XCTAssertEqual(PageWords.searchNothingTitle("curling"), "Nothing matches “curling”")
+        XCTAssertEqual(PageWords.searchNothingTitle("curling"), "Nothing found for “curling”", "D-66's words")
         XCTAssertEqual(PageWords.clearSearch, "Clear search")
     }
 
@@ -480,6 +480,7 @@ final class PageStatesTests: XCTestCase {
         texts += [PageWords.noChannelsTitle, PageWords.noChannelsText, PageWords.noFavouritesTitle, PageWords.noFavouritesText,
                   PageWords.noMatchingTitle, PageWords.noMatchingText, PageWords.showAllChannels,
                   PageWords.searchNothingTitle("curling"), PageWords.searchNothingText, PageWords.clearSearch,
+                  PageWords.searchNothingAnywhereText, PageWords.searchGuideOnly,
                   PageWords.noRecordingsTitle, PageWords.noRecordingsText, PageWords.nothingScheduledTitle,
                   PageWords.nothingScheduledText, PageWords.rulesFailed, PageWords.noSportsTitle, PageWords.noSportsText,
                   PageWords.addSport, PageWords.openGuide] + PageWords.actionTexts

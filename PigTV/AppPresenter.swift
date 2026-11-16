@@ -10,6 +10,8 @@ enum AppPresentation: Identifiable {
     case record(RecordRequest)
     /// D-44 (Apple 107): Watch from start: the recording being made, from its beginning (C-L), full screen.
     case recordingPlayer(Recording)
+    /// #57: Play on a Search result: the recording player, from where this device left off (as Recordings' Play).
+    case playRecording(Recording)
 
     var id: String {
         switch self {
@@ -17,11 +19,17 @@ enum AppPresentation: Identifiable {
         case .channelSchedule(let channel): "schedule:\(channel.id)"
         case .record(let request): "record:\(request.id)"
         case .recordingPlayer(let recording): "player:\(recording.id)"
+        case .playRecording(let recording): "play:\(recording.id)"
         }
     }
 
     /// Shown full screen on every platform (a player), not as a page.
-    var isPlayer: Bool { if case .recordingPlayer = self { true } else { false } }
+    var isPlayer: Bool {
+        switch self {
+        case .recordingPlayer, .playRecording: true
+        default: false
+        }
+    }
 }
 
 /// #49 groundwork (Apple 105): one app-level presentation layer, owned by the session root (`AppModel.presenter`).
@@ -159,7 +167,7 @@ extension View {
                     }
                 case .record(let request):
                     RecordPage(model: browse, presenter: presenter, request: request) { presenter.dismiss() }
-                case .recordingPlayer:
+                case .recordingPlayer, .playRecording:
                     EmptyView()
                 }
             }
@@ -172,6 +180,10 @@ extension View {
                                         onDismiss: { presenter.didDismiss() }) { item in
                 if let browse, case .recordingPlayer(let recording) = item {
                     RecordingPlayerScreen(recording: recording, client: browse.client, fromStart: true) {
+                        Task { await browse.loadRecordings() }
+                    }
+                } else if let browse, case .playRecording(let recording) = item {
+                    RecordingPlayerScreen(recording: recording, client: browse.client) {
                         Task { await browse.loadRecordings() }
                     }
                 }

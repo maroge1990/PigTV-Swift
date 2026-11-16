@@ -88,6 +88,9 @@ struct GuideView: View {
     @FocusState private var pageToolFocus: PageTool?
     /// D-44 (#49, Apple 108): the pages pushed on the Guide's NavigationStack (programme details, …).
     @State private var path: [GuideRoute] = []
+    /// #57: what Search opened from the server's answer, for a route the loaded guide cannot resolve (a programme beyond
+    /// the loaded hours, a channel not paged in yet).
+    @State private var searchFound = SearchFound()
     @State private var filterStripMetrics = FilterStripMetrics()
     // Filtered rows are cached: filtering hundreds of channels inside `body`
     // on every focus change or clock tick is what made scrolling stutter.
@@ -746,7 +749,7 @@ struct GuideView: View {
     private func destination(_ route: GuideRoute) -> some View {
         switch route {
         case .programme(let id, let start):
-            if let channel = model.guideChannel(id: id), let programme = channel.programmes.first(where: { $0.startTime == start }) {
+            if case let (channel, programme)? = searchFound.programme(id: id, start: start, in: model) {
                 ProgrammeDetails(model: model, presenter: app.presenter, channel: channel, programme: programme,
                                  watch: { watchFromPage(channel) }, openSchedule: { openChannel(channel) },
                                  openProgramme: { open(channel, $0) }, pushedFrom: "TV Guide")
@@ -754,7 +757,7 @@ struct GuideView: View {
                 missingPage
             }
         case .channel(let id):
-            if let channel = model.guideChannel(id: id) {
+            if let channel = searchFound.channel(id: id, in: model) {
                 ChannelPageView(model: model, presenter: app.presenter, channel: channel, watch: { watchFromPage(channel) },
                             openProgramme: { open(channel, $0) }, pushedFrom: "TV Guide")
             } else {
@@ -762,9 +765,22 @@ struct GuideView: View {
             }
         case .search(let jump):
             GuideSearchPage(model: model, date: viewport, canJump: usesGridView, startWithJump: jump,
-                            openChannel: { openChannel($0) }, openProgramme: { open($0, $1) },
-                            showGuide: { date in pendingJump = date; path = [] }, pushedFrom: "TV Guide")
+                            openChannel: { channel in searchFound.keep(channel); openChannel(channel) },
+                            openProgramme: { channel, programme in searchFound.keep(channel, programme); open(channel, programme) },
+                            showGuide: { date in pendingJump = date; path = [] }, pushedFrom: "TV Guide",
+                            actions: searchActions)
         }
+    }
+
+    /// #57: Search's actions from the Guide: a Watch goes back to the grid first (the player closes onto it).
+    private var searchActions: SearchActions {
+        var actions = SearchActions.app(app, browse: model)
+        actions.watchChannel = { watchFromPage($0) }
+        actions.watchGame = { event in
+            path = []
+            app.playSportEvent(event, origin: "TV Guide")
+        }
+        return actions
     }
 
     /// A route whose channel or programme has left the loaded guide (a refresh moved on past it).

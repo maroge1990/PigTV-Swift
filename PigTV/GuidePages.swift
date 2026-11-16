@@ -11,6 +11,30 @@ enum GuideRoute: Hashable {
     case search(jump: Bool)
 }
 
+/// #57: the channels and programmes Search opened, kept so a route resolves when the loaded guide does not have them
+/// (the server's index looks further ahead than the loaded hours). The loaded guide's copy always wins: it is current.
+struct SearchFound {
+    private var channels: [String: GuideChannel] = [:]
+    private var programmes: [String: GuideProgramme] = [:]
+
+    mutating func keep(_ channel: GuideChannel, _ programme: GuideProgramme? = nil) {
+        channels[channel.id] = channel
+        if let programme { programmes["\(channel.id)|\(programme.startTime)"] = programme }
+    }
+
+    func channel(id: String, in model: BrowseModel) -> GuideChannel? {
+        model.guideChannel(id: id) ?? channels[id]
+    }
+
+    func programme(id: String, start: Double, in model: BrowseModel) -> (GuideChannel, GuideProgramme)? {
+        guard let channel = channel(id: id, in: model) else { return nil }
+        if let programme = channel.programmes.first(where: { $0.startTime == start }) ?? programmes["\(id)|\(start)"] {
+            return (channel, programme)
+        }
+        return nil
+    }
+}
+
 /// "Also on ABC TV tonight" on a programme's page: the programmes after it on its channel that evening. Pure; tested.
 nonisolated enum AlsoOn {
     /// "Also on ABC TV tonight" (today from 5 pm), "today", "tomorrow", else "on Saturday 27 September".
