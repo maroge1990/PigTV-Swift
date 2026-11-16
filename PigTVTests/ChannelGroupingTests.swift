@@ -113,6 +113,31 @@ final class ChannelGroupingTests: XCTestCase {
         XCTAssertEqual(ChannelGrouping.group(decoded).count, 1, "grouped on the server's key when it sends one")
     }
 
+    // Server review (#266): folding two copies with different airings hid the later one (it could not be scheduled).
+    func testCopiesWithDifferentAiringsStaySeparateChips() {
+        var early = copy("a", "Sky Sports F1", .fhd, fps: 50)
+        early.startTime = 1_000_000; early.endTime = 5_000_000
+        var late = copy("b", "Sky Sports F1", .fhd, fps: 50)
+        late.startTime = 3_000_000; late.endTime = 7_000_000
+        var same = copy("c", "Sky Sports F1", .fhd, fps: 50)
+        same.startTime = 1_000_000; same.endTime = 5_000_000
+        let event = SportEvent(id: "e", title: "F1", league: "F1", startTime: 1_000_000, endTime: 7_000_000, channels: [early, late, same])
+        let group = ChannelGrouping.group(event)[0]
+        XCTAssertEqual(group.choices.map(\.copy.rawID), ["a", "b"], "two chips, each acting on its own copy")
+        XCTAssertEqual(group.choices.map(\.indices), [[0, 2], [1]], "the same airing still folds")
+        XCTAssertEqual(group.choices.map { group.startsDifferently($0) }, [false, true], "the later chip shows its start")
+        XCTAssertEqual(Set(group.choices.map(\.id)).count, 2)
+
+        let programme = { (start: Double, end: Double) in GuideProgramme(title: "F1", description: nil, startTime: start, endTime: end) }
+        let airings = [early, late].map { channel in
+            RecordRequest.Airing(channel: GuideChannel(rawID: channel.rawID, sourceId: 1, name: channel.name, logo: nil,
+                                                       category: nil, programmes: []),
+                                 programme: programme(channel.startTime ?? 0, channel.endTime ?? 0), measured: channel.measured)
+        }
+        let groups = RecordPlan.channelGroups(RecordRequest(title: "F1", airings: airings))
+        XCTAssertEqual(groups[0].choices.map(\.copy), [0, 1], "the record page offers both airings")
+    }
+
     #if DEBUG
     @MainActor func testTheQualitiesFixtureDrawsChips() {
         let guide = (0..<6).map { GuideChannel(rawID: "g\($0)", sourceId: 1, name: "G\($0)", logo: nil, category: nil, programmes: []) }

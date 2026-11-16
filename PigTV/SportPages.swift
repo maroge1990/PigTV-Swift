@@ -272,7 +272,7 @@ struct SportChannelList: View {
 
     var body: some View {
         // D-65 (#266): one row per channel name, its copies as quality chips (display only: each copy acts as before).
-        let groups = ChannelGrouping.group(event.channels)
+        let groups = ChannelGrouping.group(event)
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                 row(group, isBest: index == 0 && groups.count > 1)
@@ -374,6 +374,12 @@ private struct SportChannelTitle: View {
     }
 }
 
+/// A chip's start time when its copy airs at another time than the row's (its `start`, ms), else nil.
+private func chipStartText(_ group: ChannelNameGroup<SportEventChannel>, _ choice: ChannelChoice<SportEventChannel>) -> String? {
+    guard group.startsDifferently(choice), let start = choice.start else { return nil }
+    return Date(timeIntervalSince1970: start / 1000).formatted(date: .omitted, time: .shortened)
+}
+
 /// D-65: the icon a copy's choice shows: play, an already-scheduled recording, the choice, or nothing to do.
 private func sportChannelIcon(_ action: SportRows.ChannelAction, scheduled: Bool) -> String {
     switch action {
@@ -392,6 +398,8 @@ private struct SportChannelChip: View {
     var waitRecords = false
     /// The accessibility identifier's stem: the opened iPhone row's chips have their own.
     var identifier = "sport.channel"
+    /// Its copy airs at another time than the row's: its start ("8:30 pm"), else nil.
+    var startText: String? = nil
     let choose: (SportEventChannel) -> Void
 
     var body: some View {
@@ -401,6 +409,9 @@ private struct SportChannelChip: View {
                     QualityBadge(chip: chip)
                 } else {
                     Text("Other").font(SportMetrics.detail.weight(.bold)).foregroundStyle(.secondary)
+                }
+                if let startText {
+                    Text(startText).font(SportMetrics.detail).foregroundStyle(.secondary).pigFigures()
                 }
                 Image(systemName: sportChannelIcon(action, scheduled: scheduled || waitRecords)).font(SportMetrics.detail)
                     .foregroundStyle(.secondary).accessibilityHidden(true)
@@ -419,7 +430,7 @@ private struct SportChannelChip: View {
         let text = action == .ended ? "Not on now on \(name)" : action == .play ? "Watch on \(name)"
             : scheduled ? "Recording scheduled on \(name)"
             : waitRecords ? "Record on \(name)" : "Record or watch \(name) when it starts"
-        return text + (choice.chip.map { ", \($0.spoken)" } ?? "")
+        return text + (choice.chip.map { ", \($0.spoken)" } ?? "") + (startText.map { ", starts \($0)" } ?? "")
     }
 }
 
@@ -442,7 +453,8 @@ struct SportChannelChipsRow: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: PigSpacing.s) {
                         ForEach(group.choices) { choice in
-                            SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled, choose: choose)
+                            SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled,
+                                             startText: chipStartText(group, choice), choose: choose)
                         }
                     }
                     .padding(.vertical, PigSpacing.xxs)
@@ -505,7 +517,8 @@ struct SportChannelPhoneRow: View {
                         HStack(spacing: PigSpacing.s) {
                             ForEach(group.choices) { choice in
                                 SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled,
-                                                 waitRecords: true, identifier: "sport.channel.chip", choose: choose)
+                                                 waitRecords: true, identifier: "sport.channel.chip",
+                                                 startText: chipStartText(group, choice), choose: choose)
                             }
                         }
                     }

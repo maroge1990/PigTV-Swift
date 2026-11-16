@@ -111,7 +111,12 @@ nonisolated struct ChannelChoice<Copy>: Identifiable {
     let indices: [Int]
     /// The copy a choice acts on: the first in the server's order.
     let copy: Copy
-    var id: String { chip.map { "\($0.measured ? "m" : "n")|\($0.text)" } ?? "none" }
+    /// The copy's airing (ms), when the caller gave one: copies fold only when it is the same.
+    var start: Double? = nil
+    var end: Double? = nil
+    var id: String {
+        (chip.map { "\($0.measured ? "m" : "n")|\($0.text)" } ?? "none") + "|\(start.map { String(Int64($0)) } ?? "")|\(end.map { String(Int64($0)) } ?? "")"
+    }
 }
 
 /// One row of a channel picker: every copy of one channel name, its chips best first.
@@ -126,6 +131,10 @@ nonisolated struct ChannelNameGroup<Copy>: Identifiable {
     var choosesQuality: Bool { choices.count > 1 }
     /// Every copy's index in the server's list.
     var indices: [Int] { choices.flatMap(\.indices).sorted() }
+    /// A chip whose copy starts at another time than the row's (its best copy's): it shows its start.
+    func startsDifferently(_ choice: ChannelChoice<Copy>) -> Bool {
+        choice.start != nil && choice.start != best.start
+    }
 }
 
 extension ChannelChoice: Equatable where Copy: Equatable {}
@@ -164,37 +173,50 @@ nonisolated enum ChannelGrouping {
     /// first of them in the server's order. Display only: what a copy does is unchanged.
     /// `serverKey`: the copy's `nameKey` from the server, when it sent one. A row's name is its first (best) copy's name
     /// without the quality words.
+    /// `airing`: the copy's start and end (ms); copies with the same name and chip fold only when it is the same too, so
+    /// a later airing of the channel stays its own chip (it can be watched or recorded on its own times).
     static func group<Copy>(_ copies: [Copy], name: (Copy) -> String, serverKey: (Copy) -> String? = { _ in nil },
+                            airing: (Copy) -> (start: Double, end: Double)? = { _ in nil },
                             chip: (Copy) -> QualityChip?) -> [ChannelNameGroup<Copy>] {
         var order: [String] = []
         var names: [String: String] = [:]
-        var folds: [String: [(chip: QualityChip?, indices: [Int], copy: Copy)]] = [:]
+        var folds: [String: [(chip: QualityChip?, indices: [Int], copy: Copy, start: Double?, end: Double?)]] = [:]
         for (index, copy) in copies.enumerated() {
             let display = name(copy)
             let key = key(display, serverKey: serverKey(copy))
             if names[key] == nil { order.append(key); names[key] = baseName(display) }
             let badge = chip(copy)
-            if let at = folds[key, default: []].firstIndex(where: { $0.chip == badge }) {
+            let times = airing(copy)
+            if let at = folds[key, default: []].firstIndex(where: {
+                $0.chip == badge && $0.start == times?.start && $0.end == times?.end
+            }) {
                 folds[key]![at].indices.append(index)
             } else {
-                folds[key, default: []].append((badge, [index], copy))
+                folds[key, default: []].append((badge, [index], copy, times?.start, times?.end))
             }
         }
         return order.map { key in
-            // A stable sort: equal chips cannot occur (they fold), so ties are only between none and none.
+            // A stable sort: equal chips with different airings keep the server's order.
             let sorted = folds[key, default: []].enumerated().sorted { a, b in
                 if QualityChip.isBetter(a.element.chip, than: b.element.chip) { return true }
                 if QualityChip.isBetter(b.element.chip, than: a.element.chip) { return false }
                 return a.offset < b.offset
             }.map(\.element)
             return ChannelNameGroup(name: names[key] ?? key, key: key,
-                                    choices: sorted.map { ChannelChoice(chip: $0.chip, indices: $0.indices, copy: $0.copy) })
+                                    choices: sorted.map { ChannelChoice(chip: $0.chip, indices: $0.indices, copy: $0.copy,
+                                                                                start: $0.start, end: $0.end) })
         }
     }
 
-    /// An event's channels, grouped.
+    /// Channels grouped on their own airing times (`startTime`/`endTime`, nil when absent).
     static func group(_ channels: [SportEventChannel]) -> [ChannelNameGroup<SportEventChannel>] {
-        group(channels, name: \.name, serverKey: \.nameKey, chip: \.chip)
+        group(channels, name: \.name, serverKey: \.nameKey,
+              airing: { channel in channel.startTime.flatMap { start in channel.endTime.map { (start: start, end: $0) } } }, chip: \.chip)
+    }
+
+    /// An event's channels, grouped: each copy on its own airing of the event (#20, `SportEvent.airing(on:)`).
+    static func group(_ event: SportEvent) -> [ChannelNameGroup<SportEventChannel>] {
+        group(event.channels, name: \.name, serverKey: \.nameKey, airing: { event.airing(on: $0) }, chip: \.chip)
     }
 }
 

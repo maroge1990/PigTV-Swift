@@ -224,7 +224,9 @@ nonisolated enum RecordPlan {
     /// same name and quality fold into one chip). Each copy is its index in `request.airings`; a chip selects its first.
     static func channelGroups(_ request: RecordRequest) -> [ChannelNameGroup<Int>] {
         ChannelGrouping.group(Array(request.airings.indices), name: { request.airings[$0].channel.name },
-                              serverKey: { request.airings[$0].nameKey }, chip: { request.airings[$0].chip })
+                              serverKey: { request.airings[$0].nameKey },
+                              airing: { (start: request.airings[$0].programme.startTime, end: request.airings[$0].programme.endTime) },
+                              chip: { request.airings[$0].chip })
     }
 
     /// Record on's note: how many channels carry it (by name), or one channel's qualities.
@@ -677,11 +679,16 @@ struct RecordPage: View {
                         ForEach(Array(group.choices.enumerated()), id: \.element.id) { chipIndex, choice in
                             let picked = choice.indices.contains(airingIndex)
                             Button { airingIndex = choice.copy } label: {
-                                Group {
+                                HStack(spacing: PigSpacing.xs) {
                                     if let chip = choice.chip {
                                         QualityBadge(chip: chip, font: Metrics.badgeFont)
                                     } else {
                                         Text("Other").font(Metrics.badgeFont).foregroundStyle(Color.pigSecondary)
+                                    }
+                                    // A copy airing at another time than the row's shows its start.
+                                    if group.startsDifferently(choice) {
+                                        Text(request.airings[choice.copy].programme.start.formatted(date: .omitted, time: .shortened))
+                                            .font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures()
                                     }
                                 }
                                 .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
@@ -694,7 +701,9 @@ struct RecordPage: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .control))
-                            .accessibilityLabel("\(option.channel.name), \(choice.chip?.spoken ?? "other quality")")
+                            .accessibilityLabel("\(option.channel.name), \(choice.chip?.spoken ?? "other quality")"
+                                                + (group.startsDifferently(choice)
+                                                   ? ", starts \(request.airings[choice.copy].programme.start.formatted(date: .omitted, time: .shortened))" : ""))
                             .accessibilityAddTraits(picked ? .isSelected : [])
                             .accessibilityIdentifier("record.on.\(index).\(chipIndex)")
                         }
