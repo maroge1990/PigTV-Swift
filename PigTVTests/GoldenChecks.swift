@@ -17,6 +17,9 @@ private struct GoldenFailure: Error, CustomStringConvertible {
 enum GoldenChecks {
     /// The files the client models (by name, without `.json`), and the ones it does not, with why.
     static let notModelled: [String: String] = [
+        "library-search": "decoded once the search batch lands (#57); until then the app falls back to the guide filter",
+        "library-search-recordings": "decoded once the search batch lands (#57)",
+        "library-search-teams": "decoded once the search batch lands (#57)",
         "info-fallback": "no `version`: ServerInfo requires it (the client rejects this answer; reported to the lead)",
         "playback-resolve-200": "resolve is decoded by the playback path's own tests (RealPlaybackTests)",
         "playback-resolve-404": "an error body, read as text (C-B)",
