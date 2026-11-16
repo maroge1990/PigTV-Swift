@@ -353,10 +353,17 @@ private struct DesignTestScreen: View {
                 try? await Task.sleep(for: .seconds(1))
                 browse.actionError = PageWords.ruleAddFailed
             }
-            // Codex 5a round 1: PIGTV_UI_TEST_RECORD_FLIP=recording | gone changes the scheduled programme's row 4 s after
-            // the page opens (it starts recording, or it is gone), as a refreshed list would.
+            // Codex 5a round 1: PIGTV_UI_TEST_RECORD_FLIP=recording | gone changes the scheduled programme's row 6 s after
+            // the record page opens (it starts recording, or it is gone), as a refreshed list would. The clock starts
+            // once the page is presented, not when this screen appears: on a slow cold launch a fixed timer from here
+            // flipped the row before RecordPageUITests had seen it unchanged (flaky
+            // testChangeRecordingFollowsItsScheduleWhenItStartsRecording). The tests wait 10 s for the flip.
             if let flip = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_RECORD_FLIP"], let browse = app.browse {
-                try? await Task.sleep(for: .seconds(4))
+                for _ in 0..<120 {
+                    if case .record = app.presenter.presented { break }
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                try? await Task.sleep(for: .seconds(6))
                 if flip == "gone" {
                     browse.schedules.removeAll { $0.id == 90 }
                 } else if let index = browse.schedules.firstIndex(where: { $0.id == 90 }),
