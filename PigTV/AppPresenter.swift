@@ -33,6 +33,16 @@ enum AppPresentation: Identifiable {
         default: false
         }
     }
+
+    /// Covers the whole screen on touch rather than being a page sheet: a player, and Search (D-66: the same side-by-side
+    /// page with Jump to as the Guide's, which a narrow iPad sheet cannot hold). On the TV every page covers the screen.
+    var coversScreen: Bool {
+        if isPlayer { return true }
+        #if os(iOS)
+        if case .search = self { return true }
+        #endif
+        return false
+    }
 }
 
 /// #49 groundwork (Apple 105): one app-level presentation layer, owned by the session root (`AppModel.presenter`).
@@ -161,7 +171,7 @@ final class AppPresenter {
 extension View {
     /// The presentation layer's host, at the tab container (LibraryView): the presenter's page as a detail cover.
     func appPresentations(_ presenter: AppPresenter, app: AppModel, browse: BrowseModel?) -> some View {
-        detailCover(item: Binding(get: { presenter.presented.flatMap { $0.isPlayer ? nil : $0 } }, set: { presenter.hostSet($0) }),
+        detailCover(item: Binding(get: { presenter.presented.flatMap { $0.coversScreen ? nil : $0 } }, set: { presenter.hostSet($0) }),
                     onDismiss: { presenter.didDismiss() }) { item in
             if let browse {
                 switch item {
@@ -183,10 +193,13 @@ extension View {
         // The player's own layer: full screen on iOS too (a page is a sheet there). Hosted on a background so it never
         // shares a view with the page cover.
         .background {
-            Color.clear.fullScreenCover(item: Binding(get: { presenter.presented.flatMap { $0.isPlayer ? $0 : nil } },
+            Color.clear.fullScreenCover(item: Binding(get: { presenter.presented.flatMap { $0.coversScreen ? $0 : nil } },
                                                       set: { presenter.hostSet($0) }),
                                         onDismiss: { presenter.didDismiss() }) { item in
-                if let browse, case .recordingPlayer(let recording) = item {
+                if let browse, case .search(let from) = item {
+                    // iOS only (`coversScreen`): Search as a full page, as the Guide's.
+                    AppSearchHost(app: app, browse: browse, from: from)
+                } else if let browse, case .recordingPlayer(let recording) = item {
                     RecordingPlayerScreen(recording: recording, client: browse.client, fromStart: true) {
                         Task { await browse.loadRecordings() }
                     }

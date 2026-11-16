@@ -113,4 +113,15 @@ final class AppPresenterTests: XCTestCase {
         presenter.commitPendingUndo()
         XCTAssertEqual(log, ["undone A", "commit B"])
     }
+
+    // #57: Search from a header's magnifier covers the screen on touch (the side-by-side page with Jump to, not a sheet).
+    func testSearchCoversTheScreenOnTouch() throws {
+        #if os(iOS)
+        XCTAssertTrue(AppPresentation.search(from: "Sport").coversScreen)
+        #else
+        XCTAssertFalse(AppPresentation.search(from: "Sport").coversScreen)
+        #endif
+        XCTAssertTrue(AppPresentation.playRecording(try recording(1)).coversScreen)
+        XCTAssertFalse(AppPresentation.recording(try recording(1)).coversScreen)
+    }
 }
