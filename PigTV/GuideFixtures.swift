@@ -283,7 +283,7 @@ enum GuideFixtures {
     /// D-65 (#266, PIGTV_UI_TEST_SCREEN=sport-picker-qualities | sport-picker-qualities-later | record-qualities): an F1 race
     /// carried by Sky Sports F1 in eight copies (4K · 50 three times, 1080 · 50, 1080 · 25, 720 · 50, SD · 25 and one not
     /// measured) and Sky Sports Main Event in two, so the pickers draw their quality chips. Live, or starting in
-    /// `startsIn` minutes. The copies borrow the guide's sport rows for their ids and logos.
+    /// `startsIn` minutes. The copies borrow the guide's rows for their ids, and the logo of the guide row of their own name.
     static func qualityEvent(from guide: [GuideChannel], startsIn: Double = -20) -> SportEvent? {
         guard guide.count > 5 else { return nil }
         let now = (Date().timeIntervalSince1970 / 300).rounded(.down) * 300_000
@@ -296,7 +296,7 @@ enum GuideFixtures {
         let channels = copies.enumerated().map { (index, copy) -> SportEventChannel in
             let row = guide[index % guide.count]
             return SportEventChannel(sourceId: row.sourceId, rawID: "\(row.rawID)-q\(index)", name: copy.0,
-                                     logo: row.logo, quality: copy.3,
+                                     logo: guide.first { $0.name == copy.0 }?.logo ?? row.logo, quality: copy.3,
                                      measured: copy.1.map { MeasuredQuality(label: $0, fps: copy.2) })
         }
         let start = now + startsIn * 60_000
