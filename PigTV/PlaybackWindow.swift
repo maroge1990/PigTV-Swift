@@ -35,8 +35,15 @@ enum OrientationLock {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else { return }
         for window in scene.windows { window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations() }
-        scene.requestGeometryUpdate(.iOS(interfaceOrientations: target)) { _ in }
+        // #336: not a closure written here: under the target's default MainActor isolation `{ _ in }` would be
+        // main-actor isolated, and UIKit calls the error handler on a background queue, which traps
+        // (_dispatch_assert_queue_fail). A nonisolated function has no isolation to check.
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: target), errorHandler: geometryUpdateFailed)
     }
+
+    /// #336: the geometry request's error handler. UIKit may call it on any queue, so it is nonisolated and touches no
+    /// UI state: a refused rotation leaves the phone as it is held, which is all that can be done.
+    nonisolated static func geometryUpdateFailed(_ error: Error) {}
 }
 
 final class PigTVAppDelegate: NSObject, UIApplicationDelegate {
