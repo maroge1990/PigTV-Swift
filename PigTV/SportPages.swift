@@ -174,24 +174,7 @@ struct SportChannelRow: View {
             HStack(spacing: PigSpacing.l) {
                 ChannelLogoTile(logo: browse.logo(for: channel), client: browse.client, name: channel.name,
                                 size: SportMetrics.rowLogo)
-                VStack(alignment: .leading, spacing: PigSpacing.xs) {
-                    HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
-                        Text(channel.name).font(DetailType.rowTitle).lineLimit(1).pigMinimumScale(0.75, size: PigType.cardTitle).layoutPriority(1)
-                        if let number = channel.number {
-                            // never broken over lines; the name shrinks first (#243: "beIN Sp…" at phone width)
-                            ChannelNumberText(number: String(number), font: DetailType.rowDetail).fixedSize()
-                        }
-                    }
-                    if isBest {
-                        Text("Recommended").font(DetailType.rowDetail).foregroundStyle(.secondary).lineLimit(1).fixedSize()
-                    }
-                    if scheduled {
-                        Text("Recording scheduled").font(DetailType.rowDetail).foregroundStyle(.secondary)
-                    }
-                    if ended {
-                        Text("Not on now").font(DetailType.rowDetail).foregroundStyle(.secondary)
-                    }
-                }
+                SportChannelTitle(channel: channel, isBest: isBest, scheduled: scheduled, ended: ended)
                 Spacer(minLength: 16)
                 if let chip = channel.chip { QualityBadge(chip: chip) }
                 Image(systemName: icon).foregroundStyle(.secondary).accessibilityHidden(true)
@@ -280,21 +263,19 @@ struct SportChannelList: View {
         self.play = play
     }
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var compact: Bool { sizeClass == .compact }
+    #else
+    private let compact = false
+    #endif
+
     var body: some View {
+        // D-65 (#266): one row per channel name, its copies as quality chips (display only: each copy acts as before).
+        let groups = ChannelGrouping.group(event.channels)
         VStack(alignment: .leading, spacing: PigSpacing.s) {
-            ForEach(Array(event.channels.enumerated()), id: \.element.id) { index, channel in
-                // #20: each row on its own channel's airing.
-                let action = SportRows.channelAction(event, on: channel, now: clock)
-                let scheduled = action != .play && browse.isScheduled(event, on: channel)
-                SportChannelRow(channel: channel, browse: browse, isBest: index == 0 && event.channels.count > 1,
-                                 playsNow: action == .play, scheduled: scheduled, ended: action == .ended) {
-                    // Decided again at the press: the page may have been open since before the airing ended.
-                    switch SportRows.channelAction(event, on: channel, now: Date()) {
-                    case .play: play { app.playSportEvent(event, channel: channel) }
-                    case .wait: choosing = channel
-                    case .ended: break
-                    }
-                }
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                row(group, isBest: index == 0 && groups.count > 1)
             }
         }
         .tvFocusSection()
@@ -317,7 +298,229 @@ struct SportChannelList: View {
             Text(SportRows.timing(event, now: clock)).pigFigures()
         }
     }
+
+    @ViewBuilder
+    private func row(_ group: ChannelNameGroup<SportEventChannel>, isBest: Bool) -> some View {
+        // #20: each copy on its own channel's airing; the row's words follow its best copy.
+        let best = group.best.copy
+        let action = SportRows.channelAction(event, on: best, now: clock)
+        let scheduled = action != .play && group.choices.contains { browse.isScheduled(event, on: $0.copy) }
+        if compact {
+            #if os(iOS)
+            SportChannelPhoneRow(group: group, browse: browse, isBest: isBest, scheduled: scheduled,
+                                 action: { SportRows.channelAction(event, on: $0, now: clock) },
+                                 startText: event.start(on: best).formatted(date: .omitted, time: .shortened),
+                                 choose: choose,
+                                 record: { channel in play { app.record(event, onChannel: channel.id) } },
+                                 watchAtStart: { channel in play { app.watchWhenStarts(event, channel: channel, now: clock) } })
+            #endif
+        } else if group.choosesQuality {
+            SportChannelChipsRow(group: group, browse: browse, isBest: isBest, scheduled: scheduled,
+                                 action: { SportRows.channelAction(event, on: $0, now: clock) }, choose: choose)
+        } else {
+            SportChannelRow(channel: best, browse: browse, isBest: isBest, playsNow: action == .play,
+                            scheduled: scheduled, ended: action == .ended) { choose(best) }
+        }
+    }
+
+    /// What choosing one copy does, decided again at the press (the page may have been open since before the airing
+    /// ended): play it, or offer Record / Watch when it starts.
+    private func choose(_ channel: SportEventChannel) {
+        switch SportRows.channelAction(event, on: channel, now: Date()) {
+        case .play: play { app.playSportEvent(event, channel: channel) }
+        case .wait: choosing = channel
+        case .ended: break
+        }
+    }
 }
+
+/// The row's words: name (and number), Recommended, Recording scheduled, Not on now.
+private struct SportChannelTitle: View {
+    let channel: SportEventChannel
+    var isBest = false
+    var scheduled = false
+    var ended = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
+                Text(channel.name).font(DetailType.rowTitle).lineLimit(1).pigMinimumScale(0.75, size: PigType.cardTitle).layoutPriority(1)
+                if let number = channel.number {
+                    ChannelNumberText(number: String(number), font: DetailType.rowDetail).fixedSize()
+                }
+            }
+            if isBest {
+                Text("Recommended").font(DetailType.rowDetail).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+            }
+            if scheduled {
+                Text("Recording scheduled").font(DetailType.rowDetail).foregroundStyle(.secondary)
+            }
+            if ended {
+                Text("Not on now").font(DetailType.rowDetail).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// D-65: the icon a copy's choice shows: play, an already-scheduled recording, the choice, or nothing to do.
+private func sportChannelIcon(_ action: SportRows.ChannelAction, scheduled: Bool) -> String {
+    switch action {
+    case .ended: "xmark.circle"
+    case .play: "play.fill"
+    case .wait: scheduled ? "record.circle" : "alarm"
+    }
+}
+
+/// One quality chip: the badge (or "Other" for a copy with no quality at all) and what choosing it does.
+private struct SportChannelChip: View {
+    let choice: ChannelChoice<SportEventChannel>
+    let action: SportRows.ChannelAction
+    let scheduled: Bool
+    let choose: (SportEventChannel) -> Void
+
+    var body: some View {
+        Button { choose(choice.copy) } label: {
+            HStack(spacing: PigSpacing.xs) {
+                if let chip = choice.chip {
+                    QualityBadge(chip: chip)
+                } else {
+                    Text("Other").font(SportMetrics.detail.weight(.bold)).foregroundStyle(.secondary)
+                }
+                Image(systemName: sportChannelIcon(action, scheduled: scheduled)).font(SportMetrics.detail)
+                    .foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+            .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .control))
+        .disabled(action == .ended)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier("sport.channel.\(choice.copy.id)")
+    }
+
+    private var label: String {
+        let name = choice.copy.name
+        let text = action == .ended ? "Not on now on \(name)" : action == .play ? "Watch on \(name)"
+            : scheduled ? "Recording scheduled on \(name)" : "Record or watch \(name) when it starts"
+        return text + (choice.chip.map { ", \($0.spoken)" } ?? "")
+    }
+}
+
+/// D-65, Apple TV and iPad: a channel name carried in several qualities: its chips on the row, best first, each one
+/// focusable (left and right) and acting on its copy (play now, or the Record / Watch when it starts choice).
+struct SportChannelChipsRow: View {
+    let group: ChannelNameGroup<SportEventChannel>
+    let browse: BrowseModel
+    var isBest = false
+    var scheduled = false
+    let action: (SportEventChannel) -> SportRows.ChannelAction
+    let choose: (SportEventChannel) -> Void
+
+    var body: some View {
+        let best = group.best.copy
+        HStack(alignment: .center, spacing: PigSpacing.l) {
+            ChannelLogoTile(logo: browse.logo(for: best), client: browse.client, name: best.name, size: SportMetrics.rowLogo)
+            VStack(alignment: .leading, spacing: PigSpacing.s) {
+                SportChannelTitle(channel: best, isBest: isBest, scheduled: scheduled, ended: action(best) == .ended)
+                ScrollView(.horizontal) {
+                    HStack(spacing: PigSpacing.s) {
+                        ForEach(group.choices) { choice in
+                            SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled, choose: choose)
+                        }
+                    }
+                    .padding(.vertical, PigSpacing.xxs)
+                }
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled()
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
+        .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
+        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .tvFocusSection()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("sport.channelGroup.\(best.id)")
+    }
+}
+
+#if os(iOS)
+/// D-65, iPhone: one row per channel name showing its best quality. A tap acts on the best copy (play now, or the
+/// Record / Watch when it starts choice); touch and hold opens the row in place: the quality chips scrolling sideways
+/// (when there is more than one), Record…, and before the game Watch at <start>. Touch and hold again closes it.
+struct SportChannelPhoneRow: View {
+    let group: ChannelNameGroup<SportEventChannel>
+    let browse: BrowseModel
+    var isBest = false
+    var scheduled = false
+    let action: (SportEventChannel) -> SportRows.ChannelAction
+    let startText: String
+    let choose: (SportEventChannel) -> Void
+    let record: (SportEventChannel) -> Void
+    let watchAtStart: (SportEventChannel) -> Void
+    @State private var open = false
+
+    var body: some View {
+        let best = group.best.copy
+        let bestAction = action(best)
+        VStack(alignment: .leading, spacing: PigSpacing.m) {
+            HStack(spacing: PigSpacing.l) {
+                ChannelLogoTile(logo: browse.logo(for: best), client: browse.client, name: best.name, size: SportMetrics.rowLogo)
+                SportChannelTitle(channel: best, isBest: isBest, scheduled: scheduled, ended: bestAction == .ended)
+                Spacer(minLength: 16)
+                if let chip = group.best.chip { QualityBadge(chip: chip) }
+                Image(systemName: open ? "chevron.up" : sportChannelIcon(bestAction, scheduled: scheduled))
+                    .foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+            // A plain tap and a hold on the same row: the tap only fires on a quick release.
+            .onTapGesture { if open { withAnimation { open = false } } else { choose(best) } }
+            .onLongPressGesture(minimumDuration: 0.45) { withAnimation { open.toggle() } }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(label(best, action: bestAction))
+            .accessibilityAction { choose(best) }
+            .accessibilityAction(named: open ? "Close" : "More choices") { withAnimation { open.toggle() } }
+            .accessibilityIdentifier("sport.channel.\(best.id)")
+            if open {
+                if group.choosesQuality {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: PigSpacing.s) {
+                            ForEach(group.choices) { choice in
+                                SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled, choose: choose)
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    .accessibilityIdentifier("sport.channel.\(best.id).chips")
+                }
+                if bestAction != .ended {
+                    HStack(spacing: PigSpacing.m) {
+                        Button("Record…", systemImage: "record.circle") { open = false; record(best) }
+                            .accessibilityIdentifier("sport.channel.\(best.id).record")
+                        if bestAction == .wait {
+                            Button("Watch at \(startText)", systemImage: "alarm") { open = false; watchAtStart(best) }
+                                .accessibilityIdentifier("sport.channel.\(best.id).watchAt")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .font(DetailType.rowDetail)
+                }
+            }
+        }
+        .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
+        .frame(maxWidth: DetailMetrics.readingWidth, alignment: .leading)
+        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+    }
+
+    private func label(_ channel: SportEventChannel, action: SportRows.ChannelAction) -> String {
+        let text = action == .ended ? "Not on now on \(channel.name)" : action == .play ? "Watch on \(channel.name)"
+            : scheduled ? "Recording scheduled on \(channel.name)" : "Record or watch \(channel.name) when it starts"
+        return text + (group.best.chip.map { ", \($0.spoken)" } ?? "")
+    }
+}
+
+#endif
 
 /// An upcoming event's page: Watch <channel> when it starts (plays at once
 /// within five minutes), Record on the best channel, and every channel.

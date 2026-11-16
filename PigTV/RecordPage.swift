@@ -218,6 +218,22 @@ nonisolated enum RecordPlan {
         return "If every provider connection is in use \(at), the recording waits for one to free up."
     }
 
+    /// D-65 (#266): Record on's rows: one per channel name, its copies' qualities as chips (best first; copies with the
+    /// same name and quality fold into one chip). Each copy is its index in `request.airings`; a chip selects its first.
+    static func channelGroups(_ request: RecordRequest) -> [ChannelNameGroup<Int>] {
+        ChannelGrouping.group(Array(request.airings.indices), name: { request.airings[$0].channel.name },
+                              chip: { request.airings[$0].chip })
+    }
+
+    /// Record on's note: how many channels carry it (by name), or one channel's qualities.
+    static func recordOnNote(_ groups: [ChannelNameGroup<Int>]) -> String {
+        if groups.count == 1 {
+            let qualities = groups[0].choices.count
+            return qualities > 1 ? "1 channel in your guide carries it, in \(qualities) qualities" : "1 channel in your guide carries it"
+        }
+        return "\(groups.count) channels in your guide carry it"
+    }
+
     /// Record on's second line for one channel.
     static func airingDetail(_ airing: RecordRequest.Airing, index: Int, first: RecordRequest.Airing?, now: Date) -> String {
         let times = "\(DetailText.day(airing.programme.start, now: now)) \(airing.programme.timeRange)"
@@ -595,42 +611,107 @@ struct RecordPage: View {
 
     private func recordOn(now: Date) -> some View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
+            let groups = RecordPlan.channelGroups(request)
             HStack(alignment: .firstTextBaseline) {
                 sectionTitle("Record on")
                 Spacer()
-                Text("\(request.airings.count) channels in your guide carry it").font(Metrics.choiceDetail)
+                Text(RecordPlan.recordOnNote(groups)).font(Metrics.choiceDetail)
                     .foregroundStyle(Color.pigSecondary)
             }
-            ForEach(Array(request.airings.enumerated()), id: \.element.id) { index, option in
-                let on = index == airingIndex
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                let on = group.indices.contains(airingIndex)
+                // The row's words follow the copy chosen in it, else its best.
+                let shown = on ? airingIndex : group.best.copy
+                let option = request.airings[shown]
                 let detail = RecordPlan.airingDetail(option, index: index, first: request.airings.first, now: now)
-                Button { airingIndex = index } label: {
-                    HStack(spacing: PigSpacing.m) {
-                        Circle().strokeBorder(on ? Color.pigAccent : Color.pigSecondary, lineWidth: 3)
-                            .overlay { if on { Circle().fill(Color.pigAccent).padding(PigSpacing.xs) } }
-                            .frame(width: Metrics.radio, height: Metrics.radio)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                            Text(option.channel.name).font(Metrics.choice).lineLimit(1)
-                            Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                if group.choosesQuality {
+                    recordOnChips(group, index: index, option: option, detail: detail, on: on)
+                } else {
+                    Button { airingIndex = group.best.copy } label: {
+                        HStack(spacing: PigSpacing.m) {
+                            radio(on)
+                            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+                                Text(option.channel.name).font(Metrics.choice).lineLimit(1)
+                                Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                            if let chip = option.chip { QualityBadge(chip: chip, font: Metrics.badgeFont) }
                         }
-                        Spacer(minLength: 0)
-                        if let chip = option.chip { QualityBadge(chip: chip, font: Metrics.badgeFont) }
+                        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .modifier(Selected(on: on))
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .modifier(Selected(on: on))
-                    .contentShape(Rectangle())
+                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
+                    .accessibilityLabel("\(option.channel.name), \(detail)\(option.chip.map { ", \($0.spoken)" } ?? "")")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityIdentifier("record.on.\(index)")
                 }
-                .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                .accessibilityLabel("\(option.channel.name), \(detail)\(option.chip.map { ", \($0.spoken)" } ?? "")")
-                .accessibilityAddTraits(on ? .isSelected : [])
-                .accessibilityIdentifier("record.on.\(index)")
             }
         }
         #if os(tvOS)
         .focusSection()
         #endif
+    }
+
+    private func radio(_ on: Bool) -> some View {
+        Circle().strokeBorder(on ? Color.pigAccent : Color.pigSecondary, lineWidth: 3)
+            .overlay { if on { Circle().fill(Color.pigAccent).padding(PigSpacing.xs) } }
+            .frame(width: Metrics.radio, height: Metrics.radio)
+            .accessibilityHidden(true)
+    }
+
+    /// D-65 (#266): a channel name carried in several qualities: one row, a chip per quality (best first) that chooses
+    /// that copy; the radio shows whether any of its copies is the one chosen.
+    private func recordOnChips(_ group: ChannelNameGroup<Int>, index: Int, option: RecordRequest.Airing, detail: String,
+                               on: Bool) -> some View {
+        HStack(spacing: PigSpacing.m) {
+            radio(on)
+            VStack(alignment: .leading, spacing: PigSpacing.xs) {
+                Text(option.channel.name).font(Metrics.choice).lineLimit(1)
+                Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                ScrollView(.horizontal) {
+                    HStack(spacing: PigSpacing.s) {
+                        ForEach(Array(group.choices.enumerated()), id: \.element.id) { chipIndex, choice in
+                            let picked = choice.indices.contains(airingIndex)
+                            Button { airingIndex = choice.copy } label: {
+                                Group {
+                                    if let chip = choice.chip {
+                                        QualityBadge(chip: chip, font: Metrics.badgeFont)
+                                    } else {
+                                        Text("Other").font(Metrics.badgeFont).foregroundStyle(Color.pigSecondary)
+                                    }
+                                }
+                                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
+                                .background(picked ? Color.pigSelection : .clear,
+                                            in: RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous)
+                                        .strokeBorder(picked ? Color.pigAccent : .clear, lineWidth: 2)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .control))
+                            .accessibilityLabel("\(option.channel.name), \(choice.chip?.spoken ?? "other quality")")
+                            .accessibilityAddTraits(picked ? .isSelected : [])
+                            .accessibilityIdentifier("record.on.\(index).\(chipIndex)")
+                        }
+                    }
+                    .padding(.vertical, PigSpacing.xxs)
+                }
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled()
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(Selected(on: on))
+        #if os(tvOS)
+        .focusSection()
+        #endif
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("record.on.\(index)")
     }
 
     // MARK: Buttons
