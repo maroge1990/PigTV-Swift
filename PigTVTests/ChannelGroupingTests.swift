@@ -150,4 +150,14 @@ final class ChannelGroupingTests: XCTestCase {
         XCTAssertEqual(Set(event.channels.map(\.id)).count, event.channels.count, "every copy has its own id")
     }
     #endif
+
+    /// D-65: a chip row that fits does not fade; one that overflows fades the end with chips out of sight (the scroll cue).
+    func testAChipRowFadesOnlyTheEndWithChipsOutOfSight() {
+        XCTAssertEqual(ChipFade.edges(content: 300, visible: 400, offset: 0), ChipFade.Edges(), "fits: no fade")
+        XCTAssertEqual(ChipFade.edges(content: 400.5, visible: 400, offset: 0), ChipFade.Edges(), "half a point over is rounding")
+        XCTAssertEqual(ChipFade.edges(content: 900, visible: 400, offset: 0), ChipFade.Edges(leading: false, trailing: true))
+        XCTAssertEqual(ChipFade.edges(content: 900, visible: 400, offset: 200), ChipFade.Edges(leading: true, trailing: true))
+        XCTAssertEqual(ChipFade.edges(content: 900, visible: 400, offset: 500), ChipFade.Edges(leading: true, trailing: false))
+        XCTAssertEqual(ChipFade.edges(content: 900, visible: 0, offset: 0), ChipFade.Edges(), "not measured yet")
+    }
 }

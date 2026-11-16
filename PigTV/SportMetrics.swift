@@ -81,3 +81,47 @@ struct QualityBadge: View {
             .accessibilityLabel(chip.spoken)
     }
 }
+
+/// D-65: a sideways row of quality chips kept inside its card. When the chips overflow, the end with chips out of sight
+/// fades (the scroll cue). `inset` is room inside the clip for a focused chip's lift and ring (tvOS); the row gives it back
+/// outside, so the chips still line up with the words above them.
+struct ChipScroller<Content: View>: View {
+    var inset: CGFloat = 0
+    @ViewBuilder let content: () -> Content
+    @State private var visible: Double = 0
+    @State private var contentWidth: Double = 0
+    @State private var offset: Double = 0
+
+    private static var fade: CGFloat {
+        #if os(tvOS)
+        60
+        #else
+        28
+        #endif
+    }
+
+    var body: some View {
+        let edges = ChipFade.edges(content: contentWidth, visible: visible, offset: offset)
+        ScrollView(.horizontal) {
+            content()
+                .padding(inset)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("chipScroller")) } action: { frame in
+                    contentWidth = frame.width
+                    offset = -frame.minX
+                }
+        }
+        .coordinateSpace(.named("chipScroller"))
+        .scrollIndicators(.hidden)
+        .onGeometryChange(for: Double.self) { $0.size.width } action: { visible = $0 }
+        .mask {
+            let edge = visible > 0 ? min(0.4, Self.fade / visible) : 0
+            LinearGradient(stops: [
+                .init(color: edges.leading ? .clear : Color.pigMediaCanvas, location: 0),
+                .init(color: Color.pigMediaCanvas, location: edge),
+                .init(color: Color.pigMediaCanvas, location: 1 - edge),
+                .init(color: edges.trailing ? .clear : Color.pigMediaCanvas, location: 1),
+            ], startPoint: .leading, endPoint: .trailing)
+        }
+        .padding(-inset)
+    }
+}

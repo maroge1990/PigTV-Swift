@@ -437,6 +437,15 @@ private struct SportChannelChip: View {
 /// D-65, Apple TV and iPad: a channel name carried in several qualities: its chips on the row, best first, each one
 /// focusable (left and right) and acting on its copy (play now, or the Record / Watch when it starts choice).
 struct SportChannelChipsRow: View {
+    /// The room a focused chip needs inside the row's clip (tvOS: its lift and ring); none on touch.
+    static var focusRoom: CGFloat {
+        #if os(tvOS)
+        PigFocus.clearance
+        #else
+        0
+        #endif
+    }
+
     let group: ChannelNameGroup<SportEventChannel>
     let browse: BrowseModel
     var isBest = false
@@ -450,7 +459,9 @@ struct SportChannelChipsRow: View {
             ChannelLogoTile(logo: browse.logo(for: best), client: browse.client, name: best.name, size: SportMetrics.rowLogo)
             VStack(alignment: .leading, spacing: PigSpacing.s) {
                 SportChannelTitle(channel: best, isBest: isBest, scheduled: scheduled, ended: action(best) == .ended)
-                ScrollView(.horizontal) {
+                // The chips stay inside the card: the clip keeps room for a focused chip's lift and ring, and an end
+                // with chips out of sight fades.
+                ChipScroller(inset: Self.focusRoom) {
                     HStack(spacing: PigSpacing.s) {
                         ForEach(group.choices) { choice in
                             SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled,
@@ -459,8 +470,6 @@ struct SportChannelChipsRow: View {
                     }
                     .padding(.vertical, PigSpacing.xxs)
                 }
-                .scrollIndicators(.hidden)
-                .scrollClipDisabled()
             }
             Spacer(minLength: 0)
         }
@@ -513,7 +522,7 @@ struct SportChannelPhoneRow: View {
             .accessibilityIdentifier("sport.channel.\(best.id)")
             if open {
                 if group.choosesQuality {
-                    ScrollView(.horizontal) {
+                    ChipScroller {
                         HStack(spacing: PigSpacing.s) {
                             ForEach(group.choices) { choice in
                                 SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled,
@@ -522,7 +531,6 @@ struct SportChannelPhoneRow: View {
                             }
                         }
                     }
-                    .scrollIndicators(.hidden)
                     .accessibilityIdentifier("sport.channel.\(best.id).chips")
                 }
                 if bestAction != .ended {

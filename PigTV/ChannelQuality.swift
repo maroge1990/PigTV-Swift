@@ -257,3 +257,19 @@ nonisolated enum PlayerQualityTag {
         return nil
     }
 }
+
+/// D-65: which ends of a sideways chip row fade, as the cue that more chips are out of sight. Nothing fades when every
+/// chip fits; the leading end fades once the row is scrolled, the trailing end while chips lie beyond it. Pure
+/// (`ChannelGroupingTests`).
+nonisolated enum ChipFade {
+    nonisolated struct Edges: Equatable, Sendable {
+        var leading = false
+        var trailing = false
+    }
+
+    /// `content`: the chips' width; `visible`: the row's; `offset`: how far the row is scrolled (points).
+    static func edges(content: Double, visible: Double, offset: Double) -> Edges {
+        guard visible > 0, content > visible + 1 else { return Edges() }
+        return Edges(leading: offset > 1, trailing: offset + visible < content - 1)
+    }
+}
