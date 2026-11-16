@@ -486,8 +486,10 @@ struct PlayerScreen: View {
         }
         #if DEBUG && os(iOS)
         .onAppear {
-            // Fixture (PIGTV_UI_TEST_SCREEN=player-channels): open the panel.
-            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "player-channels" { showingGuide = true }
+            // Fixture (PIGTV_UI_TEST_SCREEN=player-channels, #334 player-games): open the panel.
+            if ["player-channels", "player-games"].contains(ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] ?? "") {
+                showingGuide = true
+            }
         }
         #endif
         #if os(iOS)

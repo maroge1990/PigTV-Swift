@@ -748,8 +748,9 @@ final class AppModel: ObservableObject {
     /// A documentation-only address that never answers (TEST-NET-1): the fixtures' unreachable server.
     nonisolated static let unreachableFixtureServer = "http://192.0.2.1:3000"
 
-    func injectPlayerFixture(media: URL?) {
-        injectHomeFixture()
+    /// `sportFront` (#334): the server also has the Sport front page, so a play from Sport lists the live games.
+    func injectPlayerFixture(media: URL?, sportFront: Bool = false) {
+        injectHomeFixture(sportFront: sportFront)
         guard let browse, browse.guide.count > 3 else { return }
         if media == nil, let address = try? ServerAddress(Self.unreachableFixtureServer) {
             let client = APIClient(address: address, token: "fixture", info: serverInfo)
@@ -767,6 +768,16 @@ final class AppModel: ObservableObject {
         playback = model
         playbackBusy = true
         playerPresented = true
+    }
+
+    /// #334 (PIGTV_UI_TEST_SCREEN=player-games): the player over a play from Sport (`playing`, a game of `front`), so its
+    /// list shows the live games of `front`; the household shows scores.
+    func injectPlayerGamesFixture(_ front: SportFront, playing: String) {
+        guard let browse else { return }
+        browse.sportFront.setFixture(front)
+        browse.f1Page.setFixture(F1Page(available: false),
+                                 preferences: SportPagePreferences(sports: front.sports.map(\.league)))
+        sportPlay = SportPlay(eventID: playing)
     }
 
     // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).

@@ -285,7 +285,8 @@ private struct HomeTestScreen: View {
 
 // The player over the Home fixture's data (build 29): PIGTV_UI_TEST_SCREEN=
 // player (with PIGTV_UI_TEST_MEDIA=<path to a local movie>) | player-channels
-// (the channel panel open) | player-tuning (no media: the tuning card).
+// (the channel panel open) | player-tuning (no media: the tuning card) | player-games (#334: a play from Sport, the
+// live games list on PlayerGamesFixture's answer; the touch player opens it).
 private struct PlayerTestScreen: View {
     @StateObject private var model = AppModel()
     var body: some View {
@@ -298,7 +299,10 @@ private struct PlayerTestScreen: View {
         .task {
             let media = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"].map { URL(fileURLWithPath: $0) }
             let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"]
-            model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media)
+            model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media, sportFront: screen == "player-games")
+            if screen == "player-games" {
+                model.injectPlayerGamesFixture(PlayerGamesFixture.front(), playing: PlayerGamesFixture.playing)
+            }
             model.playback?.applyReviewState(screen ?? "")
         }
     }
@@ -311,7 +315,7 @@ private struct PlayerTestScreen: View {
 // channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
     static let screens: Set<String> = ["programme", "programme-later", "record", "record-change", "record-sport", "schedule", "channel", "recording",
-                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume", "signin-server"]
+                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recording-player-golive", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume", "signin-server"]
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
@@ -389,7 +393,7 @@ private struct DesignTestScreen: View {
             ChannelPageView(model: browse, presenter: app.presenter, channel: channel, watch: {}, openProgramme: { _ in })
         case "recordings":
             RecordingsView(model: browse, presenter: app.presenter, openGuide: { app.requestedTab = "guide" })
-        case "recording-player", "recording-loading", "recording-preparing", "recording-error", "recording-resume":
+        case "recording-player", "recording-player-golive", "recording-loading", "recording-preparing", "recording-error", "recording-resume":
             RecordingPlayerScreen(recording: browse.recordings[1], client: browse.client)
         case "recording":
             RecordingView(model: browse, presenter: app.presenter, original: browse.recordings[1])

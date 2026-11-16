@@ -88,8 +88,9 @@ final class RecordingPlayerModel: ObservableObject {
         if state == "recording-resume" { resumePrompt = 3909; ready = true }
     }
 
-    func playReviewMedia(_ url: URL) {
+    func playReviewMedia(_ url: URL, live: Bool = false) {
         started = true
+        watchingLive = live
         // As a real start does (PiP is only "supported" under the playback category).
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -568,9 +569,12 @@ struct RecordingPlayerScreen: View {
         .onAppear {
             cover(true) // #301: the pages beneath rest while this plays
             #if DEBUG
-            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] == "recording-player",
+            if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
+               ["recording-player", "recording-player-golive"].contains(screen),
                let path = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"] {
-                model.playReviewMedia(URL(fileURLWithPath: path))
+                // #335: recording-player-golive plays the movie as a recording still being made (its live playlist), so
+                // Go to live is offered from its start.
+                model.playReviewMedia(URL(fileURLWithPath: path), live: screen == "recording-player-golive")
             } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
                       ["recording-loading", "recording-preparing", "recording-error", "recording-resume"].contains(screen) {
                 model.showReviewStatus(screen)
