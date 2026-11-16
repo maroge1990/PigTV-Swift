@@ -64,6 +64,10 @@ enum GuideFixtures {
                     k += 1
                 }
             }
+            // #56: PIGTV_UI_TEST_PROGRAMME_TAGS=1 gives the guide's programmes LIVE, NEW and episodes to draw.
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_PROGRAMME_TAGS"] == "1" {
+                programmes = programmes.enumerated().map { tagged($0.element, channel: index, position: $0.offset, now: now) }
+            }
             // #280: PIGTV_UI_TEST_STATUS_MARKS=1 marks the second channel unreliable (the guide's status marks).
             let flaky = index == 1 && ProcessInfo.processInfo.environment["PIGTV_UI_TEST_STATUS_MARKS"] == "1"
             return GuideChannel(rawID: "ch\(index)", sourceId: 1, name: name,
@@ -432,6 +436,71 @@ enum GuideFixtures {
     static func user() -> User {
         (try? JSONDecoder().decode(User.self, from: Data(#"{"id":1,"username":"tester","role":"user"}"#.utf8)))
             ?? (try! JSONDecoder().decode(User.self, from: Data(#"{"id":0,"username":"","role":""}"#.utf8)))
+    }
+    // MARK: Programme tags and Search (#56, #57)
+
+    /// PIGTV_UI_TEST_PROGRAMME_TAGS=1: the sport channels' programmes on now are live broadcasts; the first and third
+    /// channels' programmes are new episodes with a number and an episode title; every third programme elsewhere is new.
+    private static func tagged(_ programme: GuideProgramme, channel: Int, position: Int, now: Double) -> GuideProgramme {
+        var copy = programme
+        if channel < 6 && programme.startTime <= now && now < programme.endTime { copy.liveBroadcast = true }
+        if channel == 0 || channel == 2 {
+            copy.isNew = true
+            copy.episode = "S4 E\(position / 2 + 1)"
+            copy.subtitle = "The Road to the Final"
+        } else if position % 3 == 0 {
+            copy.isNew = true
+            copy.episode = "S1 E\(position + 1)"
+        }
+        return copy
+    }
+
+    /// The teams the fixture's search knows (Collingwood followed, as the fixture's rules).
+    static let searchTeams = [
+        LibrarySearchTeam(id: "17", name: "Collingwood", league: "AFL", followed: true),
+        LibrarySearchTeam(id: "4", name: "Carlton", league: "AFL"),
+        LibrarySearchTeam(id: "kc", name: "Kansas City Chiefs", league: "NFL"),
+    ]
+
+    /// PIGTV_UI_TEST_LIBRARY_SEARCH=1: the server's search answer (`GET /api/library/search`) made from the fixtures, so
+    /// every group has rows ("carlton": a team, a game, two programmes, a channel and a recording). Without it the
+    /// fixture searches the loaded guide, as an older server.
+    static func librarySearch(_ query: String, guide: [GuideChannel]) -> LibrarySearchResponse {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        func matches(_ text: String) -> Bool { !q.isEmpty && text.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        let now = (Date().timeIntervalSince1970 / 300).rounded(.down) * 300_000
+        let hour = 3_600_000.0
+        var programmes: [GuideSearchHit] = []
+        if guide.count > 2 {
+            let footy = guide[2]
+            programmes = [
+                GuideSearchHit(channel: footy, programme: GuideProgramme(
+                    title: "AFL: Collingwood v Carlton", description: "Round 3 at the MCG.", startTime: now - 0.6 * hour,
+                    endTime: now + 1.9 * hour, liveBroadcast: true)),
+                GuideSearchHit(channel: footy, programme: GuideProgramme(
+                    title: "AFL 360: Carlton Special", description: "The Blues' season so far.", startTime: now + 3 * hour,
+                    endTime: now + 4 * hour, isNew: true, subtitle: "The Blues Rebuild", episode: "S12 E4")),
+            ].filter { matches($0.programme.title) }
+        }
+        let dayAhead = Date().timeIntervalSince1970 * 1000 + 24 * hour
+        for channel in guide {
+            for programme in channel.programmes where matches(programme.title) && programme.endTime > now
+                && programme.startTime < dayAhead && !programmes.contains(where: { $0.programme.title == programme.title }) {
+                programmes.append(GuideSearchHit(channel: channel, programme: programme))
+            }
+        }
+        let extraChannel = GuideChannel(rawID: "ch-carlton", sourceId: 1, name: "Carlton FC TV", logo: nil, category: "sports",
+                                        programmes: [], number: 599)
+        return LibrarySearchResponse(
+            q: q,
+            channels: (guide + [extraChannel]).filter { matches($0.name) }.map {
+                GuideChannel(rawID: $0.rawID, sourceId: $0.sourceId, name: $0.name, logo: $0.logo, category: $0.category,
+                             programmes: [], number: $0.number)
+            },
+            programmes: Array(programmes.prefix(20)),
+            events: sportEvents(from: guide).filter { matches($0.title) },
+            teams: searchTeams.filter { matches($0.name) },
+            recordings: recordings().filter { matches($0.title) })
     }
 }
 #endif

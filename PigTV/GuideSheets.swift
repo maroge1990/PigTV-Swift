@@ -147,6 +147,12 @@ struct GuideSearchPage: View {
         let client = model.client
         var fetch: LibrarySearchRunner.Fetch?
         if !model.isFixture { fetch = { @MainActor text in try await client.librarySearch(text) } }
+        #if DEBUG
+        // #57: the fixture's server search, for the screenshots (PIGTV_UI_TEST_LIBRARY_SEARCH=1).
+        if model.isFixture && ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LIBRARY_SEARCH"] == "1" {
+            fetch = { @MainActor [weak model] text in GuideFixtures.librarySearch(text, guide: model?.guide ?? []) }
+        }
+        #endif
         return LibrarySearchRunner(fetch: fetch) { [weak model] text, failed in
             let guide = model?.guide ?? []
             // Computed off the main actor: a real guide holds thousands of channels.
