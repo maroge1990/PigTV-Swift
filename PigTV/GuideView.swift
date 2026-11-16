@@ -254,6 +254,11 @@ struct GuideView: View {
                 // The guide always opens at the current half-hour; restoring a
                 // later browsing position stranded the grid hours ahead.
                 viewport = GuideNavigation.rounded(Date())
+                // D-66: unless Jump to on the app-level Search page sent the viewer here for another time.
+                if let jump = app.presenter.guideJump {
+                    app.presenter.guideJump = nil
+                    goTo(jump)
+                }
                 // Shared with Home (build 28): whichever appears first loads.
                 await model.loadInitialGuide()
                 // Build 31: not on every appearance, only when stale.

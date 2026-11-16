@@ -249,6 +249,41 @@ final class LibrarySearchTests: XCTestCase {
         XCTAssertEqual(recent.all, [])
     }
 
+    // MARK: Opening Search from any tab (D-66)
+
+    func testSearchOpensAsAPageAboveEveryTab() throws {
+        let presenter = AppPresenter()
+        presenter.present(.search(from: LibraryView.title(of: "sport")))
+        guard case .search(let from)? = presenter.presented else { return XCTFail("Search is not open") }
+        XCTAssertEqual(from, "Sport", "the page names the tab it came from")
+        XCTAssertEqual(presenter.presented?.id, "search")
+        XCTAssertEqual(presenter.presented?.isPlayer, false, "a page, not a player")
+        XCTAssertEqual(LibraryView.title(of: "guide"), "TV Guide")
+        XCTAssertEqual(LibraryView.title(of: "recordings"), "Recordings")
+        XCTAssertEqual(LibraryView.title(of: "settings"), "Settings")
+    }
+
+    func testPlayingARecordingFromSearchClosesTheSearchFirst() throws {
+        let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":9,"title":"Swans","status":"completed"}"#.utf8))
+        let presenter = AppPresenter()
+        presenter.present(.search(from: "Sport"))
+        presenter.present(.playRecording(recording))
+        XCTAssertNil(presenter.presented, "the search page closes first")
+        presenter.didDismiss()
+        XCTAssertEqual(presenter.presented?.id, "play:9")
+        XCTAssertEqual(presenter.presented?.isPlayer, true, "the recording player is full screen")
+    }
+
+    func testShowGuideLeavesTheTimeForTheGuide() {
+        let presenter = AppPresenter()
+        let time = Date(timeIntervalSince1970: 1_800_000_000)
+        presenter.present(.search(from: "Sport"))
+        presenter.dismiss { presenter.guideJump = time }
+        XCTAssertNil(presenter.guideJump, "not until the page has gone")
+        presenter.didDismiss()
+        XCTAssertEqual(presenter.guideJump, time)
+    }
+
     // MARK: The endpoint
 
     func testTheRequestAsksForTwentyRows() throws {

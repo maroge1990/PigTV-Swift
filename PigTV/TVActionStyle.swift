@@ -274,6 +274,8 @@ struct PigPageHeader<Trailing: View>: View {
             }
             Spacer(minLength: 0)
             trailing
+            // D-66 (#57): Search from every page.
+            PigHeaderSearchButton()
         }
         .frame(height: PigPageHeaderMetrics.rowHeight)
         .padding(.horizontal, PigPageHeaderMetrics.edge)

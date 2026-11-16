@@ -23,6 +23,24 @@ struct LibraryView: View {
         tabOrder(sportEnabled: sportEnabled).contains(requested) ? requested : openingTab(sportEnabled: sportEnabled)
     }
 
+    /// The tab's name, as its bar shows it (Search's "‹ Sport" on the TV).
+    nonisolated static func title(of tab: String) -> String {
+        switch tab {
+        case "sport": "Sport"
+        case "guide": "TV Guide"
+        case "recordings": "Recordings"
+        default: "Settings"
+        }
+    }
+
+    /// D-66 (#57): the page headers' magnifier opens Search above every tab, once signed in.
+    private var openSearch: (@MainActor () -> Void)? {
+        guard model.browse != nil else { return nil }
+        let presenter = model.presenter
+        let from = Self.title(of: selection)
+        return { presenter.present(.search(from: from)) }
+    }
+
     /// #214: a selection of the Sport tab (again while on it, or coming back from another tab) shows its front page.
     @MainActor static func tabSelected(_ tab: String, navigation: SportNavigation?) {
         if tab == "sport" { navigation?.showFront() }
@@ -62,6 +80,8 @@ struct LibraryView: View {
                 }
                 // #216 (D-44): no Home ("TV") tab; Favourites on now is the TV Guide's Favourites filter.
                 GuideView(app: model, model: browse)
+                    // D-66: the Guide's Search is in its own tools and header (with Jump to on its grid).
+                    .environment(\.pigOpenSearch, nil)
                     .tabItem { Label("TV Guide", systemImage: "calendar") }
                     .tag("guide")
                 .onAppear { PigTVSignpost.tabContentAppeared("guide") }
@@ -75,6 +95,7 @@ struct LibraryView: View {
                 .tag("settings")
                 .onAppear { PigTVSignpost.tabContentAppeared("settings") }
         }
+        .environment(\.pigOpenSearch, openSearch)
         .tint(Color("AccentColor"))
         // #49 groundwork: the app-level presentation layer's page, above every tab.
         .appPresentations(model.presenter, app: model, browse: model.browse)

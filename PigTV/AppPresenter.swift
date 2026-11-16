@@ -12,6 +12,8 @@ enum AppPresentation: Identifiable {
     case recordingPlayer(Recording)
     /// #57: Play on a Search result: the recording player, from where this device left off (as Recordings' Play).
     case playRecording(Recording)
+    /// D-66 (#57): Search and Jump to, from a page header's magnifier on any tab (`from`: that tab's name).
+    case search(from: String)
 
     var id: String {
         switch self {
@@ -20,6 +22,7 @@ enum AppPresentation: Identifiable {
         case .record(let request): "record:\(request.id)"
         case .recordingPlayer(let recording): "player:\(recording.id)"
         case .playRecording(let recording): "play:\(recording.id)"
+        case .search: "search"
         }
     }
 
@@ -47,6 +50,9 @@ final class AppPresenter {
     /// The open one was asked to close and its dismissal has not finished.
     private(set) var closing = false
     @ObservationIgnored private var afterClose: [() -> Void] = []
+    /// D-66: Jump to's Show guide on the app-level Search page: the time the TV Guide shows when it next appears (it
+    /// takes it then, and clears it).
+    var guideJump: Date?
 
     func present(_ item: AppPresentation) {
         if presented == nil && !closing { presented = item; return }
@@ -167,6 +173,8 @@ extension View {
                     }
                 case .record(let request):
                     RecordPage(model: browse, presenter: presenter, request: request) { presenter.dismiss() }
+                case .search(let from):
+                    AppSearchHost(app: app, browse: browse, from: from)
                 case .recordingPlayer, .playRecording:
                     EmptyView()
                 }
