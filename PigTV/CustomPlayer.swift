@@ -36,6 +36,8 @@ private enum PlayerAction: CaseIterable {
 struct CustomPlayerView: View {
     /// Room above and below the channel list, so its first and last rows can scroll to the centre.
     private static let channelListOverscroll: CGFloat = 340
+    /// The channel list's width; its rows keep `PlayerRowPanel.trailingRoom` free for the highlighted row's lift.
+    static let channelListWidth: CGFloat = 640
     @ObservedObject var playback: PlaybackModel
     @ObservedObject var app: AppModel
     let exit: () -> Void
@@ -536,7 +538,9 @@ struct CustomPlayerView: View {
                                 channelRow(channel, highlighted: index == cursor, now: now).id(index)
                             }
                         }
-                    }.padding(.vertical, Self.channelListOverscroll)
+                    }
+                    .padding(.vertical, Self.channelListOverscroll)
+                    .padding(.trailing, PlayerRowPanel.trailingRoom(listWidth: Self.channelListWidth))
                 }
                 .scrollDisabled(true)
                 .scrollIndicators(.hidden)
@@ -545,7 +549,7 @@ struct CustomPlayerView: View {
                     pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { proxy.scrollTo(value, anchor: .center) }
                 }
             }
-            .frame(width: 640)
+            .frame(width: Self.channelListWidth)
             .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
                                          .init(color: .black, location: 0.82), .init(color: .clear, location: 1)],
                                  startPoint: .top, endPoint: .bottom))

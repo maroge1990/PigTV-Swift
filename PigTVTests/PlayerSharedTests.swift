@@ -27,6 +27,20 @@ final class PlayerSharedTests: XCTestCase {
         XCTAssertTrue(PlayerInfoText.timeRange(current).contains(" – "))
     }
 
+    // Search batch: the TV's highlighted channel row lifts to the right; its trailing quality badge must end a focus
+    // clearance inside the channel list, not touch or be clipped by its edge.
+    func testTheLiftedChannelRowKeepsAFocusClearanceInsideTheList() {
+        #if os(tvOS)
+        let width = CustomPlayerView.channelListWidth
+        let room = PlayerRowPanel.trailingRoom(listWidth: width)
+        XCTAssertGreaterThan(room, 0)
+        let liftedEdge = (width - room) * PlayerRowPanel.lift
+        XCTAssertLessThanOrEqual(liftedEdge, width - PigFocus.clearance)
+        #else
+        XCTAssertEqual(PlayerRowPanel.trailingRoom(listWidth: 640), 0)
+        #endif
+    }
+
     // 16 Oct: a start that takes longer than usual explains itself instead of only spinning.
     func testTuningExplainsALongWait() {
         XCTAssertNil(TuningText.hint(elapsed: 0))

@@ -229,6 +229,19 @@ struct PlayerQualityBadge: View {
 /// The panel every row of the player's list sits on (#334: the channel rows and the live game rows share it, so the two
 /// lists look the same): padding, the black panel, the accent tint and stroke when highlighted, the TV's lift.
 struct PlayerRowPanel: ViewModifier {
+    /// The TV's lift of the highlighted row, anchored at its leading edge (so it grows to the right).
+    static let lift: CGFloat = 1.03
+
+    /// The room a list of these rows keeps on its trailing side, so the lifted row (its quality badge last) ends a focus
+    /// clearance inside a list `width` wide instead of touching or being clipped by its edge. None on touch (no lift).
+    static func trailingRoom(listWidth width: CGFloat) -> CGFloat {
+        #if os(tvOS)
+        ((width * (lift - 1) + PigFocus.clearance) / lift).rounded(.up)
+        #else
+        0
+        #endif
+    }
+
     let highlighted: Bool
     let playing: Bool
 
@@ -245,7 +258,7 @@ struct PlayerRowPanel: ViewModifier {
                     .strokeBorder(highlighted ? Color.pigMediaAccent : .clear, lineWidth: 3)
             }
             #if os(tvOS)
-            .scaleEffect(highlighted ? 1.03 : 1, anchor: .leading)
+            .scaleEffect(highlighted ? Self.lift : 1, anchor: .leading)
             #endif
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(playing ? .isSelected : [])
