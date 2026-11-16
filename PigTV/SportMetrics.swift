@@ -56,24 +56,24 @@ struct QualityBadge: View {
 
     private var text: Color {
         if chip.accent { return .pigOnAccent }
-        return onDark ? .white : .pigSecondary
+        return onDark ? .pigMediaText : .pigSecondary
     }
 
     private var fill: Color {
         if chip.accent { return .pigAccent }
         if !chip.measured { return .clear }
-        return onDark ? Color.white.opacity(0.22) : .pigRaised
+        return onDark ? Color.pigMediaText.opacity(0.22) : .pigRaised
     }
 
     var body: some View {
         Text(chip.text)
-            .font(font).monospacedDigit().lineLimit(1).fixedSize()
+            .font(font).pigFigures().lineLimit(1).fixedSize()
             .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
             .foregroundStyle(text)
             .background(fill, in: shape)
             .overlay {
                 if !chip.measured {
-                    shape.strokeBorder((onDark ? Color.white : Color.pigSecondary).opacity(0.7),
+                    shape.strokeBorder((onDark ? Color.pigMediaText : Color.pigSecondary).opacity(0.7),
                                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                 }
             }

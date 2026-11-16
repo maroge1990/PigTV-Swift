@@ -491,13 +491,13 @@ struct SportChannelPhoneRow: View {
             }
             .contentShape(Rectangle())
             // A plain tap and a hold on the same row: the tap only fires on a quick release.
-            .onTapGesture { if open { withAnimation { open = false } } else { choose(best) } }
-            .onLongPressGesture(minimumDuration: 0.45) { withAnimation { open.toggle() } }
+            .onTapGesture { if open { withAnimation(PigMotion.standard) { open = false } } else { choose(best) } }
+            .onLongPressGesture(minimumDuration: 0.45) { withAnimation(PigMotion.standard) { open.toggle() } }
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(label(best, action: bestAction))
             .accessibilityAction { choose(best) }
-            .accessibilityAction(named: open ? "Close" : "More choices") { withAnimation { open.toggle() } }
+            .accessibilityAction(named: open ? "Close" : "More choices") { withAnimation(PigMotion.standard) { open.toggle() } }
             .accessibilityIdentifier("sport.channel.\(best.id)")
             if open {
                 if group.choosesQuality {
@@ -515,13 +515,14 @@ struct SportChannelPhoneRow: View {
                 if bestAction != .ended {
                     HStack(spacing: PigSpacing.m) {
                         Button("Record…", systemImage: "record.circle") { open = false; record(best) }
+                            .pigSecondaryButton()
                             .accessibilityIdentifier("sport.channel.\(best.id).record")
                         if bestAction == .wait {
                             Button("Watch at \(startText)", systemImage: "alarm") { open = false; watchAtStart(best) }
+                                .pigSecondaryButton()
                                 .accessibilityIdentifier("sport.channel.\(best.id).watchAt")
                         }
                     }
-                    .buttonStyle(.bordered)
                     .font(DetailType.rowDetail)
                 }
             }
