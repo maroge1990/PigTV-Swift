@@ -20,6 +20,28 @@ final class TouchLayoutUITests: XCTestCase {
         XCTAssertLessThan(frame.width, frame.height * 1.6, "Search is \(frame.width) x \(frame.height): it still carries its text")
     }
 
+    /// D-65 (#266): on an iPhone, touch and hold opens a channel row in place (its quality chips and Record…) on the
+    /// live picker as on the later one. Bug: on the live picker the hold did nothing (the row stayed closed).
+    @MainActor
+    func testPhoneTouchAndHoldOpensTheChannelRowLiveAndLater() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
+        XCUIDevice.shared.orientation = .portrait
+        for screen in ["sport-picker-qualities", "sport-picker-qualities-later"] {
+            let app = XCUIApplication()
+            app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = screen
+            app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark" // the bug showed in dark appearance
+            app.launch()
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'sport.channel.'")).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 15), "\(screen): no channel row")
+            sleep(4) // as a person would: the page has settled (the live bug showed only then)
+            let id = row.identifier
+            row.press(forDuration: 0.8)
+            XCTAssertTrue(app.descendants(matching: .any)["\(id).chips"].waitForExistence(timeout: 3), "\(screen): the hold did not open the row")
+            XCTAssertTrue(app.buttons["\(id).record"].exists, "\(screen): no Record… in the opened row")
+            app.terminate()
+        }
+    }
+
     /// Bug: the touch player's TV Guide pill did nothing Close doesn't (it closed the player onto the Guide tab).
     @MainActor
     func testTouchPlayerHasNoTVGuideButton() throws {

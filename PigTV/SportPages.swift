@@ -525,9 +525,13 @@ struct SportChannelPhoneRow: View {
                     .foregroundStyle(.secondary).accessibilityHidden(true)
             }
             .contentShape(Rectangle())
-            // A plain tap and a hold on the same row: the tap only fires on a quick release.
-            .onTapGesture { if open { withAnimation(PigMotion.standard) { open = false } } else { choose(best) } }
-            .onLongPressGesture(minimumDuration: 0.45) { withAnimation(PigMotion.standard) { open.toggle() } }
+            // A plain tap and a hold on the same row, one gesture: the hold is tried first and the tap fires only when it
+            // fails (a quick release). Two separate modifiers let the live row's hold go unrecognised (nothing opened).
+            .gesture(LongPressGesture(minimumDuration: 0.45)
+                .onEnded { _ in withAnimation(PigMotion.standard) { open.toggle() } }
+                .exclusively(before: TapGesture().onEnded {
+                    if open { withAnimation(PigMotion.standard) { open = false } } else { choose(best) }
+                }))
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(label(best, action: bestAction))
