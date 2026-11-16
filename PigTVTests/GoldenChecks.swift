@@ -17,9 +17,6 @@ private struct GoldenFailure: Error, CustomStringConvertible {
 enum GoldenChecks {
     /// The files the client models (by name, without `.json`), and the ones it does not, with why.
     static let notModelled: [String: String] = [
-        "library-search": "decoded once the search batch lands (#57); until then the app falls back to the guide filter",
-        "library-search-recordings": "decoded once the search batch lands (#57)",
-        "library-search-teams": "decoded once the search batch lands (#57)",
         "info-fallback": "no `version`: ServerInfo requires it (the client rejects this answer; reported to the lead)",
         "playback-resolve-200": "resolve is decoded by the playback path's own tests (RealPlaybackTests)",
         "playback-resolve-404": "an error body, read as text (C-B)",
@@ -121,6 +118,24 @@ enum GoldenChecks {
         }
         let majors = try decode(SportEventsPage.self, "sports-page-events-majors"); mark("sports-page-events-majors")
         try expect(majors.available && majors.events.isEmpty, "events-majors: an empty week")
+
+        // #57: the search answer, with the models Search uses. Its lists decode leniently (a bad row is skipped), so each
+        // check also proves no row was dropped.
+        let search = try decode(LibrarySearchResponse.self, "library-search"); mark("library-search")
+        try expect(search.q == "australia" && search.events.count == 2 && search.programmes.count == 3 && search.teams.isEmpty
+                   && search.events.allSatisfy { $0.channels.count == 2 }
+                   && search.programmes.contains { $0.programme.episode == "S4 E1" }
+                   && search.programmes.filter { $0.programme.liveBroadcast == true }.count == 2,
+                   "library-search: games with their channels, programmes with LIVE and the episode")
+        let searchRecordings = try decode(LibrarySearchResponse.self, "library-search-recordings"); mark("library-search-recordings")
+        try expect(searchRecordings.recordings.map(\.id) == [1, 2] && searchRecordings.recordings[1].status == "recording"
+                   && searchRecordings.programmes.isEmpty && searchRecordings.events.isEmpty,
+                   "library-search-recordings: both recordings, one still recording")
+        let searchTeams = try decode(LibrarySearchResponse.self, "library-search-teams"); mark("library-search-teams")
+        try expect(searchTeams.teams == [LibrarySearchTeam(id: "17", name: "Collingwood", league: "AFL", followed: true)]
+                   && searchTeams.events.first?.league == "AFL" && searchTeams.programmes.first?.channel.rawID == "1010"
+                   && searchTeams.programmes.first?.programme.liveBroadcast == true,
+                   "library-search-teams: the followed team, its game and the live programme")
 
         let unlisted = Set(routes.keys).subtracting(decoded).subtracting(notModelled.keys)
         try expect(unlisted.isEmpty, "every golden answer is decoded or named as not modelled; new: \(unlisted.sorted())")

@@ -7,14 +7,6 @@ import SwiftUI
 // programmes in the next 24 hours by title), off the main actor. Before typing: this device's recent searches. Jump to:
 // a day, an hour, then Show guide moves the grid there.
 
-/// One programme found: keyed by the channel's id and the programme's start (stable across refreshes).
-nonisolated struct GuideSearchHit: Identifiable, Equatable, Sendable {
-    let channel: GuideChannel
-    let programme: GuideProgramme
-    var id: String { "\(channel.id)|\(programme.startTime)" }
-    static func == (a: GuideSearchHit, b: GuideSearchHit) -> Bool { a.id == b.id && a.programme == b.programme }
-}
-
 /// The search over the loaded guide. Pure; tested (GuidePagesTests).
 nonisolated enum GuideSearch {
     struct Results: Equatable, Sendable {
@@ -153,7 +145,8 @@ struct GuideSearchPage: View {
     /// The server's search, except in the offline fixtures (no server); the loaded guide's when it answers 404.
     static func runner(for model: BrowseModel) -> LibrarySearchRunner {
         let client = model.client
-        let fetch: LibrarySearchRunner.Fetch? = model.isFixture ? nil : { text in try await client.librarySearch(text) }
+        var fetch: LibrarySearchRunner.Fetch?
+        if !model.isFixture { fetch = { @MainActor text in try await client.librarySearch(text) } }
         return LibrarySearchRunner(fetch: fetch) { [weak model] text, failed in
             let guide = model?.guide ?? []
             // Computed off the main actor: a real guide holds thousands of channels.

@@ -8,7 +8,7 @@ xcrun swiftc -parse-as-library -module-name PigTVContractTests \
   PigTV/Models.swift PigTV/ChannelQuality.swift PigTV/DVRModels.swift PigTV/APIClient.swift PigTV/PrivateCaches.swift PigTV/PlaybackCapabilities.swift PigTV/Labs.swift PigTV/ProviderReminders.swift \
   PigTV/SportModels.swift PigTV/SportsGameModels.swift PigTV/F1PageModels.swift PigTV/SportBannerModels.swift PigTV/SportFrontModels.swift PigTV/CricketPageModels.swift \
   PigTV/SportFollowModels.swift PigTV/NFLPageModels.swift PigTV/LeaguePageModels.swift PigTV/SportEventsModels.swift \
-  PigTV/SportFixtureModels.swift PigTV/SportMotorModels.swift \
+  PigTV/SportFixtureModels.swift PigTV/SportMotorModels.swift PigTV/LibrarySearchModels.swift \
   PigTVTests/ContractChecks.swift PigTVTests/GoldenChecks.swift \
   Tools/RunContractChecks.swift -o "$BUILD_DIR/contracts"
 "$BUILD_DIR/contracts"
