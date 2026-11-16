@@ -55,7 +55,10 @@ struct SportHeroStripView: View {
             }
         }
         .padding(.horizontal, PigSpacing.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // #316: exactly the width it is given. Its row can need a fraction of a point more than that (fixed pill, rounded
+        // text widths); the strip then claimed it, the page's column grew by a third of a point and, centred, moved the
+        // header above it sideways as the strip appeared (iPhone 17).
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .frame(height: SportHeroStripMetrics.height)
         .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         .contentShape(Rectangle())

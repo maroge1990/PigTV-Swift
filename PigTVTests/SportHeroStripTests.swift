@@ -44,6 +44,21 @@ final class SportHeroStripTests: XCTestCase {
         XCTAssertFalse(SportHeroStrip.shows(scrolled: PigScrollProbe.scrolled(probeTop: -248), bannerHeight: 320, stripHeight: 72))
     }
 
+    // #316: the strip takes the width it is given and never more, however long its words. Before, its row's minimum
+    // width (the fixed LIVE pill, padding, truncated words) could exceed the offer, and the strip claimed it: on the
+    // iPhone the page's column grew by a third of a point and the header above it moved sideways as the strip appeared.
+    @MainActor
+    func testTheStripNeverClaimsMoreWidthThanItIsGiven() {
+        let hero = SportBannerHero(kicker: "LIVE · PREMIER LEAGUE", live: true, title: "Manchester United v Tottenham Hotspur",
+                                   line: "2–1 · Second half · 67 minutes")
+        let strip = SportHeroStrip(hero: hero, items: [item("Arsenal", "Sat 11:30 pm"), item("Sixers", "Tue 7:15 pm")], selected: nil)
+        let host = UIHostingController(rootView: SportHeroStripView(strip: strip))
+        for width in [120.0, 370.0, 370.5] {
+            let size = host.sizeThatFits(in: CGSize(width: width, height: 400))
+            XCTAssertLessThanOrEqual(size.width, width + 0.001, "offered \(width) pt, it took \(size.width)")
+        }
+    }
+
     // #278 ("seen on the way"): on the iPhone the strip's LIVE pill was a red bar with no word in it, because a long title
     // and line took the room and left the pill's text none. The pill must keep its word at a narrow width.
     @MainActor
