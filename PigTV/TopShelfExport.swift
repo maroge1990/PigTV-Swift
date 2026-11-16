@@ -61,8 +61,58 @@ nonisolated final class TopShelfPublication: @unchecked Sendable {
     func idle() async { _ = await run(ifCurrent: nil) { true } }
 }
 
+/// #232 (D-66): the live games the Top Shelf carousel shows, from the Sport front page's answer. Pure (`TopShelfGamesTests`).
+/// The games are the player's live games list (`PlayerGames.list`): under way or on air before play on a channel that airs
+/// them now, followed teams' games first, then the other live games of the leagues the household follows (the answer
+/// holds only those), each group in the answer's order; at most `TopShelfSnapshot.gameLimit`. Scores follow D-66: written
+/// only when the household shows them (`hidden`: the account's Hide scores as the sport pages hold it, unknown counting
+/// as hidden; the answer's own switch also hides), with the scores feed, and when nobody is recording the game.
+nonisolated enum TopShelfGames {
+    /// The games for an answer received at `answeredAt`; nil when there is none, it is too old to show
+    /// (`TopShelfSnapshot.gamesMaxAge`) or no game is live.
+    static func games(_ front: SportFront?, answeredAt: Date?, hidden: Bool, labels: [String: String] = [:], now: Date,
+                      calendar: Calendar = .current) -> [TopShelfSnapshot.Game]? {
+        guard let front, let answeredAt, now.timeIntervalSince(answeredAt) < TopShelfSnapshot.gamesMaxAge else { return nil }
+        let rows = PlayerGames.list(front, hidden: hidden, labels: labels, calendar: calendar, now: now)
+            .prefix(TopShelfSnapshot.gameLimit)
+        return rows.isEmpty ? nil : rows.map { Self.game($0) }
+    }
+
+    static func game(_ row: PlayerGame) -> TopShelfSnapshot.Game {
+        // PlayerGames already withholds a score that is hidden, recorded or not fresh; a game with only one side's score
+        // shows none.
+        let scores = row.sides.flatMap { sides -> [String]? in
+            let values = sides.compactMap(\.score)
+            return values.count == 2 && sides.count == 2 ? values : nil
+        }
+        let best = row.game.channels.first
+        return TopShelfSnapshot.Game(
+            id: row.id, title: row.title, league: row.league, clock: row.clock,
+            sides: row.sides?.map { TopShelfSnapshot.Game.Side(name: $0.name, code: $0.code, logo: $0.logo) },
+            scores: row.recording ? nil : scores, recording: row.recording,
+            channel: best.map { TopShelfSnapshot.Game.Channel(sourceId: $0.sourceId, id: $0.rawID, name: $0.name, number: $0.number) })
+    }
+}
+
 extension BrowseModel {
+    /// The channels (favourites first, else the lineup's first rows) and, while any is live, the live games (#232).
     func topShelfSnapshot(now: Date = Date()) -> TopShelfSnapshot? {
+        guard var snapshot = topShelfChannels(now: now) else { return nil }
+        if let games = topShelfGames(now: now) {
+            snapshot.games = games
+            snapshot.gamesAt = sportFront.updatedAt
+        }
+        return snapshot
+    }
+
+    /// #232: the live games from the Sport front page's latest answer, scores as the household's Hide scores allows now.
+    func topShelfGames(now: Date = Date()) -> [TopShelfSnapshot.Game]? {
+        let front = sportFront
+        return TopShelfGames.games(front.front, answeredAt: front.updatedAt, hidden: f1Page.hidesSpoilers,
+                                   labels: front.labels, now: now)
+    }
+
+    private func topShelfChannels(now: Date) -> TopShelfSnapshot? {
         if !favourites.isEmpty {
             let entries = favourites.prefix(TopShelfSnapshot.limit).map { favourite -> TopShelfSnapshot.Entry in
                 if let row = guideChannel(id: favourite.id) { return topShelfEntry(row, now: now) }
@@ -144,7 +194,8 @@ enum TopShelfExport {
             let written = await TopShelfPublication.shared.run(ifCurrent: generation, label: "save") { () -> Bool in
                 guard snapshot.write(container: container) else { return false }
                 if let cards {
-                    let keep = Set(snapshot.channels.flatMap { $0.cards ?? [] }.map(\.file))
+                    // #232: and the live games' cards.
+                    let keep = Set(snapshot.channels.flatMap { $0.cards ?? [] }.map(\.file) + (snapshot.games ?? []).compactMap(\.image))
                     let removed = TopShelfCards.prune(keeping: keep, in: cards)
                     TopShelfLog.logger.notice("export: \(keep.count) cards in use, \(removed) stale removed")
                 }
@@ -158,6 +209,19 @@ enum TopShelfExport {
                 }
             }
         }
+    }
+
+    /// #232 (D-66, the #192 stale-choice risk): Hide scores was switched on (or the choice became unknown). The saved
+    /// Top Shelf loses its scores at once, before any new export: a card run in progress (which may carry scores) is
+    /// cancelled, and the last snapshot written (else the one on disk) is written again without them. Nothing happens
+    /// when it has none.
+    @discardableResult
+    @MainActor static func hideScores(generation: Int, container: URL? = TopShelfSnapshot.containerURL) -> Task<Void, Never>? {
+        guard generation == TopShelfPublication.shared.current else { return nil }
+        TopShelfCardExport.cancel()
+        guard let saved = lastWritten ?? TopShelfSnapshot.read(container: container),
+              saved.games?.contains(where: { $0.scores != nil }) == true else { return nil }
+        return save(saved.withoutScores, generation: generation, container: container)
     }
 
     /// Signing out removes the snapshot (no channels on the Top Shelf). A2: the session's generation is retired first and its

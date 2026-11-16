@@ -550,9 +550,16 @@ final class BrowseModel: ObservableObject {
         // #278: its "Record every game" switches read and change the one set of rules (Scheduled's).
         model.ruleOwner = self
         model.onSpoilerFreeChange = { [weak self] in
-            guard let pages = self?.f1Page else { return }
+            guard let self else { return }
+            let pages = self.f1Page
             pages.invalidatePreferences()
-            Task { await pages.revalidatePreferences() }
+            // #232 (D-66): the saved Top Shelf drops its scores at once (the choice is unknown until it is read again, and
+            // unknown hides); the next export, once the choice is read, writes what it allows.
+            TopShelfExport.hideScores(generation: self.topShelfGeneration)
+            Task { [weak self] in
+                await pages.revalidatePreferences()
+                self?.exportTopShelf()
+            }
         }
         return model
     }()

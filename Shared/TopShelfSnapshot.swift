@@ -17,6 +17,19 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
     var kind: String
     var channels: [Entry]
     var savedAt: Date
+    /// #232 (D-66): the live games, for the carousel the Top Shelf shows instead of the channels while any is live. Nil
+    /// (absent in older snapshots) or empty: nothing live, the channels as before. Scores are written only when the
+    /// household shows them and nobody is recording the game.
+    var games: [Game]? = nil
+    /// When the Sport front page answer the games came from was received; the extension shows them only while it is
+    /// recent (`liveGames(at:)`), since a game's clock and score are as they were then.
+    var gamesAt: Date? = nil
+
+    /// #232: at most this many games on the carousel.
+    static let gameLimit = 10
+    /// #232: how long after its answer a live game stays on the Top Shelf without a newer one (the app writes every
+    /// minute while it is open, and once as it goes to the background).
+    static let gamesMaxAge: TimeInterval = 15 * 60
 
     nonisolated struct Entry: Codable, Equatable, Sendable {
         var id: String
@@ -78,12 +91,105 @@ nonisolated struct TopShelfSnapshot: Codable, Equatable, Sendable {
         var end: Date
     }
 
+    /// #232 (D-66): one live game on the Top Shelf carousel, as the app drew it from the Sport front page's answer.
+    /// Nothing secret: names, a same-server logo path, the league, the clock, the channel's identity for the play link.
+    nonisolated struct Game: Codable, Equatable, Sendable {
+        var id: String
+        /// The game's own title ("Mexico City Grand Prix"), shown when it has no two sides.
+        var title: String
+        /// The league as the app names it ("NFL", "Premier League").
+        var league: String
+        /// Where the game is up to ("Q4 2:14", "2nd half 67'", "On air · starts 3:10 pm").
+        var clock: String
+        /// Both competitors in the server's order; nil for a game without two (a race).
+        var sides: [Side]?
+        /// One per side, only when the household shows scores and nobody is recording the game (D-66); else nil.
+        var scores: [String]?
+        /// Someone in the household is recording it: "Recording" shows in place of the score.
+        var recording: Bool
+        /// The game's best channel (the server's first), for Play; nil without one (Play then opens the game).
+        var channel: Channel?
+        /// The card image the app rendered (a file name in the cards directory), else nil.
+        var image: String? = nil
+
+        nonisolated struct Side: Codable, Equatable, Sendable {
+            var name: String
+            /// The team's short code ("GB"), drawn in its badge when there is no logo.
+            var code: String
+            /// A same-server logo path ("/api/logo/…"), for the app's render only.
+            var logo: String?
+        }
+
+        nonisolated struct Channel: Codable, Equatable, Sendable {
+            var sourceId: Int
+            var id: String
+            var name: String
+            var number: Int?
+        }
+
+        /// "Green Bay Packers v Chicago Bears", or the game's title.
+        var matchup: String {
+            guard let sides, sides.count == 2 else { return title }
+            return "\(sides[0].name) v \(sides[1].name)"
+        }
+
+        /// The score between the names when it may be shown ("Green Bay Packers 21 – 17 Chicago Bears"), else the matchup.
+        var headline: String {
+            guard !recording, let sides, sides.count == 2, let scores, scores.count == 2 else { return matchup }
+            return "\(sides[0].name) \(scores[0]) – \(scores[1]) \(sides[1].name)"
+        }
+
+        /// The line over the title: the league, where the game is up to, and "Recording" for a game being recorded.
+        var context: String {
+            ([league, clock] + (recording ? ["Recording"] : [])).filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+
+        /// Play: the best channel; without one, the game.
+        var playURL: URL {
+            guard let channel else { return gameURL }
+            return PigTVLink.playURL(sourceId: channel.sourceId, id: channel.id, name: channel.name, number: channel.number)
+        }
+
+        /// The game's card in the app.
+        var gameURL: URL { PigTVLink.gameURL(id: id) }
+
+        /// The rendered card's file URL when it exists.
+        func imageURL(container: URL? = AppGroupStorage.containerURL) -> URL? {
+            guard let image, let url = TopShelfCards.fileURL(image, in: container),
+                  FileManager.default.fileExists(atPath: url.path) else { return nil }
+            return url
+        }
+
+        /// The same game with no score (Hide scores switched on: the saved file must not keep one).
+        var withoutScores: Game {
+            var game = self
+            game.scores = nil
+            return game
+        }
+    }
+
     var sectionTitle: String { kind == "favourites" ? "Favourites" : "Channels" }
+
+    /// #232: the games the Top Shelf shows now: the saved ones while their answer is recent, at most `gameLimit`; none
+    /// once it is older than `gamesMaxAge` (the channels show again).
+    func liveGames(at now: Date) -> [Game] {
+        guard let games, !games.isEmpty, let gamesAt else { return [] }
+        let age = now.timeIntervalSince(gamesAt)
+        guard age < Self.gamesMaxAge, age > -60 else { return [] }
+        return Array(games.prefix(Self.gameLimit))
+    }
+
+    /// #232: this snapshot with every game's score removed (Hide scores switched on).
+    var withoutScores: TopShelfSnapshot {
+        var snapshot = self
+        snapshot.games = games?.map(\.withoutScores)
+        return snapshot
+    }
 
     /// Equal apart from when it was saved (so an unchanged list is not rewritten).
     func sameContent(as other: TopShelfSnapshot?) -> Bool {
         guard let other else { return false }
-        return kind == other.kind && channels == other.channels
+        return kind == other.kind && channels == other.channels && games == other.games && gamesAt == other.gamesAt
     }
 
     // MARK: Storage
@@ -285,6 +391,24 @@ nonisolated enum PigTVLink {
         // `+` is legal in a query but read as a space by some parsers; encode it.
         parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         return parts.url!
+    }
+
+    /// #232: `pigtv://game?id=…`: a live game's card on the Sport front page (the Top Shelf carousel's second button).
+    static func gameURL(id: String) -> URL {
+        var parts = URLComponents()
+        parts.scheme = scheme
+        parts.host = "game"
+        parts.queryItems = [URLQueryItem(name: "id", value: id)]
+        parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        return parts.url!
+    }
+
+    /// The game a `pigtv://game` link names, or nil.
+    static func parseGame(_ url: URL) -> String? {
+        guard url.scheme?.lowercased() == scheme, url.host?.lowercased() == "game",
+              let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value,
+              !id.isEmpty else { return nil }
+        return String(id.prefix(200))
     }
 
     /// `pigtv://home`: open the app on its opening tab (Home until #216, Apple 102; now Sport, or the TV Guide).

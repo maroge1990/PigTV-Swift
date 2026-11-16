@@ -69,6 +69,11 @@ final class SportFrontModel: ObservableObject {
     func apply(_ answer: SportFront) {
         let wentLive = SportFrontHero.followsGoneLive(previous: front, front: answer)
         if !wentLive.isEmpty { selectedFollowKey = nil }
+        // #232: a game the Top Shelf asked for is pinned once an answer has it (as a long press would).
+        if let requested = requestedHero {
+            requestedHero = nil
+            if answer.game(requested) != nil { pinned = requested; selectedFollowKey = nil }
+        }
         if let pinned, answer.game(pinned).map({ $0.terminal }) ?? true { self.pinned = nil }
         if let key = selectedFollowKey {
             let index = answer.follows.firstIndex { $0.key == key }
@@ -90,6 +95,20 @@ final class SportFrontModel: ObservableObject {
         pinned = nil
         selectedFollowKey = front.follows[index].key
         heroID = SportFrontHero.resolve(current: heroID, front: front, wentLive: [], selectedFollow: index, pinned: nil)
+    }
+
+    /// #232: a game asked for from outside the page (the Top Shelf's game button) before the answer that has it.
+    private(set) var requestedHero: SportsGame.ID?
+
+    /// #232: makes `id` the hero, as a long press would: now when the answer has it, else when the next answer does (an
+    /// answer without it drops the request).
+    func requestHero(_ id: SportsGame.ID) {
+        if front?.game(id) != nil {
+            requestedHero = nil
+            pin(id)
+        } else {
+            requestedHero = id
+        }
     }
 
     /// Long press "Make this the hero".
@@ -194,10 +213,12 @@ final class SportFrontModel: ObservableObject {
         }
     }
 
-    func setFixture(_ front: SportFront) {
+    /// `answeredAt`: when the answer came (#232 tests: the Top Shelf shows only a recent answer's games).
+    func setFixture(_ front: SportFront, answeredAt: Date? = nil) {
         isFixture = true
         apply(front)
         loaded = true
+        if let answeredAt { updatedAt = answeredAt }
     }
     #endif
 }

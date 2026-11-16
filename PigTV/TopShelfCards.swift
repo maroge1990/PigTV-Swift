@@ -59,6 +59,18 @@ nonisolated enum TopShelfCardLayout {
         return date.timeIntervalSince(start) / end.timeIntervalSince(start)
     }
 
+    /// #232: a live game's carousel card in points (1920×1080 px at `scale`, Apple's carousel image size).
+    static let gameSize = CGSize(width: 960, height: 540)
+    /// #232: a team's badge on the game card, in points.
+    static let gameBadge: CGFloat = 180
+
+    /// #232: a game card's file name: the game plus a hash of everything drawn.
+    static func gameFileName(id: String, content: String) -> String {
+        let game = id.map { $0.isLetter || $0.isNumber ? String($0) : "_" }.joined().prefix(40)
+        let digest = SHA256.hash(data: Data("game-v\(version)|\(content)".utf8))
+        return "game-\(game)-\(digest.prefix(6).map { String(format: "%02x", $0) }.joined()).png"
+    }
+
     /// A card's file name: the channel plus a hash of everything drawn, so
     /// different content never reuses a name (tvOS caches images by URL).
     static func fileName(sourceId: Int, id: String, content: String) -> String {
@@ -230,6 +242,97 @@ struct TopShelfCardView: View {
     }
 }
 
+/// #232 (D-66): what a live game's carousel card shows: both teams' badges and names (or the game's title). No score
+/// and no clock: the Top Shelf's text carries them, so Hide scores clears a score without a redraw and the card is
+/// drawn once per game.
+nonisolated struct TopShelfGameCardContent: Equatable, Sendable {
+    var title: String
+    var sides: [TopShelfSnapshot.Game.Side]?
+
+    init(_ game: TopShelfSnapshot.Game) {
+        title = game.title
+        sides = game.sides?.count == 2 ? game.sides : nil
+    }
+
+    /// Everything drawn except the logo images (for the file name).
+    var key: String {
+        ([title] + (sides ?? []).flatMap { [$0.name, $0.code, $0.logo ?? "-"] }).joined(separator: "|")
+    }
+}
+
+/// #232: the game card (the carousel slide's picture): the dark PigTV card with each team's badge (its logo on a light
+/// disc, else its code) above its name, "v" between them.
+struct TopShelfGameCardView: View {
+    let content: TopShelfGameCardContent
+    /// One per side, nil where a logo could not be loaded.
+    let logos: [UIImage?]
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color.pigMediaSolidPanel, Color.pigMediaCanvas], startPoint: .top, endPoint: .bottom)
+            RadialGradient(colors: [Color.pigAccent.opacity(0.18), .clear],
+                           center: UnitPoint(x: 0.5, y: 0.3), startRadius: 10, endRadius: 520)
+            LinearGradient(colors: [.clear, Color.pigMediaCanvas.opacity(0.55)], startPoint: .center, endPoint: .bottom)
+            Group {
+                if let sides = content.sides, sides.count == 2 {
+                    HStack(alignment: .top, spacing: PigSpacing.section) {
+                        badge(sides[0], logo: logos.first ?? nil)
+                        Text("v")
+                            .font(.system(size: PigType.pageTitle, weight: .semibold))
+                            .foregroundStyle(Color.pigMediaText.opacity(0.6))
+                            .frame(height: TopShelfCardLayout.gameBadge)
+                        badge(sides[1], logo: logos.count > 1 ? logos[1] : nil)
+                    }
+                } else {
+                    VStack(spacing: PigSpacing.m) {
+                        PigBrandMark(width: 84, height: 68).opacity(0.85)
+                        Text(content.title)
+                            .font(.system(size: PigType.pageTitle, weight: .bold))
+                            .foregroundStyle(Color.pigMediaText)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                    }
+                    .padding(.horizontal, PigSpacing.section)
+                }
+            }
+            // Above the middle: the system draws the slide's text over the lower part.
+            .padding(.bottom, PigSpacing.empty * 2)
+        }
+        .frame(width: TopShelfCardLayout.gameSize.width, height: TopShelfCardLayout.gameSize.height)
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func badge(_ side: TopShelfSnapshot.Game.Side, logo: UIImage?) -> some View {
+        VStack(spacing: PigSpacing.m) {
+            ZStack {
+                Circle().fill(Color.pigMediaText.opacity(logo == nil ? 0.14 : 0.92))
+                if let logo {
+                    Image(uiImage: logo)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(PigSpacing.xl)
+                } else {
+                    Text(side.code)
+                        .font(.system(size: PigType.hero, weight: .heavy))
+                        .foregroundStyle(Color.pigMediaText)
+                        .lineLimit(1)
+                        .pigMinimumScale(0.5, size: PigType.hero)
+                        .padding(.horizontal, PigSpacing.m)
+                }
+            }
+            .frame(width: TopShelfCardLayout.gameBadge, height: TopShelfCardLayout.gameBadge)
+            .shadow(color: Color.pigShadow.opacity(0.35), radius: 18, y: 8)
+            Text(side.name)
+                .font(.system(size: PigType.sectionTitle, weight: .semibold))
+                .foregroundStyle(Color.pigMediaText)
+                .lineLimit(1)
+                .pigMinimumScale(0.8, size: PigType.sectionTitle)
+                .frame(width: TopShelfCardLayout.gameBadge * 1.5)
+        }
+    }
+}
+
 /// Renders the snapshot's cards and saves the snapshot pointing at them.
 @MainActor
 enum TopShelfCardExport {
@@ -309,6 +412,29 @@ enum TopShelfCardExport {
             }
             result.channels[index].cards = cards.isEmpty ? nil : cards
         }
+        // #232: each live game's card (drawn once per game: no score or clock on it).
+        for (index, game) in (snapshot.games ?? []).enumerated() {
+            if Task.isCancelled { return snapshot }
+            let content = TopShelfGameCardContent(game)
+            let name = TopShelfCardLayout.gameFileName(id: game.id, content: content.key)
+            if !TopShelfCards.exists(name, in: container) {
+                var images: [UIImage?] = []
+                for side in content.sides ?? [] {
+                    guard let source = side.logo else { images.append(nil); continue }
+                    if let loaded = logos[source] { images.append(loaded.image); continue }
+                    let image = await loader(source)
+                    logos[source] = LoadedLogo(image: image, look: nil)
+                    images.append(image)
+                }
+                guard let png = renderGamePNG(content, logos: images) else { continue }
+                let written = await TopShelfPublication.shared.run(ifCurrent: generation, label: "card") {
+                    TopShelfCards.write(png, named: name, in: container)
+                }
+                guard written == true else { if written == nil { return snapshot }; continue }
+                await Task.yield()
+            }
+            result.games?[index].image = name
+        }
         return result
     }
 
@@ -328,11 +454,20 @@ enum TopShelfCardExport {
     }
 
     static func renderPNG(_ content: TopShelfCardContent, logo: UIImage?, look: TopShelfLogoLook?) -> Data? {
-        let renderer = ImageRenderer(content: TopShelfCardView(content: content, logo: logo, look: look))
+        renderPNG(TopShelfCardView(content: content, logo: logo, look: look), name: content.channel)
+    }
+
+    /// #232: a live game's card.
+    static func renderGamePNG(_ content: TopShelfGameCardContent, logos: [UIImage?]) -> Data? {
+        renderPNG(TopShelfGameCardView(content: content, logos: logos), name: content.title)
+    }
+
+    private static func renderPNG<Card: View>(_ card: Card, name: String) -> Data? {
+        let renderer = ImageRenderer(content: card)
         renderer.scale = TopShelfCardLayout.scale
         renderer.isOpaque = true
         guard let image = renderer.cgImage else {
-            TopShelfLog.logger.error("cards: render failed for \(content.channel, privacy: .public)")
+            TopShelfLog.logger.error("cards: render failed for \(name, privacy: .public)")
             return nil
         }
         let data = NSMutableData()

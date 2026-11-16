@@ -33,11 +33,32 @@ enum AppFreshness {
         // #239: recordings and schedules too, so no page needs its own idle timer for them (pages that need them sooner,
         // while something records, ask through the same staleness check).
         await browse.loadRecordingsIfStale(maxAge: recordingsMaxAge, quietly: true)
+        // #232 (D-66): the Top Shelf's live games come from the Sport front page's answer, which only its page keeps
+        // fresh; with the page elsewhere the pass asks for it, at most once a minute.
+        await refreshSportFrontIfStale(browse)
         export(browse)
         // #280 (one retry clock): a guide or recordings list that failed is retried by the next pass, nothing sooner;
         // its error page counts down to it.
         browse.notePolls(recordingsAfter: interval, guideAfter: interval)
     }
+
+    /// #232: the Sport front page's answer, when the server has one (`sportFront`) and the last is older than
+    /// `sportFrontMaxAge` (the page polls every 20 to 60 s while it is on screen, so this then sends nothing). tvOS only:
+    /// the Top Shelf is its only reader off the page.
+    static let sportFrontMaxAge: TimeInterval = 55
+
+    static func refreshSportFrontIfStale(_ browse: BrowseModel, now: Date = Date(), topShelf: Bool = topShelfExists) async {
+        guard topShelf, browse.client.info?.features.sportFront == true else { return }
+        let front = browse.sportFront
+        if let at = front.updatedAt, now.timeIntervalSince(at) < sportFrontMaxAge { return }
+        await front.load()
+    }
+
+    #if os(tvOS)
+    static let topShelfExists = true
+    #else
+    static let topShelfExists = false
+    #endif
 
     /// #301: the Top Shelf is written once as the app goes to the background, with no request (no pass runs while a
     /// player is up, so what the TV button shows would be as it was when playback began).

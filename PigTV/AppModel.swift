@@ -376,21 +376,41 @@ final class AppModel: ObservableObject {
     /// starts). Only a successful restore plays it, within a minute; any
     /// other outcome drops it (restore's defer), so a later manual sign-in
     /// never starts playback unexpectedly.
-    private var pendingLink: (link: PigTVLink.Play, at: Date)?
+    private var pendingLink: (link: PendingLink, at: Date)?
+
+    /// A Top Shelf link waiting for sign-in: a channel to play, or (#232) a game's card to open.
+    private enum PendingLink { case play(PigTVLink.Play), game(String) }
 
     /// `pigtv://play?…`: plays that channel when signed in; ignored otherwise.
     func open(_ url: URL) {
         // Build 31: pigtv://home showed Home. #216 (Apple 102): Home is retired; the link (still in older Top Shelf
         // snapshots) opens the opening tab: Sport, or the TV Guide where the server has no sport (LibraryView.tab(for:)).
         if PigTVLink.isHome(url) { requestedTab = LibraryView.homeLinkTab; return }
+        // #232 (D-66): the Top Shelf carousel's game button: that game's card on the Sport page.
+        if let game = PigTVLink.parseGame(url) {
+            if loggedIn { showGame(game) } else { pendingLink = (.game(game), Date()) }
+            return
+        }
         guard let link = PigTVLink.parse(url) else { return }
-        if loggedIn { play(link) } else { pendingLink = (link, Date()) }
+        if loggedIn { play(link) } else { pendingLink = (.play(link), Date()) }
     }
 
     private func openPendingLink() {
         guard let pending = pendingLink, Date().timeIntervalSince(pending.at) < 60 else { return }
         pendingLink = nil
-        play(pending.link)
+        switch pending.link {
+        case .play(let link): play(link)
+        case .game(let id): showGame(id)
+        }
+    }
+
+    /// #232: the Sport tab's front page with the game as its hero (its card, with Watch and Record), over any page that
+    /// was open. A game the next answer does not have leaves the hero as the server chose it.
+    func showGame(_ id: String) {
+        guard let browse else { return }
+        NotificationCenter.default.post(name: .pigCloseCovers, object: nil)
+        browse.sportFront.requestHero(id)
+        requestedTab = "sport"
     }
 
     /// The channel a link names: the guide's row when loaded, else one built

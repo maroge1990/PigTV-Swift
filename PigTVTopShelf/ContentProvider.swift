@@ -37,6 +37,14 @@ final class ContentProvider: TVTopShelfContentProvider {
             Self.record(items: 0, note: "no snapshot yet, showed the static image")
             return nil
         }
+        // #232 (D-66): while a game is live, the carousel of live games (followed teams' first) with Play (its best
+        // channel) and the game's card; otherwise the channels as before.
+        let games = snapshot.liveGames(at: Date())
+        if !games.isEmpty {
+            log.notice("extension: returning \(games.count) live games saved \(snapshot.gamesAt ?? snapshot.savedAt, privacy: .public)")
+            Self.record(items: games.count, note: "returned \(games.count) live \(games.count == 1 ? "game" : "games")")
+            return Self.carousel(games)
+        }
         guard !snapshot.channels.isEmpty else {
             log.notice("extension: snapshot has no channels; the static Top Shelf image is shown")
             Self.record(items: 0, note: "the snapshot had no channels")
@@ -51,6 +59,26 @@ final class ContentProvider: TVTopShelfContentProvider {
 
     private static func record(items: Int, note: String) {
         TopShelfExtensionStatus(askedAt: Date(), items: items, note: note).write()
+    }
+
+    /// #232 (D-66): one slide per live game: the teams (the score between them only when the app wrote one), the league
+    /// and where the game is up to (or "Recording") above them, the badges in the card the app rendered. Play plays the
+    /// game's best channel; the other button opens its card on the Sport page.
+    static func carousel(_ games: [TopShelfSnapshot.Game]) -> TVTopShelfCarouselContent {
+        let items = games.map { game -> TVTopShelfCarouselItem in
+            let item = TVTopShelfCarouselItem(identifier: "game:\(game.id)")
+            item.title = game.headline
+            item.contextTitle = game.context
+            if let image = game.imageURL() {
+                item.setImageURL(image, for: [.screenScale1x, .screenScale2x])
+            } else {
+                TopShelfLog.logger.notice("extension: game \(game.matchup, privacy: .public) has no card")
+            }
+            item.playAction = TVTopShelfAction(url: game.playURL)
+            item.displayAction = TVTopShelfAction(url: game.gameURL)
+            return item
+        }
+        return TVTopShelfCarouselContent(style: .actions, items: items)
     }
 
     static func content(for snapshot: TopShelfSnapshot, now: Date) -> TVTopShelfSectionedContent {
