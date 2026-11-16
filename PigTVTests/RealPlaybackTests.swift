@@ -586,6 +586,35 @@ final class RealPlaybackTests: XCTestCase {
         }
     }
 
+    /// #335: a recording still being made, watched from its start (90 s long: its live point at 60 s), offers Go to live;
+    /// the jump lands at the live point, is then no longer offered, and Back to returns to exactly where it was.
+    func testGoToLiveJumpsToTheLivePointAndBackToReturns() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(watch: { _ in
+            .json(#"{"url":"/api/recordings/4243/long-plain.m3u8","container":"hls","recording":true,"videoRange":"SDR","fps":"25/1","durationSec":90}"#)
+        })
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4243)) }
+        let playback = RecordingPlayerModel(recording: try inProgressRecording(), client: try server.client(), fromStart: true)
+        playback.start()
+        try await waitFor("the live recording to play", timeout: 20) { playback.hasPlayed }
+        XCTAssertTrue(playback.watchingLive)
+        try await waitFor("Go to live to be offered", timeout: 10) { playback.canGoLive }
+        playback.player.pause()
+        let before = playback.player.currentTime().seconds
+        XCTAssertLessThan(before, 20, "from its start")
+        playback.goLive()
+        XCTAssertEqual(playback.goLiveUndo?.position, before)
+        try await waitFor("the jump to the live point", timeout: 10) { playback.player.currentTime().seconds > 55 }
+        XCTAssertFalse(playback.canGoLive, "at the live point it is not offered")
+        playback.undoGoLive()
+        XCTAssertNil(playback.goLiveUndo)
+        try await waitFor("Back to", timeout: 10) { abs(playback.player.currentTime().seconds - before) < 0.5 }
+        XCTAssertNil(playback.error)
+        await playback.stop()
+        server.http.stop()
+    }
+
     /// Finished meanwhile (409 finished): the file plays from its start, still
     /// without asking where to resume.
     func testWatchFromStartOfAFinishedRecordingPlaysTheFile() async throws {

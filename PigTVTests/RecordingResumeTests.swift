@@ -88,4 +88,57 @@ final class RecordingResumeTests: XCTestCase {
         XCTAssertNil(RecordingLiveEdge.target([(0, .nan)]))
         XCTAssertEqual(RecordingLiveEdge.title, "Play from live")
     }
+
+    // MARK: #335 Go to live
+
+    /// Offered only while the recording is still being made (its live playlist plays) and the playhead is more than 30 s
+    /// short of the live point (the "Play from live" target, itself 30 s behind the playlist's end).
+    func testGoToLiveIsOfferedOnlyWhenWellBehindALiveRecording() {
+        let twoHours = [(start: 0.0, end: 7200.0)] // live point 7170
+        XCTAssertTrue(RecordingGoLive.available(watchingLive: true, current: 600, ranges: twoHours))
+        XCTAssertTrue(RecordingGoLive.available(watchingLive: true, current: 7139, ranges: twoHours), "31 s behind")
+        XCTAssertFalse(RecordingGoLive.available(watchingLive: true, current: 7140, ranges: twoHours), "30 s behind: not more")
+        XCTAssertFalse(RecordingGoLive.available(watchingLive: true, current: 7170, ranges: twoHours), "at the live point")
+        XCTAssertFalse(RecordingGoLive.available(watchingLive: false, current: 600, ranges: twoHours), "a finished recording's file")
+        XCTAssertFalse(RecordingGoLive.available(watchingLive: true, current: .nan, ranges: twoHours))
+        XCTAssertFalse(RecordingGoLive.available(watchingLive: true, current: 0, ranges: []), "nothing seekable yet")
+    }
+
+    func testGoToLiveJumpsToTheLivePoint() {
+        XCTAssertEqual(RecordingGoLive.target(watchingLive: true, current: 600, ranges: [(0, 7200)]), 7170)
+        XCTAssertEqual(RecordingGoLive.target(watchingLive: true, current: 10, ranges: [(0, 40), (100, 400)]), 370, "the last range")
+        XCTAssertNil(RecordingGoLive.target(watchingLive: true, current: 7160, ranges: [(0, 7200)]), "not offered: no jump")
+        XCTAssertEqual(RecordingGoLive.target(watchingLive: true, current: 600, ranges: [(0, 7200)]),
+                       RecordingLiveEdge.target([(0, 7200)]), "where Play from live joins")
+    }
+
+    /// Back to returns to exactly where the viewer was, for 8 s only.
+    func testBackToRestoresThePositionForEightSeconds() {
+        let at = Date(timeIntervalSince1970: 1_000_000)
+        let undo = RecordingGoLive.undo(from: 3723.4, at: at)
+        XCTAssertEqual(RecordingGoLive.back(undo, at: at), 3723.4, "the exact position")
+        XCTAssertEqual(RecordingGoLive.back(undo, at: at.addingTimeInterval(7.9)), 3723.4)
+        XCTAssertNil(RecordingGoLive.back(undo, at: at.addingTimeInterval(8)), "gone after 8 s")
+        XCTAssertNil(RecordingGoLive.back(nil, at: at))
+        XCTAssertEqual(RecordingGoLive.backLabel(undo), "Back to 1:02:03")
+        XCTAssertEqual(RecordingGoLive.notice, "Jumped to live")
+        XCTAssertEqual(RecordingGoLive.label, "Go to live")
+        XCTAssertNotEqual(RecordingGoLive.icon, "forward.end.fill", "its own symbol, not Skip break's")
+    }
+
+    /// The Apple TV's actions: Go to live always last, so the first action (where the row's focus starts) is never it.
+    func testGoToLiveIsAlwaysTheLastAction() {
+        for inBreak in [false, true] {
+            for hasBreaks in [false, true] {
+                let list = RecordingActions.list(inBreak: inBreak, hasBreaks: hasBreaks, canGoLive: true)
+                XCTAssertEqual(list.last, .goLive)
+                XCTAssertEqual(list.filter { $0 == .goLive }.count, 1)
+                XCTAssertNotEqual(list.first, .goLive)
+                XCTAssertFalse(RecordingActions.list(inBreak: inBreak, hasBreaks: hasBreaks, canGoLive: false).contains(.goLive))
+            }
+        }
+        XCTAssertEqual(RecordingActions.list(inBreak: true, hasBreaks: true, canGoLive: true),
+                       [.skipBreak, .playPause, .autoSkip, .goLive])
+        XCTAssertEqual(RecordingActions.list(inBreak: false, hasBreaks: false, canGoLive: false), [.playPause])
+    }
 }

@@ -57,6 +57,9 @@ final class RecordingPlayerModel: ObservableObject {
     private var liveJoinPending: Bool
     /// Playing the in-progress recording's live playlist (not its file).
     @Published private(set) var watchingLive = false
+    /// #335: after "Go to live", where the viewer was (offered as "Back to …" for 8 s).
+    @Published private(set) var goLiveUndo: RecordingGoLive.Undo?
+    private var goLiveUndoTask: Task<Void, Never>?
     /// Where to carry on after a switch (live playlist ended → the file); no
     /// resume question is asked then.
     private var continueAt: Double?
@@ -401,6 +404,56 @@ final class RecordingPlayerModel: ObservableObject {
 
     var paused: Bool { player.rate == 0 }
 
+    // MARK: Go to live (#335)
+
+    /// The live playlist's seekable ranges, in the item's seconds.
+    private func seekableRanges() -> [(start: Double, end: Double)] {
+        player.currentItem?.seekableTimeRanges.map {
+            let range = $0.timeRangeValue
+            return (range.start.seconds, range.end.seconds)
+        } ?? []
+    }
+
+    /// "Go to live" is offered: the recording is still being made (its live playlist plays) and the playhead is more
+    /// than 30 s short of the live point.
+    var canGoLive: Bool {
+        guard let item = player.currentItem else { return false }
+        return RecordingGoLive.available(watchingLive: watchingLive, current: item.currentTime().seconds,
+                                         ranges: seekableRanges())
+    }
+
+    /// Jumps to the live point (where "Play from live" joins) and offers the way back for 8 s.
+    func goLive(now: Date = Date()) {
+        guard let item = player.currentItem else { return }
+        let current = item.currentTime().seconds
+        guard let target = RecordingGoLive.target(watchingLive: watchingLive, current: current, ranges: seekableRanges()) else {
+            return
+        }
+        let undo = RecordingGoLive.undo(from: current, at: now)
+        goLiveUndo = undo
+        goLiveUndoTask?.cancel()
+        goLiveUndoTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(RecordingGoLive.undoSeconds))
+            guard !Task.isCancelled, let self, self.goLiveUndo == undo else { return }
+            self.goLiveUndo = nil
+        }
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    /// "Back to …": returns to exactly where the viewer was before Go to live, while it is offered.
+    func undoGoLive(now: Date = Date()) {
+        let position = RecordingGoLive.back(goLiveUndo, at: now)
+        clearGoLiveUndo()
+        guard let position else { return }
+        player.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func clearGoLiveUndo() {
+        goLiveUndoTask?.cancel()
+        goLiveUndoTask = nil
+        goLiveUndo = nil
+    }
+
     func togglePause() {
         if player.rate == 0 { player.play() } else { player.pause() }
         objectWillChange.send()
@@ -414,6 +467,7 @@ final class RecordingPlayerModel: ObservableObject {
         resumePrompt = nil
         lastServerSave = nil
         inBreak = nil
+        clearGoLiveUndo()
         ready = false
         hasPlayed = false
         breaks = []

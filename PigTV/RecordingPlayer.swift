@@ -9,17 +9,20 @@ import AVFoundation
 //
 // Remote map
 //   Controls hidden:  Left/Right → back/forward 15 s (scrub bar)
-//                     Select → Skip break while in a break, else info
+//                     Select → Back to (8 s after Go to live), else Skip
+//                     break while in a break, else info
 //                     Up/Down → info · Play/Pause → pause/resume · Back → close
 //   Scrub bar:        Left/Right → keep seeking · Select → info
 //                     Up/Down/Back → hide
 //   Info shown:       Left/Right → choose action · Select → run action
 //                     Up/Down/Back → hide
+//                     #335: Go to live, last and red, while a recording still
+//                     being made plays more than 30 s short of its live point
 // Overlays hide themselves after a few idle seconds (not while paused).
 
 private enum RecordingChrome: Equatable { case hidden, scrub, info }
 
-private enum RecordingAction: Equatable { case skipBreak, playPause, autoSkip }
+private typealias RecordingAction = RecordingActions.Item
 
 struct RecordingPlayerView: View {
     @ObservedObject var model: RecordingPlayerModel
@@ -31,12 +34,8 @@ struct RecordingPlayerView: View {
     @FocusState private var focused: Bool
 
     private var actions: [RecordingAction] {
-        var list: [RecordingAction] = []
-        if model.inBreak != nil { list.append(.skipBreak) }
-        list.append(.playPause)
-        // Only offered when the recording has detected breaks (no dead UI).
-        if !model.breaks.isEmpty { list.append(.autoSkip) }
-        return list
+        // #335: Go to live is always last (never the first focus) and never a pill of its own.
+        RecordingActions.list(inBreak: model.inBreak != nil, hasBreaks: !model.breaks.isEmpty, canGoLive: model.canGoLive)
     }
 
     var body: some View {
@@ -45,7 +44,9 @@ struct RecordingPlayerView: View {
                 PlayerLayerView(player: model.player, criteria: model.displayCriteria).ignoresSafeArea()
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     ZStack {
-                        if chrome == .hidden, model.inBreak != nil { skipBreakPill }
+                        // #335: for 8 s after Go to live the way back takes the pill's place (and Select).
+                        if chrome == .hidden, let undo = model.goLiveUndo { undoPill(undo) }
+                        else if chrome == .hidden, model.inBreak != nil { skipBreakPill }
                         if chrome != .hidden { overlay(timeline: model.timeline()) }
                     }
                     .onChange(of: context.date) { _, now in autoHide(now) }
@@ -99,7 +100,8 @@ struct RecordingPlayerView: View {
         touch()
         switch chrome {
         case .hidden:
-            if model.inBreak != nil { model.skipBreak() } else { action = 0; chrome = .info }
+            if model.goLiveUndo != nil { model.undoGoLive() }
+            else if model.inBreak != nil { model.skipBreak() } else { action = 0; chrome = .info }
         case .scrub:
             action = 0
             chrome = .info
@@ -119,6 +121,10 @@ struct RecordingPlayerView: View {
         case .skipBreak: model.skipBreak(); action = 0
         case .playPause: model.togglePause()
         case .autoSkip: model.autoSkip.toggle()
+        case .goLive:
+            model.goLive()
+            action = 0
+            chrome = .hidden
         }
     }
 
@@ -132,6 +138,7 @@ struct RecordingPlayerView: View {
         case .skipBreak: return "forward.end.fill"
         case .playPause: return model.paused ? "play.fill" : "pause.fill"
         case .autoSkip: return model.autoSkip ? "circle.inset.filled" : "circle"
+        case .goLive: return RecordingGoLive.icon
         }
     }
 
@@ -140,6 +147,7 @@ struct RecordingPlayerView: View {
         case .skipBreak: return "Skip break"
         case .playPause: return model.paused ? "Play" : "Pause"
         case .autoSkip: return model.autoSkip ? "Auto-skip breaks: On" : "Auto-skip breaks: Off"
+        case .goLive: return RecordingGoLive.label
         }
     }
 
@@ -155,6 +163,26 @@ struct RecordingPlayerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             .padding(.trailing, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.empty)
             .transition(.opacity)
+    }
+
+    /// #335: "Jumped to live" and the way back, in the Skip break pill's place; Select takes it for its 8 s.
+    private func undoPill(_ undo: RecordingGoLive.Undo) -> some View {
+        HStack(spacing: PigSpacing.m) {
+            Text(RecordingGoLive.notice).font(.system(size: PigType.cardTitle, weight: .semibold))
+            Label(RecordingGoLive.backLabel(undo), systemImage: "arrow.uturn.backward")
+                .font(.system(size: PigType.cardTitle, weight: .semibold)).pigFigures()
+                .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
+                .background(Color.white, in: Capsule())
+                .foregroundStyle(.black)
+        }
+        .padding(.leading, PigSpacing.l)
+        .background(Color.pigMediaPanel, in: Capsule())
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .padding(.trailing, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.empty)
+        .transition(.opacity)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("recording.goLiveUndo")
     }
 
     private func overlay(timeline: RecordingTimeline?) -> some View {
@@ -174,7 +202,8 @@ struct RecordingPlayerView: View {
                 }
                 Spacer()
                 if chrome == .info {
-                    PlayerActionRow(items: actions.map { (icon($0), label($0)) }, selected: action)
+                    PlayerActionRow(items: actions.map { (icon($0), label($0)) }, selected: action,
+                                    destructive: actions.firstIndex(of: .goLive))
                 } else {
                     Image(systemName: seekForward ? "goforward.15" : "gobackward.15")
                         .font(.system(size: PigType.display, weight: .semibold))

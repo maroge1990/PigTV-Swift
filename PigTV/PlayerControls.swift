@@ -6,19 +6,22 @@ import AVKit
 // Pieces of the live player shared with other screens (split out of CustomPlayer.swift in build 39).
 
 /// The row of round action buttons; the selected one is white and labelled.
+/// `destructive` (#335): the index of the one item drawn red (the recording player's Go to live), or nil.
 struct PlayerActionRow: View {
     let items: [(icon: String, label: String)]
     let selected: Int
+    var destructive: Int? = nil
     var body: some View {
         HStack(spacing: PigSpacing.m) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 let isSelected = index == selected
+                let red = index == destructive
                 VStack(spacing: PigSpacing.xs) {
                     Image(systemName: item.icon)
                         .font(.system(size: PigType.sectionTitle, weight: .semibold))
                         .frame(width: 76, height: 76)
-                        .background(isSelected ? Color.white : Color.white.opacity(0.18), in: Circle())
-                        .foregroundStyle(isSelected ? Color.black : Color.white)
+                        .background(fill(selected: isSelected, red: red), in: Circle())
+                        .foregroundStyle(glyph(selected: isSelected, red: red))
                         .scaleEffect(isSelected ? 1.1 : 1)
                     Text(item.label).font(.system(size: PigType.caption, weight: .medium))
                         .opacity(isSelected ? 1 : 0)
@@ -26,6 +29,16 @@ struct PlayerActionRow: View {
             }
         }
         .pigAnimation(value: selected, moves: true)
+    }
+
+    private func fill(selected: Bool, red: Bool) -> Color {
+        if red { return selected ? Color.pigDanger : Color.white.opacity(0.18) }
+        return selected ? Color.white : Color.white.opacity(0.18)
+    }
+
+    private func glyph(selected: Bool, red: Bool) -> Color {
+        if red { return selected ? Color.white : Color.pigDanger }
+        return selected ? Color.black : Color.white
     }
 }
 

@@ -69,3 +69,62 @@ nonisolated enum RecordingLiveEdge {
         return PlayerSeekWindow.liveTarget(start: last.start, end: last.end, live: true)
     }
 }
+
+/// #335 (D-67): "Go to live" on a recording still being made, played from its live playlist: offered only while the
+/// playhead is more than `behind` seconds short of the live point (`RecordingLiveEdge.target`), and it jumps there.
+/// For 8 s after the jump "Back to 1:02:03" returns to exactly where the viewer was. Pure (tests `RecordingGoLiveTests`).
+nonisolated enum RecordingGoLive {
+    static let label = "Go to live"
+    /// Its own symbol, apart from Skip break's "forward.end.fill".
+    static let icon = "forward.end.circle"
+    static let notice = "Jumped to live"
+    static let behind: Double = 30
+    static let undoSeconds: TimeInterval = 8
+
+    /// Where the viewer was, and until when they can go back there.
+    struct Undo: Equatable, Sendable {
+        let position: Double
+        let until: Date
+    }
+
+    /// `watchingLive`: playing the recording's live playlist (it is still being made); `current`: the playhead; `ranges`:
+    /// the playlist's seekable ranges.
+    static func available(watchingLive: Bool, current: Double, ranges: [(start: Double, end: Double)]) -> Bool {
+        guard watchingLive, current.isFinite, let target = RecordingLiveEdge.target(ranges) else { return false }
+        return target - current > behind
+    }
+
+    /// The jump's target, when it is offered.
+    static func target(watchingLive: Bool, current: Double, ranges: [(start: Double, end: Double)]) -> Double? {
+        available(watchingLive: watchingLive, current: current, ranges: ranges) ? RecordingLiveEdge.target(ranges) : nil
+    }
+
+    static func undo(from position: Double, at now: Date) -> Undo {
+        Undo(position: position, until: now.addingTimeInterval(undoSeconds))
+    }
+
+    /// The position "Back to" returns to, while it is offered (nil after the 8 s).
+    static func back(_ undo: Undo?, at now: Date) -> Double? {
+        guard let undo, now < undo.until else { return nil }
+        return undo.position
+    }
+
+    /// "Back to 1:02:03".
+    static func backLabel(_ undo: Undo) -> String { "Back to \(RecordingResume.clock(undo.position))" }
+}
+
+/// The recording player's actions on the Apple TV, in order (#335: Go to live always last, so the first focus, the
+/// first action, is never it). Pure (tests `RecordingGoLiveTests`).
+nonisolated enum RecordingActions {
+    enum Item: Equatable, Sendable { case skipBreak, playPause, autoSkip, goLive }
+
+    static func list(inBreak: Bool, hasBreaks: Bool, canGoLive: Bool) -> [Item] {
+        var items: [Item] = []
+        if inBreak { items.append(.skipBreak) }
+        items.append(.playPause)
+        // Only offered when the recording has detected breaks (no dead UI).
+        if hasBreaks { items.append(.autoSkip) }
+        if canGoLive { items.append(.goLive) }
+        return items
+    }
+}

@@ -8,6 +8,8 @@ import AVKit
 /// Picture and, whenever the playhead is inside a detected break, Skip break.
 /// A tap on the picture shows or hides the controls (`PlayerChromeTimer`);
 /// Skip break is outside that and stays up for the whole break.
+/// #335: a recording still being made, played more than 30 s short of its live point, offers Go to live (red, last in
+/// the top bar, set apart); for 8 s after the jump "Back to …" sits where Skip break does.
 struct RecordingTouchPlayer: View {
     @ObservedObject var model: RecordingPlayerModel
     let close: () -> Void
@@ -30,11 +32,11 @@ struct RecordingTouchPlayer: View {
                 .accessibilityLabel("Video")
                 .accessibilityHint("Shows or hides the player controls")
             if chromeVisible { chrome.transition(.opacity) }
-            if model.inBreak != nil {
-                VStack {
+            if model.inBreak != nil || model.goLiveUndo != nil {
+                VStack(alignment: .trailing, spacing: PigSpacing.s) {
                     Spacer()
-                    HStack {
-                        Spacer()
+                    if let undo = model.goLiveUndo { undoNotice(undo) }
+                    if model.inBreak != nil {
                         Button { lastInput = Date(); model.skipBreak() } label: {
                             Label("Skip break", systemImage: "forward.end.fill")
                                 .font(.headline).padding(.horizontal, PigSpacing.l).frame(minHeight: 44)
@@ -43,15 +45,17 @@ struct RecordingTouchPlayer: View {
                         .foregroundStyle(Color.pigOnAccent)
                         .accessibilityIdentifier("recording.skipBreak")
                     }
-                    // Above the scrub panel when it is showing.
-                    .padding(.bottom, chromeVisible ? PigSpacing.empty : PigSpacing.xl)
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                // Above the scrub panel when it is showing.
+                .padding(.bottom, chromeVisible ? PigSpacing.empty : PigSpacing.xl)
                 .padding(.horizontal, PigSpacing.xl)
                 .transition(.opacity)
             }
         }
         .pigAnimation(value: chromeVisible)
         .pigAnimation(value: model.inBreak != nil)
+        .pigAnimation(value: model.goLiveUndo)
         .task(id: lastInput) {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
@@ -80,6 +84,7 @@ struct RecordingTouchPlayer: View {
                         }
                         .accessibilityIdentifier("recording.pip")
                     }
+                    if model.canGoLive { goLiveButton.padding(.leading, PigSpacing.l) } // #335: last, set apart
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: PigSpacing.section) {
@@ -102,6 +107,37 @@ struct RecordingTouchPlayer: View {
         }
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
+    }
+
+    /// #335: Go to live, red (it leaves where the viewer is; Back to undoes it for 8 s).
+    private var goLiveButton: some View {
+        Button { lastInput = Date(); model.goLive() } label: {
+            Label(RecordingGoLive.label, systemImage: RecordingGoLive.icon)
+                .font(.subheadline.weight(.semibold)).lineLimit(1).fixedSize()
+                .padding(.horizontal, PigSpacing.l).frame(minHeight: 44)
+                .background(Capsule().fill(Color.pigDanger))
+                .foregroundStyle(.white)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("recording.goLive")
+    }
+
+    /// #335: "Jumped to live" and the way back to exactly where the viewer was, for 8 s.
+    private func undoNotice(_ undo: RecordingGoLive.Undo) -> some View {
+        HStack(spacing: PigSpacing.m) {
+            Text(RecordingGoLive.notice).font(.subheadline.weight(.semibold))
+            Button { lastInput = Date(); model.undoGoLive() } label: {
+                Label(RecordingGoLive.backLabel(undo), systemImage: "arrow.uturn.backward")
+                    .font(.headline).pigFigures().padding(.horizontal, PigSpacing.l).frame(minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent).tint(Color.pigAccent)
+            .foregroundStyle(Color.pigOnAccent)
+            .accessibilityIdentifier("recording.goLiveUndo")
+        }
+        .padding(.leading, PigSpacing.l)
+        .background(Color.pigMediaPanel, in: Capsule())
+        .foregroundStyle(.white)
     }
 
     @ViewBuilder
