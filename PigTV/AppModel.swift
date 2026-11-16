@@ -759,7 +759,9 @@ final class AppModel: ObservableObject {
     nonisolated static let unreachableFixtureServer = "http://192.0.2.1:3000"
 
     /// `sportFront` (#334): the server also has the Sport front page, so a play from Sport lists the live games.
-    func injectPlayerFixture(media: URL?, sportFront: Bool = false) {
+    /// `measured` (D-67): every channel carries a measured quality (4K · 50, 1080 · 50, 720 · 25, SD · 25 in turn), the
+    /// playing one 4K · 50.
+    func injectPlayerFixture(media: URL?, sportFront: Bool = false, measured: Bool = false) {
         injectHomeFixture(sportFront: sportFront)
         guard let browse, browse.guide.count > 3 else { return }
         if media == nil, let address = try? ServerAddress(Self.unreachableFixtureServer) {
@@ -769,8 +771,15 @@ final class AppModel: ObservableObject {
             self.client = browse.client
         }
         guard let client else { return }
-        zapList = browse.guide.map(browse.asChannel)
-        let channel = browse.asChannel(browse.guide[2])
+        let labels: [MeasuredQuality] = [.init(label: .uhd, fps: 50), .init(label: .fhd, fps: 50), .init(label: .hd, fps: 25),
+                                         .init(label: .sd, fps: 25)]
+        func fixture(_ index: Int) -> Channel {
+            var channel = browse.asChannel(browse.guide[index])
+            if measured { channel.measured = index == 2 ? labels[0] : labels[index % labels.count] }
+            return channel
+        }
+        zapList = browse.guide.indices.map(fixture)
+        let channel = fixture(2)
         previousChannel = browse.asChannel(browse.guide[0])
         let model = PlaybackModel(channel: channel, client: client, programmes: browse.guide[2].programmes)
         if let media { model.playFixtureMedia(media) }

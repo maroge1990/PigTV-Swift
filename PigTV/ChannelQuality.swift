@@ -180,6 +180,20 @@ extension SportEventChannel {
     nonisolated var chip: QualityChip? { QualityChip.make(measured: measured, quality: quality) }
 }
 
+/// D-65, iPhone: what a tap on a channel row (or one of its chips) does: play a copy that is on or about to start,
+/// record on it before the game (no choice sheet: Watch at <time> is in the row's touch and hold), nothing once it ended.
+nonisolated enum PhoneChannelTap: Equatable, Sendable {
+    case play, record, none
+
+    static func of(_ action: SportRows.ChannelAction) -> PhoneChannelTap {
+        switch action {
+        case .play: .play
+        case .wait: .record
+        case .ended: .none
+        }
+    }
+}
+
 /// D-67: the players' quality tag: the playing channel's measured badge when known, else the decoded picture height.
 nonisolated enum PlayerQualityTag {
     static func chip(measured: MeasuredQuality?) -> QualityChip? {

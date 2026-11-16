@@ -83,4 +83,23 @@ final class ChannelGroupingTests: XCTestCase {
         XCTAssertEqual(RecordPlan.recordOnNote(groups), "2 channels in your guide carry it")
         XCTAssertEqual(RecordPlan.recordOnNote([groups[0]]), "1 channel in your guide carries it, in 4 qualities")
     }
+
+    func testOnIPhoneATapRecordsBeforeTheGame() {
+        XCTAssertEqual(PhoneChannelTap.of(.play), .play)
+        XCTAssertEqual(PhoneChannelTap.of(.wait), .record, "D-65: no choice sheet; Watch at is in touch and hold")
+        XCTAssertEqual(PhoneChannelTap.of(.ended), PhoneChannelTap.none)
+    }
+
+    #if DEBUG
+    @MainActor func testTheQualitiesFixtureDrawsChips() {
+        let guide = (0..<6).map { GuideChannel(rawID: "g\($0)", sourceId: 1, name: "G\($0)", logo: nil, category: nil, programmes: []) }
+        guard let event = GuideFixtures.qualityEvent(from: guide) else { return XCTFail("no fixture") }
+        let groups = ChannelGrouping.group(event.channels)
+        XCTAssertEqual(groups.map(\.name), ["Sky Sports F1", "Sky Sports Main Event"])
+        XCTAssertEqual(groups[0].choices.map { $0.chip?.text }, ["4K · 50", "1080 · 50", "1080 · 25", "1080", "720 · 50", "SD · 25"])
+        XCTAssertEqual(groups[0].best.indices, [0, 3, 8], "three 4K · 50 copies fold into one chip")
+        XCTAssertEqual(groups[1].choices.map { $0.chip?.text }, ["4K · 50", "1080 · 50"])
+        XCTAssertEqual(Set(event.channels.map(\.id)).count, event.channels.count, "every copy has its own id")
+    }
+    #endif
 }

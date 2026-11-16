@@ -286,7 +286,8 @@ private struct HomeTestScreen: View {
 // The player over the Home fixture's data (build 29): PIGTV_UI_TEST_SCREEN=
 // player (with PIGTV_UI_TEST_MEDIA=<path to a local movie>) | player-channels
 // (the channel panel open) | player-tuning (no media: the tuning card) | player-games (#334: a play from Sport, the
-// live games list on PlayerGamesFixture's answer; the touch player opens it).
+// live games list on PlayerGamesFixture's answer; the touch player opens it). PIGTV_UI_TEST_MEASURED=1 with any of them:
+// the channels carry measured qualities (D-67).
 private struct PlayerTestScreen: View {
     @StateObject private var model = AppModel()
     var body: some View {
@@ -299,7 +300,10 @@ private struct PlayerTestScreen: View {
         .task {
             let media = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"].map { URL(fileURLWithPath: $0) }
             let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"]
-            model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media, sportFront: screen == "player-games")
+            // D-67: PIGTV_UI_TEST_MEASURED=1: the channels carry the server's measured quality (the badge in the info
+            // overlay, the touch panel and each channel row).
+            model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media, sportFront: screen == "player-games",
+                                      measured: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEASURED"] == "1")
             if screen == "player-games" {
                 model.injectPlayerGamesFixture(PlayerGamesFixture.front(), playing: PlayerGamesFixture.playing)
             }
@@ -315,7 +319,8 @@ private struct PlayerTestScreen: View {
 // channel picker), with PIGTV_UI_TEST_APPEARANCE=light|dark.
 private struct DesignTestScreen: View {
     static let screens: Set<String> = ["programme", "programme-later", "record", "record-change", "record-sport", "schedule", "channel", "recording",
-                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recording-player-golive", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume", "signin-server"]
+                                       "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recording-player-golive", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume", "signin-server",
+                                       "sport-picker-qualities", "sport-picker-qualities-later", "record-qualities"]
     let screen: String
     @StateObject private var app = AppModel()
     @State private var ready = false
@@ -411,6 +416,19 @@ private struct DesignTestScreen: View {
         case "sport-event":
             if let event = browse.sport.soon.first {
                 SportEventDetails(event: event, app: app, browse: browse, play: { _ in })
+            }
+        case "sport-picker-qualities", "sport-picker-qualities-later":
+            // D-65 (#266): one row per channel name with its quality chips; live, or starting in 90 minutes (iPhone: a
+            // tap records, touch and hold opens the chips, Record… and Watch at <time>).
+            if let event = GuideFixtures.qualityEvent(from: browse.guide, startsIn: screen == "sport-picker-qualities" ? -20 : 90) {
+                SportChannelPicker(event: event, app: app, browse: browse, clock: now, play: { $0() })
+            }
+        case "record-qualities":
+            // D-65 (#266): the record page's Record on, one row per channel name with its quality chips.
+            Color.clear.task {
+                guard let event = GuideFixtures.qualityEvent(from: browse.guide, startsIn: 90),
+                      let request = browse.recordRequest(event: event) else { return }
+                app.presenter.present(.record(request))
             }
         case "sport-channels":
             if let event = browse.sport.live.first {

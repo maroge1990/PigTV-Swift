@@ -310,7 +310,7 @@ struct SportChannelList: View {
             SportChannelPhoneRow(group: group, browse: browse, isBest: isBest, scheduled: scheduled,
                                  action: { SportRows.channelAction(event, on: $0, now: clock) },
                                  startText: event.start(on: best).formatted(date: .omitted, time: .shortened),
-                                 choose: choose,
+                                 choose: phoneChoose,
                                  record: { channel in play { app.record(event, onChannel: channel.id) } },
                                  watchAtStart: { channel in play { app.watchWhenStarts(event, channel: channel, now: clock) } })
             #endif
@@ -322,6 +322,18 @@ struct SportChannelList: View {
                             scheduled: scheduled, ended: action == .ended) { choose(best) }
         }
     }
+
+    #if os(iOS)
+    /// D-65, iPhone: a tap plays a copy that is on (or about to start) and, before the game, records on it: no choice
+    /// sheet (Watch at <time> is in the row's touch and hold). Decided again at the press.
+    private func phoneChoose(_ channel: SportEventChannel) {
+        switch PhoneChannelTap.of(SportRows.channelAction(event, on: channel, now: Date())) {
+        case .play: play { app.playSportEvent(event, channel: channel) }
+        case .record: play { app.record(event, onChannel: channel.id) }
+        case .none: break
+        }
+    }
+    #endif
 
     /// What choosing one copy does, decided again at the press (the page may have been open since before the airing
     /// ended): play it, or offer Record / Watch when it starts.
@@ -376,6 +388,10 @@ private struct SportChannelChip: View {
     let choice: ChannelChoice<SportEventChannel>
     let action: SportRows.ChannelAction
     let scheduled: Bool
+    /// iPhone (D-65): before the game choosing a copy records on it (no Record / Watch when it starts choice).
+    var waitRecords = false
+    /// The accessibility identifier's stem: the opened iPhone row's chips have their own.
+    var identifier = "sport.channel"
     let choose: (SportEventChannel) -> Void
 
     var body: some View {
@@ -386,7 +402,7 @@ private struct SportChannelChip: View {
                 } else {
                     Text("Other").font(SportMetrics.detail.weight(.bold)).foregroundStyle(.secondary)
                 }
-                Image(systemName: sportChannelIcon(action, scheduled: scheduled)).font(SportMetrics.detail)
+                Image(systemName: sportChannelIcon(action, scheduled: scheduled || waitRecords)).font(SportMetrics.detail)
                     .foregroundStyle(.secondary).accessibilityHidden(true)
             }
             .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
@@ -395,13 +411,14 @@ private struct SportChannelChip: View {
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .control))
         .disabled(action == .ended)
         .accessibilityLabel(label)
-        .accessibilityIdentifier("sport.channel.\(choice.copy.id)")
+        .accessibilityIdentifier("\(identifier).\(choice.copy.id)")
     }
 
     private var label: String {
         let name = choice.copy.name
         let text = action == .ended ? "Not on now on \(name)" : action == .play ? "Watch on \(name)"
-            : scheduled ? "Recording scheduled on \(name)" : "Record or watch \(name) when it starts"
+            : scheduled ? "Recording scheduled on \(name)"
+            : waitRecords ? "Record on \(name)" : "Record or watch \(name) when it starts"
         return text + (choice.chip.map { ", \($0.spoken)" } ?? "")
     }
 }
@@ -445,8 +462,8 @@ struct SportChannelChipsRow: View {
 }
 
 #if os(iOS)
-/// D-65, iPhone: one row per channel name showing its best quality. A tap acts on the best copy (play now, or the
-/// Record / Watch when it starts choice); touch and hold opens the row in place: the quality chips scrolling sideways
+/// D-65, iPhone: one row per channel name showing its best quality. A tap acts on the best copy (plays it when it is
+/// on, records on it before the game); touch and hold opens the row in place: the quality chips scrolling sideways
 /// (when there is more than one), Record…, and before the game Watch at <start>. Touch and hold again closes it.
 struct SportChannelPhoneRow: View {
     let group: ChannelNameGroup<SportEventChannel>
@@ -469,7 +486,7 @@ struct SportChannelPhoneRow: View {
                 SportChannelTitle(channel: best, isBest: isBest, scheduled: scheduled, ended: bestAction == .ended)
                 Spacer(minLength: 16)
                 if let chip = group.best.chip { QualityBadge(chip: chip) }
-                Image(systemName: open ? "chevron.up" : sportChannelIcon(bestAction, scheduled: scheduled))
+                Image(systemName: open ? "chevron.up" : sportChannelIcon(bestAction, scheduled: true))
                     .foregroundStyle(.secondary).accessibilityHidden(true)
             }
             .contentShape(Rectangle())
@@ -487,7 +504,8 @@ struct SportChannelPhoneRow: View {
                     ScrollView(.horizontal) {
                         HStack(spacing: PigSpacing.s) {
                             ForEach(group.choices) { choice in
-                                SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled, choose: choose)
+                                SportChannelChip(choice: choice, action: action(choice.copy), scheduled: scheduled,
+                                                 waitRecords: true, identifier: "sport.channel.chip", choose: choose)
                             }
                         }
                     }
@@ -515,7 +533,7 @@ struct SportChannelPhoneRow: View {
 
     private func label(_ channel: SportEventChannel, action: SportRows.ChannelAction) -> String {
         let text = action == .ended ? "Not on now on \(channel.name)" : action == .play ? "Watch on \(channel.name)"
-            : scheduled ? "Recording scheduled on \(channel.name)" : "Record or watch \(channel.name) when it starts"
+            : scheduled ? "Recording scheduled on \(channel.name)" : "Record on \(channel.name)"
         return text + (group.best.chip.map { ", \($0.spoken)" } ?? "")
     }
 }
