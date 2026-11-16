@@ -315,7 +315,7 @@ final class TopShelfGamesTests: XCTestCase {
     func testTheFirstPassReadsHideScoresOnceAndAFailedReadKeepsScoresHidden() async throws {
         let server = try FakePigTVServer()
         defer { server.http.stop() }
-        let browse = BrowseModel(client: try server.client(extraFeatures: #","sportFront":true"#))
+        let browse = BrowseModel(client: try server.client(extraFeatures: #""sportFront":true"#))
         await AppFreshness.refreshSportFrontIfStale(browse, topShelf: true)
         XCTAssertEqual(server.http.requests(path: "/api/sports/pages/preferences").count, 1, "read as the app opens")
         XCTAssertTrue(browse.f1Page.hidesSpoilers, "the fake server does not answer it: unknown, so hidden")
@@ -329,7 +329,7 @@ final class TopShelfGamesTests: XCTestCase {
         let without = BrowseModel(client: try server.client())
         await AppFreshness.refreshSportFrontIfStale(without, topShelf: true)
         XCTAssertTrue(server.http.requests(path: "/api/sports/front").isEmpty, "no front page on this server")
-        let with = BrowseModel(client: try server.client(extraFeatures: #","sportFront":true"#))
+        let with = BrowseModel(client: try server.client(extraFeatures: #""sportFront":true"#))
         await AppFreshness.refreshSportFrontIfStale(with, topShelf: false)
         XCTAssertTrue(server.http.requests(path: "/api/sports/front").isEmpty, "no Top Shelf (iPhone, iPad)")
         await AppFreshness.refreshSportFrontIfStale(with, topShelf: true)
