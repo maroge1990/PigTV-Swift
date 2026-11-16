@@ -90,6 +90,29 @@ final class ChannelGroupingTests: XCTestCase {
         XCTAssertEqual(PhoneChannelTap.of(.ended), PhoneChannelTap.none)
     }
 
+    // The server's nameKey (channelMeasurements.nameKey): quality words removed, region prefix kept, lower case.
+    func testTheNameKeyMirrorsTheServersRule() {
+        XCTAssertEqual(["Sky Sports F1 UHD", "Sky Sports F1 HD", "Sky Sports F1", "Sky Sports F1 ᵁᴴᴰ", "Sky Sports F1 (1080p50)",
+                        "Sky Sports F1 50fps", "Sky Sports F1 4K HDR", "sky sports  F1 FHD"].map { ChannelGrouping.key($0) },
+                       Array(repeating: "sky sports f1", count: 8))
+        XCTAssertEqual(ChannelGrouping.key("UK| Sky Sports F1 SD"), "uk| sky sports f1", "the region prefix stays")
+        XCTAssertEqual(ChannelGrouping.key("HD"), "hd", "a name that is only quality words stays")
+        XCTAssertEqual(ChannelGrouping.key("Sky Sports F1 UHD", serverKey: "uk| sky sports f1"), "uk| sky sports f1",
+                       "the server's key wins")
+        XCTAssertEqual(ChannelGrouping.baseName("Sky Sports F1 UHD"), "Sky Sports F1")
+        XCTAssertEqual(ChannelGrouping.key("Shdtv One"), "shdtv one", "only whole words")
+    }
+
+    func testCopiesNamedForTheirQualityShareOneRowNamedWithoutIt() throws {
+        let groups = ChannelGrouping.group([copy("a", "Sky Sports F1 UHD", .uhd, fps: 50), copy("b", "Sky Sports F1 HD", .hd, fps: 50),
+                                            copy("c", "Sky Sports F1", .fhd, fps: 25)])
+        XCTAssertEqual(groups.map(\.name), ["Sky Sports F1"], "one row, as on the web")
+        XCTAssertEqual(groups[0].choices.map { $0.chip?.text }, ["4K · 50", "1080 · 25", "720 · 50"])
+        let decoded = try JSONDecoder().decode([SportEventChannel].self, from: Data(#"[{"sourceId":1,"id":"a","name":"Sky F1 (main)","nameKey":"uk| sky f1"},{"sourceId":1,"id":"b","name":"Sky F1 backup","nameKey":"uk| sky f1"}]"#.utf8))
+        XCTAssertEqual(decoded.map(\.nameKey), ["uk| sky f1", "uk| sky f1"])
+        XCTAssertEqual(ChannelGrouping.group(decoded).count, 1, "grouped on the server's key when it sends one")
+    }
+
     #if DEBUG
     @MainActor func testTheQualitiesFixtureDrawsChips() {
         let guide = (0..<6).map { GuideChannel(rawID: "g\($0)", sourceId: 1, name: "G\($0)", logo: nil, category: nil, programmes: []) }

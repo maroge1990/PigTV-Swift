@@ -134,22 +134,45 @@ extension ChannelNameGroup: Equatable where Copy: Equatable {}
 extension ChannelNameGroup: Sendable where Copy: Sendable {}
 
 nonisolated enum ChannelGrouping {
-    /// The key copies share a row by: the name, trimmed, spaces collapsed, any case.
-    static func key(_ name: String) -> String {
-        name.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+    /// The name with its quality words removed (UHD, FHD, HD, SD, HDR, 4K, 1080p50, 720p, 50fps, superscript ᵁᴴᴰ …),
+    /// spaces collapsed, case and region prefix kept: "Sky Sports F1 UHD" → "Sky Sports F1". The server's
+    /// `channelMeasurements.nameKey` rule (and the web's SportView.baseName), before lower-casing; a name that is only
+    /// quality words stays as it was.
+    static func baseName(_ name: String) -> String {
+        let range = { (text: String) in NSRange(text.startIndex..., in: text) }
+        var text = superscriptTags.stringByReplacingMatches(in: name, range: range(name), withTemplate: " ")
+        text = qualityWords.stringByReplacingMatches(in: text, range: range(text), withTemplate: " ")
+        let folded = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return folded.isEmpty ? name.trimmingCharacters(in: .whitespacesAndNewlines) : folded
     }
+
+    /// The key copies share a row by: the server's `nameKey` when it sent one, else the same rule here (`baseName`,
+    /// lower case), so "Sky Sports F1 UHD" and "Sky Sports F1 HD" share a row.
+    static func key(_ name: String, serverKey: String? = nil) -> String {
+        if let serverKey = serverKey?.trimmingCharacters(in: .whitespacesAndNewlines), !serverKey.isEmpty { return serverKey }
+        return baseName(name).lowercased()
+    }
+
+    // ICU patterns of the server's QUALITY_WORDS and SUPERSCRIPT_TAGS (`[([]` is written `[(\[]`: ICU nests sets).
+    nonisolated(unsafe) private static let qualityWords = try! NSRegularExpression(
+        pattern: #"[\s\-_|]*[(\[]?\b(?:u?hd|fhd|sd|hdr(?:10)?|[48]k|\d{3,4}[pi](?:\s?\d{2})?|\d{2}\s?fps)\b[)\]]?"#,
+        options: [.caseInsensitive])
+    nonisolated(unsafe) private static let superscriptTags = try! NSRegularExpression(pattern: "ᵁᴴᴰ|ᶠᴴᴰ|ᴴᴰ|ˢᴰ")
 
     /// D-65: one row per channel name (in the order the server lists the names, best first); within it one chip per
     /// quality and frame rate, best first; copies with the same name and chip fold into one chip, which acts on the
     /// first of them in the server's order. Display only: what a copy does is unchanged.
-    static func group<Copy>(_ copies: [Copy], name: (Copy) -> String, chip: (Copy) -> QualityChip?) -> [ChannelNameGroup<Copy>] {
+    /// `serverKey`: the copy's `nameKey` from the server, when it sent one. A row's name is its first (best) copy's name
+    /// without the quality words.
+    static func group<Copy>(_ copies: [Copy], name: (Copy) -> String, serverKey: (Copy) -> String? = { _ in nil },
+                            chip: (Copy) -> QualityChip?) -> [ChannelNameGroup<Copy>] {
         var order: [String] = []
         var names: [String: String] = [:]
         var folds: [String: [(chip: QualityChip?, indices: [Int], copy: Copy)]] = [:]
         for (index, copy) in copies.enumerated() {
             let display = name(copy)
-            let key = key(display)
-            if names[key] == nil { order.append(key); names[key] = display }
+            let key = key(display, serverKey: serverKey(copy))
+            if names[key] == nil { order.append(key); names[key] = baseName(display) }
             let badge = chip(copy)
             if let at = folds[key, default: []].firstIndex(where: { $0.chip == badge }) {
                 folds[key]![at].indices.append(index)
@@ -171,7 +194,7 @@ nonisolated enum ChannelGrouping {
 
     /// An event's channels, grouped.
     static func group(_ channels: [SportEventChannel]) -> [ChannelNameGroup<SportEventChannel>] {
-        group(channels, name: \.name, chip: \.chip)
+        group(channels, name: \.name, serverKey: \.nameKey, chip: \.chip)
     }
 }
 

@@ -24,6 +24,8 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
         var quality: SportQuality? = nil
         /// D-65 (#265): the measured quality, else nil (the badge then comes from `quality`).
         var measured: MeasuredQuality? = nil
+        /// D-65 (#266): the server's name key, else nil (grouped on the name).
+        var nameKey: String? = nil
         var id: String { channel.id }
         var chip: QualityChip? { QualityChip.make(measured: measured, quality: quality) }
     }
@@ -222,7 +224,7 @@ nonisolated enum RecordPlan {
     /// same name and quality fold into one chip). Each copy is its index in `request.airings`; a chip selects its first.
     static func channelGroups(_ request: RecordRequest) -> [ChannelNameGroup<Int>] {
         ChannelGrouping.group(Array(request.airings.indices), name: { request.airings[$0].channel.name },
-                              chip: { request.airings[$0].chip })
+                              serverKey: { request.airings[$0].nameKey }, chip: { request.airings[$0].chip })
     }
 
     /// Record on's note: how many channels carry it (by name), or one channel's qualities.
@@ -250,7 +252,7 @@ extension BrowseModel {
     /// A guide programme on its channel: Record, or Change recording when it is scheduled.
     func recordRequest(channel: GuideChannel, programme: GuideProgramme) -> RecordRequest {
         RecordRequest(title: programme.title, airings: [.init(channel: channel, programme: programme, quality: quality(of: channel),
-                                                              measured: channel.measured?.known)],
+                                                              measured: channel.measured?.known, nameKey: channel.nameKey)],
                       schedule: activeSchedule(channel: channel, programme: programme))
     }
 
@@ -262,7 +264,7 @@ extension BrowseModel {
         let channels = SportFrontText.recordChoices(event, now: now)
         let airings = (channels.isEmpty ? event.best.map { [$0] } ?? [] : channels).map { channel in
             RecordRequest.Airing(channel: recordingRow(event, on: channel), programme: event.programme(on: channel),
-                                 quality: channel.quality, measured: channel.measured)
+                                 quality: channel.quality, measured: channel.measured, nameKey: channel.nameKey)
         }
         guard !airings.isEmpty else { return nil }
         let teams: [RecordTeam]

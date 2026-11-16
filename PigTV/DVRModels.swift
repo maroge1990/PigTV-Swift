@@ -37,18 +37,21 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     var quality: String? = nil
     // D-65 (#265): what the server measured the stream to be, or nil (`MeasuredQuality` never fails to decode).
     var measured: MeasuredQuality? = nil
+    // D-65 (#266): the server's name key for grouping copies, or nil.
+    var nameKey: String? = nil
     var id: String { "\(sourceId):\(rawID)" }
     var numberText: String? { number.map { String($0) } }
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId, number, health, quality, measured
+        case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId, number, health, quality, measured, nameKey
     }
     init(rawID: String, sourceId: Int, name: String, logo: String?, category: String?,
          programmes: [GuideProgramme], tvgId: String? = nil, stableId: String? = nil,
-         number: Int? = nil, health: String? = nil, quality: String? = nil, measured: MeasuredQuality? = nil) {
+         number: Int? = nil, health: String? = nil, quality: String? = nil, measured: MeasuredQuality? = nil,
+         nameKey: String? = nil) {
         self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.logo = logo
         self.category = category; self.programmes = programmes; self.tvgId = tvgId; self.stableId = stableId
-        self.number = number; self.health = health; self.quality = quality; self.measured = measured
+        self.number = number; self.health = health; self.quality = quality; self.measured = measured; self.nameKey = nameKey
     }
     // Decoding is synthesised from CodingKeys; the server strips the small-caps
     // badge from names at ingest (0099).
@@ -62,7 +65,7 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     func withProgrammes(_ programmes: [GuideProgramme]) -> GuideChannel {
         GuideChannel(rawID: rawID, sourceId: sourceId, name: name, logo: logo, category: category,
                     programmes: programmes, tvgId: tvgId, stableId: stableId, number: number, health: health, quality: quality,
-                    measured: measured)
+                    measured: measured, nameKey: nameKey)
     }
 }
 
