@@ -108,7 +108,8 @@ extension BrowseModel {
     /// #232: the live games from the Sport front page's latest answer, scores as the household's Hide scores allows now.
     func topShelfGames(now: Date = Date()) -> [TopShelfSnapshot.Game]? {
         let front = sportFront
-        return TopShelfGames.games(front.front, answeredAt: front.updatedAt, hidden: f1Page.hidesSpoilers,
+        let hidden = SportSpoilers.hidden(preference: f1Page.hidesSpoilers, answer: front.front?.spoilerFree, page: false)
+        return TopShelfGames.games(front.front, answeredAt: front.updatedAt, hidden: hidden,
                                    labels: front.labels, now: now)
     }
 
