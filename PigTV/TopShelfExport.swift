@@ -21,6 +21,8 @@ nonisolated final class TopShelfPublication: @unchecked Sendable {
     private let queue = DispatchQueue(label: "au.markrogers.PigTV.topshelf-files")
 
     private var queued = 0
+    /// #232 (Codex high): moves with every snapshot save, in call order (on the main actor, before the save leaves it).
+    private var saveRevision = 0
 
     var current: Int { lock.withLock { generation } }
 
@@ -30,6 +32,13 @@ nonisolated final class TopShelfPublication: @unchecked Sendable {
     /// Tests only: awaited by `run` before it queues its work, so a test can choose an order the
     /// detached callers allow (a scheduling barrier). Nil in the app.
     nonisolated(unsafe) static var beforeQueueing: (@Sendable (String) async -> Void)?
+
+    /// #232: the revision of a save being started now; every later save (Hide scores' scrub too) supersedes it.
+    func newSave() -> Int { lock.withLock { saveRevision += 1; return saveRevision } }
+
+    /// #232: no save was started after the one with `revision`. Checked on the file queue right before writing, so a save
+    /// whose detached task queued late never overwrites a newer one (a scored snapshot after Hide scores' scrub).
+    func isNewestSave(_ revision: Int) -> Bool { lock.withLock { saveRevision == revision } }
 
     /// The session's files are no longer its to write. Returns the new generation.
     @discardableResult
@@ -191,8 +200,12 @@ enum TopShelfExport {
         guard generation == TopShelfPublication.shared.current else { return nil }
         guard !snapshot.sameContent(as: lastWritten) else { return nil }
         lastWritten = snapshot
+        // #232 (Codex high): taken now, in call order; the detached task may queue its write after a later save's.
+        let revision = TopShelfPublication.shared.newSave()
         return Task.detached(priority: .utility) {
-            let written = await TopShelfPublication.shared.run(ifCurrent: generation, label: "save") { () -> Bool in
+            let written = await TopShelfPublication.shared.run(ifCurrent: generation, label: "save") { () -> Bool? in
+                // A newer save (or Hide scores' scrub) was started after this one: it, not this, is what goes on disk.
+                guard TopShelfPublication.shared.isNewestSave(revision) else { return nil }
                 guard snapshot.write(container: container) else { return false }
                 if let cards {
                     // #232: and the live games' cards.

@@ -245,6 +245,36 @@ final class TopShelfGamesTests: XCTestCase {
         XCTAssertNil(try XCTUnwrap(TopShelfSnapshot.read(container: container)).games?[0].scores)
     }
 
+    /// Codex (high): a scored save started before the scrub, whose detached task queues its write only after the scrub
+    /// has been written (same session), must not put the score back on disk.
+    func testAScoredSaveQueuedAfterTheScrubNeverReachesTheDisk() async throws {
+        let container = try temporaryContainer()
+        let saved = TopShelfExport.lastWritten
+        let gate = FirstSaveGate()
+        TopShelfPublication.beforeQueueing = { label in await gate.pass(label) }
+        defer {
+            TopShelfPublication.beforeQueueing = nil
+            gate.release()
+            TopShelfExport.lastWritten = saved
+        }
+        TopShelfExport.lastWritten = nil
+        let generation = TopShelfPublication.shared.current
+        let game = try XCTUnwrap(games(try Self.front([Self.game("g")])).first)
+        let scored = TopShelfSnapshot(kind: "channels", channels: [], savedAt: Self.now, games: [game], gamesAt: Self.now)
+        let late = try XCTUnwrap(TopShelfExport.save(scored, generation: generation, container: container))
+        for _ in 0..<100_000 where !gate.isHeld { await Task.yield() }
+        XCTAssertTrue(gate.isHeld, "control: the scored save is held before it queues its write")
+        await TopShelfExport.hideScores(generation: generation, container: container)?.value
+        XCTAssertNil(try XCTUnwrap(TopShelfSnapshot.read(container: container)).games?[0].scores, "control: the scrub is on disk")
+        gate.release()
+        await late.value
+        await TopShelfPublication.shared.idle()
+        let read = try XCTUnwrap(TopShelfSnapshot.read(container: container))
+        XCTAssertEqual(read.games?.map(\.id), ["g"])
+        XCTAssertNil(read.games?[0].scores, "the older scored save was dropped")
+        XCTAssertNil(TopShelfExport.lastWritten?.games?[0].scores)
+    }
+
     func testHideScoresWritesNothingWhenThereIsNoScore() throws {
         let container = try temporaryContainer()
         let saved = TopShelfExport.lastWritten
@@ -334,5 +364,42 @@ final class TopShelfGamesTests: XCTestCase {
         XCTAssertTrue(server.http.requests(path: "/api/sports/front").isEmpty, "no Top Shelf (iPhone, iPad)")
         await AppFreshness.refreshSportFrontIfStale(with, topShelf: true)
         XCTAssertEqual(server.http.requests(path: "/api/sports/front").count, 1)
+    }
+}
+
+/// Holds the first snapshot save before it queues its write, until released; every other passes.
+private final class FirstSaveGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var held = false
+    private var released = false
+
+    var isHeld: Bool { lock.withLock { waiting != nil } }
+
+    func pass(_ label: String) async {
+        guard label == "save" else { return }
+        let first = lock.withLock { () -> Bool in
+            guard !held else { return false }
+            held = true
+            return true
+        }
+        guard first else { return }
+        await withCheckedContinuation { continuation in
+            let go = lock.withLock { () -> Bool in
+                if released { return true }
+                waiting = continuation
+                return false
+            }
+            if go { continuation.resume() }
+        }
+    }
+
+    func release() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            released = true
+            defer { waiting = nil }
+            return waiting
+        }
+        continuation?.resume()
     }
 }
