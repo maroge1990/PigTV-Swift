@@ -104,6 +104,8 @@ struct SportBadge: View {
     let client: APIClient?
     var size: CGFloat
     var disc: (text: String, color: String?)? = nil
+    /// #334: the letters on the monogram disc in place of the name's initials (the player's live games: the team code).
+    var monogram: String? = nil
     @State private var decoded: DecodedLogo?
 
     var body: some View {
@@ -117,7 +119,7 @@ struct SportBadge: View {
                     .frame(width: size, height: size)
                     .background(Color(teamHex: disc.color) ?? Color("LeagueOther"), in: Circle())
             } else {
-                Text(SportFrontText.monogram(name)).font(.system(size: size * 0.38, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
+                Text(monogram ?? SportFrontText.monogram(name)).font(.system(size: size * 0.38, weight: .heavy)).foregroundStyle(Color.pigOnStatus)
                     .minimumScaleFactor(0.6)
                     .frame(width: size, height: size)
                     .background(Color(SportFrontText.leagueColorName(league)), in: Circle())

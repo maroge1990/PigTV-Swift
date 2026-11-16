@@ -301,6 +301,9 @@ nonisolated enum PlayerGames {
         return letters.isEmpty ? "?" : letters
     }
 
+    /// A badge without a logo shows the team code ("GB"), as the row does, not the name's initials ("GP").
+    static func monogram(_ side: PlayerGame.Side) -> String { side.code }
+
     /// The row of the game playing: the event the play began with, else the game whose preferred channel is the one
     /// playing, else one that is on it at all.
     static func playing(_ games: [PlayerGame], eventID: String?, channelID: String?) -> Int? {
@@ -383,7 +386,8 @@ struct PlayerGameRow: View {
 
     private func sideLine(_ side: PlayerGame.Side) -> some View {
         HStack(spacing: PigSpacing.s) {
-            SportBadge(name: side.name, logo: side.logo, league: game.game.league, client: client, size: PlayerMetrics.gameBadge)
+            SportBadge(name: side.name, logo: side.logo, league: game.game.league, client: client, size: PlayerMetrics.gameBadge,
+                       monogram: PlayerGames.monogram(side))
                 .frame(width: PlayerMetrics.gameBadge)
             Text(side.code).font(.system(size: PlayerMetrics.rowName, weight: .semibold)).lineLimit(1)
                 .frame(width: PlayerMetrics.gameCode, alignment: .leading)

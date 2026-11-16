@@ -119,6 +119,7 @@ final class PlayerGamesTests: XCTestCase {
         XCTAssertEqual(rows.map(\.id), ["g", "h"], "a malformed abbreviation never drops the game")
         XCTAssertEqual(rows[0].sides?.map(\.code), ["GB", "STK"])
         XCTAssertEqual(rows[1].sides?.map(\.code), ["BEA", "49E"])
+        XCTAssertEqual(rows[0].sides?.map(PlayerGames.monogram), ["GB", "STK"], "the badge's disc shows the code, not \"GP\"")
     }
 
     func testARaceHasItsTitleAndClockButNoScoreBug() throws {
