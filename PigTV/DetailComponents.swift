@@ -155,6 +155,8 @@ struct ProgrammeHero<Actions: View>: View {
     /// "29 min left".
     var remaining: String? = nil
     var description: String? = nil
+    /// #56: the programme's LIVE / NEW badges and episode, under the title (nothing when it has none).
+    var tags: ProgrammeTags? = nil
     var status: AnyView? = nil
     var beside: AnyView? = nil
     @ViewBuilder var actions: Actions
@@ -204,6 +206,7 @@ struct ProgrammeHero<Actions: View>: View {
             if let title {
                 Text(title).font(DetailType.title).lineLimit(3).fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
+                if let tags { ProgrammeTagsRow(tags: tags, title: title) }
                 Text(meta).font(DetailType.meta).foregroundStyle(Color.pigSecondary).pigFigures()
             } else {
                 Text("No programme information right now").font(DetailType.meta).foregroundStyle(Color.pigSecondary)

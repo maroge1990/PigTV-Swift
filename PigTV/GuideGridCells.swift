@@ -64,6 +64,12 @@ struct GuideGridProgrammeView: View {
                     if info.scheduled {
                         Image(systemName: "record.circle.fill").foregroundStyle(Color.pigDanger)
                     }
+                    // #56: LIVE / NEW and the episode, after the time (the title keeps its lines).
+                    let tags = ProgrammeTags(programme)
+                    ForEach(tags.badges, id: \.self) { ProgrammeTagBadge(badge: $0) }
+                    if let episode = tags.episodeLine(title: programme.title) {
+                        Text(episode).lineLimit(1).truncationMode(.tail)
+                    }
                 }
                 .font(GuideTypography.small).foregroundStyle(.secondary).lineLimit(1)
                 Text(programme.title).font(GuideTypography.body).lineLimit(GuideGridMetrics.titleLines(caption: info.caption != nil))
@@ -201,7 +207,10 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
             GuideGridProgrammeView(info: info, focused: state.isFocused || state.isHighlighted, clip: clip)
         }
         .margins(.all, 0)
-        accessibilityLabel = info.programme.map { "\(info.channelName), \($0.title)" }
+        accessibilityLabel = info.programme.map { programme in
+            ["\(info.channelName), \(programme.title)", ProgrammeTags(programme).spoken(title: programme.title)]
+                .compactMap { $0 }.joined(separator: ", ")
+        }
             ?? "No programme information — watch live"
     }
 }

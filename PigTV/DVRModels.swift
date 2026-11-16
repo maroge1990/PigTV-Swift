@@ -5,18 +5,59 @@ nonisolated struct GuideProgramme: Codable, Equatable, Sendable {
     let description: String?
     let startTime: Double
     let endTime: Double
+    /// #56 (server: guide programme fields): the broadcast is live (a LIVE badge), not "on now". nil on older servers.
+    var liveBroadcast: Bool? = nil
+    /// #56: a new episode or first showing (a NEW badge). nil on older servers.
+    var isNew: Bool? = nil
+    /// #56: the episode's own title ("The One Where…"), when the guide has one.
+    var subtitle: String? = nil
+    /// #56: "S2 E5", as the server writes it.
+    var episode: String? = nil
+    /// #56: the programme's artwork, through the server's image path (`/api/logo/<key>`).
+    var image: String? = nil
     var start: Date { Date(timeIntervalSince1970: startTime / 1000) }
     var end: Date { Date(timeIntervalSince1970: endTime / 1000) }
     func isLive(at date: Date) -> Bool { start <= date && date < end }
 
-    init(title: String, description: String?, startTime: Double, endTime: Double) {
+    enum CodingKeys: String, CodingKey {
+        case title, description, startTime, endTime, subtitle, episode, image
+        case liveBroadcast = "live", isNew = "new"
+    }
+
+    init(title: String, description: String?, startTime: Double, endTime: Double, liveBroadcast: Bool? = nil,
+         isNew: Bool? = nil, subtitle: String? = nil, episode: String? = nil, image: String? = nil) {
         self.title = title
         self.description = description
         self.startTime = startTime
         self.endTime = endTime
+        self.liveBroadcast = liveBroadcast
+        self.isNew = isNew
+        self.subtitle = subtitle
+        self.episode = episode
+        self.image = image
     }
-    // Decoding is synthesised: the small-caps "ᴸɪᴠᴇ" badge is now stripped by
-    // the server at ingest (build 0099), so no client cleanup is needed.
+
+    /// Synthesised decoding would fail the whole guide page on one odd value: the #56 fields are read leniently (a
+    /// value of another type is nil), the four that were always there strictly, as before.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decode(String.self, forKey: .title)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        startTime = try c.decode(Double.self, forKey: .startTime)
+        endTime = try c.decode(Double.self, forKey: .endTime)
+        liveBroadcast = (try? c.decodeIfPresent(Bool.self, forKey: .liveBroadcast)) ?? nil
+        isNew = (try? c.decodeIfPresent(Bool.self, forKey: .isNew)) ?? nil
+        subtitle = Self.text((try? c.decodeIfPresent(String.self, forKey: .subtitle)) ?? nil)
+        episode = Self.text((try? c.decodeIfPresent(String.self, forKey: .episode)) ?? nil)
+        image = Self.text((try? c.decodeIfPresent(String.self, forKey: .image)) ?? nil)
+    }
+
+    /// Trimmed, and nil when blank.
+    private static func text(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+    // The small-caps "ᴸɪᴠᴇ" badge is stripped by the server at ingest (build 0099), so no client cleanup is needed.
 }
 
 nonisolated struct GuideChannel: Codable, Identifiable, Sendable {

@@ -71,7 +71,7 @@ struct ProgrammeDetails: View {
                                   title: programme.title, meta: meta(now: now),
                                   progress: live ? now.timeIntervalSince(programme.start) / programme.end.timeIntervalSince(programme.start) : nil,
                                   remaining: live ? "\(DetailText.duration(programme.end.timeIntervalSince(now).rounded(.up))) left" : nil,
-                                  description: programme.description, status: status) {
+                                  description: programme.description, tags: ProgrammeTags(programme), status: status) {
                         // One rose primary: Watch while it is on, else Record.
                         if live {
                             Button("Watch live", systemImage: "play.fill", action: watch)
@@ -308,7 +308,7 @@ struct ChannelPageView: View {
             meta: current.map { [$0.start.formatted(PigHeaderDate.format), $0.timeRange, $0.durationText].joined(separator: " · ") } ?? "",
             progress: current == nil ? nil : row.progress,
             remaining: current.map { "\(DetailText.duration($0.end.timeIntervalSince(now).rounded(.up))) left" },
-            description: current?.description,
+            description: current?.description, tags: current.map { ProgrammeTags($0) },
             beside: row.next.map { AnyView(upNext($0, now: now)) }
         ) {
             Button("Watch live", systemImage: "play.fill", action: watch)
