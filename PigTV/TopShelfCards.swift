@@ -234,6 +234,8 @@ struct TopShelfCardView: View {
 @MainActor
 enum TopShelfCardExport {
     private static var task: Task<Void, Never>?
+    /// #313 (Codex medium): moves with every run scheduled, so `finish()` can tell a run replaced while it waited.
+    private static var revision = 0
     /// The last run's result, for the fixture screen and tests.
     private(set) static var lastRendered: TopShelfSnapshot?
 
@@ -243,6 +245,7 @@ enum TopShelfCardExport {
     static func schedule(_ snapshot: TopShelfSnapshot, logoSources: [String: String], loader: @escaping LogoLoader,
                          container: URL? = AppGroupStorage.containerURL, generation: Int) {
         task?.cancel()
+        revision += 1
         task = Task { @MainActor in
             let rendered = await render(snapshot, logoSources: logoSources, loader: loader, container: container, generation: generation)
             guard !Task.isCancelled, generation == TopShelfPublication.shared.current else { return }
@@ -258,8 +261,16 @@ enum TopShelfCardExport {
         task = nil
     }
 
-    /// Waits for the current run, its snapshot written (fixtures, tests and the background export).
-    static func finish() async { await task?.value }
+    /// Waits for the current run, its snapshot written (fixtures, tests and the background export). #313 (Codex medium):
+    /// a run replaced while it waits (a guide or favourites load exports again) is followed to its replacement, so the
+    /// background export's hold lasts until the latest run has written; sign-out (`cancel()`) ends the wait.
+    static func finish() async {
+        while let current = task {
+            let waited = revision
+            await current.value
+            if revision == waited { return }
+        }
+    }
 
     /// The snapshot with each entry's cards, rendering only cards whose files
     /// do not exist yet.

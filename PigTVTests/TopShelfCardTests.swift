@@ -201,6 +201,51 @@ final class TopShelfCardTests: XCTestCase {
                        "on disk when the run says it has finished")
     }
 
+    /// #313 (Codex medium): a run replaced while `finish()` waits on it (a guide load exports again mid-render) does not
+    /// end the wait: the background hold lasts until the replacement's snapshot is written.
+    func testFinishWaitsForARunThatReplacedTheOneItWasWaitingOn() async throws {
+        let container = try a2Container()
+        defer { try? FileManager.default.removeItem(at: container) }
+        TopShelfExport.lastWritten = nil
+        final class Gates { var first: CheckedContinuation<Void, Never>?; var second: CheckedContinuation<Void, Never>?; var done = false }
+        let gates = Gates()
+        let generation = TopShelfPublication.shared.current
+        TopShelfCardExport.schedule(a2Snapshot("First"), logoSources: ["1:fox": "/api/logo/fox"], loader: { _ in
+            await withCheckedContinuation { gates.first = $0 }; return nil
+        }, container: container, generation: generation)
+        for _ in 0..<500 where gates.first == nil { try await Task.sleep(nanoseconds: 2_000_000) }
+        let waiting = Task { @MainActor in await TopShelfCardExport.finish(); gates.done = true }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        TopShelfCardExport.schedule(a2Snapshot("Second"), logoSources: ["1:fox": "/api/logo/fox"], loader: { _ in
+            await withCheckedContinuation { gates.second = $0 }; return nil
+        }, container: container, generation: generation)
+        for _ in 0..<500 where gates.second == nil { try await Task.sleep(nanoseconds: 2_000_000) }
+        gates.first?.resume() // the replaced run ends without saving
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(gates.done, "still held while the replacement renders")
+        gates.second?.resume()
+        await waiting.value
+        XCTAssertEqual(TopShelfSnapshot.read(container: container)?.channels.first?.name, "Second", "released once it is written")
+    }
+
+    func testFinishEndsWhenTheSessionSignsOut() async throws {
+        let container = try a2Container()
+        defer { try? FileManager.default.removeItem(at: container) }
+        TopShelfExport.lastWritten = nil
+        var gate: CheckedContinuation<Void, Never>?
+        TopShelfCardExport.schedule(a2Snapshot("Old"), logoSources: ["1:fox": "/api/logo/fox"], loader: { _ in
+            await withCheckedContinuation { gate = $0 }; return nil
+        }, container: container, generation: TopShelfPublication.shared.current)
+        for _ in 0..<500 where gate == nil { try await Task.sleep(nanoseconds: 2_000_000) }
+        let waiting = Task { @MainActor in await TopShelfCardExport.finish() }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        TopShelfExport.clear(container: container) // sign-out
+        gate?.resume()
+        await waiting.value
+        await TopShelfPublication.shared.idle()
+        XCTAssertEqual(a2Files(container), [])
+    }
+
     func testASaveFromARetiredSessionIsDropped() async throws {
         let container = try a2Container()
         defer { try? FileManager.default.removeItem(at: container) }
