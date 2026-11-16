@@ -32,10 +32,11 @@ struct RecordingTouchPlayer: View {
                 .accessibilityLabel("Video")
                 .accessibilityHint("Shows or hides the player controls")
             if chromeVisible { chrome.transition(.opacity) }
-            if model.inBreak != nil || model.goLiveUndo != nil {
+            // #335: with the controls up, the Back to notice sits in them, above the scrub panel (never over its edge).
+            if model.inBreak != nil || (model.goLiveUndo != nil && !chromeVisible) {
                 VStack(alignment: .trailing, spacing: PigSpacing.s) {
                     Spacer()
-                    if let undo = model.goLiveUndo { undoNotice(undo) }
+                    if !chromeVisible, let undo = model.goLiveUndo { undoNotice(undo) }
                     if model.inBreak != nil {
                         Button { lastInput = Date(); model.skipBreak() } label: {
                             Label("Skip break", systemImage: "forward.end.fill")
@@ -101,6 +102,10 @@ struct RecordingTouchPlayer: View {
                     }
                 }
                 Spacer(minLength: 8)
+                if let undo = model.goLiveUndo {
+                    // #335: above the scrub panel, the panel's own spacing apart.
+                    undoNotice(undo).frame(maxWidth: .infinity, alignment: .trailing).padding(.bottom, PigSpacing.m)
+                }
                 scrubPanel(timeline)
             }
             .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
@@ -128,11 +133,15 @@ struct RecordingTouchPlayer: View {
         HStack(spacing: PigSpacing.m) {
             Text(RecordingGoLive.notice).font(.subheadline.weight(.semibold))
             Button { lastInput = Date(); model.undoGoLive() } label: {
+                // The Apple TV's white pill (RecordingPlayer.undoPill).
                 Label(RecordingGoLive.backLabel(undo), systemImage: "arrow.uturn.backward")
-                    .font(.headline).pigFigures().padding(.horizontal, PigSpacing.l).frame(minHeight: 44)
+                    .font(.headline).pigFigures().lineLimit(1).fixedSize()
+                    .padding(.horizontal, PigSpacing.l).frame(minHeight: 44)
+                    .background(Color.white, in: Capsule())
+                    .foregroundStyle(.black)
+                    .contentShape(Capsule())
             }
-            .buttonStyle(.borderedProminent).tint(Color.pigAccent)
-            .foregroundStyle(Color.pigOnAccent)
+            .buttonStyle(.plain)
             .accessibilityIdentifier("recording.goLiveUndo")
         }
         .padding(.leading, PigSpacing.l)
