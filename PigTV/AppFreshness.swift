@@ -44,11 +44,19 @@ enum AppFreshness {
 
     /// #232: the Sport front page's answer, when the server has one (`sportFront`) and the last is older than
     /// `sportFrontMaxAge` (the page polls every 20 to 60 s while it is on screen, so this then sends nothing). tvOS only:
-    /// the Top Shelf is its only reader off the page.
+    /// the Top Shelf is its only reader off the page. Only the foreground minute pass calls it (`refresh`; never the
+    /// background export, and no pass runs while a player is up).
     static let sportFrontMaxAge: TimeInterval = 55
 
     static func refreshSportFrontIfStale(_ browse: BrowseModel, now: Date = Date(), topShelf: Bool = topShelfExists) async {
         guard topShelf, browse.client.info?.features.sportFront == true else { return }
+        // The account's Hide scores, once per session (the first pass runs as the app opens), so the Top Shelf can show
+        // the scores it allows without the Sport page having been opened. A failed read leaves the choice unknown, which
+        // hides them; the answer's own `spoilerFree` still hides a change made since on another device.
+        if !browse.topShelfPreferencesAsked {
+            browse.topShelfPreferencesAsked = true
+            await browse.f1Page.revalidatePreferences()
+        }
         let front = browse.sportFront
         if let at = front.updatedAt, now.timeIntervalSince(at) < sportFrontMaxAge { return }
         await front.load()

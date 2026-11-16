@@ -404,11 +404,23 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// #232: the Sport tab's front page with the game as its hero (its card, with Watch and Record), over any page that
-    /// was open. A game the next answer does not have leaves the hero as the server chose it.
+    /// #232: the Sport tab's front page with the game as its hero (its card, with Watch and Record). Open pages close,
+    /// and a player that is up is closed first the normal way (`endPlayback`, as its own close does). A game the next
+    /// answer does not have leaves the hero as the server chose it.
     func showGame(_ id: String) {
         guard let browse else { return }
+        cancelHandoff() // a Top Shelf play still waiting for pages to close loses to this newer link
         NotificationCenter.default.post(name: .pigCloseCovers, object: nil)
+        presenter.dismiss()
+        guard let playing = currentPlayback else { revealGame(id, in: browse); return }
+        Task { [weak self] in
+            await self?.endPlayback(playing)
+            self?.revealGame(id, in: browse)
+        }
+    }
+
+    private func revealGame(_ id: String, in browse: BrowseModel) {
+        guard self.browse === browse else { return } // signed out or switched meanwhile
         browse.sportFront.requestHero(id)
         requestedTab = "sport"
     }

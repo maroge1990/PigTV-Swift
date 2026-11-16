@@ -279,7 +279,49 @@ final class TopShelfGamesTests: XCTestCase {
         XCTAssertEqual(model.heroID, "a")
     }
 
+    func testTheGameLinkClosesAnOpenPlayerFirstThenShowsTheGame() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let app = AppModel()
+        app.injectHomeFixture()
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        let two = browse.guide.prefix(2).map { SportEventChannel(sourceId: $0.sourceId, rawID: $0.rawID, name: $0.name) }
+        app.playSportEvent(SportEvent(id: "e", title: "Event", league: "NFL", startTime: Self.ms - 60_000,
+                                      endTime: Self.ms + 3_600_000, channels: two))
+        XCTAssertNotNil(app.playback, "control: a player is up")
+        app.requestedTab = nil
+        app.open(PigTVLink.gameURL(id: "not-in-the-answer"))
+        for _ in 0..<50 where app.requestedTab == nil { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertNil(app.playback, "the player was closed")
+        XCTAssertEqual(app.requestedTab, "sport")
+        XCTAssertEqual(browse.sportFront.requestedHero, "not-in-the-answer", "the hero once an answer has the game")
+    }
+
+    func testTheGameLinkWithNoPlayerShowsTheGameAtOnce() throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let app = AppModel()
+        app.injectHomeFixture()
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        app.requestedTab = nil
+        app.open(PigTVLink.gameURL(id: "g"))
+        XCTAssertEqual(app.requestedTab, "sport")
+    }
+
     // MARK: Keeping the answer fresh
+
+    func testTheFirstPassReadsHideScoresOnceAndAFailedReadKeepsScoresHidden() async throws {
+        let server = try FakePigTVServer()
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client(extraFeatures: #","sportFront":true"#))
+        await AppFreshness.refreshSportFrontIfStale(browse, topShelf: true)
+        XCTAssertEqual(server.http.requests(path: "/api/sports/pages/preferences").count, 1, "read as the app opens")
+        XCTAssertTrue(browse.f1Page.hidesSpoilers, "the fake server does not answer it: unknown, so hidden")
+        await AppFreshness.refreshSportFrontIfStale(browse, topShelf: true)
+        XCTAssertEqual(server.http.requests(path: "/api/sports/pages/preferences").count, 1, "once per session")
+    }
 
     func testThePassAsksForTheSportFrontOnlyOnTheTelevisionWithTheServersFrontPage() async throws {
         let server = try FakePigTVServer()

@@ -541,6 +541,8 @@ final class BrowseModel: ObservableObject {
     var eventPagesEnabled: Bool { client.info?.features.sportPageEvents == true }
     /// C-R (#21, D-39): the Sport front page (the Sport tab).
     private(set) lazy var sportFront = SportFrontModel(client: client)
+    /// #232: the minute pass has asked for the account's Hide scores for the Top Shelf this session (`AppFreshness`).
+    var topShelfPreferencesAsked = false
     /// #214: the Sport tab's pushed sport pages (the tab bar returns it to the front page).
     private(set) lazy var sportNavigation = SportNavigation()
     /// C-U (#200): Settings › Sport, only with the server's `sportFollows` flag. A spoiler-free change saved there makes

@@ -297,9 +297,10 @@ controls are not used for live play.
   once (`TopShelfExport.hideScores`), then exports again once the choice is read. Picture: a 960×540 pt card at scale 2
   (`TopShelfGameCardView`: both badges, logo on a light disc or the team code, the names; no score or clock, so it is
   drawn once per game). Play → `pigtv://play` for the best channel (`channels.first`); the other button →
-  `pigtv://game?id=…` (`AppModel.showGame`: the Sport tab with that game as the hero, as a long press would). The extension
-  shows the games only while their answer is under 15 min old, else the channels; the minute pass asks for the front page
-  when it is older than 55 s (tvOS, `sportFront` servers). Tests `TopShelfGamesTests`.
+  `pigtv://game?id=…` (`AppModel.showGame`: an open player is closed first through `endPlayback`, then the Sport tab with
+  that game as the hero, as a long press would). The extension shows the games only while their answer is under 15 min
+  old, else the channels; the foreground minute pass asks for the front page when it is older than 55 s (tvOS,
+  `sportFront` servers) and, once per session, for Hide scores (`F1PageModel.revalidatePreferences`; a failure hides). Tests `TopShelfGamesTests`.
 
 ## Sport
 
