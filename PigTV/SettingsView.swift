@@ -282,6 +282,11 @@ struct LibrarySettings: View {
                     #endif
                 }
                 .padding(.top, PigSpacing.m)
+                #if os(tvOS)
+                // #57: Down from the header's magnifier (top right, above a page that may have nothing to focus yet)
+                // enters the two columns as one section, so it lands on the menu instead of going nowhere.
+                .focusSection()
+                #endif
             }
             // The app's page, not the system's blurred backdrop (build 28).
             .pigPageBackdrop()
