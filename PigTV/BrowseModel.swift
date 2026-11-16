@@ -364,7 +364,7 @@ final class BrowseModel: ObservableObject {
     func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
             logo: logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId,
-            number: number(for: channel))
+            number: number(for: channel), measured: channel.measured?.known)
     }
     // C-A: the channel's number, a label only.
     func number(for channel: GuideChannel) -> Int? { channel.number }
@@ -561,7 +561,7 @@ final class BrowseModel: ObservableObject {
         let row = guideRow(id: channel.id, identityKey: channel.identityKey)
         return Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name, logo: logo(for: channel),
                        category: row?.category, now: nil, next: nil, stableId: channel.stableId ?? row?.stableId,
-                       number: channel.number ?? row?.number)
+                       number: channel.number ?? row?.number, measured: channel.measured ?? row?.measured?.known)
     }
 
     /// The logo to draw for an event's channel (the event's, else the guide's).

@@ -193,7 +193,7 @@ struct SportChannelRow: View {
                     }
                 }
                 Spacer(minLength: 16)
-                if let quality = channel.quality { QualityBadge(quality: quality) }
+                if let chip = channel.chip { QualityBadge(chip: chip) }
                 Image(systemName: icon).foregroundStyle(.secondary).accessibilityHidden(true)
             }
             #if os(tvOS)
@@ -218,7 +218,7 @@ struct SportChannelRow: View {
     private var accessibilityLabel: String {
         let text = ended ? "Not on now on \(channel.name)" : playsNow ? "Watch on \(channel.name)"
             : scheduled ? "Recording scheduled on \(channel.name)" : "Record or watch \(channel.name) when it starts"
-        return text + (channel.quality.map { ", \($0.spoken)" } ?? "")
+        return text + (channel.chip.map { ", \($0.spoken)" } ?? "")
     }
 }
 

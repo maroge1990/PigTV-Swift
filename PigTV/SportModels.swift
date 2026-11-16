@@ -40,6 +40,8 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
     var number: Int? = nil
     var logo: String? = nil
     var quality: SportQuality? = nil
+    /// D-65 (#265): what the server measured this stream to be; nil when it has not (the badge then falls back to `quality`).
+    var measured: MeasuredQuality? = nil
     /// #20 (server 0337): when **this** channel airs the event, in ms; nil from an older server.
     var startTime: Double? = nil
     var endTime: Double? = nil
@@ -47,12 +49,13 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
     var id: String { "\(sourceId):\(rawID)" }
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
 
-    enum CodingKeys: String, CodingKey { case sourceId, rawID = "id", stableId, name, number, logo, quality, start, end }
+    enum CodingKeys: String, CodingKey { case sourceId, rawID = "id", stableId, name, number, logo, quality, measured, start, end }
 
     init(sourceId: Int, rawID: String, stableId: String? = nil, name: String, number: Int? = nil,
-         logo: String? = nil, quality: SportQuality? = nil, startTime: Double? = nil, endTime: Double? = nil) {
+         logo: String? = nil, quality: SportQuality? = nil, startTime: Double? = nil, endTime: Double? = nil,
+         measured: MeasuredQuality? = nil) {
         self.sourceId = sourceId; self.rawID = rawID; self.stableId = stableId; self.name = name
-        self.number = number; self.logo = logo; self.quality = quality
+        self.number = number; self.logo = logo; self.quality = quality; self.measured = measured?.known
         self.startTime = startTime; self.endTime = endTime
     }
 
@@ -66,6 +69,7 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
         logo = ((try? c.decodeIfPresent(String.self, forKey: .logo)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
         quality = ((try? c.decodeIfPresent(String.self, forKey: .quality)) ?? nil)
             .flatMap { SportQuality(rawValue: $0.uppercased()) }
+        measured = ((try? c.decodeIfPresent(MeasuredQuality.self, forKey: .measured)) ?? nil)?.known
         startTime = (try? c.decodeIfPresent(Double.self, forKey: .start)) ?? nil
         endTime = (try? c.decodeIfPresent(Double.self, forKey: .end)) ?? nil
     }

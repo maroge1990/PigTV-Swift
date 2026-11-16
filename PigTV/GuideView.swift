@@ -632,7 +632,7 @@ struct GuideView: View {
     private func asChannel(_ channel: GuideChannel) -> Channel {
         Channel(rawID: channel.rawID, sourceId: channel.sourceId, name: channel.name,
             logo: model.logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId,
-            number: model.number(for: channel))
+            number: model.number(for: channel), measured: channel.measured?.known)
     }
     private func scheduleRowsRefresh(after delay: Duration) {
         rowsRefresh?.cancel()

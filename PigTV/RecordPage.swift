@@ -22,7 +22,10 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
         let channel: GuideChannel
         let programme: GuideProgramme
         var quality: SportQuality? = nil
+        /// D-65 (#265): the measured quality, else nil (the badge then comes from `quality`).
+        var measured: MeasuredQuality? = nil
         var id: String { channel.id }
+        var chip: QualityChip? { QualityChip.make(measured: measured, quality: quality) }
     }
 
     let title: String
@@ -230,7 +233,8 @@ nonisolated enum RecordPlan {
 extension BrowseModel {
     /// A guide programme on its channel: Record, or Change recording when it is scheduled.
     func recordRequest(channel: GuideChannel, programme: GuideProgramme) -> RecordRequest {
-        RecordRequest(title: programme.title, airings: [.init(channel: channel, programme: programme, quality: quality(of: channel))],
+        RecordRequest(title: programme.title, airings: [.init(channel: channel, programme: programme, quality: quality(of: channel),
+                                                              measured: channel.measured?.known)],
                       schedule: activeSchedule(channel: channel, programme: programme))
     }
 
@@ -242,7 +246,7 @@ extension BrowseModel {
         let channels = SportFrontText.recordChoices(event, now: now)
         let airings = (channels.isEmpty ? event.best.map { [$0] } ?? [] : channels).map { channel in
             RecordRequest.Airing(channel: recordingRow(event, on: channel), programme: event.programme(on: channel),
-                                 quality: channel.quality)
+                                 quality: channel.quality, measured: channel.measured)
         }
         guard !airings.isEmpty else { return nil }
         let teams: [RecordTeam]
@@ -611,13 +615,7 @@ struct RecordPage: View {
                             Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
                         }
                         Spacer(minLength: 0)
-                        if let quality = option.quality {
-                            Text(quality.rawValue).font(Metrics.badgeFont).tracking(1)
-                                .foregroundStyle(quality == .uhd ? Color.pigOnAccent : Color.pigSecondary)
-                                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
-                                .background(quality == .uhd ? Color.pigAccent : Color.pigRaised,
-                                            in: RoundedRectangle(cornerRadius: PigRadius.inner))
-                        }
+                        if let chip = option.chip { QualityBadge(chip: chip, font: Metrics.badgeFont) }
                     }
                     .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -625,7 +623,7 @@ struct RecordPage: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                .accessibilityLabel("\(option.channel.name), \(detail)\(option.quality.map { ", \($0.spoken)" } ?? "")")
+                .accessibilityLabel("\(option.channel.name), \(detail)\(option.chip.map { ", \($0.spoken)" } ?? "")")
                 .accessibilityAddTraits(on ? .isSelected : [])
                 .accessibilityIdentifier("record.on.\(index)")
             }

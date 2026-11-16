@@ -138,6 +138,8 @@ struct Channel: Decodable, Identifiable, Equatable {
     // `library/recent`: a watched channel that no longer exists in the
     // playlist comes back with `unavailable: true` (and no logo or EPG).
     var unavailable: Bool? = nil
+    // D-65/D-67 (#265): what the server measured the stream to be, or nil (`MeasuredQuality` never fails to decode).
+    var measured: MeasuredQuality? = nil
     var id: String { "\(sourceId):\(rawID)" }
     /// The number as shown ("504"), never locale-grouped.
     var numberText: String? { number.map { String($0) } }
@@ -146,7 +148,7 @@ struct Channel: Decodable, Identifiable, Equatable {
     // channel that appears in several categories.
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
-        case rawID = "id", sourceId, name, logo, category, now, next, stableId, number, unavailable
+        case rawID = "id", sourceId, name, logo, category, now, next, stableId, number, unavailable, measured
     }
 }
 

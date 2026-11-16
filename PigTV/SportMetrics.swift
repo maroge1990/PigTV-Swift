@@ -32,16 +32,52 @@ enum SportMetrics {
     #endif
 }
 
-/// "UHD" / "HD" / "SD": UHD in pink, the others outlined.
+/// D-65/D-67 (#265): the one quality badge every channel list, picker and player draws. Measured: "4K · 50", 4K in the
+/// accent fill, the others on the raised surface; unmeasured: the name's label ("4K", "1080", "HD", "SD") in a dashed
+/// outline. Nothing is drawn for a channel with neither (callers skip it: `QualityChip.make` is nil).
 struct QualityBadge: View {
-    let quality: SportQuality
+    let chip: QualityChip
+    var font: Font = SportMetrics.detail.weight(.bold)
+    /// On the players' dark panels: a translucent white surface instead of the raised one.
+    var onDark = false
+
+    init(chip: QualityChip, font: Font = SportMetrics.detail.weight(.bold), onDark: Bool = false) {
+        self.chip = chip; self.font = font; self.onDark = onDark
+    }
+
+    /// A name-derived quality (no measurement): the dashed badge.
+    init(quality: SportQuality) {
+        // `make` never returns nil for a quality.
+        self.init(chip: QualityChip.make(measured: nil, quality: quality)
+                  ?? QualityChip(tier: 3, measured: false, fps: nil, text: quality.rawValue, spoken: quality.spoken))
+    }
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: PigRadius.inner, style: .continuous) }
+
+    private var text: Color {
+        if chip.accent { return .pigOnAccent }
+        return onDark ? .white : .pigSecondary
+    }
+
+    private var fill: Color {
+        if chip.accent { return .pigAccent }
+        if !chip.measured { return .clear }
+        return onDark ? Color.white.opacity(0.22) : .pigRaised
+    }
+
     var body: some View {
-        Text(quality.rawValue)
-            .font(SportMetrics.detail.weight(.bold)).monospaced()
+        Text(chip.text)
+            .font(font).monospacedDigit().lineLimit(1).fixedSize()
             .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xxs)
-            .foregroundStyle(quality == .uhd ? Color.pigOnAccent : Color.secondary)
-            .background(quality == .uhd ? Color.pigAccent : Color.clear, in: Capsule())
-            .overlay { Capsule().strokeBorder(quality == .uhd ? Color.clear : Color.secondary.opacity(0.6), lineWidth: 1.5) }
-            .accessibilityLabel(quality.spoken)
+            .foregroundStyle(text)
+            .background(fill, in: shape)
+            .overlay {
+                if !chip.measured {
+                    shape.strokeBorder((onDark ? Color.white : Color.pigSecondary).opacity(0.7),
+                                       style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(chip.spoken)
     }
 }
