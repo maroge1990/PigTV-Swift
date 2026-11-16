@@ -408,10 +408,6 @@ struct PlayerGameRow: View {
                 Text(game.clock).font(.system(size: PlayerMetrics.rowTitle, weight: .semibold)).pigFigures().lineLimit(1)
             }
             Spacer(minLength: 0)
-            // D-67: the channel's measured quality, small and trailing (nothing when it has not been measured).
-            if let chip = PlayerQualityTag.chip(measured: browse?.measured(for: channel) ?? channel.measured) {
-                QualityBadge(chip: chip, font: .system(size: PlayerMetrics.rowNumber, weight: .bold), onDark: true)
-            }
         }
         .modifier(PlayerRowPanel(highlighted: highlighted, playing: playing))
     }
