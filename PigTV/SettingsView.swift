@@ -440,17 +440,6 @@ struct LibrarySettings: View {
                 .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.m)
                 .background(appearance == value ? Color.pigSelection : .clear, in: RoundedRectangle(cornerRadius: PigRadius.compact))
                 #endif
-                .overlay(alignment: .leading) {
-                    if appearance == value {
-                        Capsule().fill(Color.pigAccent).frame(width: 3, height: 20)
-                            #if os(tvOS)
-                            .offset(x: 8)
-                            #else
-                            .offset(x: -6)
-                            #endif
-                            .allowsHitTesting(false).accessibilityHidden(true)
-                    }
-                }
                 .contentShape(Rectangle())
             }
             #if os(iOS)
@@ -474,7 +463,6 @@ nonisolated enum SettingsMetrics {
     static let menuPadding = EdgeInsets(top: 8, leading: 12, bottom: 24, trailing: 12)
     static let rowPadding = EdgeInsets(top: 16, leading: 22, bottom: 16, trailing: 22)
     static let icon: CGFloat = 30
-    static let barWidth: CGFloat = 4
     static let pageWidth: CGFloat = 1100
     static let pagePadding: CGFloat = 8
     static let confirmSpacing: CGFloat = 18
@@ -486,7 +474,6 @@ nonisolated enum SettingsMetrics {
     static let menuPadding = EdgeInsets(top: 8, leading: 20, bottom: 20, trailing: 4)
     static let rowPadding = EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
     static let icon: CGFloat = 20
-    static let barWidth: CGFloat = 3
     static let pageWidth: CGFloat = 680
     static let pagePadding: CGFloat = 20
     static let confirmSpacing: CGFloat = 12
@@ -592,7 +579,7 @@ private struct SettingsMenuLabel: View {
     }
 }
 
-/// A row of the split view's menu: selected, 14 % pink with a short bar at its leading edge; focused (tvOS), the shared
+/// A row of the split view's menu: selected, the 14 % pink shading alone (no line); focused (tvOS), the shared
 /// focus treatment (PigFocus.swift); pressed (touch), 22 % pink.
 private struct SettingsMenuRowStyle: ButtonStyle {
     let selected: Bool
@@ -606,12 +593,6 @@ private struct SettingsMenuRowStyle: ButtonStyle {
             .frame(maxWidth: .infinity, alignment: .leading)
             .pigTarget()
             .background(lit ? PigFocus.fill : selected ? Color.pigSelection : Color.pigRaised, in: shape)
-            .overlay(alignment: .leading) {
-                if selected {
-                    Capsule().fill(Color.pigAccent).frame(width: SettingsMetrics.barWidth, height: 26)
-                        .padding(.leading, PigSpacing.xs).allowsHitTesting(false).accessibilityHidden(true)
-                }
-            }
             .contentShape(shape)
             #if os(tvOS)
             .pigFocus(focused, in: shape, lift: .row)

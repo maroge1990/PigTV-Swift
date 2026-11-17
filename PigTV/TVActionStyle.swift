@@ -169,7 +169,7 @@ extension View {
     }
 }
 
-// Selection persists as an inset bar and tint; focus is the shared treatment (PigFocus.swift), so a focused chosen chip
+// Selection persists as the tint alone (no line); focus is the shared treatment (PigFocus.swift), so a focused chosen chip
 // shows both.
 struct GuideFilterStyle: ButtonStyle {
     var selected = false
@@ -185,12 +185,6 @@ struct GuideFilterStyle: ButtonStyle {
             #else
             .background(selected ? Color.pigSelection : Color.pigRaised, in: Capsule())
             #endif
-            .overlay(alignment: .bottom) {
-                if selected {
-                    Capsule().fill(Color.pigAccent).frame(width: 26, height: 3)
-                        .padding(.bottom, PigSpacing.xs).allowsHitTesting(false).accessibilityHidden(true)
-                }
-            }
             #if os(tvOS)
             .pigFocus(focused, in: Capsule(), lift: .control)
             #else

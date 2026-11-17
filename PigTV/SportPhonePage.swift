@@ -345,9 +345,6 @@ struct SportPhonePage: View {
                                 .foregroundStyle(on ? Color.pigAccentText : Color.secondary)
                                 .padding(.horizontal, PigSpacing.l).frame(height: 34)
                                 .background(on ? Color.pigSelection : Color.pigRaised, in: Capsule())
-                                .overlay(alignment: .bottom) {
-                                    if on { Capsule().fill(Color.pigAccent).frame(width: 18, height: 2).padding(.bottom, PigSpacing.xs) }
-                                }
                         }
                         .pigPressable()
                         .accessibilityAddTraits(on ? .isSelected : [])

@@ -167,9 +167,6 @@ struct OnboardingView: View {
         }
         .padding(SignInMetrics.chipPadding)
         .background(Color.pigSelection, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
-        .overlay(alignment: .leading) {
-            Capsule().fill(Color.pigAccent).frame(width: 4, height: 28).padding(.leading, PigSpacing.xs).accessibilityHidden(true)
-        }
         #if os(tvOS)
         .focusSection()
         #endif

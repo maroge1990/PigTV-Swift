@@ -547,8 +547,7 @@ struct RecordPage: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-            .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigAccent, lineWidth: 2) }
+            .background(Color.pigSelection, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("record.stop")
             let startLocked = changing && (live.map { !RecordPlan.canChangeStartEarly($0) } ?? true)
@@ -694,10 +693,6 @@ struct RecordPage: View {
                                 .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
                                 .background(picked ? Color.pigSelection : .clear,
                                             in: RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous)
-                                        .strokeBorder(picked ? Color.pigAccent : .clear, lineWidth: 2)
-                                }
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .control))
@@ -813,19 +808,13 @@ struct RecordPage: View {
         Text(text).font(Metrics.section).foregroundStyle(Color.pigSecondary).accessibilityAddTraits(.isHeader)
     }
 
-    /// The selection (D-44 brand): a 14 % pink fill and a short bar on the leading edge, never a tick.
+    /// The selection (D-44 brand): a 14 % pink fill alone (no line), never a tick.
     private struct Selected: ViewModifier {
         let on: Bool
         func body(content: Content) -> some View {
             content
                 .background(on ? Color.pigSelection : .clear,
                             in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
-                .overlay(alignment: .leading) {
-                    if on {
-                        Capsule().fill(Color.pigAccent).frame(width: 4).padding(.vertical, PigSpacing.s)
-                            .accessibilityHidden(true)
-                    }
-                }
         }
     }
 

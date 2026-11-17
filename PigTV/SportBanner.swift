@@ -251,12 +251,6 @@ struct SportBanner<Actions: View>: View {
             .padding(.horizontal, PigSpacing.m)
             .frame(height: SportBannerMetrics.row)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    Capsule().fill(Color.pigAccent).frame(width: 4).padding(.vertical, PigSpacing.xs).padding(.leading, PigSpacing.xxs)
-                        .accessibilityHidden(true)
-                }
-            }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .listRow))
         .focused($focusedItem, equals: index)
