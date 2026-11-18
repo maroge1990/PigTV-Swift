@@ -1,0 +1,9 @@
+{
+  "id" : "df9966df-00e5-4e72-9a9f-4aa9397e53db",
+  "targets" : [
+    {
+      "id" : "3da70729-9f48-4757-99d8-2aaccc373f9f",
+      "name" : "PigTV"
+    }
+  ]
+}
