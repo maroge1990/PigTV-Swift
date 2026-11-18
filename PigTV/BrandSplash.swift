@@ -125,6 +125,15 @@ final class SplashHandoff {
         self.contentRise = playing ? contentRise : 0
     }
 
+    /// A return from the background (`ForegroundReset`): the splash plays again from its launch frame and lands on the
+    /// opening tab's header; start-up has nothing to wait for (the session is kept).
+    static func replay(landingOn tab: String, contentRise: CGFloat) -> SplashHandoff {
+        let handoff = SplashHandoff(playing: true, contentRise: contentRise)
+        handoff.landingTitle = LibraryView.title(of: tab)
+        handoff.restoreFinished()
+        return handoff
+    }
+
     var elapsed: Double {
         let d = ContinuousClock.now - started
         return Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18

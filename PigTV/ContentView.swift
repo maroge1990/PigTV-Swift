@@ -9,6 +9,10 @@ struct ContentView: View {
     /// sign-in at once. #342: when it shows, it plays its whole sequence and hands over to Home (`SplashHandoff`).
     @State private var initialRestoreFinished: Bool
     @State private var splash: SplashHandoff
+    /// Every open starts from scratch (Mark, 18 Nov 2026): a return from the background resets the pages and replays the
+    /// splash (`ForegroundReset`); `pagesGeneration` counts the resets (LibraryView rebuilds its tabs on each).
+    @State private var foreground = ForegroundReset()
+    @State private var pagesGeneration = 0
 
     init() {
         let step = LaunchStep.current()
@@ -52,6 +56,23 @@ struct ContentView: View {
             }
     }
 
+    /// A return from the background (`ForegroundReset`): every page, sheet and pushed page closes at once (no animation:
+    /// the splash is already up), the tabs are rebuilt on the opening tab at its top, and the splash plays as at a cold
+    /// launch, landing on that tab's header pig. Nothing is restored: the session is still signed in.
+    private func startFromScratch() {
+        guard let browse = model.browse else { return }
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
+            NotificationCenter.default.post(name: .pigCloseCovers, object: nil)
+            model.presenter.dismiss()
+            browse.sportNavigation.showFront()
+            splash = SplashHandoff.replay(landingOn: LibraryView.openingTab(sportEnabled: browse.sportEnabled),
+                                          contentRise: SplashTimeline.contentRise * BrandSplashView.unit)
+            pagesGeneration += 1
+        }
+    }
+
     private func syncWindowStyle() {
         let style: UIUserInterfaceStyle = appearance == "dark" ? .dark : appearance == "light" ? .light : .unspecified
         for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
@@ -65,7 +86,7 @@ struct ContentView: View {
         ZStack {
             Group {
                 if !initialRestoreFinished { Color.clear }
-                else if model.loggedIn { LibraryView(model: model) }
+                else if model.loggedIn { LibraryView(model: model, generation: pagesGeneration) }
                 else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
                 else { OnboardingView(model: model).tint(Color("AccentColor")) }
             }
@@ -77,7 +98,7 @@ struct ContentView: View {
             .allowsHitTesting(splash.homeInteractive)
             .disabled(!splash.homeInteractive)
             .accessibilityHidden(!splash.homeInteractive)
-            if !splash.landed { BrandSplashView(handoff: splash) }
+            if !splash.landed { BrandSplashView(handoff: splash).id(ObjectIdentifier(splash)) }
         }
         .modifier(SplashFocusHandoff(shown: splash.homeInteractive))
         .environment(splash)
@@ -86,7 +107,7 @@ struct ContentView: View {
         .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .task {
-            // A cold launch only: not replayed when the app returns to the foreground. With no saved sign-in there was
+            // A cold launch only (a return from the background replays the splash without a restore, `startFromScratch`). With no saved sign-in there was
             // no splash (LaunchStep), and this returns at once. The splash holds its own length (#342) and lands on the
             // header of the tab Home opens on.
             #if DEBUG
@@ -100,7 +121,18 @@ struct ContentView: View {
             initialRestoreFinished = true
             splash.restoreFinished()
         }
-        .onChange(of: scenePhase) { _, phase in AppRootCover.sceneChanged(to: phase, model: model) }
+        .onChange(of: scenePhase) { _, phase in
+            AppRootCover.sceneChanged(to: phase, model: model)
+            let step = foreground.sceneChanged(to: phase, playerUp: model.pagesCovered || model.presenter.presented?.isPlayer == true,
+                                               signedIn: initialRestoreFinished && model.loggedIn && model.browse != nil)
+            if step.reset { startFromScratch() }
+            for url in step.open { model.open(url) }
+        }
+        // A link held during a return from the background opens once its splash has landed.
+        .onChange(of: splash.landed) { _, landed in
+            guard landed else { return }
+            for url in foreground.splashLanded() { model.open(url) }
+        }
         // #46, #216: while active and signed in, the guide is kept current and the Top Shelf exported, now and every
         // minute, whichever tab shows (returning to the foreground restarts it, so a stale guide is fixed at once).
         .task(id: scenePhase == .active ? model.browse.map(ObjectIdentifier.init) : nil) {
@@ -111,8 +143,8 @@ struct ContentView: View {
             // only, so opening the player restarts nothing.
             await AppRootCover.keepFresh(browse, model: model)
         }
-        // A4.1: Top Shelf items open pigtv://play.
-        .onOpenURL { model.open($0) }
+        // A4.1: Top Shelf items open pigtv://play (after the splash, on a return from the background).
+        .onOpenURL { url in if foreground.linkArrived(url) { model.open(url) } }
         .alert("PigTV", isPresented: Binding(
             // Not while the player is up: an alert under a full-screen cover can't take
             // the tvOS focus, so it could not be dismissed. It shows once the player closes.
