@@ -152,34 +152,44 @@ extension View {
 enum SportGamePress {
     static func select(_ game: SportsGame, app: AppModel, presenter: SportPresenter?) {
         let browse = app.browse
-        switch SportCardRules.select(game, now: Date(), recordings: browse?.recordings ?? []) {
+        // A finished game: its recording is chosen from a list at most a few seconds old (one may have finished, or
+        // started, since the list was loaded).
+        if game.terminal, let browse, !browse.isFixture {
+            Task {
+                await browse.loadRecordingsIfStale(maxAge: recordingsMaxAge, quietly: true)
+                play(SportCardRules.select(game, now: Date(), recordings: browse.recordings), app: app)
+            }
+            return
+        }
+        let choice = SportCardRules.select(game, now: Date(), recordings: browse?.recordings ?? [])
+        switch choice {
         case .watch:
             if let event = SportFrontText.event(game) { watch(game, event: event, app: app, presenter: presenter) }
         case .record:
             if let event = SportFrontText.event(game) { app.record(event, game: game) }
         case .recordWhenListed:
             app.recordWhenListed(game, presenter: presenter)
-        case .playRecording(let id):
-            playRecording(id, live: false, app: app)
-        case .playRecordingLive(let id):
-            playRecording(id, live: true, app: app)
+        case .playRecording, .playRecordingFromStart:
+            play(choice, app: app)
         case .none:
-            // A finished game whose recording this device has not loaded yet: the list once more, then its recording.
-            guard game.terminal, let browse else { return }
-            Task {
-                await browse.loadRecordingsIfStale(quietly: true)
-                switch SportCardRules.select(game, now: Date(), recordings: browse.recordings) {
-                case .playRecording(let id): playRecording(id, live: false, app: app)
-                case .playRecordingLive(let id): playRecording(id, live: true, app: app)
-                default: break
-                }
-            }
+            break
         }
     }
 
-    private static func playRecording(_ id: Int, live: Bool, app: AppModel) {
+    /// How old the recordings list may be when a finished game's card is pressed.
+    static let recordingsMaxAge: TimeInterval = 5
+
+    /// A finished game's recording: a finished one as Recordings' Play does; one still recording (finishing late) from
+    /// its start, never near its live edge (that is the coverage after the game: a spoiler).
+    private static func play(_ choice: SportCardRules.Select, app: AppModel) {
+        let id: Int, fromStart: Bool
+        switch choice {
+        case .playRecording(let found): id = found; fromStart = false
+        case .playRecordingFromStart(let found): id = found; fromStart = true
+        default: return
+        }
         guard let recording = app.browse?.recordings.first(where: { $0.id == id }) else { return }
-        app.presenter.present(live ? .recordingFromLive(recording) : .playRecording(recording))
+        app.presenter.present(fromStart ? .recordingPlayer(recording) : .playRecording(recording))
     }
 
     /// An answer drawn earlier (or kept after a failed refresh) may describe an airing that has ended, and the player

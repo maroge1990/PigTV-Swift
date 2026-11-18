@@ -65,7 +65,7 @@ final class SportCardRulesTests: XCTestCase {
 
     /// Several finished recordings of the game: a whole one before a partial, then the longest, then the earliest start
     /// (never just the newest). None finished but one still recording (finishing late) that plays while it records: that
-    /// one, near its live edge.
+    /// one, from its start (#345 review: its live edge is the coverage after the game, a spoiler).
     func testAFinishedGamePlaysItsBestRecording() throws {
         let finished = try XCTUnwrap(try front().game(Self.packersFinished))
         let now = Date(timeIntervalSince1970: try front().now / 1000)
@@ -84,7 +84,8 @@ final class SportCardRulesTests: XCTestCase {
 
         let going = try row(5, status: "recording", start: 1793391000000, live: true)
         let goingNoLive = try row(6, status: "recording", start: 1793391000000, live: false)
-        XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [going]), .playRecordingLive(5), "still recording: live")
+        XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [going]), .playRecordingFromStart(5),
+                       "still recording: from its start, never the live edge (the coverage after the game)")
         XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [going, wholeShort]), .playRecording(2), "a finished one first")
         XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [goingNoLive]), .none, "one that cannot play while it records")
     }

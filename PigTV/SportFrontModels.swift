@@ -411,8 +411,9 @@ nonisolated enum SportCardRules {
         case recordWhenListed
         /// Finished, with a recording of it that plays.
         case playRecording(Int)
-        /// Finished, its recording still going (finishing late) and watchable while it records: near its live edge.
-        case playRecordingLive(Int)
+        /// Finished, its recording still going (finishing late) and watchable while it records: from its start, never
+        /// near its live edge (the coverage after the game: a spoiler).
+        case playRecordingFromStart(Int)
         case none
     }
 
@@ -429,7 +430,7 @@ nonisolated enum SportCardRules {
     static func select(_ game: SportsGame, now: Date, recordings: [Recording]) -> Select {
         if game.terminal {
             guard let found = recording(of: game, in: recordings) else { return .none }
-            return found.live ? .playRecordingLive(found.recording.id) : .playRecording(found.recording.id)
+            return found.live ? .playRecordingFromStart(found.recording.id) : .playRecording(found.recording.id)
         }
         if SportFrontText.isNextRound(game) { return .none }
         guard let event = SportFrontText.event(game) else {
@@ -462,7 +463,7 @@ nonisolated enum SportCardRules {
 
     /// The recording of a finished game to play (`Recording.gameId`): a finished one (the Recordings list's rule,
     /// `playLabel`), a whole one before a partial, then the longest, then the earliest start; else one still recording
-    /// (finishing late) that can be watched while it records (`live`); else nil.
+    /// (finishing late) that can be watched while it records; else nil.
     static func recording(of game: SportsGame, in recordings: [Recording]) -> (recording: Recording, live: Bool)? {
         let mine = recordings.filter { $0.gameId == game.id }
         let done = mine.filter { $0.playLabel != nil }.min { a, b in

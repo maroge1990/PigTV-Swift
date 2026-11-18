@@ -136,7 +136,7 @@ enum SportCardActions {
         switch SportCardRules.select(event, now: Date()) {
         case .watch: if let presenter { presenter.play(event) } else { app.playSportEvent(event, origin: SportFrontView.origin) }
         case .record: app.record(event)
-        case .recordWhenListed, .playRecording, .playRecordingLive, .none: break
+        case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
         }
     }
 }

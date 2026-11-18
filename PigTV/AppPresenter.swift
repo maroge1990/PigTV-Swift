@@ -12,8 +12,6 @@ enum AppPresentation: Identifiable {
     case recordingPlayer(Recording)
     /// #57: Play on a Search result: the recording player, from where this device left off (as Recordings' Play).
     case playRecording(Recording)
-    /// #345: a finished game's recording that is still going (finishing late), near its live edge (#17).
-    case recordingFromLive(Recording)
     /// D-66 (#57): Search and Jump to, from a page header's magnifier on any tab (`from`: that tab's name).
     case search(from: String)
 
@@ -24,7 +22,6 @@ enum AppPresentation: Identifiable {
         case .record(let request): "record:\(request.id)"
         case .recordingPlayer(let recording): "player:\(recording.id)"
         case .playRecording(let recording): "play:\(recording.id)"
-        case .recordingFromLive(let recording): "live:\(recording.id)"
         case .search: "search"
         }
     }
@@ -32,7 +29,7 @@ enum AppPresentation: Identifiable {
     /// Shown full screen on every platform (a player), not as a page.
     var isPlayer: Bool {
         switch self {
-        case .recordingPlayer, .playRecording, .recordingFromLive: true
+        case .recordingPlayer, .playRecording: true
         default: false
         }
     }
@@ -188,7 +185,7 @@ extension View {
                     RecordPage(model: browse, presenter: presenter, request: request) { presenter.dismiss() }
                 case .search(let from):
                     AppSearchHost(app: app, browse: browse, from: from)
-                case .recordingPlayer, .playRecording, .recordingFromLive:
+                case .recordingPlayer, .playRecording:
                     EmptyView()
                 }
             }
@@ -208,10 +205,6 @@ extension View {
                     }
                 } else if let browse, case .playRecording(let recording) = item {
                     RecordingPlayerScreen(recording: recording, client: browse.client) {
-                        Task { await browse.loadRecordings() }
-                    }
-                } else if let browse, case .recordingFromLive(let recording) = item {
-                    RecordingPlayerScreen(recording: recording, client: browse.client, fromLive: true) {
                         Task { await browse.loadRecordings() }
                     }
                 }

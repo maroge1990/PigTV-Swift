@@ -381,7 +381,7 @@ controls are not used for live play.
   pages, the iPhone's carousel and rows), pure in `SportCardRules`, decided again at the press (`SportGamePress`):
   select plays the preferred channel while one airs it, opens the record page before (Record when it's listed without a
   listing), plays the game's recording once finished (`Recording.gameId`: a finished one, whole before partial, then the
-  longest, then the earliest start; else one still recording that plays near its live edge), else nothing. The hold menu (`SportCardMenu`): live → Watch another channel (the channel picker, with more than one
+  longest, then the earliest start; else one still recording, from its start: its live edge is the coverage after the game), else nothing. The hold menu (`SportCardMenu`): live → Watch another channel (the channel picker, with more than one
   channel) and RECORD; before → RECORD and Remind me; finished → only the page's Make this the hero. Remind me is in
   the hold menu only; cards no longer open the event page.
 - **Shared words (Apple 137–138)**: a next-round card (C-R `nextRound`, #218) reads "Next round · Sat 15 Nov" with no
