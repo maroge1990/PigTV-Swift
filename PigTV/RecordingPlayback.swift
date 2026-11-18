@@ -55,6 +55,8 @@ final class RecordingPlayerModel: ObservableObject {
     /// #345: opened from a finished game's Sport card: Go to live is never offered (the live edge is the coverage after
     /// the game, a spoiler).
     private let noLive: Bool
+    /// #345: opened from a finished game's Sport card: from the beginning, with no Resume question (Recordings keeps it).
+    private let fromBeginning: Bool
     /// #17 (Apple 150 Codex round 1, medium): true until the live-edge join has happened, through a slow first load and
     /// the restarts after an initial failure (which would otherwise carry on at 0, the start).
     private var liveJoinPending: Bool
@@ -70,7 +72,9 @@ final class RecordingPlayerModel: ObservableObject {
     private var liveEndObserver: NSObjectProtocol?
     static let maxLiveRestarts = 3
 
-    init(recording: Recording, client: APIClient, fromStart: Bool = false, fromLive: Bool = false, noLive: Bool = false) {
+    init(recording: Recording, client: APIClient, fromStart: Bool = false, fromLive: Bool = false, noLive: Bool = false,
+         fromBeginning: Bool = false) {
+        self.fromBeginning = fromBeginning
         self.recording = recording
         self.client = client
         self.fromStart = fromStart
@@ -188,7 +192,7 @@ final class RecordingPlayerModel: ObservableObject {
                 guard !stopped, error == nil else { return }
                 let local = resumeKey.map { UserDefaults.standard.double(forKey: $0) } ?? 0
                 let known = RecordingResume.source(server: server, local: local)
-                if let at = RecordingResume.prompt(position: known.position, watched: known.watched) {
+                if let at = RecordingResume.prompt(position: known.position, watched: known.watched, fromBeginning: fromBeginning) {
                     resumePrompt = at
                     ready = true
                     return
@@ -520,9 +524,9 @@ struct RecordingPlayerScreen: View {
     /// `fromStart` (C-L): a recording still in progress, played from its start; `fromLive` (#17): near its live edge;
     /// `noLive` (#345): never Go to live (a finished game's recording opened from its Sport card).
     init(recording: Recording, client: APIClient, fromStart: Bool = false, fromLive: Bool = false, noLive: Bool = false,
-         onClose: (() -> Void)? = nil) {
+         fromBeginning: Bool = false, onClose: (() -> Void)? = nil) {
         _model = StateObject(wrappedValue: RecordingPlayerModel(recording: recording, client: client, fromStart: fromStart,
-                                                                fromLive: fromLive, noLive: noLive))
+                                                                fromLive: fromLive, noLive: noLive, fromBeginning: fromBeginning))
         self.onClose = onClose
     }
 

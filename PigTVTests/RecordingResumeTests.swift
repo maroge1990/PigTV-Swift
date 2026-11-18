@@ -31,6 +31,8 @@ final class RecordingResumeTests: XCTestCase {
 
     func testPromptNeedsMoreThanTenSecondsAndNotWatched() {
         XCTAssertEqual(RecordingResume.prompt(position: 600, watched: false), 600)
+        // #345: a finished game's recording from its Sport card starts at the beginning, never asked.
+        XCTAssertNil(RecordingResume.prompt(position: 600, watched: false, fromBeginning: true))
         XCTAssertNil(RecordingResume.prompt(position: 10, watched: false))
         XCTAssertNil(RecordingResume.prompt(position: 600, watched: true))
         XCTAssertNil(RecordingResume.prompt(position: .nan, watched: false))

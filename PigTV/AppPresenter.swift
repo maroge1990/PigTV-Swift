@@ -13,7 +13,8 @@ enum AppPresentation: Identifiable {
     /// the game, a spoiler), as the web's `noLive`.
     case recordingPlayer(Recording, noLive: Bool = false)
     /// #57: Play on a Search result: the recording player, from where this device left off (as Recordings' Play).
-    case playRecording(Recording)
+    /// `fromBeginning` (#345): from a finished game's Sport card: from the start, no Resume question.
+    case playRecording(Recording, fromBeginning: Bool = false)
     /// D-66 (#57): Search and Jump to, from a page header's magnifier on any tab (`from`: that tab's name).
     case search(from: String)
 
@@ -23,7 +24,7 @@ enum AppPresentation: Identifiable {
         case .channelSchedule(let channel): "schedule:\(channel.id)"
         case .record(let request): "record:\(request.id)"
         case .recordingPlayer(let recording, _): "player:\(recording.id)"
-        case .playRecording(let recording): "play:\(recording.id)"
+        case .playRecording(let recording, _): "play:\(recording.id)"
         case .search: "search"
         }
     }
@@ -205,8 +206,8 @@ extension View {
                     RecordingPlayerScreen(recording: recording, client: browse.client, fromStart: true, noLive: noLive) {
                         Task { await browse.loadRecordings() }
                     }
-                } else if let browse, case .playRecording(let recording) = item {
-                    RecordingPlayerScreen(recording: recording, client: browse.client) {
+                } else if let browse, case .playRecording(let recording, let fromBeginning) = item {
+                    RecordingPlayerScreen(recording: recording, client: browse.client, fromBeginning: fromBeginning) {
                         Task { await browse.loadRecordings() }
                     }
                 }

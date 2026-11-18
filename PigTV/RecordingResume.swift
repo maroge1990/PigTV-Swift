@@ -21,8 +21,9 @@ nonisolated enum RecordingResume {
 
     /// Seconds to offer "Resume from", or nil to just play from the start.
     /// Needs more than 10 s in and not watched.
-    static func prompt(position: Double, watched: Bool) -> Double? {
-        guard position.isFinite, position > 10, !watched else { return nil }
+    /// `fromBeginning` (#345): opened from a finished game's Sport card: always from the start, never asked.
+    static func prompt(position: Double, watched: Bool, fromBeginning: Bool = false) -> Double? {
+        guard !fromBeginning, position.isFinite, position > 10, !watched else { return nil }
         return position
     }
 
