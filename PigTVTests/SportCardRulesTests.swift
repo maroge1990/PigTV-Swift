@@ -199,6 +199,15 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertEqual(SportCardRules.hold(game: unlisted, event: fixtureEvent, now: now), .init(record: true, remind: true))
         XCTAssertEqual(SportCardRules.menuEvent(game: listed, event: nil)?.id, fixtureEvent.id, "the card's own when it has one")
         XCTAssertEqual(SportCardRules.hold(game: unlisted, event: nil, now: now), .init(record: true), "no event: Record when it's listed")
+        // Codex review: select and hold on the fixture's event keep the card's game id for the recording.
+        XCTAssertTrue(SportCardRules.usesPageEvent(card: unlisted, event: fixtureEvent))
+        XCTAssertFalse(SportCardRules.usesPageEvent(card: listed, event: fixtureEvent), "the card's own channels")
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:9"), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        browse.sportFront.setFixture(try front())
+        let request = try XCTUnwrap(browse.recordRequest(event: fixtureEvent, game: unlisted, now: now))
+        XCTAssertEqual(request.gameId, Self.chiefs, "the record page and the menu's Record this game send the card's id")
+        XCTAssertFalse(SportRecordFlow.menuItems(request, now: now).isEmpty, "the hold menu's RECORD section")
         let finished = try XCTUnwrap(try front().game(Self.packersFinished))
         XCTAssertNil(SportCardRules.menuEvent(game: finished, event: fixtureEvent))
         XCTAssertEqual(SportCardRules.hold(game: finished, event: fixtureEvent, now: now), .init())

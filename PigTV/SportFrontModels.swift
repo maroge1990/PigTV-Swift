@@ -480,6 +480,12 @@ nonisolated enum SportCardRules {
         return game.flatMap { SportFrontText.event($0) } ?? event
     }
 
+    /// A card pressed with the page's own event for it decides on that event (its channels) when the card has no
+    /// channel yet and the event has one; the card's game still goes with the recording (its id, #345 review).
+    static func usesPageEvent(card: SportsGame, event: SportEvent?) -> Bool {
+        !card.terminal && SportFrontText.event(card) == nil && event?.best != nil
+    }
+
     /// The hold menu of a card that may come with the page's own event for it (`menuEvent`).
     static func hold(game: SportsGame?, event: SportEvent?, now: Date) -> Hold {
         if let game, game.terminal || SportFrontText.event(game) != nil || event == nil { return hold(game, now: now) }

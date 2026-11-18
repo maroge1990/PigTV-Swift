@@ -130,8 +130,9 @@ struct SportFollowStar: View {
 @MainActor
 enum SportCardActions {
     static func select(card: SportsGame?, event: SportEvent?, app: AppModel, presenter: SportPresenter?) {
-        // A card with no channel yet while the page's own event has one (a fixture, #345 review): the event decides.
-        if let card, card.terminal || SportFrontText.event(card) != nil || event?.best == nil {
+        // A card with no channel yet while the page's own event has one (a fixture, #345 review): the event decides,
+        // the card's game (its id) kept for the recording.
+        if let card, !SportCardRules.usesPageEvent(card: card, event: event) {
             SportGamePress.select(card, app: app, presenter: presenter)
             return
         }
@@ -142,7 +143,7 @@ enum SportCardActions {
             // The best of its channels on air now (#345 review: not the best channel when that one is not airing it).
             guard let live = SportCardRules.playable(event, now: Date()) else { return }
             if let presenter { presenter.play(live) } else { app.playSportEvent(live, origin: SportFrontView.origin) }
-        case .record: app.record(event)
+        case .record: app.record(event, game: card)
         case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
         }
     }
