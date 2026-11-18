@@ -1,9 +1,10 @@
 import XCTest
 
-/// Every open starts from scratch (Mark, 18 Nov 2026): leaving PigTV on another tab and coming back from the background
-/// plays the splash again, and its pig lands on the opening tab's header (Sport, on the launch fixture), as a cold launch
-/// does. PIGTV_UI_TEST_LAUNCH=home: the real start-up path (ContentView) with a saved sign-in that lands on the fixture.
-final class ForegroundResetUITests: XCTestCase {
+/// A return from the background shows PigTV exactly where it was left (Mark, 19 Nov 2026, reversing Apple 320's reset):
+/// the same tab and page, no splash. Only a cold launch plays the splash. PIGTV_UI_TEST_LAUNCH=home: the real start-up
+/// path (ContentView) with a saved sign-in that lands on the fixture. On Apple 320-324 the return replayed the splash and
+/// went back to Sport, so this fails there.
+final class ReturnFromBackgroundUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     override func tearDown() {
@@ -62,7 +63,7 @@ final class ForegroundResetUITests: XCTestCase {
         app.activate()
     }
 
-    @MainActor func testAReturnFromTheBackgroundSplashesOntoTheOpeningTabsHeader() {
+    @MainActor func testAReturnFromTheBackgroundKeepsThePageAndPlaysNoSplash() {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_LAUNCH"] = "home"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
@@ -72,16 +73,17 @@ final class ForegroundResetUITests: XCTestCase {
 
         openSettings(app)
         XCTAssertTrue(waitUntil(10) { self.headerTitle(app) == "Settings" }, "on Settings before leaving")
-        attach(app, "foreground-reset-1-left-on-settings")
+        attach(app, "return-1-left-on-settings")
 
         goToTheBackgroundAndBack(app)
-        XCTAssertTrue(splash.waitForExistence(timeout: 5), "the splash plays again on the return")
-        attach(app, "foreground-reset-2-splash")
-        // The hand-off starts at 2.0 s and the pig is mid-flight about 0.6 s later.
-        Thread.sleep(forTimeInterval: 1.6)
-        attach(app, "foreground-reset-3-flight")
-        XCTAssertTrue(waitUntil(10) { !splash.exists }, "the splash hands over")
-        XCTAssertTrue(waitUntil(5) { self.headerTitle(app) == "Sport" }, "back on the opening tab, not Settings")
-        attach(app, "foreground-reset-4-landed")
+        XCTAssertTrue(waitUntil(10) { app.state == .runningForeground }, "back in front")
+        // The splash's hand-off would take 3.2 s: watch past it, polling, so a splash that appears at all is caught.
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline {
+            XCTAssertFalse(splash.exists, "no splash on a return from the background")
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        attach(app, "return-2-back")
+        XCTAssertEqual(headerTitle(app), "Settings", "still on the page that was left, not the opening tab")
     }
 }

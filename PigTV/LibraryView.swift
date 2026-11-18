@@ -4,9 +4,6 @@ struct LibraryView: View {
     @ObservedObject var model: AppModel
     /// The tab the app opens on (nil: `LibraryView.openingTab`; the offline fixtures may pick their own).
     var initialTab: String? = nil
-    /// Every open starts from scratch (`ForegroundReset`): a new generation rebuilds the tabs (closing pushed pages and
-    /// Settings' sub-pages, scrolling each page to its top) and shows the opening tab.
-    var generation = 0
     @State private var tab: String?
     /// The viewer (or a link) chose a tab: the opening decision never overrides it.
     @State private var chosen = false
@@ -98,7 +95,6 @@ struct LibraryView: View {
                 .tag("settings")
                 .onAppear { PigTVSignpost.tabContentAppeared("settings") }
         }
-        .id(generation)
         .environment(\.pigOpenSearch, openSearch)
         .tint(Color("AccentColor"))
         // #49 groundwork: the app-level presentation layer's page, above every tab.
@@ -115,12 +111,6 @@ struct LibraryView: View {
         .onChange(of: openingKey, initial: true) {
             guard !chosen, let browse = model.browse else { return }
             tab = initialTab ?? Self.openingTab(sportEnabled: browse.sportEnabled)
-        }
-        .onChange(of: generation) {
-            guard let browse = model.browse else { return }
-            chosen = false
-            tab = initialTab ?? Self.openingTab(sportEnabled: browse.sportEnabled)
-            Self.tabSelected(tab ?? "", navigation: browse.sportNavigation)
         }
         .onChange(of: model.requestedTab, initial: true) { _, requested in
             guard let requested else { return }
