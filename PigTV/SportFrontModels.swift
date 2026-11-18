@@ -509,28 +509,29 @@ nonisolated enum SportCardRules {
         return Hold(record: record, remind: event.start(on: best) > now)
     }
 
-    /// The recording of a finished game to play (`Recording.gameId`): a finished one (the Recordings list's rule,
-    /// `playLabel`), a whole one before a partial, then the longest, then the earliest start; else one still recording
-    /// (finishing late) that can be watched while it records; else nil.
+    /// The recording of a finished game to play (`Recording.gameId`), in the server contract's order: a whole finished
+    /// one (the Recordings list's rule, `playLabel`; the longest, then the earliest start); else one still recording
+    /// (finishing late) that can be watched while it records (`live`, from its start); else a partial finished one (the
+    /// longest); else nil.
     static func recording(of game: SportsGame, in recordings: [Recording]) -> (recording: Recording, live: Bool)? {
         recording(ofGameId: game.id, in: recordings)
     }
 
     static func recording(ofGameId gameId: String, in recordings: [Recording]) -> (recording: Recording, live: Bool)? {
         let mine = recordings.filter { $0.gameId == gameId }
-        let done = mine.filter { $0.playLabel != nil }.min { a, b in
-            let partial = ((a.is_partial ?? 0) != 0, (b.is_partial ?? 0) != 0)
-            if partial.0 != partial.1 { return !partial.0 }
+        let first: (Recording, Recording) -> Bool = { a, b in
             let length = (a.duration_sec ?? 0, b.duration_sec ?? 0)
             if length.0 != length.1 { return length.0 > length.1 }
             let start = (a.started_at ?? .infinity, b.started_at ?? .infinity)
             if start.0 != start.1 { return start.0 < start.1 }
             return a.id < b.id
         }
-        if let done { return (done, false) }
+        let finished = mine.filter { $0.playLabel != nil }
+        if let whole = finished.filter({ ($0.is_partial ?? 0) == 0 }).min(by: first) { return (whole, false) }
         if let going = mine.filter(\.canWatchFromStart).min(by: { ($0.started_at ?? .infinity, $0.id) < ($1.started_at ?? .infinity, $1.id) }) {
             return (going, true)
         }
+        if let partial = finished.min(by: first) { return (partial, false) }
         return nil
     }
 }

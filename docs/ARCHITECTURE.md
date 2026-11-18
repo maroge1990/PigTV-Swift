@@ -381,9 +381,10 @@ controls are not used for live play.
   pages, the cricket page's other competitions, F1's session tiles, the iPhone's carousel and rows), pure in
   `SportCardRules`, decided again at the press (`SportGamePress`). Live means on air on any of its channels: select
   plays the best of those; before, it opens the record page (Record when it's listed without a listing); once finished
-  it plays the game's recording (`Recording.gameId`, from a list at most 5 s old: a finished one, whole before partial,
-  then the longest, then the earliest start; else one still recording, from its start, never its live edge, which is
-  the coverage after the game), else nothing. A session card's word says the same ("Watch", "Record" or nothing). The
+  it plays the game's recording (`Recording.gameId`, from a list at most 5 s old, joining a load in flight: a whole
+  finished one, the longest, then the earliest start; else one still recording, from its start, never its live edge,
+  which is the coverage after the game; else a partial one, the longest; always from the beginning, no Resume
+  question), else nothing; a finished F1 session likewise (never a channel still airing after it). A session card's word says the same ("Watch", "Record" or nothing). The
   hold menu (`SportCardMenu`): live → Watch another channel (the channel picker, when more than one channel name is on
   air) and RECORD; before → RECORD and Remind me; finished → only the page's Make this the hero. Remind me is in the
   hold menu only (not the heroes, the iPhone carousel card or the cricket lead); cards no longer open the event page.

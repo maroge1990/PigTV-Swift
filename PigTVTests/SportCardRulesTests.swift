@@ -63,9 +63,9 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: []), .none)
     }
 
-    /// Several finished recordings of the game: a whole one before a partial, then the longest, then the earliest start
-    /// (never just the newest). None finished but one still recording (finishing late) that plays while it records: that
-    /// one, from its start (#345 review: its live edge is the coverage after the game, a spoiler).
+    /// Several recordings of the game: a whole finished one first (the longest, then the earliest start, never just the
+    /// newest); then one still recording (finishing late) that plays while it records, from its start (#345 review: its
+    /// live edge is the coverage after the game, a spoiler); then a partial finished one (the longest).
     func testAFinishedGamePlaysItsBestRecording() throws {
         let finished = try XCTUnwrap(try front().game(Self.packersFinished))
         let now = Date(timeIntervalSince1970: try front().now / 1000)
@@ -88,6 +88,15 @@ final class SportCardRulesTests: XCTestCase {
                        "still recording: from its start, never the live edge (the coverage after the game)")
         XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [going, wholeShort]), .playRecording(2), "a finished one first")
         XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [goingNoLive]), .none, "one that cannot play while it records")
+
+        // The server contract's order (#345): whole finished, then a watchable copy still recording, then partial ones.
+        let partialShort = try row(7, partial: 1, length: 3000, start: 1793390000000)
+        XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [partialLong, going]), .playRecordingFromStart(5),
+                       "a copy still recording before a partial finished one")
+        XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [partialShort, partialLong, goingNoLive]), .playRecording(1),
+                       "partial ones: the longest")
+        XCTAssertEqual(SportCardRules.select(finished, now: now, recordings: [partialLong, going, wholeShort]), .playRecording(2),
+                       "a whole finished one first of all")
     }
 
     func testNextRoundIsNothing() throws {
