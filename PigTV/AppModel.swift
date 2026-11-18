@@ -893,10 +893,10 @@ nonisolated struct OfflineNotice: Equatable, Sendable {
                                         message: "It answered but couldn’t sign this device in. It may be starting up or updating. Your sign-in is kept.")
 }
 
-/// Brand 1.8 §8 and upgrade row 2 (maroge1990/PigTV#280): the splash shows only while the app is loading. With no
-/// saved sign-in there is nothing to load: the app opens on sign-in, with no splash. With one, the splash shows until
-/// the session is restored (the first screen then draws its own page-shaped loading state); no minimum time, never
-/// held to finish an animation. Before Apple 206 every launch drew the splash and cross-faded it away.
+/// Brand 1.8 §8 and upgrade row 2 (maroge1990/PigTV#280): the splash shows only when there is a sign-in to restore. With
+/// no saved sign-in there is nothing to load: the app opens on sign-in, with no splash. With one, the splash plays its
+/// whole sequence (#342, about 3.2 s, longer only while the restore still runs) and hands over to Home's header
+/// (BrandSplash.swift). Before Apple 206 every launch drew the splash and cross-faded it away.
 nonisolated enum LaunchStep: Equatable, Sendable {
     case splash, firstScreen
 
@@ -920,7 +920,9 @@ nonisolated enum LaunchStep: Equatable, Sendable {
 
 #if DEBUG
 /// T3 only, to watch the launch in the simulator: PIGTV_UI_TEST_LAUNCH=saved saves a sign-in to an address that never
-/// answers (TEST-NET-1; or PIGTV_UI_TEST_LAUNCH_SERVER, a stub the test runs), =none opens with no saved address, and
+/// answers (TEST-NET-1; or PIGTV_UI_TEST_LAUNCH_SERVER, a stub the test runs), =home does the same but the restore lands
+/// on the Home fixture after PIGTV_UI_TEST_LAUNCH_DELAY seconds (default 0.5; `restoreLaunchFixture`), =none opens with
+/// no saved address, and
 /// =clear (a launch that draws nothing) puts back the address there was before and removes the fixture's sign-in.
 @MainActor enum LaunchFixture {
     private static let backupKey = "pigtv.server.beforeLaunchFixture"
@@ -928,7 +930,7 @@ nonisolated enum LaunchStep: Equatable, Sendable {
 
     static func applySavedSignIn(defaults: UserDefaults) {
         switch ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LAUNCH"] {
-        case "saved":
+        case "saved", "home":
             // PIGTV_UI_TEST_LAUNCH_SERVER: a stub server the test runs instead (to watch a restore's answers).
             let server = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LAUNCH_SERVER"] ?? AppModel.unreachableFixtureServer
             guard let address = try? ServerAddress(server) else { return }

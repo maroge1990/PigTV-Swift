@@ -58,6 +58,27 @@ nonisolated enum BrandLayout {
         }
     }
 
+    /// The kit's wordmark (wordmark-*.svg, the `BrandWordmark` image): its canvas, and where lockup-stacked-*.svg places
+    /// that same drawing (`translate(135.73 309.12) scale(0.55615)`, in the stacked lockup's units). The splash draws the
+    /// name alone exactly where the stacked lockup has it, so pig and name together are the kit's stacked lockup.
+    static let wordmarkCanvas = CGSize(width: 363, height: 129)
+    static let stackedWordmarkOrigin = CGPoint(x: 135.73, y: 309.12)
+    static let stackedWordmarkScale: CGFloat = 0.55615
+
+    /// The name's frame in the stacked lockup relative to the pig: its size, and its centre's distance from the pig's
+    /// centre, both in units of the pig's ink width.
+    static var stackedWordmarkSize: CGSize {
+        let pig = lockup(.stacked).pigInk
+        return CGSize(width: wordmarkCanvas.width * stackedWordmarkScale / pig.width,
+                      height: wordmarkCanvas.height * stackedWordmarkScale / pig.width)
+    }
+    static var stackedWordmarkCentreFromPig: CGPoint {
+        let pig = lockup(.stacked).pigInk
+        let w = wordmarkCanvas.width * stackedWordmarkScale, h = wordmarkCanvas.height * stackedWordmarkScale
+        return CGPoint(x: (stackedWordmarkOrigin.x + w / 2 - pig.midX) / pig.width,
+                       y: (stackedWordmarkOrigin.y + h / 2 - pig.midY) / pig.width)
+    }
+
     // MARK: Radiance stops
 
     /// The static halo (launch screen, splash, identity halo): radius `haloRadius`.

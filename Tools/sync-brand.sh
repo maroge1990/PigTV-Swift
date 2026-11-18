@@ -8,6 +8,7 @@
 #   mark.svg                           -> PigLogo.imageset (vector)
 #   lockup-horizontal-light/-dark.svg  -> LockupHorizontal.imageset (vector, any + dark)
 #   lockup-stacked-light/-dark.svg     -> LockupStacked.imageset (vector, any + dark)
+#   wordmark-light/-dark.svg           -> BrandWordmark.imageset (vector, any + dark: the splash's name, #342)
 #   tokens/PigColors.xcassets/Pig{Success,Warning,Danger,Hover}.colorset -> same names in the app catalogue
 #   AppleTV/dark/.../*.brandassets     -> "App Icon & Top Shelf Image.brandassets" (tvOS icon and Top Shelf; dark only)
 #   Apple/IconComposer/*               -> PigTV/AppIcon.icon/Assets (halo-*.png, body.svg, face.svg, body-mono.svg, face-mono.svg)
@@ -44,7 +45,7 @@ vector_set() { # name, light file, dark file (or "" for one file)
 vector_set PigLogo mark.svg ""
 vector_set LockupHorizontal lockup-horizontal-light.svg lockup-horizontal-dark.svg
 vector_set LockupStacked lockup-stacked-light.svg lockup-stacked-dark.svg
-rm -rf "$assets/BrandWordmark.imageset"
+vector_set BrandWordmark wordmark-light.svg wordmark-dark.svg
 
 # Status colours (the kit's PigColors; names match the app's own colour roles).
 for colour in PigSuccess PigWarning PigDanger; do

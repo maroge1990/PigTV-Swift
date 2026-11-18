@@ -4,12 +4,17 @@ import AVKit
 struct ContentView: View {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Brand 1.8 §8 (#280): the splash shows only while a saved sign-in is being restored; with none the app opens on
-    /// sign-in at once.
+    /// sign-in at once. #342: when it shows, it plays its whole sequence and hands over to Home (`SplashHandoff`).
     @State private var initialRestoreFinished: Bool
+    @State private var splash: SplashHandoff
 
     init() {
-        _initialRestoreFinished = State(initialValue: LaunchStep.current() == .firstScreen)
+        let step = LaunchStep.current()
+        _initialRestoreFinished = State(initialValue: step == .firstScreen)
+        _splash = State(initialValue: SplashHandoff(playing: step == .splash,
+                                                    contentRise: SplashTimeline.contentRise * BrandSplashView.unit))
     }
     // Appearance is owned here (a View), not in the App/Scene: an @AppStorage
     // change re-renders a View immediately, where the Scene-level modifier only
@@ -57,24 +62,37 @@ struct ContentView: View {
     }
 
     private var content: some View {
-        Group {
-            if !initialRestoreFinished { LaunchLoadingView().transition(.opacity) }
-            else if model.loggedIn { LibraryView(model: model) }
-            else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
-            else { OnboardingView(model: model).tint(Color("AccentColor")) }
+        ZStack {
+            Group {
+                if !initialRestoreFinished { Color.clear }
+                else if model.loggedIn { LibraryView(model: model) }
+                else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
+                else { OnboardingView(model: model).tint(Color("AccentColor")) }
+            }
+            // #342: under the splash until it hands over; Home then rises into place (fades only, under Reduce Motion).
+            .opacity(splash.contentShown ? 1 : 0)
+            .offset(y: reduceMotion ? 0 : splash.contentRise)
+            if !splash.landed { BrandSplashView(handoff: splash) }
         }
+        .environment(splash)
         .modifier(AppRootCover(model: model))
-        // The splash never holds the app back: when start-up finishes it fades out at once.
-        .animation(PigMotion.standard, value: initialRestoreFinished)
         #if os(tvOS)
         .buttonStyle(PigSecondaryButtonStyle())
         #endif
         .task {
-            // This is a cold-launch handoff only. It has no arbitrary minimum
-            // duration and is not replayed when the app returns to foreground.
-            // With no saved sign-in there was no splash (LaunchStep), and this returns at once.
+            // A cold launch only: not replayed when the app returns to the foreground. With no saved sign-in there was
+            // no splash (LaunchStep), and this returns at once. The splash holds its own length (#342) and lands on the
+            // header of the tab Home opens on.
+            #if DEBUG
+            if await !model.restoreLaunchFixture() { await model.restore() }
+            #else
             await model.restore()
+            #endif
+            if let browse = model.browse, model.loggedIn {
+                splash.landingTitle = LibraryView.title(of: LibraryView.openingTab(sportEnabled: browse.sportEnabled))
+            }
             initialRestoreFinished = true
+            splash.restoreFinished()
         }
         .onChange(of: scenePhase) { _, phase in AppRootCover.sceneChanged(to: phase, model: model) }
         // #46, #216: while active and signed in, the guide is kept current and the Top Shelf exported, now and every
@@ -157,10 +175,6 @@ private extension View {
         pigGlassBackground(in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         #endif
     }
-}
-
-private struct LaunchLoadingView: View {
-    var body: some View { BrandSplashView() }
 }
 
 /// The next automatic retry of the Offline screen (pure, `OfflineRetryTests`): every 20 seconds from the last attempt.

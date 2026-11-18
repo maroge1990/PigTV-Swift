@@ -235,6 +235,21 @@ private struct SportFrontTestScreen: View {
     }
 }
 
+extension AppModel {
+    /// #342, T3 only: PIGTV_UI_TEST_LAUNCH=home. The launch has a saved sign-in (LaunchFixture), so the splash plays, and
+    /// the restore lands on the Home fixture (HomeTestScreen's) after PIGTV_UI_TEST_LAUNCH_DELAY seconds, to watch the
+    /// whole hand-off. false: not asked for (the real restore runs).
+    func restoreLaunchFixture() async -> Bool {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["PIGTV_UI_TEST_LAUNCH"] == "home" else { return false }
+        try? await Task.sleep(for: .seconds(Double(environment["PIGTV_UI_TEST_LAUNCH_DELAY"] ?? "") ?? 0.5))
+        injectHomeFixture()
+        if let front = HomeTestScreen.front { browse?.sportFront.setFixture(front) }
+        PageStateFixtures.apply(self)
+        return true
+    }
+}
+
 // The offline library (build 28): PIGTV_UI_TEST_SCREEN=home (favourites, sport, recordings, logos), on the app's
 // opening tab (Sport; #216 retired Home, the name stays). The Sport tab is the front page on the server's own answer: PIGTV_UI_TEST_FRONT_JSON (base64) when given, else the source tree's
 // PigTVTests/Fixtures/sport-front-0381.json (the simulator reads the Mac's files; elsewhere the page shows its error state).

@@ -260,6 +260,7 @@ struct PigPageHeader<Trailing: View>: View {
     var body: some View {
         HStack(spacing: PigPageHeaderMetrics.spacing) {
             PigBrandMark(width: PigPageHeaderMetrics.markWidth, height: PigPageHeaderMetrics.markHeight)
+                .splashLandingSpot(title) // #342: the splash's pig lands here
             Text(title).font(PigPageHeaderMetrics.title).lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("page.header.title")

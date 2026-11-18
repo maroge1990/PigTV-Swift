@@ -134,10 +134,13 @@ final class BrandRulesTests: XCTestCase {
         }
     }
 
-    // §3: the kit's lockups are in the catalog (vector, light and dark), and no view rebuilds one from the wordmark.
+    // §3: the kit's lockups are in the catalog (vector, light and dark), and no view rebuilds one from the wordmark. The
+    // one exception is the splash (#342, Mark's option C): its name fades in alone under the launch pig, placed where the
+    // stacked lockup has it (BrandLayout.stackedWordmark*), so pig and name together are the kit's stacked lockup.
     func testKitLockupsAreInTheCatalog() throws {
         let catalog = Self.sources.appendingPathComponent("Assets.xcassets")
-        for (set, stem) in [("LockupHorizontal", "lockup-horizontal"), ("LockupStacked", "lockup-stacked")] {
+        for (set, stem) in [("LockupHorizontal", "lockup-horizontal"), ("LockupStacked", "lockup-stacked"),
+                            ("BrandWordmark", "wordmark")] {
             let folder = catalog.appendingPathComponent("\(set).imageset")
             for variant in ["light", "dark"] {
                 XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("\(stem)-\(variant).svg").path),
@@ -149,7 +152,8 @@ final class BrandRulesTests: XCTestCase {
             XCTAssertEqual(properties?["preserves-vector-representation"] as? Bool, true, "\(set) must keep its vector")
         }
         let lines = try sourceLines()
-        report(lines.filter { $0.text.contains("Image(\"BrandWordmark\")") }, "the wordmark drawn on its own (use the kit's lockup)")
+        report(lines.filter { $0.text.contains("Image(\"BrandWordmark\")") && $0.file != "BrandSplash.swift" },
+               "the wordmark drawn on its own (use the kit's lockup)")
     }
 
     // #243: paddings and stack spacings come from PigSpacing. A bare number in a `.padding(...)` or after `spacing:` is a
