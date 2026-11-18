@@ -211,50 +211,56 @@ struct BrandSplashView: View {
         let r = BrandLayout.haloRadius * s
         let dark = scheme == .dark
         let pig = BrandLayout.pigInkWidth * s
-        ZStack {
-            Color("LaunchEdge").opacity(canvasGone ? 0 : 1)
-            if !reduceTransparency {
-                ZStack {
-                    RadialGradient(stops: BrandLayout.halo(dark: dark).gradientStops,
-                                   center: .center, startRadius: 0, endRadius: r)
-                        .frame(width: 2 * r, height: 2 * r)
-                    if !reduceMotion {
-                        ZStack {
-                            RadialGradient(stops: BrandLayout.bloomWide(dark: dark).gradientStops, center: .center,
-                                           startRadius: 0, endRadius: BrandLayout.bloomWideRadius * r)
-                                .frame(width: 2 * BrandLayout.bloomWideRadius * r, height: 2 * BrandLayout.bloomWideRadius * r)
-                            RadialGradient(stops: BrandLayout.bloomCore(dark: dark).gradientStops, center: .center,
-                                           startRadius: 0, endRadius: BrandLayout.bloomCoreRadius * r)
-                                .frame(width: 2 * BrandLayout.bloomCoreRadius * r, height: 2 * BrandLayout.bloomCoreRadius * r)
+        // The canvas is exactly the screen and the pig sits at its centre, as the launch image's does (it is centred on
+        // the screen, ignoring the safe area). The bloom is wider than an iPhone is tall; left to size the stack, it made the
+        // stack overflow the screen, which was then centred in the safe area instead: 14 pt lower on an iPhone with a
+        // notch (its top inset is 62 pt, its bottom 34), the jump from the launch screen's pig to the splash's.
+        GeometryReader { screen in
+            ZStack {
+                Color("LaunchEdge").opacity(canvasGone ? 0 : 1)
+                if !reduceTransparency {
+                    ZStack {
+                        RadialGradient(stops: BrandLayout.halo(dark: dark).gradientStops,
+                                       center: .center, startRadius: 0, endRadius: r)
+                            .frame(width: 2 * r, height: 2 * r)
+                        if !reduceMotion {
+                            ZStack {
+                                RadialGradient(stops: BrandLayout.bloomWide(dark: dark).gradientStops, center: .center,
+                                               startRadius: 0, endRadius: BrandLayout.bloomWideRadius * r)
+                                    .frame(width: 2 * BrandLayout.bloomWideRadius * r, height: 2 * BrandLayout.bloomWideRadius * r)
+                                RadialGradient(stops: BrandLayout.bloomCore(dark: dark).gradientStops, center: .center,
+                                               startRadius: 0, endRadius: BrandLayout.bloomCoreRadius * r)
+                                    .frame(width: 2 * BrandLayout.bloomCoreRadius * r, height: 2 * BrandLayout.bloomCoreRadius * r)
+                            }
+                            // brand splashMotion: bloom opacity 0 -> 1 and scale 0.9 -> 1.12 at its peak; it settles between
+                            .scaleEffect(bloom == .peak ? 1.12 : bloom == .rest ? 1.0 : 0.9)
+                            .opacity(bloom == .peak ? 1 : bloom == .rest ? 0.6 : 0)
                         }
-                        // brand splashMotion: bloom opacity 0 -> 1 and scale 0.9 -> 1.12 at its peak; it settles between
-                        .scaleEffect(bloom == .peak ? 1.12 : bloom == .rest ? 1.0 : 0.9)
-                        .opacity(bloom == .peak ? 1 : bloom == .rest ? 0.6 : 0)
                     }
+                    .opacity(glowGone ? 0 : 1)
                 }
-                .opacity(glowGone ? 0 : 1)
+                // The name alone, where the kit's stacked lockup has it under this pig.
+                let word = BrandLayout.stackedWordmarkSize, centre = BrandLayout.stackedWordmarkCentreFromPig
+                Image("BrandWordmark").resizable()
+                    .frame(width: word.width * pig, height: word.height * pig)
+                    .offset(x: centre.x * pig, y: centre.y * pig + (nameShown || reduceMotion ? 0 : SplashTimeline.nameRise * Self.unit))
+                    .opacity(nameShown && !nameGone ? 1 : 0)
+                // The one pig: the launch image's, later flying onto the header's mark.
+                Image("PigLogo").resizable()
+                    .frame(width: BrandLayout.markSide * s, height: BrandLayout.markSide * s)
+                    .scaleEffect(landing?.scale ?? 1)
+                    .offset(landing?.offset ?? .zero)
+                    .opacity(pigGone ? 0 : 1)
+                if slowStart {
+                    ProgressView().controlSize(.small).opacity(0.55)
+                        .offset(y: s * 0.40)
+                        .transition(.opacity)
+                }
             }
-            // The name alone, where the kit's stacked lockup has it under this pig.
-            let word = BrandLayout.stackedWordmarkSize, centre = BrandLayout.stackedWordmarkCentreFromPig
-            Image("BrandWordmark").resizable()
-                .frame(width: word.width * pig, height: word.height * pig)
-                .offset(x: centre.x * pig, y: centre.y * pig + (nameShown || reduceMotion ? 0 : SplashTimeline.nameRise * Self.unit))
-                .opacity(nameShown && !nameGone ? 1 : 0)
-            // The one pig: the launch image's, later flying onto the header's mark.
-            Image("PigLogo").resizable()
-                .frame(width: BrandLayout.markSide * s, height: BrandLayout.markSide * s)
-                .scaleEffect(landing?.scale ?? 1)
-                .offset(landing?.offset ?? .zero)
-                .opacity(pigGone ? 0 : 1)
-            if slowStart {
-                ProgressView().controlSize(.small).opacity(0.55)
-                    .offset(y: s * 0.40)
-                    .transition(.opacity)
-            }
+            .frame(width: screen.size.width, height: screen.size.height)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+            .clipped()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
-        .clipped()
         .ignoresSafeArea()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Starting PigTV")
