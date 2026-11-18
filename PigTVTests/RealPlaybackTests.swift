@@ -659,6 +659,30 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// #345 (Codex sign-off): a Sport card's in-progress route (from the start, no live) never asks for the saved
+    /// position, neither on the live playlist nor on its finished-file fallback.
+    func testTheSportInProgressRouteNeverAsksForTheSavedPosition() async throws {
+        try requireFixture()
+        let position = LocalHTTPServer.Response.json(#"{"position_sec":600,"watched":false}"#)
+        let live = try FakePigTVServer(watch: { _ in .json(Self.liveWatch) }, position: position)
+        let onLive = RecordingPlayerModel(recording: try inProgressRecording(), client: try live.client(), fromStart: true, noLive: true)
+        onLive.start()
+        try await waitFor("the live recording to play", timeout: 12) { onLive.hasPlayed }
+        XCTAssertEqual(live.http.requests(path: "/api/recordings/4243/position").count, 0, "the live playlist")
+        await onLive.stop()
+        live.http.stop()
+
+        let finished = try FakePigTVServer(watch: { _ in .json(#"{"error":"Recording is finished: play it instead","finished":true}"#, status: 409) },
+                                           position: position)
+        let onFile = RecordingPlayerModel(recording: try inProgressRecording(), client: try finished.client(), fromStart: true, noLive: true)
+        onFile.start()
+        try await waitFor("the finished file to play", timeout: 12) { onFile.hasPlayed }
+        XCTAssertNil(onFile.resumePrompt)
+        XCTAssertEqual(finished.http.requests(path: "/api/recordings/4243/position").count, 0, "the finished-file fallback")
+        await onFile.stop()
+        finished.http.stop()
+    }
+
     /// The live playlist goes away (the recording finished and its segments
     /// were removed): the player asks again and carries on in the file.
     func testLivePlaylistEndingSwitchesToTheFinishedFile() async throws {

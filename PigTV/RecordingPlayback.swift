@@ -123,8 +123,10 @@ final class RecordingPlayerModel: ObservableObject {
         self.generation = generation
         resumePrompt = nil
         let client = client, id = recording.id
-        // #345 (Codex sign-off): from the beginning (a Sport card), the saved position is never asked for.
-        let positionTask = fromBeginning ? nil : Task { await client.recordingPosition(id: id) }
+        // #345 (Codex sign-off): only a start that can use the saved position asks for it (never from the start, the live
+        // edge, or the beginning: a Sport card's routes).
+        let positionTask = RecordingResume.asksPosition(fromStart: fromStart, fromLive: fromLive, fromBeginning: fromBeginning)
+            ? Task { await client.recordingPosition(id: id) } : nil
         let watchLive = fromStart || fromLive
         startupTask = Task { [self] in
             defer { preparing = false; startupTask = nil }
@@ -188,7 +190,7 @@ final class RecordingPlayerModel: ObservableObject {
                     await beginPlayback(resumeAt: at > 1 ? at : nil, generation: generation)
                     return
                 }
-                guard let positionTask else {
+                guard let positionTask else { // nothing to resume from (see `asksPosition`)
                     await beginPlayback(resumeAt: nil, generation: generation)
                     return
                 }

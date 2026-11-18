@@ -21,6 +21,13 @@ nonisolated enum RecordingResume {
 
     /// Seconds to offer "Resume from", or nil to just play from the start.
     /// Needs more than 10 s in and not watched.
+    /// Whether a start asks the server for the saved position (#345, Codex sign-off): only the ordinary Play can use it;
+    /// from the start or the live edge (C-L, #17, and their finished-file fallback, which carries on from 0 or where the
+    /// live playlist left off) and from the beginning (a Sport card) never do.
+    static func asksPosition(fromStart: Bool, fromLive: Bool, fromBeginning: Bool) -> Bool {
+        !fromStart && !fromLive && !fromBeginning
+    }
+
     /// `fromBeginning` (#345): opened from a finished game's Sport card: always from the start, never asked.
     static func prompt(position: Double, watched: Bool, fromBeginning: Bool = false) -> Double? {
         guard !fromBeginning, position.isFinite, position > 10, !watched else { return nil }

@@ -31,6 +31,11 @@ final class RecordingResumeTests: XCTestCase {
 
     func testPromptNeedsMoreThanTenSecondsAndNotWatched() {
         XCTAssertEqual(RecordingResume.prompt(position: 600, watched: false), 600)
+        // #345 (Codex sign-off): only the ordinary Play asks for the saved position.
+        XCTAssertTrue(RecordingResume.asksPosition(fromStart: false, fromLive: false, fromBeginning: false))
+        XCTAssertFalse(RecordingResume.asksPosition(fromStart: true, fromLive: false, fromBeginning: false), "a Sport card's in-progress route")
+        XCTAssertFalse(RecordingResume.asksPosition(fromStart: false, fromLive: true, fromBeginning: false))
+        XCTAssertFalse(RecordingResume.asksPosition(fromStart: false, fromLive: false, fromBeginning: true))
         // #345: a finished game's recording from its Sport card starts at the beginning, never asked.
         XCTAssertNil(RecordingResume.prompt(position: 600, watched: false, fromBeginning: true))
         XCTAssertNil(RecordingResume.prompt(position: 10, watched: false))
