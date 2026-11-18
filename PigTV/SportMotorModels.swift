@@ -8,9 +8,9 @@ import Foundation
 // last winner and the next race; no standings and no running order. Pure (tests `SportMotorTests`).
 
 nonisolated enum SportMotorText {
-    /// #345 review: an F1 session is over (the server says done, or its time has passed); its tile then plays only its
-    /// recording, never a channel still airing the coverage after it.
-    static func finished(_ session: F1Session, now: Date) -> Bool { session.status == .done || session.end <= now }
+    /// #345 review: an F1 session is over (`F1PageText.finished`: the server's live wins, its done is over, a scheduled
+    /// one past its end); its tile then plays only its recording, never a channel still airing the coverage after it.
+    static func finished(_ session: F1Session, now: Date) -> Bool { F1PageText.finished(session, now: now) }
 
     /// The session's C-R card id (the one a recording of it carries): the front's F1 card for the same session, by
     /// name and start (within an hour); nil when the front has none (practice sessions have no card).

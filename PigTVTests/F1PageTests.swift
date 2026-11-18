@@ -296,6 +296,23 @@ extension F1PageTextTests {
         running.status = .live
         running.endTime = now.timeIntervalSince1970 * 1000 + 3_600_000
         XCTAssertFalse(SportMotorText.finished(running, now: now))
+
+        // Codex sign-off: the server's live wins over the clock: an overrun past its estimated end keeps Watch, its
+        // label and its hold menu.
+        var overrun = race
+        overrun.status = .live // its end (2 h after the start) is an hour ago
+        XCTAssertFalse(SportMotorText.finished(overrun, now: now), "live past its estimated end is not finished")
+        XCTAssertEqual(SportMotorText.tiles(F1Weekend(round: 21, rounds: 25, name: "Mexico City Grand Prix", circuit: nil, city: nil,
+                                                      country: nil, phase: .during, info: nil, sessions: [overrun]),
+                                            now: now, spoilerFree: true).first?.state, .live, "the tile says so")
+        let overrunEvent = F1PageText.event(overrun, in: w)
+        XCTAssertEqual(SportCardRules.select(overrunEvent, finished: SportMotorText.finished(overrun, now: now), gameId: nil,
+                                             now: now, recordings: []), .watch, "its channel still airs it")
+        XCTAssertTrue(SportCardRules.hold(overrunEvent, finished: false, now: now).offersAnything)
+        // A scheduled session past its end is over by the clock; a done one is over whatever its channel shows.
+        var late = race
+        late.status = .scheduled
+        XCTAssertTrue(SportMotorText.finished(late, now: now))
     }
 
     /// #345 review: a session's C-R card (whose id its recording carries) is the front's F1 card for the same session.

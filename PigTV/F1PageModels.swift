@@ -297,6 +297,17 @@ nonisolated enum F1PageText {
     }
 
     /// Live: the feed says so, or the clock is inside its time (the feed lags a few minutes).
+    /// #345 (Codex sign-off): the one session-state rule for a tile's label, Select and hold: the server's `live` wins
+    /// (an overrun past its estimated end keeps Watch), its `done` is finished, and only a scheduled session falls back
+    /// to the clock (past its end).
+    static func finished(_ session: F1Session, now: Date) -> Bool {
+        switch session.status {
+        case .live: return false
+        case .done: return true
+        case .scheduled: return session.end <= now
+        }
+    }
+
     static func live(_ session: F1Session, now: Date) -> Bool {
         session.status == .live || (session.status != .done && session.start <= now && now < session.end)
     }
@@ -318,7 +329,7 @@ nonisolated enum F1PageText {
     static func pill(_ session: F1Session, in weekend: F1Weekend, now: Date, spoilerFree: Bool) -> Pill {
         if live(session, now: now) { return .live }
         if onAir(session, now: now) { return .onAir }
-        if session.status == .done || session.end <= now {
+        if finished(session, now: now) {
             guard !spoilerFree, let top = session.top else { return .done("Finished") }
             let word = ["pole": "Pole", "winner": "Winner", "fastest": "Fastest"][top.kind] ?? "Top"
             return .done("\(word) · \(surname(top.driver))")
