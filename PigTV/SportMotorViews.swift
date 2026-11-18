@@ -300,7 +300,7 @@ struct F1TileRow: View {
 
     private func sessionTile(_ tile: SportMotorText.Tile, fill: Bool) -> some View {
         let session = weekend.sessions.first { $0.id == tile.id }
-        let event = session.map { F1PageText.event($0, in: weekend) }
+        let event = session.map { F1PageText.event($0, in: weekend, now: Date()) }
         return Button {
             guard let session, let event else { return }
             // A finished session plays its recording even when no channel is listed; one to come needs a channel.

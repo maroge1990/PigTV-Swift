@@ -327,5 +327,29 @@ extension F1PageTextTests {
         XCTAssertNil(SportMotorText.gameId(practice, in: front), "a practice has no card")
         XCTAssertNil(SportMotorText.gameId(race, in: nil))
     }
+
+    /// #345 (Codex sign-off): a live overrun whose channel has no airing times of its own: pressing the tile watches it
+    /// (it fell back to the session's estimated window, which has ended); a channel's own ended window is kept.
+    func testALiveOverrunOnAChannelWithoutTimesStillPlays() throws {
+        let start = now.timeIntervalSince1970 * 1000 - 3 * 3_600_000
+        let untimed = SportEventChannel(sourceId: 1, rawID: "u", name: "Untimed")
+        let race = F1Session(id: "race", name: "Race", startTime: start, endTime: start + 2 * 3_600_000, status: .live,
+                             channels: [untimed])
+        let w = F1Weekend(round: 21, rounds: 25, name: "Mexico City Grand Prix", circuit: nil, city: nil, country: nil,
+                          phase: .during, info: nil, sessions: [race])
+        XCTAssertNil(SportCardRules.playable(F1PageText.event(race, in: w), now: now), "the estimated window alone has ended")
+        let event = F1PageText.event(race, in: w, now: now)
+        XCTAssertEqual(SportCardRules.select(event, finished: SportMotorText.finished(race, now: now), gameId: nil, now: now,
+                                             recordings: []), .watch, "the press watches")
+        XCTAssertEqual(SportCardRules.playable(event, now: now)?.channels.map(\.name), ["Untimed"])
+
+        let ended = SportEventChannel(sourceId: 1, rawID: "e", name: "Ended", startTime: start, endTime: start + 2 * 3_600_000)
+        var explicit = race
+        explicit.channels = [ended]
+        XCTAssertNil(SportCardRules.playable(F1PageText.event(explicit, in: w, now: now), now: now), "its own ended window is kept")
+        var done = race
+        done.status = .done
+        XCTAssertEqual(F1PageText.event(done, in: w, now: now).endTime, race.endTime, "only while the server says live")
+    }
 }
 

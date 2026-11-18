@@ -380,6 +380,17 @@ nonisolated enum F1PageText {
                    startTime: session.startTime, endTime: session.endTime, channels: session.channels)
     }
 
+    /// The session's event at `now` (its tile, #345 Codex sign-off): while the server says it is live past its estimated
+    /// end (an overrun), a channel with no airing times of its own still airs it (the event's window runs on, to 30 min
+    /// past now); a channel's own window (delayed, or ended) is kept.
+    static func event(_ session: F1Session, in weekend: F1Weekend, now: Date) -> SportEvent {
+        let event = event(session, in: weekend)
+        let open = now.timeIntervalSince1970 * 1000 + 30 * 60_000
+        guard session.status == .live, open > event.endTime else { return event }
+        return SportEvent(id: event.id, title: event.title, league: event.league, startTime: event.startTime,
+                          endTime: open, channels: event.channels, kind: event.kind)
+    }
+
     /// "Last race · United States GP · Mon 26 Oct"-style title stays the server's; the note under the standings.
     static func standingsNote(_ standings: F1Standings, weekend: F1Weekend?) -> String? {
         guard let after = standings.afterRound else { return nil }
