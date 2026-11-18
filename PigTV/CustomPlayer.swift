@@ -71,8 +71,10 @@ struct CustomPlayerView: View {
     private func playingGame(in games: [PlayerGame]) -> Int? {
         PlayerGames.playing(games, eventID: app.sportPlay?.eventID, channelID: playback.channel.id)
     }
+    /// #348: the game's own channels, the list's first rows in games mode.
+    private var gameChannels: [Channel] { gamesMode ? app.playerGameChannels : [] }
     /// How many rows the open list has.
-    private var listCount: Int { gamesMode ? games.count : channels.count }
+    private var listCount: Int { gamesMode ? gameChannels.count + games.count : channels.count }
     // Channels are reached with Up/Down (the side list), so the action row no
     // longer carries a Channels button. Go to live only appears when behind.
     private var actions: [PlayerAction] {
@@ -219,11 +221,20 @@ struct CustomPlayerView: View {
             run(actions[action])
         case .channels:
             if gamesMode {
+                let gameChannels = self.gameChannels
+                if gameChannels.indices.contains(cursor) {
+                    // #348: another channel of the game playing (Watch another channel, inside the player).
+                    let target = gameChannels[cursor]
+                    chrome = .hidden
+                    if target.id != playback.channel.id { app.switchPlayback(to: target) }
+                    return
+                }
                 let games = self.games
-                guard games.indices.contains(cursor) else { return }
+                let index = cursor - gameChannels.count
+                guard games.indices.contains(index) else { return }
                 chrome = .hidden
                 // #334: the game on its preferred channel, no picker; the list stays the live games.
-                if cursor != playingGame(in: games) { app.playSportGame(games[cursor]) }
+                if index != playingGame(in: games) { app.playSportGame(games[index]) }
                 return
             }
             guard channels.indices.contains(cursor) else { return }
@@ -251,11 +262,12 @@ struct CustomPlayerView: View {
         if gamesMode {
             let games = self.games
             let playing = playingGame(in: games)
-            guard PlayerGames.hasOthers(games, playing: playing) else {
+            let gameChannels = self.gameChannels
+            guard PlayerGames.hasOthers(games, playing: playing, gameChannels: gameChannels) else {
                 notice = PlayerGames.noOthers
                 return
             }
-            cursor = playing ?? 0
+            cursor = PlayerGames.openingRow(gameChannels: gameChannels, playingChannel: playback.channel.id, playingGame: playing)
         } else {
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
         }
@@ -525,12 +537,22 @@ struct CustomPlayerView: View {
                 ScrollView(.vertical) {
                     LazyVStack(spacing: PigSpacing.xs) {
                         if gamesMode, let browse {
+                            // #348: the game's own channels first (best first, the one playing marked).
+                            let gameChannels = self.gameChannels
+                            if !gameChannels.isEmpty {
+                                PlayerListSubheader(text: PlayerGames.gameChannelsHeader)
+                                ForEach(Array(gameChannels.enumerated()), id: \.element.id) { index, channel in
+                                    channelRow(channel, highlighted: index == cursor, now: now).id(index)
+                                }
+                                PlayerListSubheader(text: PlayerGames.header)
+                            }
                             // #334: the live games, on the channel rows' panels.
                             PlayerGamesReader(front: browse.sportFront, preferences: browse.f1Page) { games in
                                 let playing = playingGame(in: games)
+                                let first = gameChannels.count
                                 ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
-                                    PlayerGameRow(game: game, client: browse.client, highlighted: index == cursor,
-                                                  playing: index == playing).id(index)
+                                    PlayerGameRow(game: game, client: browse.client, highlighted: first + index == cursor,
+                                                  playing: index == playing).id(first + index)
                                 }
                             }
                         } else {

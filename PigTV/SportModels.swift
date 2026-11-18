@@ -94,6 +94,10 @@ nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
     let endTime: Double
     let channels: [SportEventChannel]
     var kind: SportEventKind = .event
+    /// #348 (Codex review of 320): the server's own C-I event id, when this event is one (decoded from C-I, or a front
+    /// card's airing); nil for an event a page built itself (an F1 session, a cricket match, a fixture, a card with no
+    /// airing). Only this is sent as the resolve's `eventId`: the server filters on it exactly.
+    var serverEventID: String? = nil
 
     var isReplay: Bool { kind == .replay }
     var start: Date { Date(timeIntervalSince1970: startTime / 1000) }
@@ -125,9 +129,10 @@ nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey { case id, title, league, start, end, channels, kind }
 
     init(id: String, title: String, league: String, startTime: Double, endTime: Double, channels: [SportEventChannel],
-         kind: SportEventKind = .event) {
+         kind: SportEventKind = .event, serverEventID: String? = nil) {
         self.id = id; self.title = title; self.league = league
         self.startTime = startTime; self.endTime = endTime; self.channels = channels; self.kind = kind
+        self.serverEventID = serverEventID
     }
 
     init(from decoder: Decoder) throws {
@@ -142,6 +147,7 @@ nonisolated struct SportEvent: Decodable, Identifiable, Equatable, Sendable {
         channels = ((try? c.decodeIfPresent(LossyList<SportEventChannel>.self, forKey: .channels)) ?? nil)?.items ?? []
         kind = ((try? c.decodeIfPresent(String.self, forKey: .kind)) ?? nil)
             .flatMap { SportEventKind(rawValue: $0.lowercased().trimmingCharacters(in: .whitespaces)) } ?? .event
+        serverEventID = id // a C-I event
     }
 }
 
@@ -286,7 +292,8 @@ nonisolated enum WatchOn {
     /// would tune whatever else it shows). What the list offers, what a choice is checked against, and the zap list.
     static func onAir(_ event: SportEvent, now: Date) -> SportEvent {
         SportEvent(id: event.id, title: event.title, league: event.league, startTime: event.startTime, endTime: event.endTime,
-                   channels: event.channels.filter { event.isLive(on: $0, at: now) }, kind: event.kind)
+                   channels: event.channels.filter { event.isLive(on: $0, at: now) }, kind: event.kind,
+                   serverEventID: event.serverEventID)
     }
 
     /// A chosen channel, checked again when it is pressed: the event to play (only its channels on air) or nil.

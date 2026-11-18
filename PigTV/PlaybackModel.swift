@@ -5,8 +5,17 @@ import Combine
 @MainActor
 final class PlaybackModel: ObservableObject, Identifiable {
     let id = UUID()
-    let channel: Channel
-    let programmes: [GuideProgramme]
+    /// The channel playing. #348: a resolve answer's `fallback` changes it to the channel the server played instead.
+    @Published private(set) var channel: Channel
+    private(set) var programmes: [GuideProgramme]
+    /// #348: the C-I event of the game this play came from (sent with the resolve as `eventId`); nil for any other play.
+    var eventID: String?
+    /// #348: the channel (and its guide) the server played instead (`fallback.to`); AppModel looks it up in the guide.
+    /// nil: one is built from the answer's own fields.
+    var fallbackChannel: ((ResolveFallback.Side) -> (Channel, [GuideProgramme])?)?
+    /// #348: the short notice for a fallback ("Sportsnet Event has nothing on · Playing Sportsnet One"), shown by the
+    /// player for a few seconds; the player clears it.
+    @Published var fallbackNotice: String?
     let player = AVPlayer()
     // Awaited before resolving: used when switching channels so the previous
     // provider stream is released first.
@@ -371,13 +380,14 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 let decision: PlaybackDecision = try await client.request("playback/resolve", method: "POST",
                     body: ResolveBody(sourceId: channel.sourceId, channelId: channel.rawID,
                         capabilities: PlaybackCapabilities.current(), force: force,
-                        audioEncode: audioEncode ? true : nil))
+                        audioEncode: audioEncode ? true : nil, eventId: eventID))
                 PigTVSignpost.event("LiveResolveResponse")
                 warmAdopted = decision.warm == true
                 if warmAdopted { PigTVSignpost.event("LiveWarmAdopted") }
                 sessionID = decision.sessionId
                 provider = decision.provider
                 guard !ended else { return }
+                if let fallback = decision.fallback { adopt(fallback) }
                 let url = try client.playbackURL(decision.url)
                 var context = PlaybackEvent(event: "play-start")
                 context.strategy = ["direct", "transcode"].contains(decision.strategy) ? decision.strategy : "unknown"
@@ -432,6 +442,18 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 if let retryAfter { scheduleRecovery(after: retryAfter, session: sessionID) }
             }
         }
+    }
+
+    /// #348: the server played `fallback.to` instead of the channel asked for (its placeholder): the player takes that
+    /// channel's identity (name, logo, guide, favourite, the next resolve) and says so.
+    func adopt(_ fallback: ResolveFallback) {
+        guard fallback.toChannelID != channel.id else { return }
+        let to = fallback.to
+        let found = fallbackChannel?(to)
+        channel = found?.0 ?? Channel(rawID: to.id ?? "", sourceId: to.sourceId ?? 0, name: to.name, logo: nil,
+                                      category: nil, now: nil, next: nil, stableId: to.stableId)
+        programmes = found?.1 ?? []
+        fallbackNotice = fallback.notice
     }
 
     /// #139: how long to wait before retrying a reconnect whose resolve failed with `error`, or nil when retrying
@@ -579,6 +601,10 @@ final class PlaybackModel: ObservableObject, Identifiable {
                 try? await Task.sleep(for: .seconds(3))
                 self?.ready = true
             }
+        } else if state == "player-played" {
+            // #348: the picture has shown (no media needed): the player's own controls and list.
+            ready = true
+            hasPlayed = true
         } else if state == "player-buffering" {
             ready = true
             hasPlayed = true

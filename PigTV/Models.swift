@@ -167,8 +167,11 @@ struct PlaybackDecision: Decodable {
     /// R11: this play adopted a stream the app warmed earlier. Absent (nil)
     /// on an older server or when nothing was warm.
     var warm: Bool? = nil
+    /// #348: the requested channel was the provider's placeholder and the server played `to` instead. Absent on an
+    /// older server or an ordinary play; decoded tolerantly (a malformed one is absent).
+    var fallback: ResolveFallback? = nil
 
-    enum CodingKeys: String, CodingKey { case strategy, url, container, sessionId, videoMode, info, provider, warm }
+    enum CodingKeys: String, CodingKey { case strategy, url, container, sessionId, videoMode, info, provider, warm, fallback }
 
     init(strategy: String, url: String, container: String? = nil, sessionId: String? = nil,
          videoMode: String? = nil, info: ResolveStreamInfo? = nil, provider: ResolveProvider? = nil,
@@ -193,6 +196,63 @@ struct PlaybackDecision: Decodable {
         info = (try? values.decodeIfPresent(ResolveStreamInfo.self, forKey: .info)) ?? nil
         provider = (try? values.decodeIfPresent(ResolveProvider.self, forKey: .provider)) ?? nil
         warm = (try? values.decodeIfPresent(Bool.self, forKey: .warm)) ?? nil
+        fallback = (try? values.decodeIfPresent(ResolveFallback.self, forKey: .fallback)) ?? nil
+    }
+}
+
+/// #348: the resolve answer's `fallback` (server CLIENT-CONTRACT, POST /api/playback/resolve): the channel asked for was
+/// the provider's placeholder on every copy and the server played the live game's next channel, `to`; the rest of the
+/// answer is that channel's. The client reads `reason`, `from.name`, and `to`'s `sourceId`, `id`, `stableId` and `name`.
+/// Only `to.sourceId`, `to.id` and both names are required; anything else odd is ignored.
+nonisolated struct ResolveFallback: Decodable, Equatable, Sendable {
+    nonisolated struct Side: Decodable, Equatable, Sendable {
+        var sourceId: Int?
+        var id: String?
+        var stableId: String?
+        var name: String
+
+        init(sourceId: Int?, id: String?, stableId: String? = nil, name: String) {
+            self.sourceId = sourceId; self.id = id; self.stableId = stableId; self.name = name
+        }
+
+        enum CodingKeys: String, CodingKey { case sourceId, id, stableId, name }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            let name = ((try? values.decodeIfPresent(String.self, forKey: .name)) ?? nil)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !name.isEmpty else { throw PigTVError.decoding }
+            self.name = String(name.prefix(80))
+            sourceId = (try? values.decodeIfPresent(Int.self, forKey: .sourceId)) ?? nil
+            id = (try? values.decodeIfPresent(String.self, forKey: .id)) ?? nil
+            stableId = (try? values.decodeIfPresent(String.self, forKey: .stableId)) ?? nil
+        }
+    }
+
+    /// "placeholder" today; another reason still names the channel played.
+    var reason: String?
+    var from: Side
+    var to: Side
+
+    init(reason: String?, from: Side, to: Side) { self.reason = reason; self.from = from; self.to = to }
+
+    enum CodingKeys: String, CodingKey { case reason, from, to }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        reason = (try? values.decodeIfPresent(String.self, forKey: .reason)) ?? nil
+        from = try values.decode(Side.self, forKey: .from)
+        to = try values.decode(Side.self, forKey: .to)
+        guard to.sourceId != nil, let id = to.id, !id.isEmpty else { throw PigTVError.decoding }
+    }
+
+    /// The channel played (`Channel.id`'s form, "sourceId:id").
+    var toChannelID: String { "\(to.sourceId ?? 0):\(to.id ?? "")" }
+
+    /// The player's short notice: "Sportsnet Event has nothing on · Playing Sportsnet One" (another reason: "Playing
+    /// Sportsnet One").
+    var notice: String {
+        reason == nil || reason == "placeholder" ? "\(from.name) has nothing on · Playing \(to.name)" : "Playing \(to.name)"
     }
 }
 
@@ -337,6 +397,9 @@ struct ResolveBody: Encodable {
     var force = false
     /// Build 27: re-encode only the audio (absent unless true).
     var audioEncode: Bool? = nil
+    /// #348: the C-I event id of the game the play came from (a Sport card, Watch another channel, the hero); absent
+    /// otherwise. The server uses it only when that event is live and lists the channel.
+    var eventId: String? = nil
 }
 
 /// R11: the 200 answer of `POST playback/warm` (a 204 means nothing was warmed).

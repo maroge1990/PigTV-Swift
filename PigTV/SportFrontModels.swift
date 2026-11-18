@@ -340,7 +340,7 @@ nonisolated enum SportFrontText {
         let start = best.startTime ?? airing?.start ?? game.start
         let end = best.endTime ?? airing?.end ?? game.end ?? (start + 3 * 3600 * 1000)
         return SportEvent(id: airing?.id ?? game.id, title: game.title, league: game.league, startTime: start,
-                          endTime: max(end, start + 60_000), channels: game.channels)
+                          endTime: max(end, start + 60_000), channels: game.channels, serverEventID: airing?.id)
     }
 
     /// #204: the channels Record offers for a game: every channel carrying it, best first (the server's order), each

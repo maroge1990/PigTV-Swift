@@ -37,9 +37,30 @@ struct PlayerChannelPanel: View {
     private func gamesList(_ browse: BrowseModel) -> some View {
         PlayerGamesReader(front: browse.sportFront, preferences: browse.f1Page) { games in
             let playing = PlayerGames.playing(games, eventID: app.sportPlay?.eventID, channelID: app.playback?.channel.id)
+            let gameChannels = app.playerGameChannels
+            let current = app.playback?.channel.id
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: PigSpacing.s) {
+                        // #348: the game's own channels first (best first, the one playing marked): Watch another
+                        // channel inside the player.
+                        if !gameChannels.isEmpty {
+                            PlayerListSubheader(text: PlayerGames.gameChannelsHeader)
+                            ForEach(gameChannels) { channel in
+                                let isPlaying = channel.id == current
+                                Button {
+                                    if !isPlaying { app.switchPlayback(to: channel) }
+                                    close()
+                                } label: {
+                                    PlayerChannelRow(channel: channel, browse: browse, highlighted: isPlaying,
+                                                     playing: isPlaying, now: Date())
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlayerRowPressStyle())
+                                .id(channel.id)
+                            }
+                            PlayerListSubheader(text: PlayerGames.header)
+                        }
                         ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
                             let isPlaying = index == playing
                             Button {
@@ -57,7 +78,11 @@ struct PlayerChannelPanel: View {
                 }
                 .scrollIndicators(.hidden)
                 .onAppear {
-                    if let playing, games.indices.contains(playing) { proxy.scrollTo(games[playing].id, anchor: .center) }
+                    if let current, gameChannels.contains(where: { $0.id == current }) {
+                        proxy.scrollTo(current, anchor: .center)
+                    } else if let playing, games.indices.contains(playing) {
+                        proxy.scrollTo(games[playing].id, anchor: .center)
+                    }
                 }
             }
         }
@@ -270,7 +295,7 @@ struct TouchPlayerChrome: View {
                 PlayerPillButton(title: app.playerShowsGames ? PlayerGames.header : PlayerGames.channelsHeader,
                                  icon: "list.bullet.rectangle", prominent: true) {
                     touch()
-                    if app.playerShowsGames, !PlayerGames.hasOthers(liveGames, playing: playingGame(liveGames)) {
+                    if app.playerShowsGames, !PlayerGames.hasOthers(liveGames, playing: playingGame(liveGames), gameChannels: app.playerGameChannels) {
                         notice = PlayerGames.noOthers
                     } else {
                         openChannels()

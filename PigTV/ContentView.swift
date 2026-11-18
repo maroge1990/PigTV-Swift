@@ -525,6 +525,8 @@ struct PlayerScreen: View {
         } message: { prompt in
             Text("\(prompt.title) on \(prompt.channelName) is due to record. Stop playback to allow it? If you keep watching, the recording will wait for the stream.")
         }
+        // #348: the server played another channel of the game (the one asked for was its placeholder).
+        .overlay(alignment: .top) { FallbackNotice(playback: playback) }
         .overlay(alignment: .top) {
             if let warning = playback.coordinationWarning {
                 Text(warning).font(.caption).padding()

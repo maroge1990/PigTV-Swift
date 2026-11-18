@@ -107,6 +107,47 @@ struct BufferingPill: View {
     }
 }
 
+/// #348: "Sportsnet Event has nothing on · Playing Sportsnet One": a short, non-blocking pill at the top of the player
+/// (BufferingPill's look) for `seconds`, read by VoiceOver once; it takes no touch, press or focus and has no button.
+struct FallbackNotice: View {
+    @ObservedObject var playback: PlaybackModel
+    static let seconds: Double = 4
+    @State private var shown: String?
+
+    var body: some View {
+        Group {
+            if let shown {
+                HStack(spacing: PigSpacing.s) {
+                    Image(systemName: "arrow.triangle.swap").accessibilityHidden(true)
+                    Text(shown).font(.headline).lineLimit(2).multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
+                .background(Color.pigMediaPanel, in: Capsule())
+                .foregroundStyle(.white)
+                .padding(.top, PigSpacing.section).padding(.horizontal, PigSpacing.l)
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("player.fallbackNotice")
+                #if os(tvOS)
+                .focusable(false)
+                #endif
+                .pigSlide(from: .top)
+            }
+        }
+        .onChange(of: playback.fallbackNotice, initial: true) { _, text in
+            guard let text else { return }
+            playback.fallbackNotice = nil
+            shown = text
+            AccessibilityNotification.Announcement(text).post()
+        }
+        .task(id: shown) {
+            guard shown != nil else { return }
+            try? await Task.sleep(for: .seconds(Self.seconds))
+            if !Task.isCancelled { shown = nil }
+        }
+    }
+}
+
 struct TuningCard: View {
     @ObservedObject var playback: PlaybackModel
     let browse: BrowseModel?
@@ -376,9 +417,46 @@ nonisolated enum PlayerGames {
     }
 
     /// Whether there is another game to go to: with only the one playing (or none), the list does not open and the player
-    /// says `noOthers`.
-    static func hasOthers(_ games: [PlayerGame], playing: Int?) -> Bool {
-        games.indices.contains { $0 != playing }
+    /// says `noOthers`. #348: or another channel of the game playing (`gameChannels`).
+    @MainActor
+    static func hasOthers(_ games: [PlayerGame], playing: Int?, gameChannels: [Channel] = []) -> Bool {
+        gameChannels.count > 1 || games.indices.contains { $0 != playing }
+    }
+
+    /// #348: the list's sub-header over the game's own channels ("Watch another channel" inside the player).
+    static let gameChannelsHeader = "This game’s channels"
+
+    /// #348: the channels of the game playing, as its C-I event lists them (best first), when it has more than one: the
+    /// list's first rows, above the live games. A play not from Sport, or a game on one channel, has none.
+    @MainActor
+    static func gameChannels(sportPlay: SportPlay?, zapList: [Channel]) -> [Channel] {
+        guard sportPlay != nil, zapList.count > 1 else { return [] }
+        return zapList
+    }
+
+    /// #348: the row the list opens on: the playing channel among the game's channels, else the game playing (after the
+    /// channel rows), else the first.
+    @MainActor
+    static func openingRow(gameChannels: [Channel], playingChannel: String, playingGame: Int?) -> Int {
+        if let index = gameChannels.firstIndex(where: { $0.id == playingChannel }) { return index }
+        return gameChannels.count + (playingGame ?? 0)
+    }
+}
+
+/// #348: a sub-header in the player's list (the game's channels, then the live games): not a row, never selected.
+struct PlayerListSubheader: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            #if os(tvOS)
+            .font(.system(size: PigType.caption, weight: .semibold))
+            #else
+            .font(.footnote.weight(.semibold))
+            #endif
+            .foregroundStyle(.white.opacity(0.7))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, PigSpacing.s)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -484,6 +562,9 @@ enum PlayerCommands {
 }
 
 extension AppModel {
+    /// #348: the channels of the game playing, above the live games in the player's list (`PlayerGames.gameChannels`).
+    var playerGameChannels: [Channel] { PlayerGames.gameChannels(sportPlay: sportPlay, zapList: zapList) }
+
     /// The player's channel list: the guide's row order when playback began
     /// (the zap list), else the whole guide.
     var playerChannels: [Channel] {

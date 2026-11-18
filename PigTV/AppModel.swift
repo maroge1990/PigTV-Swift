@@ -500,6 +500,7 @@ final class AppModel: ObservableObject {
         guard !playbackBusy, currentPlayback == nil, let client else { return }
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         model.origin = origin ?? scopedPlayOrigin
+        prepareFallback(model)
         currentPlayback = model
         playback = model
         playbackBusy = true
@@ -535,11 +536,54 @@ final class AppModel: ObservableObject {
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         // D-39: a zap inside the player keeps the play's origin; a new choice from a page names its own.
         model.origin = origin ?? scopedPlayOrigin ?? old.origin
+        prepareFallback(model)
         model.prerequisite = Task { _ = await old.stop() }
         currentPlayback = model
         playback = model
         updateWarming(for: model, justSwitched: true)
         if !playerShown { armPlayerWatchdog(model) } // #179: still no player: the replacement is watched too
+    }
+
+    /// #348: a play of one of the current Sport game's channels names the game (`eventId`), and a `fallback` in its
+    /// resolve answer takes the channel the server played from the game's list or the guide.
+    private func prepareFallback(_ model: PlaybackModel) {
+        model.eventID = Self.fallbackEventID(sportPlay: sportPlay, zapList: zapList, channel: model.channel)
+        model.fallbackChannel = { [weak self] side in self?.fallbackChannel(side) }
+    }
+
+    /// #348: the game's C-I event id for a play from Sport on one of that game's channels; nil for any other play (a
+    /// channel typed in or zapped to from the guide is not the game's), and for a game known only by an event a page
+    /// built (Codex review of 320: the server filters on `eventId` exactly, so a made-up one would lose its own
+    /// inference).
+    static func fallbackEventID(sportPlay: SportPlay?, zapList: [Channel], channel: Channel) -> String? {
+        guard let sportPlay, zapList.contains(where: { $0.id == channel.id || $0.identityKey == channel.identityKey })
+        else { return nil }
+        return sportPlay.serverEventID
+    }
+
+    /// #348: the channel `fallback.to` names, with its guide. The server's identity (source, id, stable id, name) is
+    /// kept: it is what the next resolve, the favourite and a recording use. The game's list or the guide only add their
+    /// logo, number, category and quality, and only from an entry that is the same channel: when `to` has a stable id,
+    /// an entry with that stable id (Codex review of 320: a position id such as pos_11 can be reused by another channel
+    /// after a reorder); without one, the same id and the same name. `to`'s stable id is kept exactly (nil stays nil:
+    /// favourites and audio preferences key on it). Nil when neither has it.
+    func fallbackChannel(_ side: ResolveFallback.Side) -> (Channel, [GuideProgramme])? {
+        guard let sourceId = side.sourceId, let id = side.id else { return nil }
+        let key = "\(sourceId):\(id)"
+        func same(_ entrySource: Int, _ entryID: String, _ entryStable: String?, _ entryName: String) -> Bool {
+            guard entrySource == sourceId else { return false }
+            if let stable = side.stableId { return entryStable == stable }
+            return entryID == id && entryName.caseInsensitiveCompare(side.name) == .orderedSame
+        }
+        let listed = zapList.first { same($0.sourceId, $0.rawID, $0.stableId, $0.name) }
+        let row = side.stableId != nil ? browse?.guide.first { same($0.sourceId, $0.rawID, $0.stableId, $0.name) }
+            : browse?.guideChannel(id: key).flatMap { same($0.sourceId, $0.rawID, $0.stableId, $0.name) ? $0 : nil }
+        let base = listed ?? row.flatMap { browse?.asChannel($0) }
+        guard let base else { return nil }
+        let channel = Channel(rawID: id, sourceId: sourceId, name: side.name, logo: base.logo, category: base.category,
+                              now: nil, next: nil, stableId: side.stableId, number: base.number,
+                              measured: base.measured)
+        return (channel, row?.programmes ?? [])
     }
 
     /// R11: tells the warmer which channel the viewer is likely to go to from
@@ -558,9 +602,12 @@ final class AppModel: ObservableObject {
         guard let client else { return false }
         // The same body resolve would send for this channel (the server matches
         // the later resolve on channel and capabilities).
+        // #348: with the game's `eventId` when the channel is one of the Sport game's, as its resolve names it.
+        let listed = zapList.first { $0.sourceId == target.sourceId && $0.rawID == target.channelId }
         let body = ResolveBody(sourceId: target.sourceId, channelId: target.channelId,
                                capabilities: PlaybackCapabilities.current(),
-                               audioEncode: AudioEncodeMemory.contains(target.identityKey) ? true : nil)
+                               audioEncode: AudioEncodeMemory.contains(target.identityKey) ? true : nil,
+                               eventId: listed.flatMap { Self.fallbackEventID(sportPlay: sportPlay, zapList: zapList, channel: $0) })
         return (try? await client.warm(body))?.warm == true
     }
 
@@ -612,7 +659,7 @@ final class AppModel: ObservableObject {
         guard let chosen = channel.map(browse.playable) ?? channels.first else { return }
         if pendingWatch?.eventID == event.id { cancelPendingWatch() }
         zapList = channels
-        sportPlay = fromSport ? SportPlay(eventID: event.id) : nil
+        sportPlay = fromSport ? SportPlay(eventID: event.id, serverEventID: event.serverEventID) : nil
         if let currentPlayback {
             if currentPlayback.channel.id != chosen.id { switchPlayback(to: chosen, origin: origin) }
         } else {
@@ -814,6 +861,7 @@ final class AppModel: ObservableObject {
         let channel = fixture(2)
         previousChannel = browse.asChannel(browse.guide[0])
         let model = PlaybackModel(channel: channel, client: client, programmes: browse.guide[2].programmes)
+        model.fallbackChannel = { [weak self] side in self?.fallbackChannel(side) } // #348 (PIGTV_UI_TEST_FALLBACK)
         if let media { model.playFixtureMedia(media) }
         currentPlayback = model
         playback = model
@@ -869,6 +917,8 @@ final class AppModel: ObservableObject {
 /// #334: a live play started from Sport: the event played (its id marks the playing game in the player's list).
 nonisolated struct SportPlay: Equatable, Sendable {
     let eventID: String
+    /// #348: the server's C-I event id of the game (the resolve's `eventId`), nil for a page-built event.
+    var serverEventID: String? = nil
 }
 
 /// An upcoming event the user asked to watch when it starts.

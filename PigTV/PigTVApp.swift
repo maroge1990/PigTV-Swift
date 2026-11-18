@@ -320,9 +320,26 @@ private struct PlayerTestScreen: View {
             model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media, sportFront: screen == "player-games",
                                       measured: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEASURED"] == "1")
             if screen == "player-games" {
+                // #348: PIGTV_UI_TEST_GAME_CHANNELS=1: the game playing is on three channels (the list's first rows).
+                if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_GAME_CHANNELS"] == "1", let playing = model.playback,
+                   let browse = model.browse, browse.guide.count > 6 {
+                    model.zapList = [playing.channel, browse.asChannel(browse.guide[5]), browse.asChannel(browse.guide[6])]
+                }
                 model.injectPlayerGamesFixture(PlayerGamesFixture.front(), playing: PlayerGamesFixture.playing)
             }
+            // #348: PIGTV_UI_TEST_FALLBACK=1: the resolve answered with a `fallback` (the channel was the placeholder).
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FALLBACK"] == "1", let playback = model.playback,
+               let browse = model.browse, browse.guide.count > 5 {
+                let to = browse.guide[5]
+                try? await Task.sleep(for: .seconds(1))
+                playback.adopt(ResolveFallback(reason: "placeholder",
+                                               from: .init(sourceId: playback.channel.sourceId, id: playback.channel.rawID,
+                                                           name: playback.channel.name),
+                                               to: .init(sourceId: to.sourceId, id: to.rawID, stableId: to.stableId, name: to.name)))
+            }
             model.playback?.applyReviewState(screen ?? "")
+            // #348: PIGTV_UI_TEST_PLAYED=1: the picture has shown (the list opens on the TV only then).
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_PLAYED"] == "1" { model.playback?.applyReviewState("player-played") }
         }
     }
 }
