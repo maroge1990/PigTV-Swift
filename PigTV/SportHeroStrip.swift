@@ -29,6 +29,14 @@ struct SportHeroStripView: View {
     var onTap: (() -> Void)? = nil
 
     var body: some View {
+        // #346: whatever it draws is laid out on whole pixels, and a width offered between two pixels (370.5 pt on a 3x
+        // iPhone) was rounded up, so the strip took 370.67: it now takes the whole pixels that fit in the offer.
+        StripWidth(scale: displayScale) { button }
+    }
+
+    @Environment(\.displayScale) private var displayScale
+
+    @ViewBuilder private var button: some View {
         #if os(tvOS)
         content
         #else
@@ -66,6 +74,28 @@ struct SportHeroStripView: View {
         .accessibilityLabel([strip.live ? (strip.liveWord == "ON AIR" ? "On air" : "Live") : nil, strip.title, strip.line, strip.others].compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(onTap == nil ? "" : "Back to the top")
         .accessibilityIdentifier("sport.front.strip")
+    }
+}
+
+/// #346: lays its one child out at the offered width rounded down to whole pixels (pure: `width(offered:scale:)`), so
+/// the strip never claims more width than it is given.
+struct StripWidth: Layout {
+    let scale: CGFloat
+
+    nonisolated static func width(offered: CGFloat, scale: CGFloat) -> CGFloat {
+        guard scale > 0, offered.isFinite else { return offered }
+        return (offered * scale + 1e-6).rounded(.down) / scale
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let width = proposal.width.map { Self.width(offered: $0, scale: scale) }
+        let size = child.sizeThatFits(ProposedViewSize(width: width, height: proposal.height))
+        return CGSize(width: width ?? size.width, height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 

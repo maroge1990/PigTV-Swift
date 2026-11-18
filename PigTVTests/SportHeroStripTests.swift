@@ -59,6 +59,14 @@ final class SportHeroStripTests: XCTestCase {
         }
     }
 
+    // #346: the width offered is rounded down to whole pixels (on the iPhone the strip took 370.67 pt of 370.5).
+    func testTheStripsWidthIsTheWholePixelsThatFitTheOffer() {
+        XCTAssertEqual(StripWidth.width(offered: 370.5, scale: 3), 370 + 1.0 / 3, accuracy: 1e-9)
+        XCTAssertEqual(StripWidth.width(offered: 370.5, scale: 2), 370.5, accuracy: 1e-9)
+        XCTAssertEqual(StripWidth.width(offered: 390, scale: 3), 390, accuracy: 1e-9, "a whole-pixel offer is kept")
+        XCTAssertEqual(StripWidth.width(offered: 120, scale: 1), 120)
+    }
+
     // #278 ("seen on the way"): on the iPhone the strip's LIVE pill was a red bar with no word in it, because a long title
     // and line took the room and left the pill's text none. The pill must keep its word at a narrow width.
     @MainActor
