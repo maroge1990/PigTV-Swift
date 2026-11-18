@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // D-44 (R5-Front-iPhone, Apple 139): the iPhone Sport front page. The header (the pig, "Sport", and whether scores
 // show); a carousel (each card at least 212 pt, as tall as its content) of the follows, one card each in the order sent, swiped sideways with its dots and "1 of 10
@@ -31,14 +32,10 @@ struct SportFrontPhonePage: View {
     @ObservedObject private var f1: F1PageModel
     @StateObject private var flow = SportRecordFlow()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// #264: how far the page has scrolled, and the carousel's height: past it, the hero shows as the strip.
-    @State private var pastBanner = false
+    /// #264: whether the page has scrolled past the carousel (its height below): past it, the hero shows as the strip.
+    /// #352: held by reference and observed only by the strip and the page's mask, so the hand-over never re-draws the page.
+    @State private var past = SportPhoneStripPast()
     @State private var carouselHeight: CGFloat = 0
-
-    private var stripShows: Bool {
-        guard let front = model.front, !front.isEmpty else { return false }
-        return pastBanner
-    }
 
     init(app: AppModel, browse: BrowseModel, open: @escaping (String) -> Void) {
         self.app = app
@@ -65,19 +62,21 @@ struct SportFrontPhonePage: View {
         // #263: the header stays put above the page, as the TV Guide's does; before, it scrolled away with the cards.
         VStack(alignment: .leading, spacing: PigSpacing.m) {
             header
-            // #264: the strip takes its own room above the page (see SportFrontTVPage.scroll).
+            // #264: once the hero has scrolled under, it shows as the strip, pinned over the page's top (#352: see
+            // SportPhoneStripLayer; while it shows nothing of the page is drawn in its room, as on the Apple TV and iPad).
             ScrollViewReader { reader in
-                VStack(alignment: .leading, spacing: SportHeroStripMetrics.gap) {
-                    if stripShows, let front = model.front {
-                        SportHeroStripView(strip: strip(front, now: now)) {
-                            pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { reader.scrollTo(Self.carouselID, anchor: .top) }
-                        }
-                        .padding(.horizontal, SportPhoneMetrics.edge)
-                        .pigSlide(from: .top)
-                    }
+                // The strip's words are worked out here, with the page, never at the hand-over.
+                let words = model.front.flatMap { $0.isEmpty ? nil : strip($0, now: now) }
+                ZStack(alignment: .top) {
                     page(now: now)
+                        .mask(alignment: .top) { SportPhoneStripMask(past: past, hasStrip: words != nil) }
+                    SportPhoneStripLayer(past: past, words: words) { words, shows in
+                        SportHeroStripView(strip: words, onTap: {
+                            pigWithAnimation(moves: true, momentum: true, reduceMotion: reduceMotion) { reader.scrollTo(Self.carouselID, anchor: .top) }
+                        }, hidden: !shows)
+                        .padding(.horizontal, SportPhoneMetrics.edge)
+                    }
                 }
-                .pigAnimation(value: stripShows, moves: true)
             }
         }
     }
@@ -144,7 +143,7 @@ struct SportFrontPhonePage: View {
         }
         .onScrollPast({ [carouselHeight] in
             SportHeroStrip.shows(scrolled: $0, bannerHeight: carouselHeight, stripHeight: SportHeroStripMetrics.height)
-        }, action: { pastBanner = $0 })
+        }, action: { [past] in past.value = $0 })
     }
 
     /// #226: the one page header every tab draws (PigPageHeader), the scores chip trailing.
@@ -229,6 +228,53 @@ struct SportFrontPhonePage: View {
             }
             .padding(.horizontal, SportPhoneMetrics.edge)
         }
+    }
+}
+
+/// #352: whether the iPhone page has scrolled past its carousel. A reference the page holds without observing it: only
+/// the strip and the mask below observe it, so the hand-over re-draws those two, never the page under the finger.
+@MainActor final class SportPhoneStripPast: ObservableObject {
+    var value = false {
+        willSet { if newValue != value { objectWillChange.send() } }
+    }
+}
+
+/// #264: the strip, over the page's top, while the page is past the carousel and there is a hero to show.
+/// #352 (Mark, 18 Nov 2026, the page jolted on the iPhone as the hero became the strip): two causes, both at the hand-over.
+/// The strip took its own room above the ScrollView, which moved down by that room the moment it showed (52 pt against
+/// the finger); it is now drawn over the page, whose frame never changes. And the hand-over stalled the main thread (the
+/// page's whole body re-drawn, the strip's words worked out and the strip built from nothing: 0.05–0.4 s on the
+/// simulator): a stall in the middle of a drag swallows its last moves, the scroll view reads the catch-up as a flick
+/// and carries the page on (~135 pt, about a third of the runs). Now the page is not re-drawn (`SportPhoneStripPast`),
+/// the words come with the page, and the strip is built with the page and only slides and fades in.
+private struct SportPhoneStripLayer<Strip: View>: View {
+    @ObservedObject var past: SportPhoneStripPast
+    /// The hero's words (none without a hero).
+    let words: SportHeroStrip?
+    /// The strip for the words, and whether it shows.
+    @ViewBuilder let strip: (SportHeroStrip, Bool) -> Strip
+
+    var body: some View {
+        if let words {
+            let shows = past.value
+            strip(words, shows)
+                .offset(y: shows ? 0 : -SportHeroStripMetrics.room)
+                .opacity(shows ? 1 : 0)
+                .allowsHitTesting(shows)
+                .accessibilityHidden(!shows)
+                .pigAnimation(value: shows, moves: true)
+        }
+    }
+}
+
+/// #352: while the strip shows nothing of the page is drawn in its room (the rows scroll beneath it, as on the Apple TV
+/// and iPad, #312); the mask is the only part of the page that changes at the hand-over, and it changes no layout.
+private struct SportPhoneStripMask: View {
+    @ObservedObject var past: SportPhoneStripPast
+    let hasStrip: Bool
+
+    var body: some View {
+        SportPageTopMask(top: past.value && hasStrip ? SportHeroStripMetrics.room : 0, fade: false)
     }
 }
 

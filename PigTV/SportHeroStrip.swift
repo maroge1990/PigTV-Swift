@@ -3,7 +3,7 @@ import SwiftUI
 // #264 (Mark, 9 Nov 2026, option B of three side-by-side mock-ups: A the hero scrolls away, B it shrinks to a pinned
 // strip, C the full hero stays pinned; C left the rails a third of a television screen): the strip the Sport front page's
 // hero becomes once the page scrolls past it. It is drawn over the page's top (#312: on the Apple TV and the iPad the
-// page keeps its room as a content margin; the iPhone gives it its own room above the page), and the rails scroll
+// page keeps its room as a content margin; #352: the iPhone too, without the room), and the rails scroll
 // beneath it as they do under the TV Guide's header. Apple TV: it is not focusable; up from the
 // first rail scrolls back to the full hero, as before. iPad and iPhone: a tap scrolls back to the hero.
 
@@ -27,6 +27,9 @@ struct SportHeroStripView: View {
     let strip: SportHeroStrip
     /// iPad and iPhone: back to the full hero.
     var onTap: (() -> Void)? = nil
+    /// #352: the iPhone keeps the strip built while the hero shows; then it is out of VoiceOver's reach, and its
+    /// identifier says so (UI tests see hidden elements: `sport.front.strip` is the strip on screen).
+    var hidden = false
 
     var body: some View {
         // #346: whatever it draws is laid out on whole pixels, and a width offered between two pixels (370.5 pt on a 3x
@@ -73,7 +76,8 @@ struct SportHeroStripView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel([strip.live ? (strip.liveWord == "ON AIR" ? "On air" : "Live") : nil, strip.title, strip.line, strip.others].compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(onTap == nil ? "" : "Back to the top")
-        .accessibilityIdentifier("sport.front.strip")
+        .accessibilityIdentifier(hidden ? "sport.front.strip.hidden" : "sport.front.strip")
+        .accessibilityHidden(hidden)
     }
 }
 
@@ -105,6 +109,8 @@ struct SportPageTopMask: View {
     var overdraw: CGFloat = 0
     /// #312: how far down the page's top edge starts (the strip's room while it shows).
     var top: CGFloat = 0
+    /// #352: false: no fade at the top (the iPhone page has none: it only hides the strip's room while the strip shows).
+    var fade = true
     /// The fade over the page's first points.
     static let fade: CGFloat = PigSpacing.s
     /// #339: the room the content keeps below the fade, so the first row rests fully clear of it and a focused card
@@ -113,7 +119,9 @@ struct SportPageTopMask: View {
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: top)
-            LinearGradient(colors: [.clear, Color.pigAccent], startPoint: .top, endPoint: .bottom).frame(height: Self.fade)
+            if fade {
+                LinearGradient(colors: [.clear, Color.pigAccent], startPoint: .top, endPoint: .bottom).frame(height: Self.fade)
+            }
             Rectangle().fill(Color.pigAccent) // a mask reads only alpha: any opaque role
         }
         .padding(.horizontal, -overdraw).padding(.bottom, -overdraw)
