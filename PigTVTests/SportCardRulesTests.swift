@@ -327,5 +327,29 @@ final class SportCardRulesTests: XCTestCase {
         let at = try XCTUnwrap(browse.recordingsPublishedAt)
         XCTAssertLessThan(at.timeIntervalSince(began), 0.8, "timed before the slow scheduled answer (1 s)")
     }
+
+    /// Codex sign-off: a Sport card's list arrives with the `/recordings` answer, never waiting for the scheduled list
+    /// (here still pending past the 5 s limit).
+    func testTheFreshListDoesNotWaitForTheScheduledList() async throws {
+        let http = try LocalHTTPServer { request in
+            switch request.path {
+            case "/api/recordings": return .json(#"[{"id":7,"title":"Packers v Bears","status":"completed","gameId":"espn:football/nfl:405"}]"#)
+            case "/api/recordings/scheduled": var r = LocalHTTPServer.Response.json("[]"); r.delay = 6; return r
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        let began = Date()
+        let fresh = await browse.freshRecordings(maxAge: SportGamePress.recordingsMaxAge)
+        XCTAssertEqual(fresh?.map(\.id), [7])
+        XCTAssertLessThan(Date().timeIntervalSince(began), 3, "it waited for the scheduled list")
+        // A second press joins the load still in flight and is answered at once too.
+        let joinedAt = Date()
+        let joined = await browse.freshRecordings(maxAge: SportGamePress.recordingsMaxAge)
+        XCTAssertEqual(joined?.map(\.id), [7])
+        XCTAssertLessThan(Date().timeIntervalSince(joinedAt), 1)
+    }
 }
 

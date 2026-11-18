@@ -407,7 +407,14 @@ final class BrowseModel: ObservableObject {
     private var recordingsLoading = false
     /// #345 (Codex review): the recordings load in flight, which a second caller joins instead of returning before it
     /// has an answer; and when a load last published its answer (freshness for a choice made from the list).
-    private var recordingsInFlight: (id: UUID, task: Task<Void, Never>)?
+    private var recordingsInFlight: RecordingsLoad?
+    /// A recordings load: `files`, the `/recordings` answer (nil when it arrived and was published, else its error);
+    /// `task`, the whole load (with `/recordings/scheduled`).
+    private struct RecordingsLoad {
+        let id: UUID
+        let files: Task<Error?, Never>
+        let task: Task<Void, Never>
+    }
     private(set) var recordingsPublishedAt: Date?
 
     private func isFresh(_ key: String, maxAge: TimeInterval, now: Date = Date()) -> Bool {
@@ -428,9 +435,10 @@ final class BrowseModel: ObservableObject {
     /// caller then chooses nothing rather than from a stale list.
     func freshRecordings(maxAge: TimeInterval, now: () -> Date = { Date() }) async -> [Recording]? {
         guard !isFixture else { return recordings }
-        if let inFlight = recordingsInFlight { await inFlight.task.value }
+        // Codex sign-off: only the `/recordings` answer is waited for, never the scheduled list after it.
+        if let inFlight = recordingsInFlight { _ = await inFlight.files.value }
         if let at = recordingsPublishedAt, now().timeIntervalSince(at) < maxAge { return recordings }
-        await loadRecordings(quietly: true)
+        _ = await beginRecordingsLoad(quietly: true).files.value
         if let at = recordingsPublishedAt, now().timeIntervalSince(at) < maxAge { return recordings }
         return nil
     }
@@ -451,32 +459,50 @@ final class BrowseModel: ObservableObject {
     /// A call while one is in flight waits for that one's answer (#345, Codex review: it returned at once, before
     /// anything was published).
     func loadRecordings(quietly: Bool = false) async {
-        if let inFlight = recordingsInFlight { await inFlight.task.value; return }
-        let id = UUID()
-        let task = Task { await self.fetchRecordings(quietly: quietly) }
-        recordingsInFlight = (id, task)
-        await task.value
-        if recordingsInFlight?.id == id { recordingsInFlight = nil }
+        await beginRecordingsLoad(quietly: quietly).task.value
     }
 
-    private func fetchRecordings(quietly: Bool) async {
-        let sp = PigTVSignpost.begin("RecordingsLoad"); defer { PigTVSignpost.end("RecordingsLoad", sp) }
-        guard !recordingsLoading else { return }
-        lastLoads["recordings"] = Date()
+    /// The load in flight, else a new one: its `/recordings` answer is published as soon as it arrives (#345), then the
+    /// scheduled list is asked for.
+    private func beginRecordingsLoad(quietly: Bool) -> RecordingsLoad {
+        if let inFlight = recordingsInFlight { return inFlight }
+        let id = UUID()
+        let began = Date()
+        lastLoads["recordings"] = began
         recordingsLoading = true
         if !quietly { recordingsBusy = true }
-        // #280 (review of 205, H2): the last failure stays until a request succeeds, so a poll or "Try again" never swaps
-        // the error for the loading placeholders, or makes the stale notice blink, while it waits for its answer.
-        defer { recordingsLoading = false; if !quietly { recordingsBusy = false } }
-        let began = Date()
+        let files = Task { await self.fetchRecordingFiles() }
+        let task = Task {
+            await self.fetchRecordings(quietly: quietly, began: began, files: files)
+            if self.recordingsInFlight?.id == id { self.recordingsInFlight = nil }
+        }
+        let load = RecordingsLoad(id: id, files: files, task: task)
+        recordingsInFlight = load
+        return load
+    }
+
+    /// `/recordings`: published, and timed, when its own answer arrives (#345, Codex sign-off), not after the scheduled
+    /// list's. Its error when it failed (the whole load's), else nil.
+    private func fetchRecordingFiles() async -> Error? {
         do {
             let loaded: [Recording] = try await client.decodedOffMain("recordings")
             // Apple 125: nothing the server confirmed removed comes back from a list fetched before (or around) it.
-            // #345 (Codex sign-off): the recordings are published, and timed, when their own answer arrives, not after
-            // the scheduled list's.
             let files = loaded.filter { recordingStore.tombstones[RecordingsHome.key($0)] == nil }
             if files != recordings { recordings = files }
             recordingsPublishedAt = Date()
+            return nil
+        } catch {
+            return error
+        }
+    }
+
+    private func fetchRecordings(quietly: Bool, began: Date, files: Task<Error?, Never>) async {
+        let sp = PigTVSignpost.begin("RecordingsLoad"); defer { PigTVSignpost.end("RecordingsLoad", sp) }
+        // #280 (review of 205, H2): the last failure stays until a request succeeds, so a poll or "Try again" never swaps
+        // the error for the loading placeholders, or makes the stale notice blink, while it waits for its answer.
+        defer { recordingsLoading = false; if !quietly { recordingsBusy = false } }
+        do {
+            if let failure = await files.value { throw failure }
             let fetched: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled",
                                                                                 query: [URLQueryItem(name: "include", value: "recent")])
             let stones = recordingStore.tombstones
