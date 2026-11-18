@@ -189,6 +189,8 @@ final class CricketPageTests: XCTestCase {
         XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: nil), [.record(day: 5)])
         XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: nil).map(CricketPageText.label), ["Record day 5"])
         XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: "cricket:1525661"), [.cancelRemind, .record(day: 5)])
+        // #345 (Codex review): the lead's hold menu (on its actions) offers Remind me and RECORD before the day's play.
+        XCTAssertEqual(SportCardRules.hold(CricketPageText.event(stumps), now: Self.now), .init(record: true, remind: true))
         XCTAssertTrue(CricketPageText.channelLine(stumps, now: Self.now, calendar: Self.melbourne).hasPrefix("Day 5 · "))
         XCTAssertTrue(CricketPageText.channelLine(stumps, now: Self.now).hasSuffix("on Fox Cricket"))
         XCTAssertEqual(CricketPageText.event(stumps).startTime, 1_793_433_600_000, "the channel's own airing")
@@ -334,4 +336,20 @@ final class CricketPageSpoilerTests: XCTestCase {
         }
         return condition()
     }
+
+    /// #345 (Codex review): Remind me from the lead's hold menu sets the reminder (the actions then offer Don't remind me)
+    /// and that cancels it.
+    @MainActor
+    func testTheLeadsRemindMeSetsAndCancels() throws {
+        let stumps = try XCTUnwrap(try CricketPageTests.page("stumps").lead)
+        let event = CricketPageText.event(stumps)
+        let app = AppModel()
+        app.watchWhenStarts(event, now: CricketPageTests.now)
+        XCTAssertEqual(app.pendingWatch?.eventID, event.id)
+        XCTAssertTrue(CricketPageText.actions(stumps, now: CricketPageTests.now, pendingEventID: app.pendingWatch?.eventID).contains(.cancelRemind))
+        app.cancelPendingWatch()
+        XCTAssertNil(app.pendingWatch)
+        XCTAssertFalse(CricketPageText.actions(stumps, now: CricketPageTests.now, pendingEventID: app.pendingWatch?.eventID).contains(.cancelRemind))
+    }
 }
+

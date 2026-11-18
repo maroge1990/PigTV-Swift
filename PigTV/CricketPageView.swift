@@ -467,6 +467,9 @@ struct CricketPageView: View {
             case .record: app.record(event)
             }
         }
+        // #345 (Codex review): the lead match's hold menu, on its action buttons in both layouts (they are its focusable
+        // surface): Watch another channel, RECORD and Remind me, as every game card's.
+        .contextMenu { SportCardMenu(flow: flow, game: nil, event: event) }
         .accessibilityIdentifier("cricket.action.\(identifier(action))")
         if primary {
             button.pigPrimaryButton().focused($focus, equals: .primary)
