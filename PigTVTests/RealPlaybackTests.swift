@@ -509,6 +509,32 @@ final class RealPlaybackTests: XCTestCase {
         server.http.stop()
     }
 
+    /// #345 (Codex sign-off): from a Sport card (from the beginning) a recording starts without asking for its saved
+    /// position, even when that answer is slow; the ordinary Play still waits for it and offers Resume.
+    func testFromTheBeginningNeverWaitsForTheSavedPosition() async throws {
+        try requireFixture()
+        let server = try FakePigTVServer(position: .init(status: 200, contentType: "application/json",
+                                                         body: Data(#"{"position_sec":600,"watched":false}"#.utf8), delay: 4))
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242))
+        defer { UserDefaults.standard.removeObject(forKey: Self.resumeKey(server, 4242)) }
+
+        let sport = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client(), fromBeginning: true)
+        let began = Date()
+        sport.start()
+        try await waitFor("the Sport card's recording to play", timeout: 6) { sport.hasPlayed }
+        XCTAssertLessThan(Date().timeIntervalSince(began), 3, "it waited for the saved position")
+        XCTAssertNil(sport.resumePrompt)
+        XCTAssertEqual(server.http.requests(path: "/api/recordings/4242/position").count, 0, "never asked")
+        await sport.stop()
+
+        let ordinary = RecordingPlayerModel(recording: try harnessRecording(), client: try server.client())
+        ordinary.start()
+        try await waitFor("the resume question", timeout: 8) { ordinary.resumePrompt != nil }
+        XCTAssertEqual(ordinary.resumePrompt, 600)
+        await ordinary.stop()
+        server.http.stop()
+    }
+
     private func inProgressRecording() throws -> Recording {
         try JSONDecoder().decode(Recording.self, from: Data(#"{"id":4243,"title":"Early Start","status":"recording","watch_live":true}"#.utf8))
     }

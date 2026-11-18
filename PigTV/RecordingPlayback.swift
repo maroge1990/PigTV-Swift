@@ -123,7 +123,8 @@ final class RecordingPlayerModel: ObservableObject {
         self.generation = generation
         resumePrompt = nil
         let client = client, id = recording.id
-        let positionTask = Task { await client.recordingPosition(id: id) }
+        // #345 (Codex sign-off): from the beginning (a Sport card), the saved position is never asked for.
+        let positionTask = fromBeginning ? nil : Task { await client.recordingPosition(id: id) }
         let watchLive = fromStart || fromLive
         startupTask = Task { [self] in
             defer { preparing = false; startupTask = nil }
@@ -185,6 +186,10 @@ final class RecordingPlayerModel: ObservableObject {
                     // Carrying on from the live playlist (or "from start"): no question.
                     continueAt = nil
                     await beginPlayback(resumeAt: at > 1 ? at : nil, generation: generation)
+                    return
+                }
+                guard let positionTask else {
+                    await beginPlayback(resumeAt: nil, generation: generation)
                     return
                 }
                 let server = await positionTask.value

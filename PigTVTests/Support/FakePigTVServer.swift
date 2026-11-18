@@ -93,7 +93,8 @@ final class FakePigTVServer: @unchecked Sendable {
          markers: LocalHTTPServer.Response? = nil,
          warm: LocalHTTPServer.Response = .init(status: 204, contentType: "application/json", body: Data()),
          watch: (@Sendable (Int) -> LocalHTTPServer.Response)? = nil,
-         livePause: PauseAnswer? = nil) throws {
+         livePause: PauseAnswer? = nil,
+         position: LocalHTTPServer.Response? = nil) throws {
         let counter = Locked(0)
         let watchCount = Locked(0)
         let longCount = Locked(0)
@@ -111,6 +112,9 @@ final class FakePigTVServer: @unchecked Sendable {
             }
             // C-K: `GET /api/providers/reminders` (404 when the fake has none).
             if request.method == "GET", request.path == "/api/providers/reminders", let reminders { return .json(reminders) }
+            // #345: `GET /api/recordings/:id/position` (404 unless given, e.g. with a `delay`).
+            if request.method == "GET", request.path.hasPrefix("/api/recordings/"), request.path.hasSuffix("/position"),
+               let position { return position }
             if request.method == "GET", request.path.hasPrefix("/api/recordings/"), request.path.hasSuffix("/watch") {
                 guard let watch else { return .notFound }
                 watchCount.value += 1
