@@ -130,6 +130,32 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertEqual(SportCardRules.hold(try XCTUnwrap(f.game(Self.packersLive)), now: now), .init(), "live on no channel")
     }
 
+    /// #345 review: live means on air on any of its channels, not only the best: select plays (the best of those on
+    /// air), and Watch another channel counts channel names on air, never a name's other qualities (D-65).
+    func testLiveIsAnyChannelOnAirAndAnotherChannelIsAnotherName() throws {
+        let raw = try front()
+        let now = Date(timeIntervalSince1970: raw.now / 1000)
+        let onAir: (String, String, String) -> [String: Any] = { id, name, quality in
+            ["sourceId": 1, "id": id, "stableId": id, "name": name, "number": NSNull(), "logo": NSNull(), "quality": quality,
+             "start": raw.now - 600_000, "end": raw.now + 7_200_000]
+        }
+        func chiefs(_ extra: [[String: Any]]) throws -> SportsGame {
+            let f = try front { Self.edit(&$0, Self.chiefs) { game in
+                game["channels"] = (game["channels"] as? [[String: Any]] ?? []) + extra
+            } }
+            return try XCTUnwrap(f.game(Self.chiefs))
+        }
+        let one = try chiefs([onAir("k1", "Kayo", "HD")])
+        XCTAssertEqual(SportCardRules.select(one, now: now, recordings: []), .watch, "its best channel later, another on air now")
+        XCTAssertEqual(SportCardRules.playable(try XCTUnwrap(SportFrontText.event(one)), now: now)?.channels.map(\.name), ["Kayo"],
+                       "the one on air plays")
+        XCTAssertEqual(SportCardRules.hold(one, now: now), .init(watchAnother: false, record: true, remind: false))
+        let qualities = try chiefs([onAir("k1", "Kayo", "HD"), onAir("k2", "Kayo", "UHD")])
+        XCTAssertFalse(SportCardRules.hold(qualities, now: now).watchAnother, "one name in two qualities is one channel")
+        let two = try chiefs([onAir("k1", "Kayo", "HD"), onAir("f1", "Fox Footy", "HD")])
+        XCTAssertTrue(SportCardRules.hold(two, now: now).watchAnother, "two names on air")
+    }
+
     /// The hero and the iPhone carousel card keep Watch and Record; Remind me is only in the hold menu.
     func testRemindMeIsNoLongerACardButton() {
         XCTAssertEqual(SportPhoneCardButtons.primary(.watch), "Watch")

@@ -134,7 +134,10 @@ enum SportCardActions {
         // #345: the cards' one rule (`SportCardRules`): Watch while it airs, the record page before, else nothing.
         guard let event else { return }
         switch SportCardRules.select(event, now: Date()) {
-        case .watch: if let presenter { presenter.play(event) } else { app.playSportEvent(event, origin: SportFrontView.origin) }
+        case .watch:
+            // The best of its channels on air now (#345 review: not the best channel when that one is not airing it).
+            guard let live = SportCardRules.playable(event, now: Date()) else { return }
+            if let presenter { presenter.play(live) } else { app.playSportEvent(live, origin: SportFrontView.origin) }
         case .record: app.record(event)
         case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
         }

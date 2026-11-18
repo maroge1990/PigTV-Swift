@@ -194,8 +194,9 @@ enum SportGamePress {
 
     /// An answer drawn earlier (or kept after a failed refresh) may describe an airing that has ended, and the player
     /// would tune the channel whatever it shows now: then the record page instead, while there is an airing to record.
+    /// #345 review: live on any of its channels, the best of those on air plays.
     static func watch(_ game: SportsGame, event: SportEvent, app: AppModel, presenter: SportPresenter?) {
-        guard let live = SportFrontText.playable(game, at: Date()) else {
+        guard let live = SportCardRules.playable(event, now: Date()) else {
             if SportCardRules.select(event, now: Date()) == .record { app.record(event, game: game) }
             return
         }

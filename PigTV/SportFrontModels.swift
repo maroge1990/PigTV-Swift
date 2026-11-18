@@ -419,7 +419,8 @@ nonisolated enum SportCardRules {
 
     /// The hold menu's sections ("Make this the hero" is the page's own, beside these).
     struct Hold: Equatable {
-        /// "Watch another channel" (the channel picker): live, with more than one channel carrying it.
+        /// "Watch another channel" (the channel picker): live on more than one channel name now (a name's other
+        /// qualities are not another channel, D-65).
         var watchAnother = false
         /// The RECORD section.
         var record = false
@@ -441,9 +442,16 @@ nonisolated enum SportCardRules {
 
     /// A game known only by its event (a fixture with no C-R card): the same rule.
     static func select(_ event: SportEvent, now: Date) -> Select {
-        guard let best = event.best else { return .none }
-        if event.isLive(on: best, at: now) { return .watch }
+        guard event.best != nil else { return .none }
+        if playable(event, now: now) != nil { return .watch }
         return SportFrontText.recordChoices(event, now: now).isEmpty ? .none : .record
+    }
+
+    /// Live: the event with only its channels airing it now (any of them, not only the best), best first; nil when none
+    /// does. Select plays its first.
+    static func playable(_ event: SportEvent, now: Date) -> SportEvent? {
+        let onAir = WatchOn.onAir(event, now: now)
+        return onAir.channels.isEmpty ? nil : onAir
     }
 
     static func hold(_ game: SportsGame, now: Date) -> Hold {
@@ -457,7 +465,9 @@ nonisolated enum SportCardRules {
     static func hold(_ event: SportEvent, now: Date) -> Hold {
         guard let best = event.best else { return Hold() }
         let record = !SportFrontText.recordChoices(event, now: now).isEmpty
-        if event.isLive(on: best, at: now) { return Hold(watchAnother: event.channels.count > 1, record: record) }
+        if let live = playable(event, now: now) {
+            return Hold(watchAnother: ChannelGrouping.group(live).count > 1, record: record)
+        }
         return Hold(record: record, remind: event.start(on: best) > now)
     }
 
