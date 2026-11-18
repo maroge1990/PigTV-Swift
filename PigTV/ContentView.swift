@@ -72,14 +72,14 @@ struct ContentView: View {
             // #342: under the splash until it hands over; Home then rises into place (fades only, under Reduce Motion).
             .opacity(splash.contentShown ? 1 : 0)
             .offset(y: reduceMotion ? 0 : splash.contentRise)
-            // Review of #342: until the hand-off starts, Home under the splash takes no touch, press or focus and is not
-            // read by VoiceOver; on the TV focus then moves into it.
-            .allowsHitTesting(splash.contentShown)
-            .disabled(!splash.contentShown)
-            .accessibilityHidden(!splash.contentShown)
+            // Review of #342: until the splash is gone (`homeInteractive`, after the reveal), Home takes no touch, press or
+            // focus and is not read by VoiceOver; on the TV focus then moves into it.
+            .allowsHitTesting(splash.homeInteractive)
+            .disabled(!splash.homeInteractive)
+            .accessibilityHidden(!splash.homeInteractive)
             if !splash.landed { BrandSplashView(handoff: splash) }
         }
-        .modifier(SplashFocusHandoff(shown: splash.contentShown))
+        .modifier(SplashFocusHandoff(shown: splash.homeInteractive))
         .environment(splash)
         .modifier(AppRootCover(model: model))
         #if os(tvOS)
@@ -723,8 +723,9 @@ struct AppRootCover: ViewModifier {
     }
 }
 
-/// Review of #342: on the TV, when Home under the splash becomes usable, focus is reset into it (it was disabled while
-/// the splash played, so the focus engine had nothing to focus). Touch has no focus to move.
+/// Review of #342: on the TV, when Home under the splash becomes usable (the splash removed), focus is reset into it (it
+/// was disabled while the splash played, so the focus engine had nothing to focus); asked on the next turn, once the
+/// overlay has left the hierarchy. Touch has no focus to move.
 private struct SplashFocusHandoff: ViewModifier {
     let shown: Bool
     #if os(tvOS)
@@ -736,7 +737,13 @@ private struct SplashFocusHandoff: ViewModifier {
         #if os(tvOS)
         content
             .focusScope(scope)
-            .onChange(of: shown) { _, shown in if shown { resetFocus(in: scope) } }
+            .onChange(of: shown) { _, shown in
+                guard shown else { return }
+                Task { @MainActor in
+                    await Task.yield() // the splash's overlay is removed in this update; focus is asked after it
+                    resetFocus(in: scope)
+                }
+            }
         #else
         content
         #endif

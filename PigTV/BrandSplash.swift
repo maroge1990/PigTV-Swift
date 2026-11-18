@@ -104,8 +104,11 @@ nonisolated enum SplashFlight {
 final class SplashHandoff {
     /// The splash is over (or never played): the header's own mark shows and the splash is gone.
     private(set) var landed: Bool
-    /// Home is shown, and how far below its place it is.
+    /// Home is shown, and how far below its place it is (the visual reveal only).
     private(set) var contentShown: Bool
+    /// Home takes touches, presses, focus and VoiceOver only once the splash is gone (#342, Codex review: not while it
+    /// still rises under the splash's overlay).
+    var homeInteractive: Bool { landed }
     private(set) var contentRise: CGFloat
     /// Start-up finished, in seconds from the splash's first frame.
     private(set) var restoreFinishedAt: Double?

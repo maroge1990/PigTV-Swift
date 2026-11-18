@@ -74,16 +74,19 @@ final class SplashTimelineTests: XCTestCase {
         handoff.report(title: "Sport", frame: CGRect(x: 16, y: 80, width: 34, height: 28))
         XCTAssertEqual(handoff.target?.minY, 70, "frames reported while Home rises are not taken")
         XCTAssertTrue(handoff.contentShown)
+        XCTAssertFalse(handoff.homeInteractive, "Home rises under the splash but takes no input or focus yet (#342 review)")
         XCTAssertEqual(handoff.contentRise, 0)
         XCTAssertNil(handoff.restoreFinishedAt)
         handoff.restoreFinished()
         XCTAssertNotNil(handoff.restoreFinishedAt)
         handoff.land()
         XCTAssertTrue(handoff.landed)
+        XCTAssertTrue(handoff.homeInteractive, "the splash gone: Home takes input and focus")
 
         let none = SplashHandoff(playing: false, contentRise: 18)
         XCTAssertTrue(none.landed, "no splash (no saved sign-in): the header's mark shows")
         XCTAssertTrue(none.contentShown)
+        XCTAssertTrue(none.homeInteractive)
         XCTAssertEqual(none.contentRise, 0)
     }
 
