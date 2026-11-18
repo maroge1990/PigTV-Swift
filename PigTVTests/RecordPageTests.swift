@@ -64,8 +64,8 @@ final class RecordPageTests: XCTestCase {
     }
 
     func testWhenItStopsFollowsTheGameOrTheGuide() throws {
-        XCTAssertEqual(RecordPlan.stopLines(game(), airing: game().airings.first, now: now).title, "When the game ends (ESPN)")
-        XCTAssertEqual(RecordPlan.stopLines(game(gameId: nil), airing: nil, now: now).title, "When the guide says it ends")
+        XCTAssertEqual(RecordPlan.stopTitle(game()), "When the game ends (ESPN)")
+        XCTAssertEqual(RecordPlan.stopTitle(game(gameId: nil)), "When the guide says it ends")
         var changing = game(gameId: nil)
         changing.schedule = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"scheduled","endsWith":"event"}"#)
         XCTAssertTrue(RecordPlan.stopsWithGame(changing), "a schedule the server links to its game")
@@ -274,10 +274,8 @@ extension RecordPageTests {
     /// #251: the note told every household "PigTV has one provider stream", whatever its providers.
     func testTheStreamNoteNamesNoNumberOfStreams() {
         let airing = RecordRequest.Airing(channel: channel(), programme: programme())
-        let note = RecordPlan.streamNote(airing, before: nil, now: now)
-        XCTAssertFalse(note.contains("one provider stream"), note)
-        XCTAssertEqual(note, "If every provider connection is in use when it starts, the recording waits for one to free up.")
+        XCTAssertNil(RecordPlan.streamNote(airing, now: now), "#341: no line about waiting for a connection")
         let started = RecordRequest.Airing(channel: channel(), programme: programme(start: -60))
-        XCTAssertEqual(RecordPlan.streamNote(started, before: nil, now: now), "It has started: only the rest of it is recorded.")
+        XCTAssertEqual(RecordPlan.streamNote(started, now: now), "It has started: only the rest of it is recorded.")
     }
 }

@@ -77,7 +77,7 @@ enum SportBannerMetrics {
 struct SportBanner<Actions: View>: View {
     let hero: SportBannerHero
     let items: [SportBannerItem]
-    /// "FOLLOWING · your order, playing now on top", "FOOTBALL · YOUR LEAGUES".
+    /// "Following", "FOOTBALL · YOUR LEAGUES".
     let listTitle: String
     /// The item the hero (front page) or the page below (sport page) belongs to.
     let selected: Int?

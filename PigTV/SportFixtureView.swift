@@ -294,7 +294,7 @@ struct SportFixtureContent: View {
             }
             if hidesSpoilers {
                 SportListCard(title: "Standings hidden", identifier: "sport.fixture.standings.hidden") {
-                    SportHiddenNote(title: "", text: "Records, positions and points reveal results while Hide scores is on.", minHeight: 160)
+                    SportHiddenNote(title: "Scores hidden", minHeight: 160)
                 }
             } else if let shown {
                 let groups = FixtureText.groups(shown)

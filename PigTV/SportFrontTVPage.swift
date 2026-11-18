@@ -168,7 +168,7 @@ struct SportFrontTVPage: View {
         let words = heroWords(front, now: now)
         let sport = game.map { SportFrontLayout.sport(of: $0.league, in: front) }
         return SportBanner(hero: words, items: SportFrontLayout.followItems(front, now: now),
-                           listTitle: "FOLLOWING · your order, playing now on top",
+                           listTitle: "Following",
                            selected: model.heroFollowIndex,
                            backdrop: game.flatMap { backdrop($0, front: front) }, client: browse.client,
                            onSelect: { model.select(follow: $0) },

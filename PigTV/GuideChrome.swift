@@ -59,9 +59,9 @@ nonisolated struct GuideStripText: Equatable, Sendable {
     let recording: Bool
 
     static func make(channel: String?, number: Int?, programme: GuideProgramme?, current: GuideProgramme? = nil,
-                     scheduled: Bool, recordingNow: Bool, now: Date, hint: String,
+                     scheduled: Bool, recordingNow: Bool, now: Date,
                      calendar: Calendar = .current) -> GuideStripText {
-        guard let channel else { return GuideStripText(title: "Choose a programme", times: nil, detail: hint, recording: false) }
+        guard let channel else { return GuideStripText(title: "Choose a programme", times: nil, detail: "", recording: false) }
         let channelText = [channel, number.map { String($0) }].compactMap { $0 }.joined(separator: " ")
         guard let programme else {
             // The channel tile: what is on it now.
@@ -90,7 +90,7 @@ nonisolated struct GuideStripText: Equatable, Sendable {
 }
 
 /// The slim strip above the grid: title (with the red dot and a word when it records), times, channel, status and a
-/// short description on one line, then the options hint and Details.
+/// short description on one line, then Details.
 struct GuideFocusStrip<Trailing: View>: View {
     let text: GuideStripText
     @ViewBuilder var trailing: Trailing
@@ -105,7 +105,9 @@ struct GuideFocusStrip<Trailing: View>: View {
                     }
                     Text(text.title).font(Self.titleFont).lineLimit(1).truncationMode(.tail)
                 }
-                detailLine.font(Self.detailFont).foregroundStyle(Color.pigSecondary).lineLimit(1).truncationMode(.tail)
+                if text.times != nil || !text.detail.isEmpty {
+                    detailLine.font(Self.detailFont).foregroundStyle(Color.pigSecondary).lineLimit(1).truncationMode(.tail)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .ignore)

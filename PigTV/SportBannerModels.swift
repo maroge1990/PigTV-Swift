@@ -50,7 +50,7 @@ nonisolated struct SportBannerWindow: Equatable, Sendable {
 /// banner full width, with no list and no line.
 nonisolated enum SportBannerLayout {
     static func fullWidth(itemCount: Int) -> Bool { itemCount <= 1 }
-    /// The list's name without what follows its first " · " ("FOLLOWING · your order, playing now on top" -> "FOLLOWING"),
+    /// The list's name without what follows its first " · " ("FOOTBALL · YOUR LEAGUES" -> "FOOTBALL"),
     /// for a header line that also holds the "N more" count (#279).
     static func shortTitle(_ title: String) -> String {
         title.components(separatedBy: " · ").first ?? title

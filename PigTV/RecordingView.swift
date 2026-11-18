@@ -224,9 +224,6 @@ struct RecordingView: View {
         }
         if item.isPreparingForPlayback {
             Text("Preparing for playback…").font(ViewMetrics.detail).foregroundStyle(.secondary)
-        } else if item.playLabel == nil {
-            Text(item.canWatchFromStart ? "Still recording: watch it from the start while the rest records."
-                 : "Playback is available once the recording has finished.").font(ViewMetrics.detail).foregroundStyle(.secondary)
         }
     }
 

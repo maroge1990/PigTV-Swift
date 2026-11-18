@@ -107,22 +107,22 @@ nonisolated enum RecordPlan {
         return out
     }
 
-    /// A What tile's two lines.
-    static func label(_ what: What, request: RecordRequest, leagueLabel: String? = nil, now: Date) -> (title: String, detail: String) {
+    /// A What tile's lines: its title and, for the one-off choices, the time or what repeats.
+    static func label(_ what: What, request: RecordRequest, leagueLabel: String? = nil, now: Date) -> (title: String, detail: String?) {
         switch what {
         case .this:
             let start = request.airings.first?.programme.start ?? request.listing.map { SportFrontText.date($0.game.start) }
             let when = start.map { "\(DetailText.day($0, now: now)) \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
             return (request.isGame || request.league != nil ? "This game" : "This programme", when)
         case .everyNewEpisode:
-            return ("Every new episode", "\(request.title) on \(request.airings.first?.channel.name ?? "this channel")")
+            return ("Every new episode", nil)
         case .everyEpisode:
             return ("Every episode", "Repeats as well")
         case .everyTeam(let team):
-            return ("Every \(team) game", "Never replays")
+            return ("Every \(team) game", nil)
         case .everyLeague(let league):
             let name = leagueLabel ?? league
-            return (request.teams.count == 2 ? "Every \(name) game" : "Everything in \(name)", "On your channels, never replays")
+            return (request.teams.count == 2 ? "Every \(name) game" : "Everything in \(name)", nil)
         }
     }
 
@@ -200,22 +200,17 @@ nonisolated enum RecordPlan {
         return request.gameId != nil
     }
 
-    /// When it stops, in words: the first line and the one under it.
-    static func stopLines(_ request: RecordRequest, airing: RecordRequest.Airing?, now: Date) -> (title: String, detail: String) {
-        let guideEnd = (airing?.programme.end).map { $0.formatted(date: .omitted, time: .shortened) }
-        if stopsWithGame(request) {
-            // #345: a game not listed yet has no guide end to name.
-            return ("When the game ends (ESPN)", guideEnd.map { "Else the guide end, \($0), + Finish late" } ?? "Else the guide end + Finish late")
-        }
-        let end = guideEnd ?? ""
-        return ("When the guide says it ends", "\(end) + Finish late")
+    /// When it stops, in words (#341: one line; the guide end and Finish late are not repeated under it).
+    static func stopTitle(_ request: RecordRequest) -> String {
+        stopsWithGame(request) ? "When the game ends (ESPN)" : "When the guide says it ends"
     }
 
     /// #345: the note under a game the guide does not list yet (the words of #234's question).
-    static func listingNote(_ listing: RecordRequest.Listing) -> String {
+    /// #341: only the offer to record says anything; a game already set to record has no note.
+    static func listingNote(_ listing: RecordRequest.Listing) -> String? {
         listing.offer == .record
             ? "It isn't in the TV guide yet. PigTV records it on its best channel as soon as it's listed."
-            : "It's set to record once it's listed in the TV guide."
+            : nil
     }
 
     /// The primary button.
@@ -232,14 +227,10 @@ nonisolated enum RecordPlan {
         }
     }
 
-    /// When the recording needs a provider connection. #251: it said "PigTV has one provider stream" to every household,
-    /// whatever its providers; a recording waits only when every connection of every provider is in use.
-    static func streamNote(_ airing: RecordRequest.Airing?, before: Int?, now: Date) -> String {
-        guard let programme = airing?.programme else { return "" }
-        if programme.start <= now { return "It has started: only the rest of it is recorded." }
-        let starts = programme.start.addingTimeInterval(-Double(before ?? 0) * 60)
-        let at = before == nil ? "when it starts" : "at \(starts.formatted(date: .omitted, time: .shortened))"
-        return "If every provider connection is in use \(at), the recording waits for one to free up."
+    /// A programme already on air: only the rest of it is recorded. #341: no line about waiting for a provider connection.
+    static func streamNote(_ airing: RecordRequest.Airing?, now: Date) -> String? {
+        guard let programme = airing?.programme, programme.start <= now else { return nil }
+        return "It has started: only the rest of it is recorded."
     }
 
     /// D-65 (#266): Record on's rows: one per channel name, its copies' qualities as chips (best first; copies with the
@@ -251,22 +242,21 @@ nonisolated enum RecordPlan {
                               chip: { request.airings[$0].chip })
     }
 
-    /// Record on's note: how many channels carry it (by name), or one channel's qualities.
-    static func recordOnNote(_ groups: [ChannelNameGroup<Int>]) -> String {
-        if groups.count == 1 {
-            let qualities = groups[0].choices.count
-            return qualities > 1 ? "1 channel in your guide carries it, in \(qualities) qualities" : "1 channel in your guide carries it"
-        }
-        return "\(groups.count) channels in your guide carry it"
+    /// Record on's note: one channel's qualities; nil when several channels carry it (#341: the count is not said).
+    static func recordOnNote(_ groups: [ChannelNameGroup<Int>]) -> String? {
+        guard groups.count == 1 else { return nil }
+        let qualities = groups[0].choices.count
+        return qualities > 1 ? "1 channel in your guide carries it, in \(qualities) qualities" : "1 channel in your guide carries it"
     }
 
-    /// Record on's second line for one channel.
-    static func airingDetail(_ airing: RecordRequest.Airing, index: Int, first: RecordRequest.Airing?, now: Date) -> String {
+    /// Record on's second line for one channel: its times, unless they are the first channel's (#341: no "Best channel",
+    /// no "Same times").
+    static func airingDetail(_ airing: RecordRequest.Airing, index: Int, first: RecordRequest.Airing?, now: Date) -> String? {
         let times = "\(DetailText.day(airing.programme.start, now: now)) \(airing.programme.timeRange)"
-        if index == 0 { return "Best channel · \(times)" }
+        if index == 0 { return times }
         guard let first, first.programme.startTime == airing.programme.startTime,
               first.programme.endTime == airing.programme.endTime else { return times }
-        return "Same times"
+        return nil
     }
 }
 
@@ -468,9 +458,10 @@ struct RecordPage: View {
             if !whats.isEmpty { whatSection(whats, now: now) }
             if !stopsWaiting { stopSection(now: now) }
             if !changing && request.airings.count > 1 { recordOn(now: now) }
-            Text(changing ? changeNote : request.listing.map { RecordPlan.listingNote($0) } ?? RecordPlan.streamNote(airing, before: before, now: now))
-                .font(Metrics.note).foregroundStyle(Color.pigSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if let note = cardNote(now: now) {
+                Text(note).font(Metrics.note).foregroundStyle(Color.pigSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let error {
                 Text(error).font(Metrics.note.weight(.semibold)).foregroundStyle(Color.pigWarning)
                     .fixedSize(horizontal: false, vertical: true)
@@ -484,6 +475,13 @@ struct RecordPage: View {
         .background(sizeClass == .compact ? Color.clear : Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(changing ? "Change recording of \(request.title)" : "Record \(request.title)")
+    }
+
+    /// The one note under the choices, if any (#341).
+    private func cardNote(now: Date) -> String? {
+        if changing { return changeNote }
+        if let listing = request.listing { return RecordPlan.listingNote(listing) }
+        return RecordPlan.streamNote(airing, now: now)
     }
 
     private var changeNote: String {
@@ -550,8 +548,10 @@ struct RecordPage: View {
                     Button { what = option } label: {
                         VStack(alignment: .leading, spacing: PigSpacing.xs) {
                             Text(label.title).font(Metrics.choice).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                            Text(label.detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).lineLimit(2)
-                                .pigFigures()
+                            if let detail = label.detail {
+                                Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).lineLimit(2)
+                                    .pigFigures()
+                            }
                         }
                         .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.m)
                         .frame(maxWidth: .infinity, minHeight: Metrics.choiceHeight, alignment: .leading)
@@ -559,7 +559,7 @@ struct RecordPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                    .accessibilityLabel("\(label.title), \(label.detail)")
+                    .accessibilityLabel(label.detail.map { "\(label.title), \($0)" } ?? label.title)
                     .accessibilityAddTraits(what == option ? .isSelected : [])
                     .accessibilityIdentifier("record.what.\(whatID(option))")
                 }
@@ -591,7 +591,6 @@ struct RecordPage: View {
     // MARK: When it stops
 
     private func stopSection(now: Date) -> some View {
-        let lines = RecordPlan.stopLines(request, airing: airing, now: now)
         return VStack(alignment: .leading, spacing: PigSpacing.s) {
             sectionTitle("When it stops")
             HStack(spacing: PigSpacing.m) {
@@ -600,8 +599,7 @@ struct RecordPage: View {
                     .frame(width: Metrics.radio, height: Metrics.radio)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                    Text(lines.title).font(Metrics.choice)
-                    Text(lines.detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures()
+                    Text(RecordPlan.stopTitle(request)).font(Metrics.choice)
                 }
                 Spacer(minLength: 0)
             }
@@ -677,8 +675,9 @@ struct RecordPage: View {
             HStack(alignment: .firstTextBaseline) {
                 sectionTitle("Record on")
                 Spacer()
-                Text(RecordPlan.recordOnNote(groups)).font(Metrics.choiceDetail)
-                    .foregroundStyle(Color.pigSecondary)
+                if let note = RecordPlan.recordOnNote(groups) {
+                    Text(note).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary)
+                }
             }
             ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                 let on = group.indices.contains(airingIndex)
@@ -694,7 +693,9 @@ struct RecordPage: View {
                             radio(on)
                             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                                 Text(option.channel.name).font(Metrics.choice).lineLimit(1)
-                                Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                                if let detail {
+                                    Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                                }
                             }
                             Spacer(minLength: 0)
                             if let chip = option.chip { QualityBadge(chip: chip, font: Metrics.badgeFont) }
@@ -705,7 +706,7 @@ struct RecordPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                    .accessibilityLabel("\(option.channel.name), \(detail)\(option.chip.map { ", \($0.spoken)" } ?? "")")
+                    .accessibilityLabel("\(option.channel.name)\(detail.map { ", \($0)" } ?? "")\(option.chip.map { ", \($0.spoken)" } ?? "")")
                     .accessibilityAddTraits(on ? .isSelected : [])
                     .accessibilityIdentifier("record.on.\(index)")
                 }
@@ -725,13 +726,15 @@ struct RecordPage: View {
 
     /// D-65 (#266): a channel name carried in several qualities: one row, a chip per quality (best first) that chooses
     /// that copy; the radio shows whether any of its copies is the one chosen.
-    private func recordOnChips(_ group: ChannelNameGroup<Int>, index: Int, option: RecordRequest.Airing, detail: String,
+    private func recordOnChips(_ group: ChannelNameGroup<Int>, index: Int, option: RecordRequest.Airing, detail: String?,
                                on: Bool) -> some View {
         HStack(spacing: PigSpacing.m) {
             radio(on)
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 Text(option.channel.name).font(Metrics.choice).lineLimit(1)
-                Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                if let detail {
+                    Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                }
                 ScrollView(.horizontal) {
                     HStack(spacing: PigSpacing.s) {
                         ForEach(Array(group.choices.enumerated()), id: \.element.id) { chipIndex, choice in

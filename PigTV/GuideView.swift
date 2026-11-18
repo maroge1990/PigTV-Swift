@@ -423,14 +423,6 @@ struct GuideView: View {
         .padding(.horizontal, PigSpacing.l)
     }
 
-    private var stripHint: String {
-        #if os(tvOS)
-        "Select a programme on now to watch, a later one for details"
-        #else
-        "Tap a programme on now to watch, a later one for details · Touch and hold for options"
-        #endif
-    }
-
     /// What the strip says: the focused programme (or tile) from the loaded guide and the schedule marks.
     private var stripText: GuideStripText {
         let channel = focusedChannel
@@ -440,7 +432,7 @@ struct GuideView: View {
                                    programme: programme,
                                    current: programme == nil ? channel.flatMap { OnNowRow.make(programmes: $0.programmes, now: clock).current } : nil,
                                    scheduled: scheduled, recordingNow: channel.map { marks.recordingChannels.contains($0.name) } ?? false,
-                                   now: clock, hint: stripHint)
+                                   now: clock)
     }
 
     private var focusStrip: some View {
@@ -450,10 +442,6 @@ struct GuideView: View {
                 Text("\(model.guide.count) of \(model.guideTotal) channels")
                     .font(GuideTypography.small).foregroundStyle(Color.pigSecondary).pigFigures()
             }
-            #if os(tvOS)
-            Text("Long press for options").font(.system(size: PigType.caption)).foregroundStyle(Color.pigSecondary).fixedSize()
-                .accessibilityIdentifier("guide.strip.hint")
-            #endif
             if let programme = focusedProgramme, let channel = focusedChannel {
                 Button("Details", systemImage: "info.circle") { open(channel, programme) }
                 .pigSecondaryButton()

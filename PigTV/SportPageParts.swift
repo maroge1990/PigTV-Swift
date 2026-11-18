@@ -71,17 +71,17 @@ struct SportListCard<Content: View>: View {
     }
 }
 
-/// "Results hidden": spoiler-free is on (or the account's choice is not known yet).
+/// "Scores hidden": spoiler-free is on (or the account's choice is not known yet).
 struct SportHiddenNote: View {
     let title: String
-    let text: String
+    var text: String? = nil
     var minHeight: CGFloat = 200
 
     var body: some View {
         VStack(spacing: PigSpacing.s) {
             Image(systemName: "eye.slash").font(.system(size: PigType.sectionTitle, weight: .semibold)).accessibilityHidden(true)
-            Text(title).font(SportPageMetrics.cardTitle)
-            Text(text).font(SportPageMetrics.note).multilineTextAlignment(.center).frame(maxWidth: 480)
+            if !title.isEmpty { Text(title).font(SportPageMetrics.cardTitle) }
+            if let text { Text(text).font(SportPageMetrics.note).multilineTextAlignment(.center).frame(maxWidth: 480) }
         }
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, minHeight: minHeight)

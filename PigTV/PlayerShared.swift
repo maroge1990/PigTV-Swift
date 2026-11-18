@@ -87,7 +87,7 @@ nonisolated enum TuningText {
 
     static func hint(elapsed: TimeInterval) -> String? {
         guard elapsed >= slowAfter else { return nil }
-        return "This is taking longer than usual. The provider may be busy with a recording or another device. You can cancel and try again."
+        return "This is taking longer than usual. The provider may be busy with a recording or another device."
     }
 }
 

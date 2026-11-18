@@ -91,20 +91,19 @@ struct SportF1Content: View {
 
     private func lists(_ page: F1Page, spoilerFree: Bool) -> some View {
         let lists = SportMotorText.lists(page, followed: SportMotorText.followedDrivers(model.preferences), spoilerFree: spoilerFree)
-        let hiddenText = "Hide scores is on. Grids, finishing orders and points stay hidden until it is turned off in Settings."
         return SportColumns.layout(narrow: narrow, spacing: SportPageMetrics.gap).callAsFunction {
             SportListCard(title: lists.gridTitle ?? "Last race", identifier: "f1.results") {
-                if lists.hidden { SportHiddenNote(title: "Results hidden", text: hiddenText) }
+                if lists.hidden { SportHiddenNote(title: "Scores hidden") }
                 else if lists.grid.isEmpty { emptyNote("No results yet.") }
                 else { rows(lists.grid) }
             }
             SportListCard(title: "Drivers", note: lists.standingsNote, identifier: "f1.standings.drivers") {
-                if lists.hidden { SportHiddenNote(title: "Results hidden", text: hiddenText) }
+                if lists.hidden { SportHiddenNote(title: "Scores hidden") }
                 else if lists.drivers.isEmpty { emptyNote("No standings yet.") }
                 else { rows(lists.drivers) }
             }
             SportListCard(title: "Constructors", note: lists.standingsNote, identifier: "f1.standings.constructors") {
-                if lists.hidden { SportHiddenNote(title: "Results hidden", text: hiddenText) }
+                if lists.hidden { SportHiddenNote(title: "Scores hidden") }
                 else if lists.constructors.isEmpty { emptyNote("No standings yet.") }
                 else { rows(lists.constructors) }
             }

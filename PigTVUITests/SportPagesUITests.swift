@@ -135,7 +135,7 @@ final class SportPagesUITests: XCTestCase {
         var app = try launch(sport: "Motorsport", spoilers: true, f1: true)
         var any = app.descendants(matching: .any)
         XCTAssertTrue(any["f1.session.race"].waitForExistence(timeout: 5), "the session tiles")
-        XCTAssertTrue(app.staticTexts["Results hidden"].exists, "spoiler-free hides the results")
+        XCTAssertTrue(app.staticTexts["Scores hidden"].exists, "spoiler-free hides the results")
         XCTAssertFalse(app.staticTexts["Kimi Antonelli"].exists, "no driver's name is left on screen")
         attach(app, "d43-f1-spoiler-free")
         app.terminate()

@@ -226,18 +226,15 @@ struct SportEventsContent: View {
             matchRail("Tonight", rails.tonight, events: page.events, now: now, hidden: hidden, id: "tonight",
                       empty: "Nothing more today.")
             matchRail("Results today", rails.resultsToday, events: page.events, now: now, hidden: hidden, id: "results",
-                      note: hidden ? "Hidden while Hide scores is on" : nil, empty: "No results yet today.")
+                      empty: "No results yet today.")
             draws(page.events, now: now, hidden: hidden)
         }
     }
 
     private func matchRail(_ title: String, _ matches: [TennisMatch], events: [SportEventsEvent], now: Date, hidden: Bool,
-                           id: String, note: String? = nil, empty: String? = nil) -> some View {
+                           id: String, empty: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
-            HStack(alignment: .firstTextBaseline, spacing: PigSpacing.s) {
-                Text(title).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
-                if let note { Text(note).font(SportPageMetrics.note).foregroundStyle(.secondary) }
-            }
+            Text(title).font(SportSectionMetrics.sectionTitle).accessibilityAddTraits(.isHeader)
             if matches.isEmpty, let empty {
                 Text(empty).font(SportPageMetrics.rowDetail).foregroundStyle(.secondary)
             } else {
@@ -382,8 +379,7 @@ struct SportEventsContent: View {
     private func leaderboard(_ layout: SportEventsText.GolfLayout, event: SportEventsEvent, hidden: Bool) -> some View {
         SportListCard(title: "Leaderboard", note: hidden ? nil : "Top 11", identifier: "sport.golf.leaderboard") {
             if hidden {
-                SportHiddenNote(title: "Leaderboard hidden",
-                                text: "Hide scores is on. Positions and scores reveal the result; the field and its round stay visible.")
+                SportHiddenNote(title: "Scores hidden")
             } else {
                 VStack(spacing: PigSpacing.xxs) {
                     HStack(spacing: PigSpacing.s) {

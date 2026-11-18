@@ -47,7 +47,7 @@ final class PlayerSharedTests: XCTestCase {
         XCTAssertNil(TuningText.hint(elapsed: TuningText.slowAfter - 0.5))
         let hint = try? XCTUnwrap(TuningText.hint(elapsed: TuningText.slowAfter))
         XCTAssertTrue(hint?.contains("recording") == true)
-        XCTAssertTrue(hint?.contains("cancel") == true)
+        XCTAssertFalse(hint?.contains("try again") == true, "#341: the Cancel button already says so")
     }
 
     func testChromeFollowsTapsAndHidesWhenIdle() {

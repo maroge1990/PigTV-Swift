@@ -60,7 +60,7 @@ final class GuidePagesUITests: XCTestCase {
         XCTAssertTrue(waitUntil { self.strip(app).exists && self.strip(app).label == title },
                       "the strip does not read the focused programme: \(strip(app).exists ? strip(app).label : "<no strip>") vs \(title)")
         XCTAssertTrue((strip(app).value as? String)?.contains(tile) == true, "the strip names no channel: \(strip(app).value ?? "")")
-        XCTAssertTrue(app.staticTexts["Long press for options"].exists)
+        XCTAssertFalse(app.staticTexts["Long press for options"].exists, "#341: no hint under the strip")
         for name in ["All", "Favourites", "Sport", "Movies", "Now", "Earlier", "Later", "Search", "Jump to…"] {
             XCTAssertTrue(app.buttons[name].exists, "no \(name) in the chip row")
         }

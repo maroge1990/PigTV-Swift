@@ -102,7 +102,7 @@ final class SportFrontUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Record on which channel?"].exists, "no channel dialog")
         let best = app.buttons["record.on.0"], other = app.buttons["record.on.1"]
         XCTAssertTrue(best.waitForExistence(timeout: 5), "Record on lists the best channel")
-        XCTAssertTrue(best.label.hasPrefix("ESPN HD, Best channel"), best.label)
+        XCTAssertTrue(best.label.hasPrefix("ESPN HD, "), best.label) // #341: no "Best channel" words; first in the list
         XCTAssertTrue(other.label.hasPrefix("Fox Footy, "), other.label)
         XCTAssertLessThan(best.frame.minY, other.frame.minY, "best first")
         XCTAssertTrue(best.isSelected, "the best channel is chosen to start with")

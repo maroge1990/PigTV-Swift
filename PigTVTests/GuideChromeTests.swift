@@ -48,23 +48,23 @@ final class GuideChromeTests: XCTestCase {
     func testTheStripReadsTheFocusedProgramme() {
         let live = programme("Australia v India · 1st Test, Day 1", -600, 3000, description: "Live from Perth Stadium.")
         let text = GuideStripText.make(channel: "Fox Cricket", number: 501, programme: live, scheduled: true,
-                                       recordingNow: true, now: now, hint: "hint", calendar: utc)
+                                       recordingNow: true, now: now, calendar: utc)
         XCTAssertEqual(text.title, "Australia v India · 1st Test, Day 1")
         XCTAssertEqual(text.times, live.timeRange)
         XCTAssertEqual(text.detail, "Fox Cricket 501 · Recording · Live from Perth Stadium.")
         XCTAssertTrue(text.recording, "the red dot goes with the word")
         let later = programme("Four Corners", 3600, 7200)
         let plain = GuideStripText.make(channel: "ABC TV", number: nil, programme: later, scheduled: false,
-                                        recordingNow: false, now: now, hint: "hint", calendar: utc)
+                                        recordingNow: false, now: now, calendar: utc)
         XCTAssertEqual(plain.detail, "ABC TV")
         XCTAssertFalse(plain.recording)
         let tomorrow = programme("Rage", 20 * 3600, 21 * 3600)
         XCTAssertTrue(GuideStripText.make(channel: "ABC TV", number: nil, programme: tomorrow, scheduled: true,
-                                          recordingNow: false, now: now, hint: "", calendar: utc).times?.hasPrefix("Tomorrow ") == true)
+                                          recordingNow: false, now: now, calendar: utc).times?.hasPrefix("Tomorrow ") == true)
         XCTAssertEqual(GuideStripText.make(channel: nil, number: nil, programme: nil, scheduled: false, recordingNow: false,
-                                           now: now, hint: "Select a programme").detail, "Select a programme")
+                                           now: now).detail, "")
         let tile = GuideStripText.make(channel: "ABC TV", number: 2, programme: nil, current: live, scheduled: false,
-                                       recordingNow: false, now: now, hint: "")
+                                       recordingNow: false, now: now)
         XCTAssertEqual(tile.title, "ABC TV")
         XCTAssertEqual(tile.detail, "On now · Australia v India · 1st Test, Day 1")
     }

@@ -18,8 +18,9 @@ final class ProgrammeMenuTests: XCTestCase {
                                             "Watch from start", "Programme details", "Channel schedule",
                                             "Add ABC TV to favourites"])
         XCTAssertEqual(items.filter(\.isRecordSection).count, 3)
-        XCTAssertEqual(items[0].detail, "\(later.timeRange), with the usual padding")
-        XCTAssertEqual(items[1].detail, "Four Corners on ABC TV")
+        XCTAssertNil(items[0].detail, "#341: the title says it")
+        XCTAssertNil(items[1].detail)
+        XCTAssertNil(items[2].detail)
     }
 
     /// Apple 114: a scheduled programme offers Change recording (the record page), not batch 4's Cancel this recording.

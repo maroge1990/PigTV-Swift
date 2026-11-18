@@ -705,8 +705,8 @@ private struct RecordingStackCard: View {
                             Label("Watch from start", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }
                         .pigPrimaryButton()
-                    } else {
-                        Text(item.isPreparingForPlayback ? "Preparing for playback…" : "Plays once it has finished")
+                    } else if item.isPreparingForPlayback {
+                        Text("Preparing for playback…")
                             .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Button(action: details) {

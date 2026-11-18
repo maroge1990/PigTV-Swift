@@ -80,7 +80,7 @@ final class ChannelGroupingTests: XCTestCase {
         XCTAssertEqual(groups.count, 2)
         XCTAssertEqual(groups[0].choices.map(\.copy), [1, 0, 4, 5], "each chip selects that copy's airing")
         XCTAssertEqual(groups[1].choosesQuality, false)
-        XCTAssertEqual(RecordPlan.recordOnNote(groups), "2 channels in your guide carry it")
+        XCTAssertNil(RecordPlan.recordOnNote(groups), "#341: the count of channels is not said")
         XCTAssertEqual(RecordPlan.recordOnNote([groups[0]]), "1 channel in your guide carries it, in 4 qualities")
     }
 

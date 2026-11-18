@@ -180,7 +180,7 @@ struct SportSettingsSection: View {
     private var scoreDelayLink: some View {
         let value = delay.preferences.map { ScoreDelay.text($0.scoreDelaySeconds) }
         #if os(tvOS)
-        SportSurfaceRow(title: "Score delay", detail: "Clocks and scores follow it", value: value, chevron: true) { route = .scoreDelay }
+        SportSurfaceRow(title: "Score delay", detail: nil, value: value, chevron: true) { route = .scoreDelay }
             .accessibilityIdentifier("settings.sport.delay")
         #else
         Button { route = .scoreDelay } label: {
@@ -234,10 +234,6 @@ struct SportSettingsSection: View {
             Text("Your sport").font(SettingsSportType.heading).foregroundStyle(Color.pigText)
                 .accessibilityAddTraits(.isHeader)
             // #317 (Mark, 14 Nov 2026): no "in your order"; the handles (iOS) show the order can be changed.
-            #if os(tvOS)
-            Text("Select one to change its leagues and teams").font(SettingsSportType.caption)
-                .foregroundStyle(Color.pigSecondary)
-            #endif
         }
         .textCase(nil)
     }
@@ -373,8 +369,6 @@ struct SportScoreDelayRow: View {
         return HStack(spacing: PigSpacing.s) {
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text("Score delay").font(SettingsSportType.tileTitle)
-                Text("0–300 seconds. Clocks and scores follow it.").font(SettingsSportType.tileDetail)
-                    .foregroundStyle(Color.pigSecondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             // #279: two real buttons, 56 pt or more with their own surface on the raised tile.
@@ -390,7 +384,6 @@ struct SportScoreDelayRow: View {
         return HStack(spacing: PigSpacing.m) {
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text("Score delay")
-                Text("0–300 seconds").font(.footnote).pigFigures().foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             HStack(spacing: 0) {

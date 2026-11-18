@@ -54,21 +54,21 @@ nonisolated enum SettingsMenu {
     /// The page shown beside the menu when Settings opens (split view); the iPhone opens on the menu itself (nil).
     static func opening(_ pages: [SettingsPage], compact: Bool) -> SettingsPage? { compact ? nil : pages.first }
 
-    /// "6 sports · 9 follows"; before the account's sports have loaded, what the page holds.
-    static func sportSummary(_ follows: SportFollows?) -> String {
-        guard let follows else { return "Hide scores and your sport" }
+    /// "6 sports · 9 follows"; nil before the account's sports have loaded (#341).
+    static func sportSummary(_ follows: SportFollows?) -> String? {
+        guard let follows else { return nil }
         let sports = follows.sports.count, names = follows.sports.reduce(0) { $0 + $1.teams.count }
         return "\(count(sports, "sport")) · \(count(names, "follow"))"
     }
 
-    /// The Sport section's facts for the television's summary (#279): hidden scores, then each sport with its names.
+    /// The Sport section's facts for the television's summary (#279): each sport with its names.
     static func sportFacts(_ follows: SportFollows?) -> [String] {
         guard let follows else { return ["Your sport loads when the page opens"] }
         let sports = follows.sports.prefix(3).map { entry in
             entry.teams.isEmpty ? entry.sport : "\(entry.sport): \(entry.teams.joined(separator: ", "))"
         }
         let rest = follows.sports.count > 3 ? ["and \(follows.sports.count - 3) more"] : []
-        return ["Scores are \(follows.spoilerFree ? "hidden" : "shown")"] + sports + rest
+        return sports + rest
     }
 
     /// "mark · pigtv.local": the account and the server's host.
@@ -359,7 +359,7 @@ struct LibrarySettings: View {
         case .account:
             return [(model.user?.username).map { "Signed in as \($0)" } ?? "Not signed in", "Server \(model.serverText)"]
         case .appearance:
-            return ["Using \(SettingsMenu.appearanceSummary(appearance)) appearance", "Choices: System, Light, Dark"]
+            return ["Using \(SettingsMenu.appearanceSummary(appearance)) appearance"]
         case .labs:
             return Labs.toggles.map { toggle in
                 "\(toggle.title): \((toggle.key == Labs.streamInfo ? streamInfo : Labs.isOn(toggle.key)) ? "On" : "Off")"
@@ -372,7 +372,7 @@ struct LibrarySettings: View {
     }
     #endif
 
-    private func summary(_ item: SettingsPage) -> String {
+    private func summary(_ item: SettingsPage) -> String? {
         switch item {
         case .sport: SettingsMenu.sportSummary(model.browse?.sportFollows.follows)
         case .account: SettingsMenu.accountSummary(user: model.user?.username, server: model.serverText)
@@ -485,7 +485,7 @@ nonisolated enum SettingsMetrics {
 /// facts. Nothing in it is focusable; pressing the row opens the page.
 struct SettingsSummaryView: View {
     let page: SettingsPage
-    let line: String
+    let line: String?
     let facts: [String]
 
     var body: some View {
@@ -495,7 +495,7 @@ struct SettingsSummaryView: View {
                     .foregroundStyle(Color.pigSecondary).accessibilityHidden(true)
                 Text(page.title).font(SettingsType.pageTitle).accessibilityAddTraits(.isHeader)
             }
-            Text(line).font(SettingsType.menuTitle).foregroundStyle(Color.pigSecondary).lineLimit(2)
+            if let line { Text(line).font(SettingsType.menuTitle).foregroundStyle(Color.pigSecondary).lineLimit(2) }
             VStack(alignment: .leading, spacing: PigSpacing.s) {
                 ForEach(Array(facts.prefix(5).enumerated()), id: \.offset) { _, fact in
                     Text(fact).font(SettingsType.menuTitle.weight(.regular)).lineLimit(2)
@@ -556,7 +556,8 @@ extension View {
 /// A menu item: its icon, its name and the one-line summary of its page.
 private struct SettingsMenuLabel: View {
     let page: SettingsPage
-    let summary: String
+    /// nil: the page has no summary line (#341), only its name.
+    let summary: String?
     let selected: Bool
 
     var body: some View {
@@ -569,13 +570,15 @@ private struct SettingsMenuLabel: View {
             VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                 Text(page.title).font(SettingsType.menuTitle)
                     .foregroundStyle(selected ? Color.pigAccentText : Color.pigText)
-                Text(summary).font(SettingsType.menuSummary).pigFigures()
-                    .foregroundStyle(Color.pigSecondary).lineLimit(1)
+                if let summary {
+                    Text(summary).font(SettingsType.menuSummary).pigFigures()
+                        .foregroundStyle(Color.pigSecondary).lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(page.title), \(summary)")
+        .accessibilityLabel([page.title, summary].compactMap { $0 }.joined(separator: ", "))
     }
 }
 

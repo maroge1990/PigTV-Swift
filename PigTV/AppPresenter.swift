@@ -113,7 +113,7 @@ final class AppPresenter {
     struct PendingUndo: Identifiable {
         let id = UUID()
         let message: String
-        /// The toast's second line (D-44 R5-Undo: "Undo for 10 seconds" when nil).
+        /// The toast's second line (D-44 R5-Undo; #341: none by default).
         var detail: String? = nil
         /// #313 item 3: what the action removes (`PendingRemoval.key`, "rule:7"), so a caller can settle this one only.
         var key: String? = nil
@@ -220,7 +220,7 @@ extension View {
     }
 }
 
-/// The Undo toast (D-44 R5-Undo): what was done, "Undo for 10 seconds", and the Undo button, gone after 10 s
+/// The Undo toast (D-44 R5-Undo): what was done and the Undo button, gone after 10 s
 /// (AppPresenter). An overlay, never a cover. On the TV it takes focus when it appears, so Select undoes at once.
 struct UndoToast: View {
     let presenter: AppPresenter
@@ -248,7 +248,9 @@ struct UndoToast: View {
             HStack(spacing: PigSpacing.l) {
                 VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                     Text(pending.message).font(Self.title).foregroundStyle(Color.pigText).lineLimit(2)
-                    Text(pending.detail ?? "Undo for 10 seconds").font(Self.detail).foregroundStyle(Color.pigSecondary)
+                    if let detail = pending.detail {
+                        Text(detail).font(Self.detail).foregroundStyle(Color.pigSecondary)
+                    }
                 }
                 .accessibilityElement(children: .combine)
                 Button("Undo") { presenter.undoPending() }

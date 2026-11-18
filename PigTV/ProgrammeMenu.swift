@@ -9,12 +9,12 @@ import SwiftUI
 /// One menu item.
 nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     /// `game`: a Sport card's ("Record this game").
-    case recordThis(times: String, game: Bool = false)
+    case recordThis(game: Bool = false)
     /// D-44 batch 5 (Apple 114): already scheduled or recording: the record page as "Change recording" (its times, and
     /// Cancel recording with Undo). Replaces batch 4's "Cancel this recording".
     case changeRecording(status: String)
     /// "Record every new episode" (a series rule) or, for sport, "Record every game".
-    case recordEvery(title: String, detail: String)
+    case recordEvery(title: String)
     case moreOptions
     /// #257 (Mark, 8 Nov): a live event carried by several channels: choose which to watch, before the player opens.
     case watchOn(channels: Int)
@@ -39,9 +39,9 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .recordThis(_, let game): game ? "Record this game" : "Record this programme"
+        case .recordThis(let game): game ? "Record this game" : "Record this programme"
         case .changeRecording: "Change recording"
-        case .recordEvery(let title, _): title
+        case .recordEvery(let title): title
         case .moreOptions: "More options…"
         case .watchOn(let channels): "Watch on… (\(channels) channels)"
         case .watchFromStart: "Watch from start"
@@ -51,13 +51,10 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
         }
     }
 
-    /// The second line of a RECORD item.
+    /// The second line of a RECORD item (#341: only a scheduled recording's state; the others say it in their title).
     var detail: String? {
         switch self {
-        case .recordThis(let times, _): "\(times), with the usual padding"
         case .changeRecording(let status): status
-        case .recordEvery(_, let detail): detail
-        case .moreOptions: "Start early, finish late"
         default: nil
         }
     }
@@ -112,14 +109,14 @@ nonisolated enum ProgrammeMenu {
             if let status = subject.recordingStatus {
                 items.append(.changeRecording(status: status))
             } else {
-                items.append(.recordThis(times: programme.timeRange, game: subject.isGame))
+                items.append(.recordThis(game: subject.isGame))
             }
             if subject.isGame {
                 if let team = subject.everyGameTeam {
-                    items.append(.recordEvery(title: "Record every \(team) game", detail: "Every game of the team, never replays"))
+                    items.append(.recordEvery(title: "Record every \(team) game"))
                 }
             } else {
-                items.append(.recordEvery(title: "Record every new episode", detail: "\(programme.title) on \(subject.channelName)"))
+                items.append(.recordEvery(title: "Record every new episode"))
             }
             items.append(.moreOptions)
         }

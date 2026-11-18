@@ -53,7 +53,7 @@ final class RecordPageUITests: XCTestCase {
         let any = app.descendants(matching: .any)
         XCTAssertTrue(app.buttons["record.on.2"].waitForExistence(timeout: 5), "three channels")
         XCTAssertTrue(app.buttons["record.on.0"].isSelected)
-        XCTAssertTrue(app.buttons["record.on.0"].label.contains("Best channel"), app.buttons["record.on.0"].label)
+        XCTAssertFalse(app.buttons["record.on.0"].label.contains("Best channel"), app.buttons["record.on.0"].label)
         XCTAssertTrue(any["record.stop"].label.hasPrefix("When the game ends (ESPN)"), any["record.stop"].label)
         XCTAssertTrue(app.buttons.matching(identifier: "record.what.team").count >= 1, "every game of a side")
         XCTAssertTrue(app.buttons["record.what.league"].exists, "every game of the league")
