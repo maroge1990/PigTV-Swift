@@ -623,8 +623,8 @@ final class AppModel: ObservableObject {
     /// #334: the player's list shows the live games: a play from Sport, on a server with the Sport front page (C-R).
     var playerShowsGames: Bool { sportPlay != nil && serverInfo?.features.sportFront == true }
 
-    /// #334: a game chosen in the player's live games list plays on its preferred channel (the first), with no channel
-    /// picker, and the list stays the live games. The row may be from a cached answer: it is checked for a current
+    /// #334: a game chosen in the player's live games list plays on its preferred channel on air (#345: the first of
+    /// its channels airing it now), with no channel picker, and the list stays the live games. The row may be from a cached answer: it is checked for a current
     /// airing at the press (`SportFrontText.playable`, as a Watch on a card is); one that is not on air is not played,
     /// and the player says so (`playerNotice`). Returns whether it played.
     @discardableResult

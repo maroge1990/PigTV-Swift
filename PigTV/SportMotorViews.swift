@@ -336,7 +336,7 @@ struct F1TileRow: View {
             }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
-        .contextMenu { if let flow, let event, event.best != nil { SportCardMenu(flow: flow, game: nil, event: event) } }
+        .modifier(F1TileMenu(flow: flow, event: event))
         .accessibilityIdentifier("f1.session.\(tile.id)")
     }
 
@@ -386,6 +386,21 @@ struct CircuitMap: View {
                         kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
                 return UIImage(cgImage: cg)
             }.value
+        }
+    }
+}
+
+/// #345: a session tile's hold menu (the game cards' `SportCardMenu`), attached only while it has something to offer:
+/// a finished session, or one with no channel, has no menu at all (sign-off review: not an empty one).
+private struct F1TileMenu: ViewModifier {
+    let flow: SportRecordFlow?
+    let event: SportEvent?
+
+    func body(content: Content) -> some View {
+        if let flow, let event, event.best != nil, SportCardRules.hold(event, now: Date()).offersAnything {
+            content.contextMenu { SportCardMenu(flow: flow, game: nil, event: event) }
+        } else {
+            content
         }
     }
 }

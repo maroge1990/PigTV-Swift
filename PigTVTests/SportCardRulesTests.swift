@@ -127,6 +127,8 @@ final class SportCardRulesTests: XCTestCase {
         let (unlisted, at) = try unlisted()
         XCTAssertEqual(SportCardRules.hold(unlisted, now: at), .init(record: true), "no listing: RECORD (Record when it's listed) only")
         XCTAssertEqual(SportCardRules.hold(try XCTUnwrap(f.game(Self.packersFinished)), now: now), .init(), "finished: nothing of its own")
+        XCTAssertFalse(SportCardRules.hold(try XCTUnwrap(f.game(Self.packersFinished)), now: now).offersAnything, "so no menu (F1's tiles)")
+        XCTAssertTrue(SportCardRules.hold(try XCTUnwrap(f.game(Self.chiefs)), now: now).offersAnything)
         XCTAssertEqual(SportCardRules.hold(try XCTUnwrap(f.game(Self.packersLive)), now: now), .init(), "live on no channel")
     }
 
@@ -154,6 +156,27 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertFalse(SportCardRules.hold(qualities, now: now).watchAnother, "one name in two qualities is one channel")
         let two = try chiefs([onAir("k1", "Kayo", "HD"), onAir("f1", "Fox Footy", "HD")])
         XCTAssertTrue(SportCardRules.hold(two, now: now).watchAnother, "two names on air")
+    }
+
+    /// #345 sign-off: the hero's and the iPhone card's Watch, the player's live games and choosing one there use the
+    /// same "live on any channel on air" as the cards.
+    func testWatchEverywhereIsAnyChannelOnAir() throws {
+        let raw = try front()
+        let now = Date(timeIntervalSince1970: raw.now / 1000)
+        let f = try front { Self.edit(&$0, Self.packersLive) { game in
+            game["channels"] = [
+                ["sourceId": 1, "id": "e1", "stableId": "e1", "name": "ESPN HD", "number": NSNull(), "logo": NSNull(), "quality": "HD",
+                 "start": raw.now + 3_600_000, "end": raw.now + 9_000_000],
+                ["sourceId": 1, "id": "k1", "stableId": "k1", "name": "Kayo", "number": NSNull(), "logo": NSNull(), "quality": "HD",
+                 "start": raw.now - 600_000, "end": raw.now + 7_200_000],
+            ]
+        } }
+        let game = try XCTUnwrap(f.game(Self.packersLive))
+        XCTAssertEqual(SportFrontText.action(game, now: now), .watch, "the hero's and the iPhone card's Watch (it said Remind me)")
+        XCTAssertEqual(SportFrontText.playable(game, at: now)?.channels.map(\.name), ["Kayo"], "plays the channel on air")
+        XCTAssertEqual(SportFrontText.actionLabel(game, now: now), "Watch")
+        XCTAssertTrue(PlayerGames.list(f, hidden: false, now: now).contains { $0.game.id == Self.packersLive },
+                      "the player's live games list it")
     }
 
     /// #345 review: a session card's action word is what pressing it does: never Remind me or Details.

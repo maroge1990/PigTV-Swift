@@ -350,20 +350,22 @@ nonisolated enum SportFrontText {
     }
 
     enum Action: Equatable { case watch, remind, details, none }
-    /// What selecting a card does: Watch only while its channel airs it now (that channel's own `start`/`end`, C-R; a
-    /// cached `canWatch` never outlasts them, as an answer may be minutes old or kept after a failed refresh), Remind me
-    /// before, the details (Record, the channels) otherwise. Called again at the moment of the press (`playable`).
+    /// A game's watchability (the hero's and the iPhone card's Watch, the player's live games): Watch while any of its
+    /// channels airs it now (each channel's own `start`/`end`, C-R; a cached `canWatch` never outlasts them, as an answer
+    /// may be minutes old or kept after a failed refresh; #345 review: any channel, as the cards' `SportCardRules`),
+    /// before the best channel's airing `.remind`, otherwise `.details`. Called again at the press (`playable`).
     static func action(_ game: SportsGame, now: Date) -> Action {
         // #218: a next round is days away and drawn without a channel: nothing to watch or be reminded of yet.
         guard !game.terminal, !isNextRound(game), let event = event(game), let best = event.best else { return .none }
-        if event.isLive(on: best, at: now) { return .watch }
+        if SportCardRules.playable(event, now: now) != nil { return .watch }
         return event.start(on: best) > now ? .remind : .details
     }
 
-    /// The event to play if the game's channel airs it at `now`, else nil (open the details instead). Checked when
-    /// Watch is pressed, never from what was drawn.
+    /// The event to play, with only its channels on air at `now` (best first), else nil. Checked when Watch is
+    /// pressed, never from what was drawn.
     static func playable(_ game: SportsGame, at now: Date) -> SportEvent? {
-        action(game, now: now) == .watch ? event(game) : nil
+        guard action(game, now: now) == .watch, let event = event(game) else { return nil }
+        return SportCardRules.playable(event, now: now)
     }
 
     /// A session card's action word: what pressing it does (#345, `SportCardRules`): "Watch" live, "Record" before it
@@ -427,6 +429,8 @@ nonisolated enum SportCardRules {
         var record = false
         /// "Remind me": before the preferred channel's airing.
         var remind = false
+        /// Anything of its own to show (a finished game's has nothing).
+        var offersAnything: Bool { watchAnother || record || remind }
     }
 
     static func select(_ game: SportsGame, now: Date, recordings: [Recording]) -> Select {

@@ -306,7 +306,8 @@ nonisolated enum PlayerGames {
 
     /// `hidden`: the screen's decision (`SportSpoilers.hidden`, from the account's preference); the answer's own switch
     /// still hides here. `labels`: the catalogue's league names.
-    /// `now`: a game whose preferred channel no longer airs it (a cached answer) is left out (`SportFrontText.playable`).
+    /// `now`: a game none of whose channels airs it now (a cached answer) is left out (`SportFrontText.playable`, #345:
+    /// any channel on air, not only the preferred one).
     static func list(_ front: SportFront?, hidden: Bool, labels: [String: String] = [:],
                      calendar: Calendar = .current, now: Date = Date()) -> [PlayerGame] {
         guard let front else { return [] }
