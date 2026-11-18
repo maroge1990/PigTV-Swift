@@ -217,8 +217,8 @@ struct SportCardMenu: View {
 
     var body: some View {
         let now = Date()
-        let shown = game.flatMap { $0.terminal ? nil : SportFrontText.event($0) } ?? (game == nil ? event : nil)
-        let hold = game.map { SportCardRules.hold($0, now: now) } ?? event.map { SportCardRules.hold($0, now: now) } ?? .init()
+        let shown = SportCardRules.menuEvent(game: game, event: event)
+        let hold = SportCardRules.hold(game: game, event: event, now: now)
         if let shown {
             if hold.watchAnother, let presenter {
                 Button("Watch another channel", systemImage: "play.rectangle.on.rectangle") { presenter.open(shown, .channels) }

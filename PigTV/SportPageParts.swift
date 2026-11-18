@@ -130,7 +130,11 @@ struct SportFollowStar: View {
 @MainActor
 enum SportCardActions {
     static func select(card: SportsGame?, event: SportEvent?, app: AppModel, presenter: SportPresenter?) {
-        if let card { SportGamePress.select(card, app: app, presenter: presenter); return }
+        // A card with no channel yet while the page's own event has one (a fixture, #345 review): the event decides.
+        if let card, card.terminal || SportFrontText.event(card) != nil || event?.best == nil {
+            SportGamePress.select(card, app: app, presenter: presenter)
+            return
+        }
         // #345: the cards' one rule (`SportCardRules`): Watch while it airs, the record page before, else nothing.
         guard let event else { return }
         switch SportCardRules.select(event, now: Date()) {

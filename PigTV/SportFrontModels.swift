@@ -455,6 +455,19 @@ nonisolated enum SportCardRules {
         return onAir.channels.isEmpty ? nil : onAir
     }
 
+    /// The event a card's hold menu acts on: its C-R card's, else the page's own event for it (#345 review: a fixture
+    /// whose card has no channel yet while the fixture's event has one); nil once over, or with neither.
+    static func menuEvent(game: SportsGame?, event: SportEvent?) -> SportEvent? {
+        if let game, game.terminal { return nil }
+        return game.flatMap { SportFrontText.event($0) } ?? event
+    }
+
+    /// The hold menu of a card that may come with the page's own event for it (`menuEvent`).
+    static func hold(game: SportsGame?, event: SportEvent?, now: Date) -> Hold {
+        if let game, game.terminal || SportFrontText.event(game) != nil || event == nil { return hold(game, now: now) }
+        return event.map { hold($0, now: now) } ?? Hold()
+    }
+
     static func hold(_ game: SportsGame, now: Date) -> Hold {
         guard !game.terminal, !SportFrontText.isNextRound(game) else { return Hold() }
         guard let event = SportFrontText.event(game) else {

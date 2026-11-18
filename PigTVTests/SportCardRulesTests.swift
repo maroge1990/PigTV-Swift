@@ -166,6 +166,21 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertEqual(SportFrontText.actionLabel(try XCTUnwrap(f.game(Self.packersLive)), now: now), "", "it said Not on your channels")
     }
 
+    /// #345 review: a fixture whose C-R card has no channel yet, while the fixture's own event has one, keeps its RECORD
+    /// section on that event (as before #345); a finished card has none.
+    func testAFixtureCardWithoutAChannelHoldsOnTheFixturesEvent() throws {
+        let (unlisted, now) = try unlisted()
+        let listed = try XCTUnwrap(try front().game(Self.chiefs))
+        let fixtureEvent = try XCTUnwrap(SportFrontText.event(listed))
+        XCTAssertEqual(SportCardRules.menuEvent(game: unlisted, event: fixtureEvent)?.channels.map(\.name), ["ESPN HD"])
+        XCTAssertEqual(SportCardRules.hold(game: unlisted, event: fixtureEvent, now: now), .init(record: true, remind: true))
+        XCTAssertEqual(SportCardRules.menuEvent(game: listed, event: nil)?.id, fixtureEvent.id, "the card's own when it has one")
+        XCTAssertEqual(SportCardRules.hold(game: unlisted, event: nil, now: now), .init(record: true), "no event: Record when it's listed")
+        let finished = try XCTUnwrap(try front().game(Self.packersFinished))
+        XCTAssertNil(SportCardRules.menuEvent(game: finished, event: fixtureEvent))
+        XCTAssertEqual(SportCardRules.hold(game: finished, event: fixtureEvent, now: now), .init())
+    }
+
     /// The hero and the iPhone carousel card keep Watch and Record; Remind me is only in the hold menu.
     func testRemindMeIsNoLongerACardButton() {
         XCTAssertEqual(SportPhoneCardButtons.primary(.watch), "Watch")

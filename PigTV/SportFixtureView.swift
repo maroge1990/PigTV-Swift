@@ -268,8 +268,9 @@ struct SportFixtureContent: View {
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
         .contextMenu {
-            // #345: the cards' hold menu (its C-R card's, else its own event's while it is not over).
-            if let card { SportCardMenu(flow: flow, game: card) }
+            // #345: the cards' hold menu: its C-R card's, with the fixture's own event when the card has no channel yet
+            // (review: the Record section stays, as before #345), else its own event's while it is not over.
+            if let card { SportCardMenu(flow: flow, game: card, event: event) }
             else if game.status != "done" { SportCardMenu(flow: flow, game: nil, event: event) }
         }
         .accessibilityIdentifier("sport.fixture.game.\(game.id)")
