@@ -110,8 +110,9 @@ controls are not used for live play.
   and 409 `error` of that route), an older server's 404/405 reads "This server can't change recordings yet"; Cancel
   recording closes the page and offers the 10 s Undo (`cancelCommitted`). Sport screens reach it through
   `SportRecordFlow` (attached to the app); a Sport game card's long press (Apple 115, `SportRecordMenu`) puts the menu's
-  RECORD items first in its system context menu (the TV Guide's card overlay needs the grid's focus restore, which the
-  sport rails do not have). The event page's and its channel rows' Record close that page first, then open the record
+  RECORD items in its system context menu (the TV Guide's card overlay needs the grid's focus restore, which the
+  sport rails do not have). A game the guide does not list yet (#234) opens it with no airings (`RecordRequest.listing`):
+  "This game" is Record when it's listed (a C-M `game` rule) or Don't record it, the team and league rules as usual. The event page's and its channel rows' Record close that page first, then open the record
   page. Fixtures `record`, `record-sport`, `record-change` (`DesignTestScreen`, with the Undo toast); tests
   `RecordPageUITests`, `GuidePagesUITests`, `SportFrontUITests`.
   **Recordings (D-44 batch 5, Apple 119–122, R5-Recordings/Scheduled/View/Undo).** No library: `RecordingsView` draws
@@ -341,7 +342,7 @@ controls are not used for live play.
 ### Apple TV front page and sport pages (C-R, D-43, build 97)
 
 - **One banner** (`SportBanner.swift`; pure parts `SportBannerModels.swift`): 250 pt under the tabs, the hero on the left
-  (kicker, title, one line, `SportHeroButtons`: Watch or Remind me, Record, and on the front page "Open <sport>") over the
+  (kicker, title, one line, `SportHeroButtons`: Watch, Record, and on the front page "Open <sport>") over the
   faded badge or the circuit map (C-P `info.map`, `mapDark` in dark mode), and a list on the right behind a thin line:
   four rows in a fixed-height scroll view, then "N more · …" (`SportBannerWindow`: focus moving past the window scrolls
   it one row, the banner never grows). One item or none: full width, no list (`SportBannerLayout.fullWidth`). Rows are
@@ -354,7 +355,7 @@ controls are not used for live play.
   (`sport.also.<sport>`). The iPad (regular width) draws this page too (D-44).
 - **iPhone front page (`SportFrontPhonePage`, D-44, R5-Front-iPhone, Apple 139)**: the header (pig, "Sport", a "Scores
   shown / hidden" chip), a 212 pt carousel of `follows[]` in the order sent (#215: playing now, then soonest; one card
-  each with the teams' 48 pt badges, the score, the clock and channel, Watch or Remind me and Record every game; dots and
+  each with the teams' 48 pt badges, the score, the clock and channel, Watch (on now) and Record; dots and
   "1 of 7 follows"), then one card per sport (`SportFrontLayout.sections`) under its "Football ›" header (opens the sport
   page) with its first three games as `SportFixtureRow`s: logo · Team v Team · logo, the score on the right, the state
   (red while live), time and channel beneath; a session's row has its league's square badge. Words: `SportPhoneLayout`
@@ -376,6 +377,13 @@ controls are not used for live play.
 - **One spoiler decision per sport page (#192, Apple 143)**: the page's (the preference, unknown counting as on, OR the
   answer's `spoilerFree`) goes to every league panel as `sportHidesSpoilers`, and each panel ORs it with its own
   preference, on the Apple TV, iPad and iPhone alike (`testLeaguePagesHideScoresWhenTheAnswerIsSpoilerFree`).
+- **A game card's select and hold (#345, Mark 18 Nov)**: one rule for every card (front page, league, fixture and event
+  pages, the iPhone's carousel and rows), pure in `SportCardRules`, decided again at the press (`SportGamePress`):
+  select plays the preferred channel while one airs it, opens the record page before (Record when it's listed without a
+  listing), plays the game's recording once finished (`Recording.gameId`: a finished one, whole before partial, then the
+  longest, then the earliest start; else one still recording that plays near its live edge), else nothing. The hold menu (`SportCardMenu`): live → Watch another channel (the channel picker, with more than one
+  channel) and RECORD; before → RECORD and Remind me; finished → only the page's Make this the hero. Remind me is in
+  the hold menu only; cards no longer open the event page.
 - **Shared words (Apple 137–138)**: a next-round card (C-R `nextRound`, #218) reads "Next round · Sat 15 Nov" with no
   channel, Watch or Remind me (`SportFrontText.isNextRound`/`startLine`/`channelLine`); a live card's clock is short
   (`cardClock`: "Q4 0:17", "OT1 10:00", #211), the down and distance stay in the banner; C-T's `%` is one decimal

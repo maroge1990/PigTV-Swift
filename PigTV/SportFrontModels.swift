@@ -398,6 +398,90 @@ nonisolated enum SportFrontText {
     static func date(_ ms: Double) -> Date { Date(timeIntervalSince1970: ms / 1000) }
 }
 
+/// #345 (Mark, 18 Nov): what selecting a game card does and what holding it offers, by the game's state; one rule for
+/// every card (the front page, the league, fixture and event pages, the iPhone's carousel and rows). Pure; decided again
+/// at the press, never from what was drawn.
+nonisolated enum SportCardRules {
+    enum Select: Equatable {
+        /// On a channel now: its preferred channel.
+        case watch
+        /// Not started (or on air only later): the record page.
+        case record
+        /// To come with no listing yet (#234): the record page's "Record when it's listed".
+        case recordWhenListed
+        /// Finished, with a recording of it that plays.
+        case playRecording(Int)
+        /// Finished, its recording still going (finishing late) and watchable while it records: near its live edge.
+        case playRecordingLive(Int)
+        case none
+    }
+
+    /// The hold menu's sections ("Make this the hero" is the page's own, beside these).
+    struct Hold: Equatable {
+        /// "Watch another channel" (the channel picker): live, with more than one channel carrying it.
+        var watchAnother = false
+        /// The RECORD section.
+        var record = false
+        /// "Remind me": before the preferred channel's airing.
+        var remind = false
+    }
+
+    static func select(_ game: SportsGame, now: Date, recordings: [Recording]) -> Select {
+        if game.terminal {
+            guard let found = recording(of: game, in: recordings) else { return .none }
+            return found.live ? .playRecordingLive(found.recording.id) : .playRecording(found.recording.id)
+        }
+        if SportFrontText.isNextRound(game) { return .none }
+        guard let event = SportFrontText.event(game) else {
+            return SportFutureRecord.offer(game, now: now) != nil ? .recordWhenListed : .none
+        }
+        return select(event, now: now)
+    }
+
+    /// A game known only by its event (a fixture with no C-R card): the same rule.
+    static func select(_ event: SportEvent, now: Date) -> Select {
+        guard let best = event.best else { return .none }
+        if event.isLive(on: best, at: now) { return .watch }
+        return SportFrontText.recordChoices(event, now: now).isEmpty ? .none : .record
+    }
+
+    static func hold(_ game: SportsGame, now: Date) -> Hold {
+        guard !game.terminal, !SportFrontText.isNextRound(game) else { return Hold() }
+        guard let event = SportFrontText.event(game) else {
+            return Hold(record: SportFutureRecord.offer(game, now: now) != nil)
+        }
+        return hold(event, now: now)
+    }
+
+    static func hold(_ event: SportEvent, now: Date) -> Hold {
+        guard let best = event.best else { return Hold() }
+        let record = !SportFrontText.recordChoices(event, now: now).isEmpty
+        if event.isLive(on: best, at: now) { return Hold(watchAnother: event.channels.count > 1, record: record) }
+        return Hold(record: record, remind: event.start(on: best) > now)
+    }
+
+    /// The recording of a finished game to play (`Recording.gameId`): a finished one (the Recordings list's rule,
+    /// `playLabel`), a whole one before a partial, then the longest, then the earliest start; else one still recording
+    /// (finishing late) that can be watched while it records (`live`); else nil.
+    static func recording(of game: SportsGame, in recordings: [Recording]) -> (recording: Recording, live: Bool)? {
+        let mine = recordings.filter { $0.gameId == game.id }
+        let done = mine.filter { $0.playLabel != nil }.min { a, b in
+            let partial = ((a.is_partial ?? 0) != 0, (b.is_partial ?? 0) != 0)
+            if partial.0 != partial.1 { return !partial.0 }
+            let length = (a.duration_sec ?? 0, b.duration_sec ?? 0)
+            if length.0 != length.1 { return length.0 > length.1 }
+            let start = (a.started_at ?? .infinity, b.started_at ?? .infinity)
+            if start.0 != start.1 { return start.0 < start.1 }
+            return a.id < b.id
+        }
+        if let done { return (done, false) }
+        if let going = mine.filter(\.canWatchFromStart).min(by: { ($0.started_at ?? .infinity, $0.id) < ($1.started_at ?? .infinity, $1.id) }) {
+            return (going, true)
+        }
+        return nil
+    }
+}
+
 /// D-43 (1 Nov): the Apple TV front page's layout, from the answer. Pure (tests `SportFrontLayoutTests`). Everything keeps
 /// the server's order (C-R since 0427: the account's order, anything playing now first); nothing is re-sorted here.
 nonisolated enum SportFrontLayout {

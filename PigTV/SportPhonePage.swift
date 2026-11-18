@@ -9,8 +9,8 @@ import SwiftUI
 
 #if os(iOS)
 /// The carousel shared by the front page (the follows) and a sport's page (the league's games): 212 pt cards swiped
-/// sideways, each with Watch or Remind me and Record (every game of the card's team when it has one, #49), the dots and
-/// the position line beneath.
+/// sideways, each with Watch (on now) and Record (every game of the card's team when it has one, #49), its hold menu
+/// (#345: Remind me is there), the dots and the position line beneath.
 struct SportPhoneCarousel: View {
     let app: AppModel
     let browse: BrowseModel
@@ -119,6 +119,8 @@ struct SportPhoneCarousel: View {
                 .contentShape(Rectangle())
             }
             .pigPressable()
+            // #345: the card's hold menu, as every game card's.
+            .contextMenu { if let game { SportCardMenu(flow: flow, game: game, team: card.team.isEmpty ? nil : card.team) } }
             .accessibilityLabel(card.accessibilityLabel)
             .accessibilityIdentifier(card.index >= 0 ? "\(identifier).follow.\(card.index)" : "\(identifier).card.\(card.id)")
             Spacer(minLength: 0)
@@ -156,29 +158,21 @@ struct SportPhoneCarousel: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Watch (on now) or Remind me (before), the one rose primary, then Record (the record page, which offers every game of
-    /// the card's team, #49): the same glass family, width and height (#225).
+    /// Watch (on now), the one rose primary, then Record (the record page, which offers every game of the card's team,
+    /// #49): the same glass family, width and height (#225).
     @ViewBuilder
     private func actions(_ game: SportsGame, team: String?, now: Date) -> some View {
         if !game.terminal, let event = SportFrontText.event(game) {
             let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: PigSpacing.s))
                                                       : AnyLayout(HStackLayout(spacing: PigSpacing.s))
             layout {
-                switch SportFrontText.action(game, now: now) {
-                case .watch:
+                // #345: Remind me is in the card's hold menu only.
+                if let watch = SportPhoneCardButtons.primary(SportFrontText.action(game, now: now)) {
                     Button { SportGamePress.watch(game, event: event, app: app, presenter: presenter) } label: {
-                        Label(SportPhoneCardButtons.primary(.watch) ?? "", systemImage: "play.fill").frame(maxWidth: .infinity)
+                        Label(watch, systemImage: "play.fill").frame(maxWidth: .infinity)
                     }
                     .pigPrimaryButton()
                     .accessibilityIdentifier("\(identifier).card.watch")
-                case .remind:
-                    Button { app.watchWhenStarts(event, now: Date()) } label: {
-                        Label(SportPhoneCardButtons.primary(.remind) ?? "", systemImage: "bell").frame(maxWidth: .infinity)
-                    }
-                    .pigPrimaryButton()
-                    .accessibilityIdentifier("\(identifier).card.remind")
-                case .details, .none:
-                    EmptyView()
                 }
                 // #49: the record page's rule is the card's own follow's team.
                 Button { flow.record(event, game: game, team: team) } label: {
@@ -194,8 +188,8 @@ struct SportPhoneCarousel: View {
     }
 }
 
-/// A card of fixture rows (#205): pressing a row plays it while its channel airs it, else opens its details; a long
-/// press offers its RECORD section.
+/// A card of fixture rows (#205): pressing a row does what pressing any game card does (`SportGamePress`); a long press
+/// offers the card's hold menu (#345).
 struct SportPhoneRowsCard: View {
     let app: AppModel
     let browse: BrowseModel
@@ -215,11 +209,7 @@ struct SportPhoneRowsCard: View {
                         SportFixtureRow(row: row, client: browse.client)
                     }
                     .pigPressable()
-                    .contextMenu {
-                        if !game.terminal, let event = SportFrontText.event(game) {
-                            SportRecordMenu(flow: flow, event: event, game: game)
-                        }
-                    }
+                    .contextMenu { SportCardMenu(flow: flow, game: game) }
                     .accessibilityIdentifier("\(identifier).\(game.id)")
                 }
             }

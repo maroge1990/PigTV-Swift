@@ -1008,14 +1008,14 @@ final class BrowseModel: ObservableObject {
     }
 
     /// #234: "Record when it's listed": the game's `game` rule; its id, or nil (actionError says why).
-    func addGameRule(_ game: SportsGame) async -> Int? {
+    func addGameRule(_ game: SportsGame, before: Int? = nil, after: Int? = nil) async -> Int? {
         guard !mutationBusy else { return nil }
         mutationBusy = true
         actionError = nil
         defer { mutationBusy = false }
         do {
-            let rule: RecordingRule = try await client.request("recordings/rules", method: "POST",
-                                                               body: RuleBody(kind: "game", match: game.title, gameId: game.id))
+            let body = RuleBody(kind: "game", match: game.title, preBufferMin: before, postBufferMin: after, gameId: game.id)
+            let rule: RecordingRule = try await client.request("recordings/rules", method: "POST", body: body)
             actionMessage = "It will record once it's in the TV guide."
             PigHaptic.play(.record)
             return rule.id

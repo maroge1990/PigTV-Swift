@@ -13,10 +13,10 @@ final class SportPhonePageTests: XCTestCase {
 
     private func now(_ f: SportFront) -> Date { Date(timeIntervalSince1970: f.now / 1000) }
 
-    // #225 (Mark, 4 Nov 2026): a card's buttons are "Remind me" (or "Watch") and "Record", the same size; before Apple 144
-    // the second read "Record every Arsenal game" in another style, shrunk to fit.
-    func testACardsButtonsAreRemindMeOrWatchThenRecord() {
-        XCTAssertEqual(SportPhoneCardButtons.primary(.remind), "Remind me")
+    // #225 (Mark, 4 Nov 2026): a card's buttons are "Watch" and "Record", the same size; before Apple 144 the second read
+    // "Record every Arsenal game" in another style, shrunk to fit. #345 (18 Nov): Remind me is in the hold menu only.
+    func testACardsButtonsAreWatchThenRecord() {
+        XCTAssertNil(SportPhoneCardButtons.primary(.remind))
         XCTAssertEqual(SportPhoneCardButtons.primary(.watch), "Watch")
         XCTAssertNil(SportPhoneCardButtons.primary(.details))
         XCTAssertNil(SportPhoneCardButtons.primary(.none))

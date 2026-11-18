@@ -257,6 +257,8 @@ nonisolated struct Recording: Decodable, Identifiable, Equatable, Sendable {
     /// C-N (server 0220): the programme's artwork from the guide
     /// (`/api/logo/<key>`), or nil; the tile falls back to the channel logo.
     var image: String? = nil
+    /// #345: the Sport game (C-R card id) this recording is of, or nil (not a sport game's, or an older server).
+    var gameId: String? = nil
     /// "Watch from start" applies: still recording, and the server says so.
     var canWatchFromStart: Bool { status == "recording" && watch_live == true }
     /// Finished, but the server is still getting it ready to play.

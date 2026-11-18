@@ -131,17 +131,13 @@ struct SportFollowStar: View {
 enum SportCardActions {
     static func select(card: SportsGame?, event: SportEvent?, app: AppModel, presenter: SportPresenter?) {
         if let card { SportGamePress.select(card, app: app, presenter: presenter); return }
-        guard let event, let best = event.best else { return }
-        if event.isLive(on: best, at: Date()) {
-            if let presenter { presenter.play(event) } else { app.playSportEvent(event, origin: SportFrontView.origin) }
-        } else {
-            presenter?.open(event, .details)
+        // #345: the cards' one rule (`SportCardRules`): Watch while it airs, the record page before, else nothing.
+        guard let event else { return }
+        switch SportCardRules.select(event, now: Date()) {
+        case .watch: if let presenter { presenter.play(event) } else { app.playSportEvent(event, origin: SportFrontView.origin) }
+        case .record: app.record(event)
+        case .recordWhenListed, .playRecording, .playRecordingLive, .none: break
         }
-    }
-
-    static func recordEvent(card: SportsGame?, event: SportEvent?) -> SportEvent? {
-        if let card, !card.terminal, let cardEvent = SportFrontText.event(card) { return cardEvent }
-        return event
     }
 }
 

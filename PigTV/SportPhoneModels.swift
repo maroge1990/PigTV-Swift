@@ -234,12 +234,8 @@ nonisolated enum SportPhoneLayout {
 /// when it has one), whose own wording stays longer. Pure (tests `SportPhonePageTests`).
 nonisolated enum SportPhoneCardButtons {
     static let record = "Record"
-    /// The rose primary before Record: "Watch" or "Remind me"; none otherwise.
+    /// The rose primary before Record: "Watch"; none otherwise (#345: Remind me is in the hold menu only).
     static func primary(_ action: SportFrontText.Action) -> String? {
-        switch action {
-        case .watch: "Watch"
-        case .remind: "Remind me"
-        case .details, .none: nil
-        }
+        action == .watch ? "Watch" : nil
     }
 }

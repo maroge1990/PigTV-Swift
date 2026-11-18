@@ -50,21 +50,24 @@ enum SportSectionMetrics {
 
 /// D-44 batch 5 (Apple 114–115): a Sport screen's recording. Record opens the record page (every channel carrying the
 /// game, best first, each on its own airing: #204, C-I #20) through the app's presentation layer; a card's long press
-/// offers the one menu's RECORD section (this game or Change recording, every <team> game, More options…).
+/// offers the one menu's RECORD section (this game or Change recording, every <team> game, More options…) and, #345,
+/// Remind me.
 @MainActor
 final class SportRecordFlow: ObservableObject {
     private weak var app: AppModel?
 
     func attach(_ app: AppModel) { self.app = app }
 
-    /// #257: play the event on the chosen channel.
-    func watch(_ event: SportEvent, on channel: SportEventChannel) {
-        guard let current = WatchOn.play(event, on: channel, now: Date()) else { return } // its airing ended meanwhile
-        app?.playSportEvent(current, channel: channel, origin: "Sport")
-    }
-
     /// The record page (Change recording when one of its channels has it scheduled).
     func record(_ event: SportEvent, game: SportsGame? = nil, team: String? = nil) { app?.record(event, game: game, team: team) }
+
+    /// #345: the record page of a game the guide does not list yet (Record when it's listed).
+    func recordWhenListed(_ game: SportsGame, team: String? = nil, presenter: SportPresenter?) {
+        app?.recordWhenListed(game, team: team, presenter: presenter)
+    }
+
+    /// #345: the hold menu's Remind me: watch the preferred channel when it starts.
+    func remind(_ event: SportEvent) { app?.watchWhenStarts(event, now: Date()) }
 
     /// The menu's RECORD items for a card: the same items as the Guide's (`ProgrammeMenu`), for its best channel.
     /// `team`: the follow the menu is for (#49), so "Record every <team> game" is that team's.
@@ -116,13 +119,14 @@ struct SportRecordMenu: View {
     let flow: SportRecordFlow
     let event: SportEvent
     var game: SportsGame? = nil
+    var team: String? = nil
 
     var body: some View {
-        let items = flow.menuItems(event, game: game)
+        let items = flow.menuItems(event, game: game, team: team)
         if !items.isEmpty {
             Section("Record") {
                 ForEach(items) { item in
-                    Button { flow.run(item, event: event, game: game) } label: {
+                    Button { flow.run(item, event: event, game: game, team: team) } label: {
                         Label {
                             Text(item.title)
                             if let detail = item.detail { Text(detail) }
@@ -142,28 +146,109 @@ extension View {
     }
 }
 
-/// What pressing a game does, revalidated at the press (C-R): Watch only while its channel airs it, else its details.
+/// What pressing a game does, revalidated at the press (C-R, #345: `SportCardRules`): Watch while its channel airs it,
+/// the record page before (Record when it's listed without a listing), its recording once finished, else nothing.
 @MainActor
 enum SportGamePress {
     static func select(_ game: SportsGame, app: AppModel, presenter: SportPresenter?) {
-        // #234: a future game the guide does not list yet: offer to record it once it is (else, as before, nothing)
-        guard let event = SportFrontText.event(game) else { presenter?.askFuture(game); return }
-        switch SportFrontText.action(game, now: Date()) {
-        case .watch: watch(game, event: event, app: app, presenter: presenter)
-        case .remind, .details: presenter?.open(event, .details)
-        case .none: break
+        let browse = app.browse
+        switch SportCardRules.select(game, now: Date(), recordings: browse?.recordings ?? []) {
+        case .watch:
+            if let event = SportFrontText.event(game) { watch(game, event: event, app: app, presenter: presenter) }
+        case .record:
+            if let event = SportFrontText.event(game) { app.record(event, game: game) }
+        case .recordWhenListed:
+            app.recordWhenListed(game, presenter: presenter)
+        case .playRecording(let id):
+            playRecording(id, live: false, app: app)
+        case .playRecordingLive(let id):
+            playRecording(id, live: true, app: app)
+        case .none:
+            // A finished game whose recording this device has not loaded yet: the list once more, then its recording.
+            guard game.terminal, let browse else { return }
+            Task {
+                await browse.loadRecordingsIfStale(quietly: true)
+                switch SportCardRules.select(game, now: Date(), recordings: browse.recordings) {
+                case .playRecording(let id): playRecording(id, live: false, app: app)
+                case .playRecordingLive(let id): playRecording(id, live: true, app: app)
+                default: break
+                }
+            }
         }
     }
 
+    private static func playRecording(_ id: Int, live: Bool, app: AppModel) {
+        guard let recording = app.browse?.recordings.first(where: { $0.id == id }) else { return }
+        app.presenter.present(live ? .recordingFromLive(recording) : .playRecording(recording))
+    }
+
     /// An answer drawn earlier (or kept after a failed refresh) may describe an airing that has ended, and the player
-    /// would tune the channel whatever it shows now: then the details instead.
+    /// would tune the channel whatever it shows now: then the record page instead, while there is an airing to record.
     static func watch(_ game: SportsGame, event: SportEvent, app: AppModel, presenter: SportPresenter?) {
-        guard let live = SportFrontText.playable(game, at: Date()) else { presenter?.open(event, .details); return }
+        guard let live = SportFrontText.playable(game, at: Date()) else {
+            if SportCardRules.select(event, now: Date()) == .record { app.record(event, game: game) }
+            return
+        }
         if let presenter { presenter.play(live) } else { app.playSportEvent(live, origin: SportFrontView.origin) }
     }
 }
 
-/// The hero's buttons: Watch (on now) or Remind me (before), Record, and a way to the hero's sport page.
+/// #345: a game card's hold menu, the same on every card: Watch another channel (live, several channels), the RECORD
+/// section, Remind me (before); a page's own items (Make this the hero) follow it. Decided when it opens.
+struct SportCardMenu: View {
+    let flow: SportRecordFlow
+    /// The C-R card, or nil for a fixture known only by its event.
+    let game: SportsGame?
+    var event: SportEvent? = nil
+    /// The follow the menu is for (#49).
+    var team: String? = nil
+    @Environment(\.sportPresenter) private var presenter
+
+    var body: some View {
+        let now = Date()
+        let shown = game.flatMap { $0.terminal ? nil : SportFrontText.event($0) } ?? (game == nil ? event : nil)
+        let hold = game.map { SportCardRules.hold($0, now: now) } ?? event.map { SportCardRules.hold($0, now: now) } ?? .init()
+        if let shown {
+            if hold.watchAnother, let presenter {
+                Button("Watch another channel", systemImage: "play.rectangle.on.rectangle") { presenter.open(shown, .channels) }
+                    .accessibilityIdentifier("menu.watchAnother")
+            }
+            if hold.record { SportRecordMenu(flow: flow, event: shown, game: game, team: team) }
+            if hold.remind {
+                Button("Remind me", systemImage: "bell") { flow.remind(shown) }
+                    .accessibilityIdentifier("menu.remind")
+            }
+        } else if let game, hold.record {
+            SportListingMenu(flow: flow, game: game, team: team)
+        }
+    }
+}
+
+/// #345: the RECORD section of a game to come that the guide does not list yet (#234): Record when it's listed (or Don't
+/// record it, once set) at once, and More options… (the record page).
+private struct SportListingMenu: View {
+    let flow: SportRecordFlow
+    let game: SportsGame
+    var team: String? = nil
+    @Environment(\.sportPresenter) private var presenter
+
+    var body: some View {
+        if let presenter, let offer = presenter.futureOffer(game) {
+            Section("Record") {
+                Button(offer == .record ? SportFutureRecord.recordTitle : SportFutureRecord.cancelTitle,
+                       systemImage: offer == .record ? "record.circle" : "xmark.circle",
+                       role: offer == .record ? nil : .destructive) { presenter.answerFuture(game) }
+                    .accessibilityIdentifier("menu.recordWhenListed")
+                Button(ProgrammeMenuItem.moreOptions.title, systemImage: ProgrammeMenuItem.moreOptions.systemImage) {
+                    flow.recordWhenListed(game, team: team, presenter: presenter)
+                }
+                .accessibilityIdentifier("menu.moreOptions")
+            }
+        }
+    }
+}
+
+/// The hero's buttons: Watch (on now), Record, and a way to the hero's sport page (#345: Remind me is in the hold menu).
 struct SportHeroButtons: View {
     let game: SportsGame?
     let now: Date
@@ -173,30 +258,23 @@ struct SportHeroButtons: View {
     var team: String? = nil
     /// "Open Football" (the front page); nil on a sport page.
     var open: (label: String, action: () -> Void)? = nil
-    /// The page's default focus: the first button (Watch or Remind me, else Record, else the sport's page).
+    /// The page's default focus: the first button (Watch, else Record, else the sport's page).
     var focus: FocusState<Bool>.Binding? = nil
     @Environment(\.sportPresenter) private var presenter
 
     var body: some View {
         let event = game.flatMap { $0.terminal ? nil : SportFrontText.event($0) }
         let action = game.map { SportFrontText.action($0, now: now) } ?? .none
-        let primary = event != nil && (action == .watch || action == .remind)
+        let primary = event != nil && action == .watch
         if let game, let event {
-            switch action {
-            case .watch:
+            // #345: Remind me is in the cards' hold menu only.
+            if action == .watch {
                 Button("Watch", systemImage: "play.fill") {
                     SportGamePress.watch(game, event: event, app: app, presenter: presenter)
                 }
                 .pigPrimaryButton()
                 .modifier(HeroFocus(focus: focus))
                 .accessibilityIdentifier("sport.banner.hero.watch")
-            case .remind:
-                Button("Remind me", systemImage: "bell") { app.watchWhenStarts(event, now: Date()) }
-                    .pigPrimaryButton()
-                    .modifier(HeroFocus(focus: focus))
-                    .accessibilityIdentifier("sport.banner.hero.remind")
-            case .details, .none:
-                EmptyView()
             }
             Button("Record", systemImage: "record.circle") { flow.record(event, game: game, team: team) }
                 .pigSecondaryButton()
@@ -353,18 +431,7 @@ struct SportGameCard: View {
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportCardMetrics.radius))
         .contextMenu {
-            if let flow, !game.terminal, let event = SportFrontText.event(game) {
-                // #257: on air on several channels: choose one before the player opens.
-                let onAir = WatchOn.onAir(event, now: Date())
-                if onAir.channels.count > 1, !event.isReplay {
-                    Menu("Watch on… (\(onAir.channels.count) channels)", systemImage: "play.rectangle.on.rectangle") {
-                        ForEach(onAir.channels) { channel in
-                            Button(WatchOn.label(channel)) { flow.watch(event, on: channel) }
-                        }
-                    }
-                }
-                SportRecordMenu(flow: flow, event: event, game: game)
-            }
+            if let flow { SportCardMenu(flow: flow, game: game) }
             if let onPin { Button("Make this the hero", systemImage: "star") { onPin() } }
         }
         .accessibilityIdentifier("sport.front.game.\(game.id)")

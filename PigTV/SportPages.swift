@@ -23,8 +23,6 @@ struct SportPresentation: Identifiable {
 @MainActor
 final class SportPresenter: ObservableObject {
     @Published var presented: SportPresentation?
-    /// #234: a future game with no listing yet whose card was selected: the "Record when it's listed" question.
-    @Published var future: SportsGame?
     /// Apple 154 (152 Codex round 1): an answer being saved (no second one meanwhile), a failure to show, and the answers
     /// saved since the cards were drawn (game id -> its rule id, or nil once removed), so a card changes at once.
     @Published private(set) var futureSaving = false
@@ -40,19 +38,18 @@ final class SportPresenter: ObservableObject {
     func open(_ event: SportEvent, _ page: SportPage) { presented = SportPresentation(event: event, page: page) }
     func play(_ event: SportEvent) { app.playSportEvent(event, origin: origin) }
 
-    /// #234: what selecting a card without a listing offers, if anything.
+    /// #234: what a card without a listing offers (its hold menu, the record page), if anything.
     func futureOffer(_ game: SportsGame) -> SportFutureRecord.Offer? {
         SportFutureRecord.offer(game, now: Date(), answered: futureAnswers[game.id])
     }
+    /// This device's answer for a card, if any.
+    func futureAnswer(_ game: SportsGame) -> SportFutureRecord.Answer? { futureAnswers[game.id] }
+    /// #345: an answer given on the record page (the rule added, or nil once removed), so the card says it at once.
+    func noteFuture(_ game: SportsGame, rule: Int?) {
+        futureAnswers[game.id] = .init(basis: game.recordWhenListed?.ruleId, rule: rule)
+    }
     /// The rule this card waits on, this device's answers first.
     func futureRule(_ game: SportsGame) -> Int? { SportFutureRecord.waiting(game, answered: futureAnswers[game.id]) }
-    /// Asks; true when there was something to ask.
-    @discardableResult
-    func askFuture(_ game: SportsGame) -> Bool {
-        guard futureOffer(game) != nil else { return false }
-        future = game
-        return true
-    }
     /// The answer: add or remove the game's `game` rule (C-M). The card says so at its next refresh.
     func answerFuture(_ game: SportsGame) {
         guard let offer = futureOffer(game), let browse = app.browse else { return }
@@ -115,19 +112,7 @@ private struct SportPages: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.sportPresenter, presenter)
-            // #234: a future game the guide does not list yet
-            .confirmationDialog(presenter.future?.title ?? "", isPresented: Binding(get: { presenter.future != nil },
-                                                                                  set: { if !$0 { presenter.future = nil } }),
-                                titleVisibility: .visible, presenting: presenter.future) { game in
-                let offer = presenter.futureOffer(game)
-                Button(offer == .record ? SportFutureRecord.recordTitle : SportFutureRecord.cancelTitle,
-                       role: offer == .record ? nil : .destructive) { presenter.answerFuture(game) }
-                Button("Cancel", role: .cancel) {}
-            } message: { game in
-                Text(presenter.futureOffer(game) == .record
-                     ? "It isn't in the TV guide yet. PigTV records it on its best channel as soon as it's listed."
-                     : "It's set to record once it's listed in the TV guide.")
-            }
+            // #234: a hold menu's Record when it's listed that failed
             .alert("Not saved", isPresented: Binding(get: { presenter.futureError != nil }, set: { if !$0 { presenter.futureError = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {

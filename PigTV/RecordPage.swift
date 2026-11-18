@@ -56,9 +56,20 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
     var error: String? = nil
     /// The channel to start on (a channel row's "Record on <channel>"), by its id; else the best.
     var preferredChannel: String? = nil
+    /// #345: a game to come that the guide does not list yet (#234), with no airings: "This game" is its `game` rule.
+    var listing: Listing? = nil
+
+    /// #345: Record when it's listed (or Don't record it, once set) on the record page, as the card's question did.
+    struct Listing: Sendable {
+        let game: SportsGame
+        let offer: SportFutureRecord.Offer
+        /// This device's answer, so the cards say it at once: the rule added, or nil once removed (`SportPresenter`).
+        var answered: @MainActor @Sendable (Int?) -> Void = { _ in }
+    }
 
     var id: String {
-        "\(schedule.map { "s\($0.id)" } ?? "new")|\(airings.first?.id ?? "")|\(Int64(airings.first?.programme.startTime ?? 0))"
+        if let listing { return "listing|\(listing.game.id)" }
+        return "\(schedule.map { "s\($0.id)" } ?? "new")|\(airings.first?.id ?? "")|\(Int64(airings.first?.programme.startTime ?? 0))"
     }
 }
 
@@ -100,9 +111,8 @@ nonisolated enum RecordPlan {
     static func label(_ what: What, request: RecordRequest, leagueLabel: String? = nil, now: Date) -> (title: String, detail: String) {
         switch what {
         case .this:
-            let when = request.airings.first.map { airing in
-                "\(DetailText.day(airing.programme.start, now: now)) \(airing.programme.start.formatted(date: .omitted, time: .shortened))"
-            } ?? ""
+            let start = request.airings.first?.programme.start ?? request.listing.map { SportFrontText.date($0.game.start) }
+            let when = start.map { "\(DetailText.day($0, now: now)) \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
             return (request.isGame || request.league != nil ? "This game" : "This programme", when)
         case .everyNewEpisode:
             return ("Every new episode", "\(request.title) on \(request.airings.first?.channel.name ?? "this channel")")
@@ -192,16 +202,28 @@ nonisolated enum RecordPlan {
 
     /// When it stops, in words: the first line and the one under it.
     static func stopLines(_ request: RecordRequest, airing: RecordRequest.Airing?, now: Date) -> (title: String, detail: String) {
-        let end = (airing?.programme.end).map { $0.formatted(date: .omitted, time: .shortened) } ?? ""
+        let guideEnd = (airing?.programme.end).map { $0.formatted(date: .omitted, time: .shortened) }
         if stopsWithGame(request) {
-            return ("When the game ends (ESPN)", "Else the guide end, \(end), + Finish late")
+            // #345: a game not listed yet has no guide end to name.
+            return ("When the game ends (ESPN)", guideEnd.map { "Else the guide end, \($0), + Finish late" } ?? "Else the guide end + Finish late")
         }
+        let end = guideEnd ?? ""
         return ("When the guide says it ends", "\(end) + Finish late")
+    }
+
+    /// #345: the note under a game the guide does not list yet (the words of #234's question).
+    static func listingNote(_ listing: RecordRequest.Listing) -> String {
+        listing.offer == .record
+            ? "It isn't in the TV guide yet. PigTV records it on its best channel as soon as it's listed."
+            : "It's set to record once it's listed in the TV guide."
     }
 
     /// The primary button.
     static func primaryTitle(_ what: What, request: RecordRequest) -> String {
         if request.schedule != nil { return "Save changes" }
+        if what == .this, let listing = request.listing {
+            return listing.offer == .record ? SportFutureRecord.recordTitle : SportFutureRecord.cancelTitle
+        }
         switch what {
         case .this: return request.isGame || request.league != nil ? "Record game" : "Record programme"
         case .everyNewEpisode: return "Record every new episode"
@@ -269,13 +291,39 @@ extension BrowseModel {
                                  quality: channel.quality, measured: channel.measured, nameKey: channel.nameKey)
         }
         guard !airings.isEmpty else { return nil }
+        let sides = recordSides(title: event.title, league: event.league, game: game, team: team)
+        let bound = RecordPlan.bind(schedules: airings.map { activeSchedule(channel: $0.channel, programme: $0.programme) },
+                                    channels: airings.map(\.channel.id), preferred: preferredChannel)
+        var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id,
+                                    teams: sides.teams, followedTeam: sides.followed, followedTeams: sides.followedTeams,
+                                    sport: sportFront.front?.sports.first { $0.league == event.league }?.sport, isGame: true,
+                                    schedule: bound.schedule)
+        request.preferredChannel = bound.channel
+        return request
+    }
+
+    /// #345: a game to come that the guide does not list yet (#234): the page with no airings, "This game" its `game`
+    /// rule. Nil when there is nothing to offer (it has a listing, has started, or is not a two-sided game).
+    func recordRequest(listing game: SportsGame, team: String? = nil, answered: SportFutureRecord.Answer? = nil,
+                       now: Date = Date(), note: @escaping @MainActor @Sendable (Int?) -> Void = { _ in }) -> RecordRequest? {
+        guard let offer = SportFutureRecord.offer(game, now: now, answered: answered) else { return nil }
+        let sides = recordSides(title: game.title, league: game.league, game: game, team: team)
+        return RecordRequest(title: game.title, league: game.league, airings: [], gameId: game.id, teams: sides.teams,
+                             followedTeam: sides.followed, followedTeams: sides.followedTeams,
+                             sport: sportFront.front?.sports.first { $0.league == game.league }?.sport, isGame: true,
+                             listing: .init(game: game, offer: offer, answered: note))
+    }
+
+    /// A game's teams for the header and the team rules, and the team those rules follow (#49).
+    private func recordSides(title: String, league: String, game: SportsGame?, team: String?)
+        -> (teams: [RecordTeam], followed: String?, followedTeams: [String]) {
         let teams: [RecordTeam]
         if let game, game.competitors.count == 2 {
             teams = game.competitors.map { RecordTeam(name: $0.name, logo: $0.cachedLogo) }
         } else if game == nil {
-            let league = event.league.trimmingCharacters(in: .whitespaces)
-            teams = RuleChoices.sport(title: event.title, league: event.league)
-                .filter { $0.caseInsensitiveCompare(league) != .orderedSame }.prefix(2).map { RecordTeam(name: $0) }
+            let trimmed = league.trimmingCharacters(in: .whitespaces)
+            teams = RuleChoices.sport(title: title, league: league)
+                .filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }.prefix(2).map { RecordTeam(name: $0) }
         } else {
             teams = []
         }
@@ -296,14 +344,7 @@ extension BrowseModel {
             return teams.first { $0.name.caseInsensitiveCompare(team) == .orderedSame }?.name
         }
         let followed = named ?? (followedTeams.count == 1 ? followedTeams[0] : nil)
-        let bound = RecordPlan.bind(schedules: airings.map { activeSchedule(channel: $0.channel, programme: $0.programme) },
-                                    channels: airings.map(\.channel.id), preferred: preferredChannel)
-        var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id, teams: teams,
-                             followedTeam: followed, followedTeams: followedTeams,
-                             sport: front?.sports.first { $0.league == event.league }?.sport, isGame: true,
-                             schedule: bound.schedule)
-        request.preferredChannel = bound.channel
-        return request
+        return (teams, followed, followedTeams)
     }
 }
 
@@ -321,6 +362,16 @@ extension AppModel {
                 onChannel channel: String? = nil) {
         guard let browse, var request = browse.recordRequest(event: event, game: game, team: team, preferredChannel: channel) else { return }
         request.error = error
+        presenter.present(.record(request))
+    }
+
+    /// #345: the record page of a game the guide does not list yet (Record when it's listed); the Sport screen's
+    /// presenter hears the answer, so its cards change at once (Apple 154).
+    func recordWhenListed(_ game: SportsGame, team: String? = nil, presenter sport: SportPresenter?) {
+        guard let browse,
+              let request = browse.recordRequest(listing: game, team: team, answered: sport?.futureAnswer(game),
+                                                 note: { [weak sport] rule in sport?.noteFuture(game, rule: rule) })
+        else { return }
         presenter.present(.record(request))
     }
 }
@@ -374,6 +425,8 @@ struct RecordPage: View {
         busy || (changing && live.flatMap { RecordPlan.change($0, before: before, after: after) } == nil)
     }
     private var leagueLabel: String? { request.league.flatMap { model.sportFront.labels[$0] } }
+    /// #345: "Don't record it" (a game set to record once listed): nothing to pad.
+    private var stopsWaiting: Bool { what == .this && request.listing?.offer != nil && request.listing?.offer != .record }
 
     var body: some View {
         let now = Date()
@@ -413,9 +466,9 @@ struct RecordPage: View {
             header(now: now)
             let whats = RecordPlan.whats(request)
             if !whats.isEmpty { whatSection(whats, now: now) }
-            stopSection(now: now)
+            if !stopsWaiting { stopSection(now: now) }
             if !changing && request.airings.count > 1 { recordOn(now: now) }
-            Text(changing ? changeNote : RecordPlan.streamNote(airing, before: before, now: now))
+            Text(changing ? changeNote : request.listing.map { RecordPlan.listingNote($0) } ?? RecordPlan.streamNote(airing, before: before, now: now))
                 .font(Metrics.note).foregroundStyle(Color.pigSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let error {
@@ -466,6 +519,11 @@ struct RecordPage: View {
                     .accessibilityAddTraits(.isHeader)
                 if let airing {
                     Text("\(DetailText.day(airing.programme.start, now: now)) · \(airing.programme.timeRange) · \(airing.channel.name)")
+                        .font(Metrics.meta).foregroundStyle(Color.pigSecondary).pigFigures()
+                        .lineLimit(2)
+                } else if let listing = request.listing {
+                    let start = SportFrontText.date(listing.game.start)
+                    Text("\(DetailText.day(start, now: now)) · \(start.formatted(date: .omitted, time: .shortened)) · \(SportFrontText.channelLine(listing.game))")
                         .font(Metrics.meta).foregroundStyle(Color.pigSecondary).pigFigures()
                         .lineLimit(2)
                 }
@@ -783,11 +841,27 @@ struct RecordPage: View {
             if await model.changeSchedule(schedule, change) { close() } else { error = model.actionError ?? "The recording could not be changed." }
             return
         }
-        guard let airing else { return }
         if let rule = RecordPlan.rule(what, request: request, before: before, after: after) {
             if await model.addRule(rule) { close() } else { error = model.actionError ?? "The rule could not be added." }
             return
         }
+        if let listing = request.listing {
+            // #345 (#234): the game's `game` rule, added or removed; the cards say so at once.
+            switch listing.offer {
+            case .record:
+                guard let rule = await model.addGameRule(listing.game, before: before, after: after) else {
+                    error = model.actionError ?? PageWords.recordWhenListedFailed
+                    return
+                }
+                listing.answered(rule)
+            case .cancel(let id):
+                guard await model.deleteRule(id: id) else { error = model.actionError ?? "It couldn't be changed. Try again."; return }
+                listing.answered(nil)
+            }
+            close()
+            return
+        }
+        guard let airing else { return }
         if await model.schedule(channel: airing.channel, programme: airing.programme, before: before, after: after,
                                 gameId: request.gameId) {
             close()

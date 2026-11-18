@@ -128,7 +128,7 @@ final class SportPhoneFrontUITests: XCTestCase {
         XCTAssertEqual(sport.height, guide.height, accuracy: 0.5, "title size")
     }
 
-    /// #225 (Mark, 4 Nov 2026): a card's two buttons are Remind me (or Watch) and Record, the same width and height. Run on
+    /// #225 (Mark, 4 Nov 2026): a card's two buttons are Watch and Record (#345: Remind me is in the hold menu), the same width and height. Run on
     /// an iPhone simulator. Before Apple 144 the second read "Record every … game" in a smaller bordered style.
     @MainActor
     func testACardsTwoButtonsAreTheSameSizeAndTheSecondSaysRecord() throws {
@@ -137,10 +137,11 @@ final class SportPhoneFrontUITests: XCTestCase {
         let record = app.buttons.matching(identifier: "sport.front.card.record").firstMatch
         XCTAssertTrue(record.waitForExistence(timeout: 5), "a card's Record")
         XCTAssertEqual(record.label, "Record")
-        let primaries = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["sport.front.card.remind", "sport.front.card.watch"]))
+        XCTAssertFalse(app.buttons["sport.front.card.remind"].exists, "#345: Remind me is in the hold menu only")
+        let primaries = app.buttons.matching(identifier: "sport.front.card.watch")
         let primary = try XCTUnwrap(primaries.allElementsBoundByIndex.first {
             abs($0.frame.midY - record.frame.midY) < 2 && $0.frame.maxX <= record.frame.minX + 1
-        }, "a Watch or Remind me beside it")
+        }, "a Watch beside it")
         XCTAssertEqual(primary.frame.width, record.frame.width, accuracy: 1, "\(primary.frame) and \(record.frame)")
         XCTAssertEqual(primary.frame.height, record.frame.height, accuracy: 1, "\(primary.frame) and \(record.frame)")
         shot(app, "225-iphone-card-buttons")
