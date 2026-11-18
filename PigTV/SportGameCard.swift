@@ -176,6 +176,16 @@ enum SportGamePress {
         }
     }
 
+    /// A finished game known by its C-R card id (an F1 session's tile, #345 review): its recording, from a fresh list,
+    /// else nothing.
+    static func playFinished(gameId: String?, app: AppModel) {
+        guard let gameId, let browse = app.browse else { return }
+        Task {
+            if !browse.isFixture { await browse.loadRecordingsIfStale(maxAge: recordingsMaxAge, quietly: true) }
+            play(SportCardRules.finished(gameId: gameId, recordings: browse.recordings), app: app)
+        }
+    }
+
     /// How old the recordings list may be when a finished game's card is pressed.
     static let recordingsMaxAge: TimeInterval = 5
 

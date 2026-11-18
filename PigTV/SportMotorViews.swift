@@ -79,9 +79,14 @@ struct SportF1Content: View {
                         PigStaleNotice(since: since, retry: { await model.load() }, identifier: "f1.stale")
                     }
                     F1TileRow(tiles: SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree), weekend: weekend,
-                              client: browse.client, flow: flow) { event in
+                              client: browse.client, flow: flow) { session, event in
                         // #345: the game cards' one rule (`SportCardRules`): live plays the best of its channels on
-                        // air, before it the record page, once over nothing; never the event page.
+                        // air, before it the record page; once over, its recording (by its C-R card's id) or nothing,
+                        // never a channel still airing the coverage after it. Never the event page.
+                        if SportMotorText.finished(session, now: Date()) {
+                            SportGamePress.playFinished(gameId: SportMotorText.gameId(session, in: browse.sportFront.front), app: app)
+                            return
+                        }
                         switch SportCardRules.select(event, now: Date()) {
                         case .watch:
                             guard let live = SportCardRules.playable(event, now: Date()) else { return }
@@ -264,8 +269,8 @@ struct F1TileRow: View {
     let client: APIClient
     /// #345: the tiles' hold menu (nil: none).
     var flow: SportRecordFlow? = nil
-    /// A session with a channel: what pressing a game card does (`SportCardRules`).
-    var select: (SportEvent) -> Void = { _ in }
+    /// A session: what pressing a game card does (`SportCardRules`).
+    var select: (F1Session, SportEvent) -> Void = { _, _ in }
     @Environment(\.sportNarrow) private var narrow
     @Environment(\.colorScheme) private var scheme
 
@@ -297,8 +302,10 @@ struct F1TileRow: View {
         let session = weekend.sessions.first { $0.id == tile.id }
         let event = session.map { F1PageText.event($0, in: weekend) }
         return Button {
-            guard let event, event.best != nil else { return }
-            select(event)
+            guard let session, let event else { return }
+            // A finished session plays its recording even when no channel is listed; one to come needs a channel.
+            guard event.best != nil || SportMotorText.finished(session, now: Date()) else { return }
+            select(session, event)
         } label: {
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 HStack(spacing: PigSpacing.s) {
@@ -336,7 +343,7 @@ struct F1TileRow: View {
             }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
-        .modifier(F1TileMenu(flow: flow, event: event))
+        .modifier(F1TileMenu(flow: flow, event: event, finished: session.map { SportMotorText.finished($0, now: Date()) } ?? true))
         .accessibilityIdentifier("f1.session.\(tile.id)")
     }
 
@@ -395,9 +402,11 @@ struct CircuitMap: View {
 private struct F1TileMenu: ViewModifier {
     let flow: SportRecordFlow?
     let event: SportEvent?
+    /// A finished session has no hold menu (#345 review: its channels may still air the coverage after it).
+    let finished: Bool
 
     func body(content: Content) -> some View {
-        if let flow, let event, event.best != nil, SportCardRules.hold(event, now: Date()).offersAnything {
+        if let flow, let event, event.best != nil, SportCardRules.hold(event, finished: finished, now: Date()).offersAnything {
             content.contextMenu { SportCardMenu(flow: flow, game: nil, event: event) }
         } else {
             content

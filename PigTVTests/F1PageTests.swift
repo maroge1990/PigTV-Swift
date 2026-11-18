@@ -273,4 +273,42 @@ extension F1PageTextTests {
         older.drivers = nil
         XCTAssertEqual(F1PageText.drivers(older).count, 10, "an older server: the standings stand in")
     }
+
+    /// #345 review: a finished race whose channel still airs (the coverage after it) never plays that channel or offers a
+    /// hold menu: its recording (by the race's C-R card id) or nothing.
+    func testAFinishedRaceWhoseChannelStillAirsPlaysOnlyItsRecording() throws {
+        let start = now.timeIntervalSince1970 * 1000 - 3 * 3_600_000
+        let stillOn = SportEventChannel(sourceId: 1, rawID: "c", name: "Channel", startTime: start, endTime: start + 5 * 3_600_000)
+        let race = F1Session(id: "race", name: "Race", startTime: start, endTime: start + 2 * 3_600_000, status: .done,
+                             channels: [stillOn])
+        let w = F1Weekend(round: 21, rounds: 25, name: "Mexico City Grand Prix", circuit: nil, city: nil, country: nil,
+                          phase: .after, info: nil, sessions: [race])
+        let event = F1PageText.event(race, in: w)
+        XCTAssertNotNil(SportCardRules.playable(event, now: now), "its channel still airs")
+        XCTAssertTrue(SportMotorText.finished(race, now: now))
+        XCTAssertEqual(SportCardRules.select(event, finished: true, gameId: "espn:racing/f1:1", now: now, recordings: []), .none,
+                       "never the channel")
+        let recording = try JSONDecoder().decode(Recording.self, from: Data(#"{"id":7,"title":"Mexico City Grand Prix","status":"completed","gameId":"espn:racing/f1:1"}"#.utf8))
+        XCTAssertEqual(SportCardRules.select(event, finished: true, gameId: "espn:racing/f1:1", now: now, recordings: [recording]),
+                       .playRecording(7))
+        XCTAssertFalse(SportCardRules.hold(event, finished: true, now: now).offersAnything, "no hold menu")
+        var running = race
+        running.status = .live
+        running.endTime = now.timeIntervalSince1970 * 1000 + 3_600_000
+        XCTAssertFalse(SportMotorText.finished(running, now: now))
+    }
+
+    /// #345 review: a session's C-R card (whose id its recording carries) is the front's F1 card for the same session.
+    func testASessionFindsItsCardsGameId() throws {
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Fixture.data("sport-pages-d43.json")) as? [String: Any])
+        let front = try JSONDecoder().decode(SportFront.self, from: JSONSerialization.data(withJSONObject: try XCTUnwrap(json["front"])))
+        let card = try XCTUnwrap(front.game("espn:racing/f1:1"))
+        let race = F1Session(id: "race", name: "Race", startTime: card.start, endTime: card.start + 7_200_000, status: .done)
+        XCTAssertEqual(SportMotorText.gameId(race, in: front), "espn:racing/f1:1")
+        let practice = F1Session(id: "practice 1", name: "Practice 1", startTime: card.start - 86_400_000,
+                                 endTime: card.start - 82_800_000, status: .done)
+        XCTAssertNil(SportMotorText.gameId(practice, in: front), "a practice has no card")
+        XCTAssertNil(SportMotorText.gameId(race, in: nil))
+    }
 }
+

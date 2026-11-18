@@ -434,15 +434,29 @@ nonisolated enum SportCardRules {
     }
 
     static func select(_ game: SportsGame, now: Date, recordings: [Recording]) -> Select {
-        if game.terminal {
-            guard let found = recording(of: game, in: recordings) else { return .none }
-            return found.live ? .playRecordingFromStart(found.recording.id) : .playRecording(found.recording.id)
-        }
+        if game.terminal { return finished(gameId: game.id, recordings: recordings) }
         if SportFrontText.isNextRound(game) { return .none }
         guard let event = SportFrontText.event(game) else {
             return SportFutureRecord.offer(game, now: now) != nil ? .recordWhenListed : .none
         }
         return select(event, now: now)
+    }
+
+    /// A finished game (by its C-R card id): its recording, else nothing; never its channels, which may still air the
+    /// coverage after it (a spoiler).
+    static func finished(gameId: String?, recordings: [Recording]) -> Select {
+        guard let gameId, let found = recording(ofGameId: gameId, in: recordings) else { return .none }
+        return found.live ? .playRecordingFromStart(found.recording.id) : .playRecording(found.recording.id)
+    }
+
+    /// A game known by its event that may already be over (an F1 session, #345 review): finished, its recording by
+    /// `gameId` or nothing, with no hold menu; else the event's rule.
+    static func select(_ event: SportEvent, finished done: Bool, gameId: String?, now: Date, recordings: [Recording]) -> Select {
+        done ? finished(gameId: gameId, recordings: recordings) : select(event, now: now)
+    }
+
+    static func hold(_ event: SportEvent, finished done: Bool, now: Date) -> Hold {
+        done ? Hold() : hold(event, now: now)
     }
 
     /// A game known only by its event (a fixture with no C-R card): the same rule.
@@ -493,7 +507,11 @@ nonisolated enum SportCardRules {
     /// `playLabel`), a whole one before a partial, then the longest, then the earliest start; else one still recording
     /// (finishing late) that can be watched while it records; else nil.
     static func recording(of game: SportsGame, in recordings: [Recording]) -> (recording: Recording, live: Bool)? {
-        let mine = recordings.filter { $0.gameId == game.id }
+        recording(ofGameId: game.id, in: recordings)
+    }
+
+    static func recording(ofGameId gameId: String, in recordings: [Recording]) -> (recording: Recording, live: Bool)? {
+        let mine = recordings.filter { $0.gameId == gameId }
         let done = mine.filter { $0.playLabel != nil }.min { a, b in
             let partial = ((a.is_partial ?? 0) != 0, (b.is_partial ?? 0) != 0)
             if partial.0 != partial.1 { return !partial.0 }
