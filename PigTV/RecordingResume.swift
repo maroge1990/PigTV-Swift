@@ -89,14 +89,15 @@ nonisolated enum RecordingGoLive {
 
     /// `watchingLive`: playing the recording's live playlist (it is still being made); `current`: the playhead; `ranges`:
     /// the playlist's seekable ranges.
-    static func available(watchingLive: Bool, current: Double, ranges: [(start: Double, end: Double)]) -> Bool {
-        guard watchingLive, current.isFinite, let target = RecordingLiveEdge.target(ranges) else { return false }
+    /// `noLive` (#345): opened from a finished game's Sport card, where the live edge is the coverage after the game.
+    static func available(watchingLive: Bool, current: Double, ranges: [(start: Double, end: Double)], noLive: Bool = false) -> Bool {
+        guard !noLive, watchingLive, current.isFinite, let target = RecordingLiveEdge.target(ranges) else { return false }
         return target - current > behind
     }
 
     /// The jump's target, when it is offered.
-    static func target(watchingLive: Bool, current: Double, ranges: [(start: Double, end: Double)]) -> Double? {
-        available(watchingLive: watchingLive, current: current, ranges: ranges) ? RecordingLiveEdge.target(ranges) : nil
+    static func target(watchingLive: Bool, current: Double, ranges: [(start: Double, end: Double)], noLive: Bool = false) -> Double? {
+        available(watchingLive: watchingLive, current: current, ranges: ranges, noLive: noLive) ? RecordingLiveEdge.target(ranges) : nil
     }
 
     static func undo(from position: Double, at now: Date) -> Undo {

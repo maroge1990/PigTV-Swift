@@ -189,7 +189,8 @@ enum SportGamePress {
         default: return
         }
         guard let recording = app.browse?.recordings.first(where: { $0.id == id }) else { return }
-        app.presenter.present(fromStart ? .recordingPlayer(recording) : .playRecording(recording))
+        // No Go to live from a sport card: the live edge is the coverage after the game.
+        app.presenter.present(fromStart ? .recordingPlayer(recording, noLive: true) : .playRecording(recording))
     }
 
     /// An answer drawn earlier (or kept after a failed refresh) may describe an airing that has ended, and the player

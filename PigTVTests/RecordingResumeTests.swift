@@ -102,6 +102,9 @@ final class RecordingResumeTests: XCTestCase {
         XCTAssertFalse(RecordingGoLive.available(watchingLive: false, current: 600, ranges: twoHours), "a finished recording's file")
         XCTAssertFalse(RecordingGoLive.available(watchingLive: true, current: .nan, ranges: twoHours))
         XCTAssertFalse(RecordingGoLive.available(watchingLive: true, current: 0, ranges: []), "nothing seekable yet")
+        // #345: a finished game's recording opened from its Sport card never offers the live edge (post-game coverage).
+        XCTAssertFalse(RecordingGoLive.available(watchingLive: true, current: 600, ranges: twoHours, noLive: true))
+        XCTAssertNil(RecordingGoLive.target(watchingLive: true, current: 600, ranges: twoHours, noLive: true))
     }
 
     func testGoToLiveJumpsToTheLivePoint() {

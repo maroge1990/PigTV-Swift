@@ -9,7 +9,9 @@ enum AppPresentation: Identifiable {
     /// D-44 (Apple 114): the record page (More options…, every Record button, Change recording), the Guide's and Sport's.
     case record(RecordRequest)
     /// D-44 (Apple 107): Watch from start: the recording being made, from its beginning (C-L), full screen.
-    case recordingPlayer(Recording)
+    /// `noLive` (#345): opened from a finished game's Sport card: no Go to live (its live edge is the coverage after
+    /// the game, a spoiler), as the web's `noLive`.
+    case recordingPlayer(Recording, noLive: Bool = false)
     /// #57: Play on a Search result: the recording player, from where this device left off (as Recordings' Play).
     case playRecording(Recording)
     /// D-66 (#57): Search and Jump to, from a page header's magnifier on any tab (`from`: that tab's name).
@@ -20,7 +22,7 @@ enum AppPresentation: Identifiable {
         case .recording(let recording): "recording:\(recording.id)"
         case .channelSchedule(let channel): "schedule:\(channel.id)"
         case .record(let request): "record:\(request.id)"
-        case .recordingPlayer(let recording): "player:\(recording.id)"
+        case .recordingPlayer(let recording, _): "player:\(recording.id)"
         case .playRecording(let recording): "play:\(recording.id)"
         case .search: "search"
         }
@@ -199,8 +201,8 @@ extension View {
                 if let browse, case .search(let from) = item {
                     // iOS only (`coversScreen`): Search as a full page, as the Guide's.
                     AppSearchHost(app: app, browse: browse, from: from)
-                } else if let browse, case .recordingPlayer(let recording) = item {
-                    RecordingPlayerScreen(recording: recording, client: browse.client, fromStart: true) {
+                } else if let browse, case .recordingPlayer(let recording, let noLive) = item {
+                    RecordingPlayerScreen(recording: recording, client: browse.client, fromStart: true, noLive: noLive) {
                         Task { await browse.loadRecordings() }
                     }
                 } else if let browse, case .playRecording(let recording) = item {
