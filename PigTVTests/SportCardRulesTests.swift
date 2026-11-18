@@ -351,5 +351,32 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertEqual(joined?.map(\.id), [7])
         XCTAssertLessThan(Date().timeIntervalSince(joinedAt), 1)
     }
+
+    /// Codex sign-off: a finished card pressed just before the session changes (signed out, another account or server)
+    /// presents nothing once its recordings arrive.
+    func testAPressIsDroppedWhenTheSessionChangesDuringTheFetch() async throws {
+        let http = try LocalHTTPServer { request in
+            switch request.path {
+            case "/api/recordings":
+                var r = LocalHTTPServer.Response.json(#"[{"id":7,"title":"Packers v Bears","status":"completed","gameId":"espn:football/nfl:405"}]"#)
+                r.delay = 0.5
+                return r
+            case "/api/recordings/scheduled": return .json("[]")
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let client = APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1)
+        let app = AppModel()
+        app.configureClientForTesting(client, browse: BrowseModel(client: client, accountID: 1))
+        let press = try XCTUnwrap(SportGamePress.playFinished(gameId: Self.packersFinished, app: app))
+        app.configureClientForTesting(client, browse: BrowseModel(client: client, accountID: 2)) // another session
+        await press.value
+        XCTAssertNil(app.presenter.presented, "the old session's recording is not opened")
+
+        let same = try XCTUnwrap(SportGamePress.playFinished(gameId: Self.packersFinished, app: app))
+        await same.value
+        XCTAssertEqual(app.presenter.presented?.id, "play:7", "unchanged, it opens")
+    }
 }
 

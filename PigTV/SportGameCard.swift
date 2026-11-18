@@ -155,11 +155,7 @@ enum SportGamePress {
         // A finished game: its recording is chosen from a list at most a few seconds old (one may have finished, or
         // started, since the list was loaded).
         if game.terminal, let browse, !browse.isFixture {
-            Task {
-                // No fresh answer (the load failed): nothing is chosen from a stale list.
-                guard let fresh = await browse.freshRecordings(maxAge: recordingsMaxAge) else { return }
-                play(SportCardRules.select(game, now: Date(), recordings: fresh), app: app, in: fresh)
-            }
+            choose(from: browse, app: app) { SportCardRules.select(game, now: Date(), recordings: $0) }
             return
         }
         let choice = SportCardRules.select(game, now: Date(), recordings: browse?.recordings ?? [])
@@ -179,11 +175,21 @@ enum SportGamePress {
 
     /// A finished game known by its C-R card id (an F1 session's tile, #345 review): its recording, from a fresh list,
     /// else nothing.
-    static func playFinished(gameId: String?, app: AppModel) {
-        guard let gameId, let browse = app.browse else { return }
+    @discardableResult
+    static func playFinished(gameId: String?, app: AppModel) -> Task<Void, Never>? {
+        guard let gameId, let browse = app.browse else { return nil }
+        return choose(from: browse, app: app) { SportCardRules.finished(gameId: gameId, recordings: $0) }
+    }
+
+    /// A finished game's choice from a fresh recordings answer (none: nothing is chosen from a stale list), dropped when
+    /// the session changed meanwhile (signed out, or another account or server: #345, Codex sign-off).
+    @discardableResult
+    private static func choose(from browse: BrowseModel, app: AppModel,
+                               _ rule: @escaping ([Recording]) -> SportCardRules.Select) -> Task<Void, Never> {
         Task {
             guard let fresh = await browse.freshRecordings(maxAge: recordingsMaxAge) else { return }
-            play(SportCardRules.finished(gameId: gameId, recordings: fresh), app: app, in: fresh)
+            guard app.browse === browse else { return }
+            play(rule(fresh), app: app, in: fresh)
         }
     }
 
