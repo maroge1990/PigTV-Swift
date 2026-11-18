@@ -301,6 +301,9 @@ struct F1TileRow: View {
     private func sessionTile(_ tile: SportMotorText.Tile, fill: Bool) -> some View {
         let session = weekend.sessions.first { $0.id == tile.id }
         let event = session.map { F1PageText.event($0, in: weekend, now: Date()) }
+        // The hold menu records: it keeps the session's own airing data, never the live overrun's stretched window
+        // (#345 Codex sign-off: a guessed end would be sent as the recording's end and could cut an overrun short).
+        let airing = session.map { F1PageText.event($0, in: weekend) }
         return Button {
             guard let session, let event else { return }
             // A finished session plays its recording even when no channel is listed; one to come needs a channel.
@@ -343,7 +346,7 @@ struct F1TileRow: View {
             }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
-        .modifier(F1TileMenu(flow: flow, event: event, finished: session.map { SportMotorText.finished($0, now: Date()) } ?? true))
+        .modifier(F1TileMenu(flow: flow, event: airing, finished: session.map { SportMotorText.finished($0, now: Date()) } ?? true))
         .accessibilityIdentifier("f1.session.\(tile.id)")
     }
 

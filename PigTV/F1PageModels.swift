@@ -380,7 +380,8 @@ nonisolated enum F1PageText {
                    startTime: session.startTime, endTime: session.endTime, channels: session.channels)
     }
 
-    /// The session's event at `now` (its tile, #345 Codex sign-off): while the server says it is live past its estimated
+    /// The session's event at `now`, for watching only (its tile's Select; recording uses `event(_:in:)`), #345 Codex
+    /// sign-off: while the server says it is live past its estimated
     /// end (an overrun), a channel with no airing times of its own still airs it (the event's window runs on, to 30 min
     /// past now); a channel's own window (delayed, or ended) is kept.
     static func event(_ session: F1Session, in weekend: F1Weekend, now: Date) -> SportEvent {
