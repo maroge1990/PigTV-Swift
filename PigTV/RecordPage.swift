@@ -426,8 +426,9 @@ struct RecordPage: View {
             buttons
         }
         .padding(Metrics.padding)
-        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
-        .shadow(color: Color.pigShadow.opacity(0.5), radius: 40, y: 24)
+        // #340: flat, as the rest of the app: no drop shadow, and on a compact iPhone the page itself is the surface
+        // (the raised card inside the full-screen sheet read as a second, shadowed layer).
+        .background(sizeClass == .compact ? Color.clear : Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(changing ? "Change recording of \(request.title)" : "Record \(request.title)")
     }
