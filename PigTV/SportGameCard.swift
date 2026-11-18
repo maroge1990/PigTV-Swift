@@ -156,7 +156,7 @@ enum SportGamePress {
         // started, since the list was loaded).
         if game.terminal, let browse, !browse.isFixture {
             Task {
-                await browse.loadRecordingsIfStale(maxAge: recordingsMaxAge, quietly: true)
+                await browse.loadRecordings(ifPublishedOlderThan: recordingsMaxAge)
                 play(SportCardRules.select(game, now: Date(), recordings: browse.recordings), app: app)
             }
             return
@@ -181,7 +181,7 @@ enum SportGamePress {
     static func playFinished(gameId: String?, app: AppModel) {
         guard let gameId, let browse = app.browse else { return }
         Task {
-            if !browse.isFixture { await browse.loadRecordingsIfStale(maxAge: recordingsMaxAge, quietly: true) }
+            await browse.loadRecordings(ifPublishedOlderThan: recordingsMaxAge)
             play(SportCardRules.finished(gameId: gameId, recordings: browse.recordings), app: app)
         }
     }

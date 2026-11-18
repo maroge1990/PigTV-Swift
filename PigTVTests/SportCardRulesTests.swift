@@ -242,4 +242,35 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertEqual(RecordPlan.primaryTitle(.this, request: set), "Don't record it")
         XCTAssertEqual(RecordPlan.primaryTitle(.everyLeague("NFL"), request: set), "Record every game")
     }
+
+    /// #345 (Codex review): a finished card's choice waits for a recordings load already in flight (it returned at once,
+    /// before anything was published) and counts freshness from the last answer published.
+    func testAChoiceFromTheRecordingsWaitsForTheLoadInFlight() async throws {
+        let calls = Locked(0)
+        let http = try LocalHTTPServer { request in
+            switch request.path {
+            case "/api/recordings":
+                calls.value += 1
+                var response = LocalHTTPServer.Response.json(#"[{"id":7,"title":"Packers v Bears","status":"completed","gameId":"espn:football/nfl:405"}]"#)
+                response.delay = 0.5
+                return response
+            case "/api/recordings/scheduled": return .json("[]")
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        let first = Task { await browse.loadRecordings() }
+        await Task.yield()
+        await browse.loadRecordings(ifPublishedOlderThan: SportGamePress.recordingsMaxAge)
+        XCTAssertEqual(browse.recordings.map(\.id), [7], "the answer of the load in flight")
+        XCTAssertEqual(calls.value, 1, "joined, not a second request")
+        await first.value
+        await browse.loadRecordings(ifPublishedOlderThan: SportGamePress.recordingsMaxAge)
+        XCTAssertEqual(calls.value, 1, "published just now: fresh")
+        await browse.loadRecordings(ifPublishedOlderThan: SportGamePress.recordingsMaxAge, now: { Date().addingTimeInterval(10) })
+        XCTAssertEqual(calls.value, 2, "older than 5 s: asked again")
+    }
 }
+

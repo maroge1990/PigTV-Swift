@@ -405,6 +405,10 @@ final class BrowseModel: ObservableObject {
     static let appearMaxAge: TimeInterval = 60
     private var lastLoads: [String: Date] = [:]
     private var recordingsLoading = false
+    /// #345 (Codex review): the recordings load in flight, which a second caller joins instead of returning before it
+    /// has an answer; and when a load last published its answer (freshness for a choice made from the list).
+    private var recordingsInFlight: (id: UUID, task: Task<Void, Never>)?
+    private(set) var recordingsPublishedAt: Date?
 
     private func isFresh(_ key: String, maxAge: TimeInterval, now: Date = Date()) -> Bool {
         lastLoads[key].map { now.timeIntervalSince($0) < maxAge } ?? false
@@ -417,6 +421,15 @@ final class BrowseModel: ObservableObject {
         // "Could not connect" banner (or, on a machine with a server, replace it).
         guard !isFixture, !isFresh("recordings", maxAge: maxAge) else { return }
         await loadRecordings(quietly: quietly)
+    }
+
+    /// #345: a choice made from the recordings (a finished game's Sport card): joins a load in flight, then loads
+    /// unless the last answer published is younger than `maxAge`.
+    func loadRecordings(ifPublishedOlderThan maxAge: TimeInterval, now: @escaping () -> Date = { Date() }) async {
+        guard !isFixture else { return }
+        if let inFlight = recordingsInFlight { await inFlight.task.value }
+        if let at = recordingsPublishedAt, now().timeIntervalSince(at) < maxAge { return }
+        await loadRecordings(quietly: true)
     }
 
     func loadFavouritesIfStale(maxAge: TimeInterval = appearMaxAge) async {
@@ -432,7 +445,18 @@ final class BrowseModel: ObservableObject {
     /// `quietly`: a refresh nobody asked for (Home's minute loop, the Guide's
     /// periodic one) does not raise `recordingsBusy`, so the Recordings tab
     /// is not re-rendered, twice, by a refresh that finds nothing new.
+    /// A call while one is in flight waits for that one's answer (#345, Codex review: it returned at once, before
+    /// anything was published).
     func loadRecordings(quietly: Bool = false) async {
+        if let inFlight = recordingsInFlight { await inFlight.task.value; return }
+        let id = UUID()
+        let task = Task { await self.fetchRecordings(quietly: quietly) }
+        recordingsInFlight = (id, task)
+        await task.value
+        if recordingsInFlight?.id == id { recordingsInFlight = nil }
+    }
+
+    private func fetchRecordings(quietly: Bool) async {
         let sp = PigTVSignpost.begin("RecordingsLoad"); defer { PigTVSignpost.end("RecordingsLoad", sp) }
         guard !recordingsLoading else { return }
         lastLoads["recordings"] = Date()
@@ -454,6 +478,7 @@ final class BrowseModel: ObservableObject {
             if planned != schedules { schedules = planned }
             settleTombstones(loadedSince: began) { !$0.hasPrefix("rule:") }
             recordingStore.updatedAt = Date()
+            recordingsPublishedAt = Date()
             if recordingsError != nil { recordingsError = nil }
             recordingStore.change(\.loaded, to: true)
         } catch {
