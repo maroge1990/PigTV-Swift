@@ -72,8 +72,14 @@ struct ContentView: View {
             // #342: under the splash until it hands over; Home then rises into place (fades only, under Reduce Motion).
             .opacity(splash.contentShown ? 1 : 0)
             .offset(y: reduceMotion ? 0 : splash.contentRise)
+            // Review of #342: until the hand-off starts, Home under the splash takes no touch, press or focus and is not
+            // read by VoiceOver; on the TV focus then moves into it.
+            .allowsHitTesting(splash.contentShown)
+            .disabled(!splash.contentShown)
+            .accessibilityHidden(!splash.contentShown)
             if !splash.landed { BrandSplashView(handoff: splash) }
         }
+        .modifier(SplashFocusHandoff(shown: splash.contentShown))
         .environment(splash)
         .modifier(AppRootCover(model: model))
         #if os(tvOS)
@@ -714,5 +720,25 @@ struct AppRootCover: ViewModifier {
         await AppFreshness.run(playing: { model.pagesCovered }, sleep: sleep) {
             if let pass { await pass(model.pagesCovered) } else { await AppFreshness.refresh(browse, playing: model.pagesCovered) }
         }
+    }
+}
+
+/// Review of #342: on the TV, when Home under the splash becomes usable, focus is reset into it (it was disabled while
+/// the splash played, so the focus engine had nothing to focus). Touch has no focus to move.
+private struct SplashFocusHandoff: ViewModifier {
+    let shown: Bool
+    #if os(tvOS)
+    @Namespace private var scope
+    @Environment(\.resetFocus) private var resetFocus
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content
+            .focusScope(scope)
+            .onChange(of: shown) { _, shown in if shown { resetFocus(in: scope) } }
+        #else
+        content
+        #endif
     }
 }
