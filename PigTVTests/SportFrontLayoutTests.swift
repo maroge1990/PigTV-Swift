@@ -198,6 +198,6 @@ extension SportFrontLayoutTests {
         // An ordinary channel-less game to come keeps its words.
         let nbl = try XCTUnwrap(f.game("espn:basketball/nbl:1"))
         XCTAssertEqual(SportFrontText.channelLine(nbl), "No TV listing found")
-        XCTAssertEqual(SportFrontText.actionLabel(nbl, now: now), "Not on your channels")
+        XCTAssertEqual(SportFrontText.actionLabel(nbl, now: now), "Record", "#345: select opens Record when it's listed")
     }
 }

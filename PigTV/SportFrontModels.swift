@@ -366,12 +366,13 @@ nonisolated enum SportFrontText {
         action(game, now: now) == .watch ? event(game) : nil
     }
 
+    /// A session card's action word: what pressing it does (#345, `SportCardRules`): "Watch" live, "Record" before it
+    /// (also with no listing yet), nothing otherwise (never Remind me, which is in the hold menu, or Details).
     static func actionLabel(_ game: SportsGame, now: Date) -> String {
-        switch action(game, now: now) {
+        switch SportCardRules.select(game, now: now, recordings: []) {
         case .watch: return "Watch"
-        case .remind: return "Remind me"
-        case .details: return "Details"
-        case .none: return game.terminal || isNextRound(game) ? "" : "Not on your channels"
+        case .record, .recordWhenListed: return "Record"
+        case .playRecording, .playRecordingFromStart, .none: return ""
         }
     }
 

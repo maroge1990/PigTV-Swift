@@ -378,14 +378,17 @@ controls are not used for live play.
   answer's `spoilerFree`) goes to every league panel as `sportHidesSpoilers`, and each panel ORs it with its own
   preference, on the Apple TV, iPad and iPhone alike (`testLeaguePagesHideScoresWhenTheAnswerIsSpoilerFree`).
 - **A game card's select and hold (#345, Mark 18 Nov)**: one rule for every card (front page, league, fixture and event
-  pages, the iPhone's carousel and rows), pure in `SportCardRules`, decided again at the press (`SportGamePress`):
-  select plays the preferred channel while one airs it, opens the record page before (Record when it's listed without a
-  listing), plays the game's recording once finished (`Recording.gameId`: a finished one, whole before partial, then the
-  longest, then the earliest start; else one still recording, from its start: its live edge is the coverage after the game), else nothing. The hold menu (`SportCardMenu`): live → Watch another channel (the channel picker, with more than one
-  channel) and RECORD; before → RECORD and Remind me; finished → only the page's Make this the hero. Remind me is in
-  the hold menu only; cards no longer open the event page.
+  pages, the cricket page's other competitions, F1's session tiles, the iPhone's carousel and rows), pure in
+  `SportCardRules`, decided again at the press (`SportGamePress`). Live means on air on any of its channels: select
+  plays the best of those; before, it opens the record page (Record when it's listed without a listing); once finished
+  it plays the game's recording (`Recording.gameId`, from a list at most 5 s old: a finished one, whole before partial,
+  then the longest, then the earliest start; else one still recording, from its start, never its live edge, which is
+  the coverage after the game), else nothing. A session card's word says the same ("Watch", "Record" or nothing). The
+  hold menu (`SportCardMenu`): live → Watch another channel (the channel picker, when more than one channel name is on
+  air) and RECORD; before → RECORD and Remind me; finished → only the page's Make this the hero. Remind me is in the
+  hold menu only (not the heroes, the iPhone carousel card or the cricket lead); cards no longer open the event page.
 - **Shared words (Apple 137–138)**: a next-round card (C-R `nextRound`, #218) reads "Next round · Sat 15 Nov" with no
-  channel, Watch or Remind me (`SportFrontText.isNextRound`/`startLine`/`channelLine`); a live card's clock is short
+  channel or action word (`SportFrontText.isNextRound`/`startLine`/`channelLine`); a live card's clock is short
   (`cardClock`: "Q4 0:17", "OT1 10:00", #211), the down and distance stay in the banner; C-T's `%` is one decimal
   (`FixtureText.standingValue`); standings values are never cut. Cricket files a match under C-S's own `league` first
   (#210); Follow a driver lists C-P's whole grid (`drivers`, #202).

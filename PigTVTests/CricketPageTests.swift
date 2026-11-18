@@ -185,8 +185,9 @@ final class CricketPageTests: XCTestCase {
         XCTAssertEqual(CricketPageText.channelLine(noChannel, now: Self.now), "Not in guide yet")
 
         let stumps = try XCTUnwrap(try Self.page("stumps").lead)
-        XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: nil), [.remind(day: 5), .record(day: 5)])
-        XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: nil).map(CricketPageText.label), ["Remind me · day 5", "Record day 5"])
+        // #345: Remind me is in the cards' hold menus only.
+        XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: nil), [.record(day: 5)])
+        XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: nil).map(CricketPageText.label), ["Record day 5"])
         XCTAssertEqual(CricketPageText.actions(stumps, now: Self.now, pendingEventID: "cricket:1525661"), [.cancelRemind, .record(day: 5)])
         XCTAssertTrue(CricketPageText.channelLine(stumps, now: Self.now, calendar: Self.melbourne).hasPrefix("Day 5 · "))
         XCTAssertTrue(CricketPageText.channelLine(stumps, now: Self.now).hasSuffix("on Fox Cricket"))

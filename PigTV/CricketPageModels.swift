@@ -459,7 +459,7 @@ nonisolated enum CricketPageText {
                           endTime: max(end, start + 60_000), channels: other.channels)
     }
 
-    enum Action: Equatable, Sendable { case watchLive, otherChannels, remind(day: Int?), cancelRemind, record(day: Int?) }
+    enum Action: Equatable, Sendable { case watchLive, otherChannels, cancelRemind, record(day: Int?) }
 
     /// What the lead offers: every action needs a channel the guide carries the day on. "Watch live" while the best
     /// channel's own airing is on (its own end: an airing that has ended offers none, one the server rolled on for an
@@ -476,7 +476,8 @@ nonisolated enum CricketPageText {
             out.append(.record(day: nil))
         case .wait:
             let day = lead.days.count > 1 ? (nextDay(lead) ?? dayNumber(lead)) : nil
-            out.append(pendingEventID == event.id ? .cancelRemind : .remind(day: day))
+            // #345: Remind me is in the cards' hold menus only; a reminder already set can still be cancelled here.
+            if pendingEventID == event.id { out.append(.cancelRemind) }
             out.append(.record(day: day))
         case .ended:
             break
@@ -488,7 +489,6 @@ nonisolated enum CricketPageText {
         switch action {
         case .watchLive: return "Watch live"
         case .otherChannels: return "Other channels"
-        case .remind(let day): return day.map { "Remind me · day \($0)" } ?? "Remind me"
         case .cancelRemind: return "Don't remind me"
         case .record(let day): return day.map { "Record day \($0)" } ?? "Record"
         }

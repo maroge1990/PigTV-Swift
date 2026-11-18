@@ -32,6 +32,8 @@ struct SportF1Content: View {
     /// Observed for a pending "watch when it starts".
     @ObservedObject private var appState: AppModel
     @Environment(\.sportPresenter) private var presenter
+    /// #345: the session tiles' hold menu (RECORD, Remind me).
+    @StateObject private var flow = SportRecordFlow()
     @Environment(\.colorScheme) private var scheme
     @Environment(\.sportNarrow) private var narrow
     @Environment(\.sportHidesSpoilers) private var pageHidesSpoilers
@@ -48,6 +50,7 @@ struct SportF1Content: View {
             content(now: context.date)
         }
         .whileVisible { await model.keepFresh() }
+        .sportRecordFlow(flow, app: app)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("f1.page")
     }
@@ -76,11 +79,15 @@ struct SportF1Content: View {
                         PigStaleNotice(since: since, retry: { await model.load() }, identifier: "f1.stale")
                     }
                     F1TileRow(tiles: SportMotorText.tiles(weekend, now: now, spoilerFree: spoilerFree), weekend: weekend,
-                              client: browse.client) { event in
-                        if F1PageText.watchesNow(event, now: Date()) {
-                            if let presenter { presenter.play(event) } else { app.playSportEvent(event) }
-                        } else {
-                            presenter?.open(event, .details)
+                              client: browse.client, flow: flow) { event in
+                        // #345: the game cards' one rule (`SportCardRules`): live plays the best of its channels on
+                        // air, before it the record page, once over nothing; never the event page.
+                        switch SportCardRules.select(event, now: Date()) {
+                        case .watch:
+                            guard let live = SportCardRules.playable(event, now: Date()) else { return }
+                            if let presenter { presenter.play(live) } else { app.playSportEvent(live) }
+                        case .record: app.record(event)
+                        case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
                         }
                     }
                     lists(page, spoilerFree: spoilerFree)
@@ -255,7 +262,9 @@ struct F1TileRow: View {
     let tiles: [SportMotorText.Tile]
     let weekend: F1Weekend
     let client: APIClient
-    /// A session with a channel: plays it while on, else opens its details.
+    /// #345: the tiles' hold menu (nil: none).
+    var flow: SportRecordFlow? = nil
+    /// A session with a channel: what pressing a game card does (`SportCardRules`).
     var select: (SportEvent) -> Void = { _ in }
     @Environment(\.sportNarrow) private var narrow
     @Environment(\.colorScheme) private var scheme
@@ -327,6 +336,7 @@ struct F1TileRow: View {
             }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
+        .contextMenu { if let flow, let event, event.best != nil { SportCardMenu(flow: flow, game: nil, event: event) } }
         .accessibilityIdentifier("f1.session.\(tile.id)")
     }
 

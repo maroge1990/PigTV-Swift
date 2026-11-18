@@ -71,6 +71,8 @@ struct CricketPageView: View {
     /// Observed for the bells (a pending "watch when it starts").
     @ObservedObject private var appState: AppModel
     @Environment(\.sportPresenter) private var presenter
+    /// #345: the other competitions' cards' hold menu (RECORD).
+    @StateObject private var flow = SportRecordFlow()
     @Environment(\.sportNarrow) private var narrow
     @Environment(\.sportHidesSpoilers) private var pageHidesSpoilers
     #if os(iOS)
@@ -123,6 +125,7 @@ struct CricketPageView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .whileVisible { await model.keepFresh(preferences: preferences) }
+        .sportRecordFlow(flow, app: app)
         .accessibilityIdentifier("cricket.page")
     }
 
@@ -460,7 +463,6 @@ struct CricketPageView: View {
                     play(CricketPageText.event(current))
                 }
             case .otherChannels: presenter?.open(event, .channels)
-            case .remind: app.watchWhenStarts(event, now: Date())
             case .cancelRemind: app.cancelPendingWatch()
             case .record: app.record(event)
             }
@@ -477,7 +479,6 @@ struct CricketPageView: View {
         switch action {
         case .watchLive: return "play.fill"
         case .otherChannels: return "list.bullet"
-        case .remind: return "bell"
         case .cancelRemind: return "bell.slash"
         case .record: return "record.circle"
         }
@@ -487,7 +488,6 @@ struct CricketPageView: View {
         switch action {
         case .watchLive: return "watch"
         case .otherChannels: return "channels"
-        case .remind: return "remind"
         case .cancelRemind: return "cancelRemind"
         case .record: return "record"
         }
@@ -602,15 +602,21 @@ struct CricketPageView: View {
             }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: CricketMetrics.radius))
+        // #345: the game cards' hold menu (Watch another channel, RECORD, Remind me), while it is not over.
+        .contextMenu { if other.status != .done { SportCardMenu(flow: flow, game: nil, event: CricketPageText.event(other)) } }
         .accessibilityIdentifier("cricket.other.\(other.id)")
     }
 
-    /// A card plays when its channel airs it now (decided at the press), else opens the event page (Record, Remind me,
-    /// the channels) when the guide carries it.
+    /// #345: the game cards' one rule (`SportCardRules`, decided at the press): live plays the best of its channels on
+    /// air, before it the record page, once over nothing.
     private func select(_ other: CricketOther) {
+        guard other.status != .done else { return }
         let event = CricketPageText.event(other)
-        if CricketPageText.othersPlaysNow(other, now: Date()) { play(event) }
-        else if event.best != nil, other.status != .done { presenter?.open(event, .details) }
+        switch SportCardRules.select(event, now: Date()) {
+        case .watch: if let live = SportCardRules.playable(event, now: Date()) { play(live) }
+        case .record: app.record(event)
+        case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
+        }
     }
 
     // MARK: States

@@ -156,6 +156,16 @@ final class SportCardRulesTests: XCTestCase {
         XCTAssertTrue(SportCardRules.hold(two, now: now).watchAnother, "two names on air")
     }
 
+    /// #345 review: a session card's action word is what pressing it does: never Remind me or Details.
+    func testASessionCardsActionWordIsWhatSelectDoes() throws {
+        let f = try front()
+        let now = Date(timeIntervalSince1970: f.now / 1000)
+        XCTAssertEqual(SportFrontText.actionLabel(try XCTUnwrap(f.game(Self.cricket)), now: now), "Watch")
+        XCTAssertEqual(SportFrontText.actionLabel(try XCTUnwrap(f.game(Self.chiefs)), now: now), "Record", "it said Remind me")
+        XCTAssertEqual(SportFrontText.actionLabel(try XCTUnwrap(f.game(Self.packersFinished)), now: now), "")
+        XCTAssertEqual(SportFrontText.actionLabel(try XCTUnwrap(f.game(Self.packersLive)), now: now), "", "it said Not on your channels")
+    }
+
     /// The hero and the iPhone carousel card keep Watch and Record; Remind me is only in the hold menu.
     func testRemindMeIsNoLongerACardButton() {
         XCTAssertEqual(SportPhoneCardButtons.primary(.watch), "Watch")
