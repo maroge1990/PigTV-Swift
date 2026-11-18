@@ -423,13 +423,16 @@ final class BrowseModel: ObservableObject {
         await loadRecordings(quietly: quietly)
     }
 
-    /// #345: a choice made from the recordings (a finished game's Sport card): joins a load in flight, then loads
-    /// unless the last answer published is younger than `maxAge`.
-    func loadRecordings(ifPublishedOlderThan maxAge: TimeInterval, now: @escaping () -> Date = { Date() }) async {
-        guard !isFixture else { return }
+    /// #345: the recordings to choose from (a finished game's Sport card): joins a load in flight, then loads unless the
+    /// last recordings answer is younger than `maxAge`. Nil when there is no answer that fresh (the loads failed): the
+    /// caller then chooses nothing rather than from a stale list.
+    func freshRecordings(maxAge: TimeInterval, now: () -> Date = { Date() }) async -> [Recording]? {
+        guard !isFixture else { return recordings }
         if let inFlight = recordingsInFlight { await inFlight.task.value }
-        if let at = recordingsPublishedAt, now().timeIntervalSince(at) < maxAge { return }
+        if let at = recordingsPublishedAt, now().timeIntervalSince(at) < maxAge { return recordings }
         await loadRecordings(quietly: true)
+        if let at = recordingsPublishedAt, now().timeIntervalSince(at) < maxAge { return recordings }
+        return nil
     }
 
     func loadFavouritesIfStale(maxAge: TimeInterval = appearMaxAge) async {
@@ -468,17 +471,19 @@ final class BrowseModel: ObservableObject {
         let began = Date()
         do {
             let loaded: [Recording] = try await client.decodedOffMain("recordings")
+            // Apple 125: nothing the server confirmed removed comes back from a list fetched before (or around) it.
+            // #345 (Codex sign-off): the recordings are published, and timed, when their own answer arrives, not after
+            // the scheduled list's.
+            let files = loaded.filter { recordingStore.tombstones[RecordingsHome.key($0)] == nil }
+            if files != recordings { recordings = files }
+            recordingsPublishedAt = Date()
             let fetched: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled",
                                                                                 query: [URLQueryItem(name: "include", value: "recent")])
-            // Apple 125: nothing the server confirmed removed comes back from a list fetched before (or around) it.
             let stones = recordingStore.tombstones
-            let files = loaded.filter { stones[RecordingsHome.key($0)] == nil }
             let planned = fetched.filter { stones[RecordingsHome.key($0)] == nil }
-            if files != recordings { recordings = files }
             if planned != schedules { schedules = planned }
             settleTombstones(loadedSince: began) { !$0.hasPrefix("rule:") }
             recordingStore.updatedAt = Date()
-            recordingsPublishedAt = Date()
             if recordingsError != nil { recordingsError = nil }
             recordingStore.change(\.loaded, to: true)
         } catch {

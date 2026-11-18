@@ -156,8 +156,9 @@ enum SportGamePress {
         // started, since the list was loaded).
         if game.terminal, let browse, !browse.isFixture {
             Task {
-                await browse.loadRecordings(ifPublishedOlderThan: recordingsMaxAge)
-                play(SportCardRules.select(game, now: Date(), recordings: browse.recordings), app: app)
+                // No fresh answer (the load failed): nothing is chosen from a stale list.
+                guard let fresh = await browse.freshRecordings(maxAge: recordingsMaxAge) else { return }
+                play(SportCardRules.select(game, now: Date(), recordings: fresh), app: app, in: fresh)
             }
             return
         }
@@ -181,8 +182,8 @@ enum SportGamePress {
     static func playFinished(gameId: String?, app: AppModel) {
         guard let gameId, let browse = app.browse else { return }
         Task {
-            await browse.loadRecordings(ifPublishedOlderThan: recordingsMaxAge)
-            play(SportCardRules.finished(gameId: gameId, recordings: browse.recordings), app: app)
+            guard let fresh = await browse.freshRecordings(maxAge: recordingsMaxAge) else { return }
+            play(SportCardRules.finished(gameId: gameId, recordings: fresh), app: app, in: fresh)
         }
     }
 
@@ -191,14 +192,14 @@ enum SportGamePress {
 
     /// A finished game's recording: a finished one as Recordings' Play does; one still recording (finishing late) from
     /// its start, never near its live edge (that is the coverage after the game: a spoiler).
-    private static func play(_ choice: SportCardRules.Select, app: AppModel) {
+    private static func play(_ choice: SportCardRules.Select, app: AppModel, in list: [Recording]? = nil) {
         let id: Int, fromStart: Bool
         switch choice {
         case .playRecording(let found): id = found; fromStart = false
         case .playRecordingFromStart(let found): id = found; fromStart = true
         default: return
         }
-        guard let recording = app.browse?.recordings.first(where: { $0.id == id }) else { return }
+        guard let recording = (list ?? app.browse?.recordings ?? []).first(where: { $0.id == id }) else { return }
         // From a sport card: from the beginning, never a Resume question (a saved position can be past the result), and
         // no Go to live (the live edge is the coverage after the game). Recordings keeps both.
         app.presenter.present(fromStart ? .recordingPlayer(recording, noLive: true) : .playRecording(recording, fromBeginning: true))

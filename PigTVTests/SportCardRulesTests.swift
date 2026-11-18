@@ -272,14 +272,60 @@ final class SportCardRulesTests: XCTestCase {
                                  accountID: 1)
         let first = Task { await browse.loadRecordings() }
         await Task.yield()
-        await browse.loadRecordings(ifPublishedOlderThan: SportGamePress.recordingsMaxAge)
-        XCTAssertEqual(browse.recordings.map(\.id), [7], "the answer of the load in flight")
+        let joined = await browse.freshRecordings(maxAge: SportGamePress.recordingsMaxAge)
+        XCTAssertEqual(joined?.map(\.id), [7], "the answer of the load in flight")
         XCTAssertEqual(calls.value, 1, "joined, not a second request")
         await first.value
-        await browse.loadRecordings(ifPublishedOlderThan: SportGamePress.recordingsMaxAge)
-        XCTAssertEqual(calls.value, 1, "published just now: fresh")
-        await browse.loadRecordings(ifPublishedOlderThan: SportGamePress.recordingsMaxAge, now: { Date().addingTimeInterval(10) })
+        _ = await browse.freshRecordings(maxAge: SportGamePress.recordingsMaxAge)
+        XCTAssertEqual(calls.value, 1, "answered just now: fresh")
+        _ = await browse.freshRecordings(maxAge: SportGamePress.recordingsMaxAge, now: { Date().addingTimeInterval(10) })
         XCTAssertEqual(calls.value, 2, "older than 5 s: asked again")
+    }
+
+    /// Codex sign-off: a refresh that fails (joined or its own) gives no list, so a Sport card chooses nothing rather
+    /// than from the stale one.
+    func testAFailedRefreshGivesNoListToChooseFrom() async throws {
+        let fail = Locked(false)
+        let http = try LocalHTTPServer { request in
+            switch request.path {
+            case "/api/recordings":
+                if fail.value { var r = LocalHTTPServer.Response.json(#"{"error":"down"}"#, status: 500); r.delay = 0.3; return r }
+                return .json(#"[{"id":7,"title":"Packers v Bears","status":"completed","gameId":"espn:football/nfl:405"}]"#)
+            case "/api/recordings/scheduled": return .json("[]")
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        await browse.loadRecordings()
+        XCTAssertEqual(browse.recordings.map(\.id), [7])
+        fail.value = true
+        let later = { Date().addingTimeInterval(10) } // the list is now older than 5 s
+        let refresh = Task { await browse.loadRecordings() }
+        await Task.yield()
+        let fresh = await browse.freshRecordings(maxAge: SportGamePress.recordingsMaxAge, now: later)
+        await refresh.value
+        XCTAssertNil(fresh, "the joined refresh and its own both failed: no list")
+        XCTAssertEqual(browse.recordings.map(\.id), [7], "the stale list is still there, but not chosen from")
+    }
+
+    /// Codex sign-off: the recordings' time is when their own answer arrives, not after the scheduled list's.
+    func testTheRecordingsAreTimedByTheirOwnAnswer() async throws {
+        let http = try LocalHTTPServer { request in
+            switch request.path {
+            case "/api/recordings": return .json(#"[{"id":7,"title":"Packers v Bears","status":"completed"}]"#)
+            case "/api/recordings/scheduled": var r = LocalHTTPServer.Response.json("[]"); r.delay = 1.0; return r
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        let began = Date()
+        await browse.loadRecordings()
+        let at = try XCTUnwrap(browse.recordingsPublishedAt)
+        XCTAssertLessThan(at.timeIntervalSince(began), 0.8, "timed before the slow scheduled answer (1 s)")
     }
 }
 
