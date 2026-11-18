@@ -144,7 +144,9 @@ struct SportFrontTVPage: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
         }
-        .contentMargins(.top, SportHeroStripMetrics.room, for: .scrollContent)
+        // #339: plus the clearance below the page's faded top edge: the first row rests clear of the header's fade and a
+        // focused card's lift fits under it (before, the content began inside the fade, so the first row was blurred).
+        .contentMargins(.top, SportHeroStripMetrics.room + SportPageTopMask.clearance, for: .scrollContent)
         // Cards draw outside the scroll's frame (a focused card grows past the page's edges), except at its top: #263, the
         // rails used to slide up over the header as the page scrolled. The page now ends under the header, as the
         // TV Guide's grid does, fading out over its first few points.

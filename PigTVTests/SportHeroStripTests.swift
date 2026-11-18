@@ -144,4 +144,13 @@ final class SportHeroStripTests: XCTestCase {
         UIColor(Color.pigDanger).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)).getRed(&r, green: &g, blue: &b, alpha: &a)
         return Pixels(data: data, width: width, height: height, red: [r, g, b])
     }
+
+    /// #339: the page's content rests below the header's fade, with room for a focused card's lift and ring, so the first
+    /// row is neither blurred by the fade at rest nor clipped by it when focused.
+    func testTheFirstRowRestsClearOfTheTopFadeAndFitsItsFocusLift() {
+        let reach = PigFocusLift.card.maxGrowth + PigFocus.ringWidth
+        XCTAssertGreaterThanOrEqual(SportPageTopMask.clearance, SportPageTopMask.fade + reach,
+                                    "a focused first-row card would reach into the fade")
+        XCTAssertGreaterThan(SportPageTopMask.clearance, SportPageTopMask.fade, "the content rests inside the fade")
+    }
 }

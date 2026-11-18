@@ -75,10 +75,15 @@ struct SportPageTopMask: View {
     var overdraw: CGFloat = 0
     /// #312: how far down the page's top edge starts (the strip's room while it shows).
     var top: CGFloat = 0
+    /// The fade over the page's first points.
+    static let fade: CGFloat = PigSpacing.s
+    /// #339: the room the content keeps below the fade, so the first row rests fully clear of it and a focused card
+    /// (its lift, ring and shadow) never reaches into it: the fade, then a card's growth, the ring and the shadow's edge.
+    static let clearance: CGFloat = fade + PigFocusLift.card.maxGrowth + PigFocus.ringWidth + PigSpacing.xs
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: top)
-            LinearGradient(colors: [.clear, Color.pigAccent], startPoint: .top, endPoint: .bottom).frame(height: PigSpacing.s)
+            LinearGradient(colors: [.clear, Color.pigAccent], startPoint: .top, endPoint: .bottom).frame(height: Self.fade)
             Rectangle().fill(Color.pigAccent) // a mask reads only alpha: any opaque role
         }
         .padding(.horizontal, -overdraw).padding(.bottom, -overdraw)
