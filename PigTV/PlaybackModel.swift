@@ -573,6 +573,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
         } else if state == "player-starting" {
             // #132: an installed player that has not shown a picture yet (the tuning card covers it).
             ready = true
+        } else if state == "player-slow-start" {
+            // #349: a slow start: the resolve answers after 3 s (the item is installed) and no picture follows.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                self?.ready = true
+            }
         } else if state == "player-buffering" {
             ready = true
             hasPlayed = true

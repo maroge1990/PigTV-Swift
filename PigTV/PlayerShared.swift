@@ -157,8 +157,26 @@ struct TuningCard: View {
         .frame(maxWidth: PlayerMetrics.tuningWidth)
         .background(Color.pigMediaPanel, in: RoundedRectangle(cornerRadius: PigRadius.hero))
         .accessibilityElement(children: .combine)
+        #if DEBUG
+        // #349, UI tests only: the card's identity (when it first appeared), so a test sees a rebuilt card.
+        .modifier(TuningCardProbe(shownAt: shownAt))
+        #endif
     }
 }
+
+#if DEBUG
+private struct TuningCardProbe: ViewModifier {
+    let shownAt: Date
+    func body(content: Content) -> some View {
+        if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"] != nil {
+            content.accessibilityIdentifier("tuning.card")
+                .accessibilityValue(String(format: "%.3f", shownAt.timeIntervalSince1970))
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 /// One row of the player's channel list: logo tile, name (and a muted
 /// number), what is on now and its progress. The TV's side list and the

@@ -462,21 +462,32 @@ struct PlayerScreen: View {
                 #if os(tvOS)
                 .onExitCommand { dismiss() }
                 #endif
-            } else if playback.ready {
-                Group {
-                    #if os(tvOS)
-                    CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
-                        // #132: no remote input reaches the hidden player's actions until it shows a picture (it
-                        // takes focus then).
-                        .disabled(!playback.hasPlayed)
-                    #else
-                    touchPlayer
-                    #endif
-                }
-                .overlay {
-                    // #6: the item is installed but there is no picture yet (HDMI mode switch, first segments). The
-                    // player stays underneath so it loads; the card owns the remote (Cancel, Menu).
-                    if !playback.hasPlayed {
+            } else {
+                // #349: one layer from the resolve until the first picture. The player is installed underneath once
+                // `ready` (#6: it loads there while the HDMI mode switches and the first segments arrive), and the one
+                // tuning card stays above it with the same identity, so it is not rebuilt (a second "Tuning…" screen,
+                // its slow hint's clock restarted) when `ready` flips. The card owns the remote (Close, Menu) until the
+                // picture shows.
+                ZStack {
+                    if playback.ready {
+                        Group {
+                            #if os(tvOS)
+                            CustomPlayerView(playback: playback, app: app) { Task { await app.endPlayback(playback) } }
+                                // #132: no remote input reaches the hidden player's actions until it shows a picture
+                                // (it takes focus then).
+                                .disabled(!playback.hasPlayed)
+                            #else
+                            touchPlayer
+                                // #349: the card's Close is the only one: the player under it takes no touch until the
+                                // picture shows (its controls are drawn from then, `touchPlayer`).
+                                .allowsHitTesting(playback.hasPlayed)
+                            #endif
+                        }
+                        .overlay(alignment: .top) {
+                            if playback.hasPlayed, playback.buffering { BufferingPill().allowsHitTesting(false) }
+                        }
+                    }
+                    if PlayerScreenLayers.showsTuningCard(ready: playback.ready, hasPlayed: playback.hasPlayed) {
                         ZStack {
                             Color.pigMediaCanvas.ignoresSafeArea()
                             VStack(spacing: PigSpacing.l) {
@@ -484,23 +495,12 @@ struct PlayerScreen: View {
                                 Button(PageWords.closePlayer) { dismiss() }.playerStateFocus($stateFocus)
                             }
                         }
+                        .environment(\.colorScheme, .dark)
                         #if os(tvOS)
                         .onExitCommand { dismiss() }
                         #endif
                     }
                 }
-                .overlay(alignment: .top) {
-                    if playback.hasPlayed, playback.buffering { BufferingPill().allowsHitTesting(false) }
-                }
-            } else {
-                VStack(spacing: PigSpacing.l) {
-                    TuningCard(playback: playback, browse: app.browse, message: "Tuning…")
-                    Button(PageWords.closePlayer) { dismiss() }.playerStateFocus($stateFocus)
-                }
-                .environment(\.colorScheme, .dark)
-                #if os(tvOS)
-                .onExitCommand { dismiss() }
-                #endif
             }
         }
         .environment(\.colorScheme, .dark)
@@ -571,16 +571,16 @@ struct PlayerScreen: View {
 
     }
 
-    /// Which of the body's states shows (tvOS focus follows it).
+    /// Which of the body's states shows (tvOS focus follows it). #349: "tuning" and "starting" are one tuning card.
     private var stateName: String {
         if playback.stopping { return "stopping" }
         if playback.viewerConflict != nil { return "viewer" }
         if playback.recordingConflict != nil { return "recording" }
         if playback.error != nil { return playback.canRetry ? "error-retry" : "error" }
         if playback.reconnecting { return "reconnecting" }
-        // #132: an installed player with no picture yet shows the tuning card, whose Cancel claims focus.
-        if playback.ready && !playback.hasPlayed { return "starting" }
-        return playback.ready ? "ready" : "tuning"
+        // #132: an installed player with no picture yet shows the tuning card, whose Close claims focus. #349: the same
+        // card as while resolving, so the claim is made once.
+        return PlayerScreenLayers.showsTuningCard(ready: playback.ready, hasPlayed: playback.hasPlayed) ? "tuning" : "ready"
     }
 
     #if os(iOS)
@@ -601,7 +601,8 @@ struct PlayerScreen: View {
                 }
                 .accessibilityLabel("Video")
                 .accessibilityHint("Shows or hides the player controls")
-            if chromeVisible, let browse = app.browse {
+            // #349: no controls under the tuning card (its Close is the only one) until the picture shows.
+            if chromeVisible, playback.hasPlayed, let browse = app.browse {
                 TouchPlayerChrome(playback: playback, app: app, browse: browse, pip: pip,
                                   close: { dismiss() },
                                   openChannels: { showingGuide = true; lastInput = Date() },
@@ -636,6 +637,12 @@ struct PlayerScreen: View {
         }
     }
     #endif
+}
+
+/// #349: the player screen's tuning layer (pure, `PlayerTuningCardTests`): one tuning card from the resolve until the
+/// first picture, whether or not the item is installed underneath yet.
+nonisolated enum PlayerScreenLayers {
+    static func showsTuningCard(ready: Bool, hasPlayed: Bool) -> Bool { !(ready && hasPlayed) }
 }
 
 #if os(iOS)
