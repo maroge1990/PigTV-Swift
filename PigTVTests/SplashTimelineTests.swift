@@ -37,6 +37,31 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertEqual(SplashTimeline.phase(at: 5.5, restoreFinishedAt: 5), .handingOff)
     }
 
+    /// Mark, 19 Nov 2026: Home's 18 pt glide is back, drawn as a UIKit transform on the tabs' view, which SwiftUI's layout
+    /// and frames never see; so the landing spot is the header's frame as reported, whatever the rise (before Apple 325
+    /// it was the frame less the rise, measured on a page that the offset had laid out again). Fails to compile on the
+    /// previous commit (no contentRise or glide).
+    func testTheGlideIsATransformAndTheLandingSpotIgnoresTheRise() {
+        let handoff = SplashHandoff(playing: true, contentRise: 32.4)
+        handoff.landingTitle = "Sport"
+        handoff.report(title: "Sport", frame: CGRect(x: 80, y: 157, width: 58, height: 48))
+        XCTAssertEqual(handoff.target, CGRect(x: 80, y: 157, width: 58, height: 48), "the settled frame, not less the rise")
+        let tabs = UIView(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        handoff.glide(tabs, rise: handoff.contentRise)
+        XCTAssertEqual(tabs.transform, CGAffineTransform(translationX: 0, y: 32.4), "drawn low under the splash")
+        XCTAssertEqual(tabs.frame.size, CGSize(width: 1920, height: 1080))
+        XCTAssertEqual(tabs.bounds, CGRect(x: 0, y: 0, width: 1920, height: 1080), "its layout is untouched")
+        handoff.land()
+        XCTAssertEqual(tabs.transform, .identity, "in place once the splash has gone")
+        let other = UIView()
+        handoff.glide(other, rise: 32.4)
+        XCTAssertEqual(other.transform, .identity, "nothing glides after the splash")
+        let reduced = SplashHandoff(playing: true, contentRise: 32.4)
+        let still = UIView()
+        reduced.glide(still, rise: 0)
+        XCTAssertEqual(still.transform, .identity, "Reduce Motion: no glide, a fade only")
+    }
+
     /// Mark, 19 Nov 2026 (TestFlight 324): the pig lands on a page that is already still. The hand-off waits for the opening
     /// page's first content (and `pageSettle` for its layout), but never more than 4 s past the settled pig and name (or
     /// start-up's end). Before Apple 325 it went at max(2.0, start-up) whatever the page showed (no pageReadyAt: these
@@ -121,18 +146,6 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertTrue(none.landed, "no splash (no saved sign-in): the header's mark shows")
         XCTAssertTrue(none.contentShown)
         XCTAssertTrue(none.homeInteractive)
-    }
-
-    /// Apple 325: Home no longer rises 18 pt under the splash. An offset moved it against the safe area, and its page was
-    /// laid out again for the new insets (measured on the Apple TV simulator: the Sport header 60 pt lower while risen), so
-    /// the pig landed where the header was while risen, not where it settles. A guard: the landing spot is the frame the
-    /// header reports, unchanged (ContentView built 324's handoff with an 18 pt rise, which no unit test can reach: the
-    /// before/after is the simulator trace in the commit).
-    func testHomeNeverMovesUnderTheSplashSoItsHeaderIsTheLandingSpot() {
-        let handoff = SplashHandoff(playing: true)
-        handoff.landingTitle = "Sport"
-        handoff.report(title: "Sport", frame: CGRect(x: 80, y: 157, width: 58, height: 48))
-        XCTAssertEqual(handoff.target, CGRect(x: 80, y: 157, width: 58, height: 48))
     }
 
     /// #342, iPhone (TestFlight 324): the pig did not fly onto the Sport header. The splash's bloom (1088 pt across on an

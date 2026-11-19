@@ -12,7 +12,8 @@ struct ContentView: View {
     init() {
         let step = LaunchStep.current()
         _initialRestoreFinished = State(initialValue: step == .firstScreen)
-        _splash = State(initialValue: SplashHandoff(playing: step == .splash))
+        _splash = State(initialValue: SplashHandoff(playing: step == .splash,
+                                                    contentRise: SplashTimeline.contentRise * BrandSplashView.unit))
     }
     // Appearance is owned here (a View), not in the App/Scene: an @AppStorage
     // change re-renders a View immediately, where the Scene-level modifier only
@@ -67,8 +68,9 @@ struct ContentView: View {
                 else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
                 else { OnboardingView(model: model).tint(Color("AccentColor")) }
             }
-            // #342: under the splash until it hands over, then it fades in. Never offset: moving Home against the safe area
-            // lays it out again (BrandSplash.swift's header), so the pig would land where the header no longer is.
+            // #342: under the splash until it hands over, then it fades in and its tabs glide 18 pt into place (fades only,
+            // under Reduce Motion). The glide is a UIKit transform on the tabs' view (`SplashLandingSpot`), never a SwiftUI
+            // offset: an offset re-lays Home out by its new safe area, so the pig would land where the header no longer is.
             .opacity(splash.contentShown ? 1 : 0)
             // Review of #342: until the splash is gone (`homeInteractive`, after the reveal), Home takes no touch, press or
             // focus and is not read by VoiceOver; on the TV focus then moves into it.

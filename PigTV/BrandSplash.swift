@@ -8,12 +8,13 @@ import SwiftUI
 //             lockup has it, never a second pig) rises 10 pt and fades in under the pig (from 0.95 s, 0.65 s).
 //   2.0 s on  (or later: once start-up has finished and the page Home opens on has its first content in and laid out,
 //             capped at 4 s past that point) the name fades out; the pig glides and shrinks onto the pig mark of
-//             Home's page header (PigPageHeader) while the halo, the bloom and the canvas fade and Home fades in where it
-//             is; at 3.2 s the header's own mark takes over at the same place and size, so nothing visibly swaps.
-// Home does not move under the splash (Apple 325): it used to rise 18 pt into place, but an offset moves Home against
-// the screen's safe area, and SwiftUI lays a page out again by its new insets, so the risen page was a different layout
-// (60 pt lower on the Apple TV, a 1-2 pt shimmer on the iPad and iPhone): the pig landed where the header was while
-// risen, and the page jumped when it settled.
+//             Home's page header (PigPageHeader) while the halo, the bloom and the canvas fade and Home fades in and glides
+//             18 pt up into place; at 3.2 s the header's own mark takes over at the same place and size, so nothing visibly swaps.
+// Home's glide is drawn, never laid out: a UIKit transform on the view that holds Home's tabs (found from the header's
+// landing spot, `SplashGlideProbe`), which SwiftUI's layout never sees. A SwiftUI offset (or visualEffect, or projection)
+// moved Home against the screen's safe area and SwiftUI laid the page out again by its new insets (60 pt lower on the
+// Apple TV, a 1-2 pt shimmer on the iPad and iPhone), so the pig landed where the header was while risen and the page
+// jumped when it settled. Home without tabs (sign-in, Offline) has no header to land on and only fades.
 // The splash holds its full length even when start-up is quicker (this changes brand §8's "never adds delay"; Mark's
 // choice), and waits for the opening page's first content so the pig lands on a page that is already still (Mark, 19 Nov
 // 2026). It plays on a cold launch only: a return from the background shows the app as it was left, with no splash. With
@@ -35,7 +36,7 @@ nonisolated enum SplashTimeline {
     static let nameIn: Double = 0.65
     /// The earliest hand-off: the pig and the name have settled.
     static let settled: Double = 2.0
-    /// From the hand-off's start: the name fades out at once; the pig flies after `flightDelay`; Home fades in after
+    /// From the hand-off's start: the name fades out at once; the pig flies after `flightDelay`; Home glides in after
     /// `revealDelay`. Both end together.
     static let nameOut: Double = 0.3
     static let flightDelay: Double = 0.35
@@ -45,8 +46,9 @@ nonisolated enum SplashTimeline {
     /// Halo and bloom fade out over the flight's first part.
     static let glowOut: Double = 0.5
 
-    /// How far the name rises, in points on a 600 pt splash (scaled with the splash's side).
+    /// How far the name rises and Home glides, in points on a 600 pt splash (scaled with the splash's side).
     static let nameRise: CGFloat = 10
+    static let contentRise: CGFloat = 18
 
     /// From the hand-off's start to Home on its own (the header's mark taking over): 1.2 s.
     static var handoff: Double { max(flightDelay + flight, revealDelay + reveal) }
@@ -104,7 +106,7 @@ nonisolated enum SplashTimeline {
     static var nameOutAnimation: Animation { .easeOut(duration: nameOut) } // motion: #342 splash name
     static var flightAnimation: Animation { .timingCurve(0.65, 0, 0.25, 1, duration: flight) } // motion: #342 flight
     static var glowOutAnimation: Animation { .easeOut(duration: glowOut) } // motion: #342 splash glow
-    static var revealAnimation: Animation { .easeOut(duration: reveal) } // motion: #342 Home fades in
+    static var revealAnimation: Animation { .easeOut(duration: reveal) } // motion: #342 Home glides in
 }
 
 /// #342: where the splash's pig lands. The header mark is a `PigBrandMark` (its ink centred in its frame, as wide as
@@ -122,8 +124,9 @@ nonisolated enum SplashFlight {
 final class SplashHandoff {
     /// The splash is over (or never played): the header's own mark shows and the splash is gone.
     private(set) var landed: Bool
-    /// Home is shown (it fades in where it is: it never moves under the splash).
+    /// Home is shown, and how far below its place its tabs are drawn until they glide in (a transform: layout never moves).
     private(set) var contentShown: Bool
+    let contentRise: CGFloat
     /// Home takes touches, presses, focus and VoiceOver only once the splash is gone (#342, Codex review: not while it
     /// still fades in under the splash's overlay).
     var homeInteractive: Bool { landed }
@@ -131,16 +134,28 @@ final class SplashHandoff {
     private(set) var restoreFinishedAt: Double?
     /// The header Home opens on (its title), once signed in; nil: there is no header to land on.
     var landingTitle: String?
-    /// Each header mark's frame in window coordinates: where it is and stays, since Home never moves under the splash.
+    /// Each header mark's frame in window coordinates: where it settles (SwiftUI's frames never include the glide's
+    /// transform, which is UIKit's alone).
     @ObservationIgnored private(set) var markFrames: [String: CGRect] = [:]
     /// When each page said its first content was in, in seconds from the splash's first frame (`splashPageReady`).
     @ObservationIgnored private var pagesReadyAt: [String: Double] = [:]
     @ObservationIgnored private var revealing = false
+    /// The view that holds Home's tabs, drawn `contentRise` low until the glide (`SplashGlideProbe`).
+    @ObservationIgnored private weak var glideView: UIView?
     @ObservationIgnored private let started = ContinuousClock.now
 
-    init(playing: Bool) {
+    init(playing: Bool, contentRise: CGFloat = 0) {
         landed = !playing
         contentShown = !playing
+        self.contentRise = playing ? contentRise : 0
+    }
+
+    /// The view that holds Home's tabs was found under the splash: it is drawn `rise` low (0 under Reduce Motion) until
+    /// the glide. A transform only: SwiftUI lays Home out as if it were in place, so its frames are the settled ones.
+    func glide(_ view: UIView, rise: CGFloat) {
+        guard !landed, !revealing, glideView == nil else { return }
+        glideView = view
+        view.transform = CGAffineTransform(translationX: 0, y: rise)
     }
 
     var elapsed: Double {
@@ -162,7 +177,8 @@ final class SplashHandoff {
     /// When the hand-off starts (SplashTimeline), nil while start-up runs.
     var handoffStart: Double? { SplashTimeline.handoffStart(restoreFinishedAt: restoreFinishedAt, pageReadyAt: pageReadyAt) }
 
-    /// A header mark's frame (window coordinates), taken until Home starts fading in.
+    /// A header mark's frame (window coordinates), taken until Home starts gliding in. It is the settled frame whatever
+    /// the glide's transform, so the landing spot is the frame as reported.
     func report(title: String, frame: CGRect) {
         guard !landed, !revealing else { return }
         markFrames[title] = frame
@@ -174,15 +190,20 @@ final class SplashHandoff {
         return markFrames[landingTitle]
     }
 
-    /// Home fades in.
+    /// Home fades in and glides into place (ContentView draws no glide under Reduce Motion: it only fades).
     func reveal() {
         revealing = true
         contentShown = true
+        if let glideView {
+            UIView.animate(withDuration: SplashTimeline.reveal, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) { glideView.transform = .identity } // motion: #342 Home glides in
+        }
     }
 
     /// The header's mark takes over and the splash goes.
     func land() {
         revealing = true
+        glideView?.layer.removeAllAnimations()
+        glideView?.transform = .identity
         contentShown = true
         landed = true
     }
@@ -193,12 +214,47 @@ private struct SplashLandingSpot: ViewModifier {
     let title: String
     @Environment(SplashHandoff.self) private var handoff: SplashHandoff?
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func body(content: Content) -> some View {
         content
             .opacity((handoff?.landed ?? true) ? 1 : 0)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                 handoff?.report(title: title, frame: frame)
             }
+            .background {
+                if let handoff, !handoff.landed {
+                    SplashGlideProbe(handoff: handoff, rise: reduceMotion ? 0 : handoff.contentRise).accessibilityHidden(true)
+                }
+            }
+    }
+}
+
+/// #342: finds the UIKit view that holds Home's tabs (the tab bar controller's view, above the header) for the glide.
+private struct SplashGlideProbe: UIViewRepresentable {
+    let handoff: SplashHandoff
+    let rise: CGFloat
+
+    func makeUIView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.isUserInteractionEnabled = false
+        probe.found = { [weak handoff] view in handoff?.glide(view, rise: rise) }
+        return probe
+    }
+
+    func updateUIView(_ probe: Probe, context: Context) {}
+
+    final class Probe: UIView {
+        var found: ((UIView) -> Void)?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil else { return }
+            var view = superview
+            while let candidate = view {
+                if candidate.next is UITabBarController { found?(candidate); return }
+                view = candidate.superview
+            }
+        }
     }
 }
 
