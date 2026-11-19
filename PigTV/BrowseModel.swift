@@ -776,8 +776,13 @@ final class BrowseModel: ObservableObject {
     /// seen (Cancelling…) before anything is sent; then the page's own per-airing rule, then the write. A server that
     /// still finds the airing being cancelled answers 409 "cancelling" (`schedule()`): the lists are read again, the
     /// page shows Cancelling… for that airing and stays open.
+    /// #347 finding 1 (Codex sign-off, high): only the press-time read's own answer authorizes the write. One that loses
+    /// its ticket check to a newer list (a poll answered first) is discarded, and the list on show is then not what the
+    /// press read: it is read once more, and if that is superseded too (or any read fails) nothing is sent.
     func record(_ request: RecordRequest, airing: RecordRequest.Airing, before: Int?, after: Int?) async -> Bool {
-        guard await readSchedulesNow() else {
+        var outcome = await readSchedulesOnce()
+        if outcome == .superseded { outcome = await readSchedulesOnce() }
+        guard outcome == .published else {
             actionError = PageWords.scheduleCheckFailed
             return false
         }
@@ -795,16 +800,25 @@ final class BrowseModel: ObservableObject {
         if recordingStore.readWaiters > 0 { recordingStore.readsSeen += 1 }
     }
 
+    /// What one scheduled-list read came to: `published` (its answer is the list on show), `superseded` (it answered, but
+    /// a newer list was published first, so its answer was discarded), or `failed` (no answer).
+    enum ScheduleReadOutcome: Equatable { case published, superseded, failed }
+
     /// One read of the scheduled list now, published when it is the newest: true when it answered.
+    @discardableResult
     func readSchedulesNow() async -> Bool {
-        guard let read = try? await readSchedules() else { return false }
-        if scheduleTickets.publish(read.ticket) {
-            let stones = recordingStore.tombstones
-            let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
-            if planned != schedules { schedules = planned }
-            noteScheduleRead(read.askedAt)
-        }
-        return true
+        await readSchedulesOnce() != .failed
+    }
+
+    /// One read of the scheduled list now, published when it is the newest (#347 finding 1: the press needs to know which).
+    func readSchedulesOnce() async -> ScheduleReadOutcome {
+        guard let read = try? await readSchedules() else { return .failed }
+        guard scheduleTickets.publish(read.ticket) else { return .superseded }
+        let stones = recordingStore.tombstones
+        let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
+        if planned != schedules { schedules = planned }
+        noteScheduleRead(read.askedAt)
+        return .published
     }
 
     func cancel(_ item: ScheduledRecording) async {
