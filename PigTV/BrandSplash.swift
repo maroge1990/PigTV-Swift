@@ -6,7 +6,8 @@ import SwiftUI
 //             the geometry of both; Tools/render-launch.swift draws the image), so nothing jumps.
 //   0.6 s on  the halo's bloom swells and settles (1.5 s); the name alone (the kit's wordmark, placed where the stacked
 //             lockup has it, never a second pig) rises 10 pt and fades in under the pig (from 0.95 s, 0.65 s).
-//   2.0 s on  (or when start-up finishes, if later) the name fades out; the pig glides and shrinks onto the pig mark of
+//   2.0 s on  (or later: once start-up has finished and the page Home opens on has its first content in and laid out,
+//             capped at 4 s past that point) the name fades out; the pig glides and shrinks onto the pig mark of
 //             Home's page header (PigPageHeader) while the halo, the bloom and the canvas fade and Home fades in where it
 //             is; at 3.2 s the header's own mark takes over at the same place and size, so nothing visibly swaps.
 // Home does not move under the splash (Apple 325): it used to rise 18 pt into place, but an offset moves Home against
@@ -14,7 +15,9 @@ import SwiftUI
 // (60 pt lower on the Apple TV, a 1-2 pt shimmer on the iPad and iPhone): the pig landed where the header was while
 // risen, and the page jumped when it settled.
 // The splash holds its full length even when start-up is quicker (this changes brand §8's "never adds delay"; Mark's
-// choice). With no saved sign-in there is no splash (LaunchStep): the first screen is sign-in, not Home.
+// choice), and waits for the opening page's first content so the pig lands on a page that is already still (Mark, 19 Nov
+// 2026). It plays on a cold launch only: a return from the background shows the app as it was left, with no splash. With
+// no saved sign-in there is no splash (LaunchStep): the first screen is sign-in, not Home.
 //
 // Reduce Motion: no bloom, the name fades in without rising, and the splash cross-fades to Home (no flight). Reduce
 // Transparency: plain canvas, no glow. The quiet progress indicator shows only when start-up is still running after
@@ -50,15 +53,27 @@ nonisolated enum SplashTimeline {
     /// The whole splash when start-up is quicker than it: 3.2 s.
     static var minimumLength: Double { settled + handoff }
 
-    /// When the hand-off starts: once the pig and the name have settled and start-up has finished, whichever is later;
-    /// nil while start-up still runs (the splash waits on the settled pig and name).
-    static func handoffStart(restoreFinishedAt: Double?) -> Double? {
-        restoreFinishedAt.map { max(settled, $0) }
+    /// The page Home opens on is laid out this long after it says its first content is in (`splashPageReady`).
+    static let pageSettle: Double = 0.15
+    /// The longest the hand-off waits for that page, past the settled pig and name (or start-up's end, if later).
+    static let pageWaitCap: Double = 4
+
+    /// When the hand-off starts: once the pig and the name have settled, start-up has finished, and the opening page's
+    /// first content is in and laid out (`pageReadyAt` + `pageSettle`), whichever is latest; but never more than
+    /// `pageWaitCap` after the first two. nil while start-up still runs (the splash waits on the settled pig and name).
+    /// `pageReadyAt`: when the page said its content is in; nil: not yet (the answer is then the cap, which a later
+    /// answer can only bring forward); 0: no page to wait for (sign-in, Offline).
+    static func handoffStart(restoreFinishedAt: Double?, pageReadyAt: Double? = 0) -> Double? {
+        guard let restoreFinishedAt else { return nil }
+        let earliest = max(settled, restoreFinishedAt)
+        let latest = earliest + pageWaitCap
+        guard let pageReadyAt else { return latest }
+        return min(max(earliest, pageReadyAt + pageSettle), latest)
     }
 
     /// When Home is on its own.
-    static func end(restoreFinishedAt: Double?) -> Double? {
-        handoffStart(restoreFinishedAt: restoreFinishedAt).map { $0 + handoff }
+    static func end(restoreFinishedAt: Double?, pageReadyAt: Double? = 0) -> Double? {
+        handoffStart(restoreFinishedAt: restoreFinishedAt, pageReadyAt: pageReadyAt).map { $0 + handoff }
     }
 
     /// The quiet progress indicator: only when start-up is still running after the sequence would have ended.
@@ -68,9 +83,9 @@ nonisolated enum SplashTimeline {
 
     nonisolated enum Phase: Equatable, Sendable { case launchFrame, namingIn, settled, handingOff, done }
 
-    static func phase(at t: Double, restoreFinishedAt: Double?) -> Phase {
-        if let end = end(restoreFinishedAt: restoreFinishedAt), t >= end { return .done }
-        if let start = handoffStart(restoreFinishedAt: restoreFinishedAt), t >= start { return .handingOff }
+    static func phase(at t: Double, restoreFinishedAt: Double?, pageReadyAt: Double? = 0) -> Phase {
+        if let end = end(restoreFinishedAt: restoreFinishedAt, pageReadyAt: pageReadyAt), t >= end { return .done }
+        if let start = handoffStart(restoreFinishedAt: restoreFinishedAt, pageReadyAt: pageReadyAt), t >= start { return .handingOff }
         if t < launchHold { return .launchFrame }
         return t < launchHold + nameDelay + nameIn ? .namingIn : .settled
     }
@@ -118,6 +133,8 @@ final class SplashHandoff {
     var landingTitle: String?
     /// Each header mark's frame in window coordinates: where it is and stays, since Home never moves under the splash.
     @ObservationIgnored private(set) var markFrames: [String: CGRect] = [:]
+    /// When each page said its first content was in, in seconds from the splash's first frame (`splashPageReady`).
+    @ObservationIgnored private var pagesReadyAt: [String: Double] = [:]
     @ObservationIgnored private var revealing = false
     @ObservationIgnored private let started = ContinuousClock.now
 
@@ -132,6 +149,18 @@ final class SplashHandoff {
     }
 
     func restoreFinished() { if restoreFinishedAt == nil { restoreFinishedAt = elapsed } }
+
+    /// A page (by its header's title) has its first content in: the first time counts.
+    func pageReady(title: String) { if pagesReadyAt[title] == nil { pagesReadyAt[title] = elapsed } }
+
+    /// When the page Home opens on had its first content; 0 when there is no header to land on (nothing to wait for).
+    var pageReadyAt: Double? {
+        guard let landingTitle else { return 0 }
+        return pagesReadyAt[landingTitle]
+    }
+
+    /// When the hand-off starts (SplashTimeline), nil while start-up runs.
+    var handoffStart: Double? { SplashTimeline.handoffStart(restoreFinishedAt: restoreFinishedAt, pageReadyAt: pageReadyAt) }
 
     /// A header mark's frame (window coordinates), taken until Home starts fading in.
     func report(title: String, frame: CGRect) {
@@ -173,8 +202,24 @@ private struct SplashLandingSpot: ViewModifier {
     }
 }
 
+/// #342: the page Home opens on says when its first content is in (not its loading placeholder), so the splash hands
+/// over to a page that is already still.
+private struct SplashPageReady: ViewModifier {
+    let title: String
+    let ready: Bool
+    @Environment(SplashHandoff.self) private var handoff: SplashHandoff?
+
+    func body(content: Content) -> some View {
+        content.onChange(of: ready, initial: true) { _, ready in
+            if ready { handoff?.pageReady(title: title) }
+        }
+    }
+}
+
 extension View {
     func splashLandingSpot(_ title: String) -> some View { modifier(SplashLandingSpot(title: title)) }
+    /// `title`: the page's header title (`LibraryView.title(of:)`); `ready`: its first content is in.
+    func splashPageReady(_ title: String, when ready: Bool) -> some View { modifier(SplashPageReady(title: title, ready: ready)) }
 }
 
 struct BrandSplashView: View {
@@ -288,7 +333,11 @@ struct BrandSplashView: View {
             if !reduceMotion { withAnimation(SplashTimeline.bloomSettleAnimation) { bloom = .rest } }
             try await at(SplashTimeline.settled)
             guard let handoff else { return } // the splash alone stays on the settled pig and name
-            while handoff.restoreFinishedAt == nil { try await Task.sleep(for: .milliseconds(50)) }
+            // Start-up, then the opening page's first content (capped: SplashTimeline.handoffStart).
+            while true {
+                if let start = handoff.handoffStart, handoff.elapsed >= start { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
             // Home has just been laid out under the splash: give its header a moment to report where its pig is.
             if handoff.landingTitle != nil {
                 for _ in 0..<12 where handoff.target == nil { try await Task.sleep(for: .milliseconds(50)) }

@@ -244,7 +244,15 @@ extension AppModel {
         guard environment["PIGTV_UI_TEST_LAUNCH"] == "home" else { return false }
         try? await Task.sleep(for: .seconds(Double(environment["PIGTV_UI_TEST_LAUNCH_DELAY"] ?? "") ?? 0.5))
         injectHomeFixture()
-        if let front = HomeTestScreen.front { browse?.sportFront.setFixture(front) }
+        if let front = HomeTestScreen.front, let sport = browse?.sportFront {
+            // #342: PIGTV_UI_TEST_FRONT_DELAY: the Sport answer comes that many seconds after start-up (loading till then).
+            if let delay = Double(environment["PIGTV_UI_TEST_FRONT_DELAY"] ?? ""), delay > 0 {
+                sport.setFixtureState("loading", front: nil)
+                Task { try? await Task.sleep(for: .seconds(delay)); sport.setFixture(front) }
+            } else {
+                sport.setFixture(front)
+            }
+        }
         PageStateFixtures.apply(self)
         return true
     }

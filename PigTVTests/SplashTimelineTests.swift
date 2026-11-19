@@ -36,6 +36,41 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertEqual(SplashTimeline.phase(at: 5.5, restoreFinishedAt: 5), .handingOff)
     }
 
+    /// Mark, 19 Nov 2026 (TestFlight 324): the pig lands on a page that is already still. The hand-off waits for the opening
+    /// page's first content (and `pageSettle` for its layout), but never more than 4 s past the settled pig and name (or
+    /// start-up's end). Before Apple 325 it went at max(2.0, start-up) whatever the page showed (no pageReadyAt: these
+    /// fail to compile on 324).
+    func testTheHandoffWaitsForTheOpeningPagesFirstContentCapped() {
+        XCTAssertEqual(SplashTimeline.pageWaitCap, 4)
+        XCTAssertEqual(SplashTimeline.handoffStart(restoreFinishedAt: 0.2, pageReadyAt: 0.6), 2.0, "in before the pig settles: no wait")
+        XCTAssertEqual(SplashTimeline.handoffStart(restoreFinishedAt: 0.2, pageReadyAt: 3.0) ?? 0, 3.0 + SplashTimeline.pageSettle,
+                       accuracy: 1e-9, "the page's content came at 3.0 s: it is laid out, then the pig flies")
+        XCTAssertEqual(SplashTimeline.handoffStart(restoreFinishedAt: 0.2, pageReadyAt: nil), 6.0, "not in yet: the cap, 4 s past the settled pig")
+        XCTAssertEqual(SplashTimeline.handoffStart(restoreFinishedAt: 0.2, pageReadyAt: 9.0), 6.0, "too late: handed over at the cap")
+        XCTAssertEqual(SplashTimeline.handoffStart(restoreFinishedAt: 5.0, pageReadyAt: nil), 9.0, "the cap counts from start-up's end when later")
+        XCTAssertNil(SplashTimeline.handoffStart(restoreFinishedAt: nil, pageReadyAt: 1.0), "start-up first")
+        XCTAssertEqual(SplashTimeline.phase(at: 4.0, restoreFinishedAt: 0.2, pageReadyAt: nil), .settled, "still waiting on the page")
+        XCTAssertEqual(SplashTimeline.phase(at: 6.5, restoreFinishedAt: 0.2, pageReadyAt: nil), .handingOff)
+        XCTAssertEqual(SplashTimeline.end(restoreFinishedAt: 0.2, pageReadyAt: 3.0) ?? 0, 3.15 + 1.2, accuracy: 1e-9)
+    }
+
+    func testTheHandoffKnowsWhenTheOpeningPageIsReady() {
+        let handoff = SplashHandoff(playing: true)
+        XCTAssertEqual(handoff.pageReadyAt, 0, "no header to land on (sign-in, Offline): nothing to wait for")
+        handoff.landingTitle = "Sport"
+        XCTAssertNil(handoff.pageReadyAt, "Sport has not said its content is in")
+        handoff.pageReady(title: "TV Guide")
+        XCTAssertNil(handoff.pageReadyAt, "another page's content does not count")
+        handoff.pageReady(title: "Sport")
+        let first = try? XCTUnwrap(handoff.pageReadyAt)
+        XCTAssertNotNil(first)
+        handoff.pageReady(title: "Sport")
+        XCTAssertEqual(handoff.pageReadyAt, first, "the first time counts")
+        XCTAssertNil(handoff.handoffStart, "start-up still runs")
+        handoff.restoreFinished()
+        XCTAssertEqual(handoff.handoffStart, 2.0, "both in quickly: the hand-off at the settled pig")
+    }
+
     func testTheProgressIndicatorOnlyWhenStartUpOutlastsTheSequence() {
         XCTAssertFalse(SplashTimeline.showsProgress(at: 2.5, restoreFinished: false), "not while the sequence still plays")
         XCTAssertTrue(SplashTimeline.showsProgress(at: 3.2, restoreFinished: false))

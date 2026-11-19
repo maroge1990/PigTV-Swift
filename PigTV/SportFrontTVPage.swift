@@ -56,6 +56,8 @@ struct SportFrontTVPage: View {
             content(now: context.date)
         }
         .whileVisible { await model.keepFresh(preferences: f1) }
+        // #342: the splash lands on this page once its first answer (or error) is in, not on its placeholders.
+        .splashPageReady("Sport", when: model.state != .loading)
         .task { await model.loadLabels(enabled: browse.sportFollowsEnabled) }
         .onChange(of: f1.hidesSpoilers) { Task { await model.load() } }
         .task(id: model.heroGame?.league == "F1") {
