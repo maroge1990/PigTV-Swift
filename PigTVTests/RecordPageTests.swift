@@ -102,6 +102,8 @@ final class RecordPageTests: XCTestCase {
         let event = SportEvent(id: "e1", title: "Packers v Bears", league: "NFL", startTime: start, endTime: end,
                                channels: [best, other])
         browse.schedules = [try schedule(#"{"id":7,"title":"Packers v Bears","channel_name":"Fox Footy","program_start":\#(Int64(start)),"program_end":\#(Int64(end)),"status":"scheduled"}"#)]
+        // A name-only row (no channel identity) binds once the guide's whole channel list has loaded (#347, Codex high).
+        browse.guide = [best, other].map { GuideChannel(rawID: $0.rawID, sourceId: $0.sourceId, name: $0.name, logo: nil, category: nil, programmes: []) }
         let request = try XCTUnwrap(browse.recordRequest(event: event, now: now))
         XCTAssertEqual(request.schedule?.id, 7)
         XCTAssertEqual(request.preferredChannel, other.id, "the page shows the channel whose schedule it changes")
