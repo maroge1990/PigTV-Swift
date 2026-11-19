@@ -115,6 +115,21 @@ controls are not used for live play.
   "This game" is Record when it's listed (a C-M `game` rule) or Don't record it, the team and league rules as usual. The event page's and its channel rows' Record close that page first, then open the record
   page. Fixtures `record`, `record-sport`, `record-change` (`DesignTestScreen`, with the Undo toast); tests
   `RecordPageUITests`, `GuidePagesUITests`, `SportFrontUITests`.
+  **Airings, guide bounds and Cancelling… (#347, D-72; C-R `slots`, `recordingCancelling`, `guideEnd` since server
+  0862, all optional).** A card's Record offers its `slots` when sent (a Test's day two on day one's channel), else its
+  channels; an airing is its channel plus guide start (`RecordRequest.Airing.id`), and a channel with several airings
+  is a Record on row per airing with its day. Change recording binds a schedule by the server's channel identity and
+  start (`activeSchedule`; a name-only row from an older server only once the guide's whole channel list has loaded,
+  and the page checks the binding again before Save changes or Cancel recording); the page opens on the bound airing
+  (`RecordPlan.openingAiring`). Schedules and cancellations match airings by guide bounds on both sides (the airing's
+  start and `guideEnd`, else its end; a schedule's `program_end_original`, else `program_end`), never the end rolled on
+  for an overrun, which Record still sends as `programEnd`. While a recording's cancellation is in progress (its Undo
+  open, its DELETE unanswered, no answer until a scheduled-list read after it has answered, or the server listing it
+  `cancelling`), Record for an overlapping airing of the same game or channel is a disabled "Cancelling…" (record page,
+  hold menu, programme details) and `schedule()` refuses; other airings stay recordable. With the card's
+  `recordingCancelling` the server's list decides, plus what only this device knows; without it the client infers.
+  The scheduled list's reads take tickets and only an answer newer than the last one published is shown
+  (`ScheduleTickets`); after a write the lists are read by a load that began after it (`loadRecordings(startedAfter:)`).
   **Recordings (D-44 batch 5, Apple 119–122, R5-Recordings/Scheduled/View/Undo).** No library: `RecordingsView` draws
   the featured recording (the newest partly watched, else the newest finished; `RecordingsHome`, pure) with Resume /
   Watch from start, Details and Delete, the rest as large cards, and Coming up as a strip whose chips and All › push
