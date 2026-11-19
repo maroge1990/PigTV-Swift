@@ -108,8 +108,8 @@ final class BrowseModel: ObservableObject {
             // A1.1: captured once before the load starts and committed only on
             // completion, so a version change mid-load is never masked.
             loadingVersion = try? await client.guideVersion()
-        } else if guideBusy || !guideHasMore {
-            return
+        } else if guideBusy || guidePaging || !guideHasMore {
+            return // a page in flight, or the paging already running, has this cursor
         }
         let generation = guideGeneration
         guideBusy = true
@@ -117,7 +117,9 @@ final class BrowseModel: ObservableObject {
         // retry never swaps the error, or the stale notice, for the loading placeholders while it waits for its answer.
         defer { if generation == guideGeneration { guideBusy = false } }
         await fetchGuidePage(generation: generation)
-        guard reset, generation == guideGeneration, guideHasMore, guideError == nil else { return }
+        // #355: a retried page (`reset: false`) that succeeds with a cursor left resumes the paging too; before, only a
+        // fresh load paged on, so the pages after a retried one were never fetched.
+        guard generation == guideGeneration, guideHasMore, guideError == nil else { return }
         guidePaging = true
         guidePrefetch = Task { [weak self] in
             defer { if let self, generation == self.guideGeneration { self.guidePaging = false } }
