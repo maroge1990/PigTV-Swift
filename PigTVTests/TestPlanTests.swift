@@ -1,7 +1,8 @@
 import XCTest
 
-// #351: the scheme's test plans. PigTV.xctestplan (the default: Tools/test.sh, GitHub CI, Xcode) skips nothing, as the
-// scheme's test action did. XcodeCloud.xctestplan (the release workflow's Test actions) leaves out only the static source
+// #351: the scheme's test plans. PigTV.xctestplan (named by Tools/test.sh and GitHub CI with -testPlan PigTV) skips
+// nothing, as the scheme's test action did. XcodeCloud.xctestplan is the scheme's default, because Xcode Cloud's workflow
+// Test actions offer only "Use scheme settings" (Xcode 27); it leaves out only the static source
 // scans, which read the source tree that Xcode Cloud's test runner does not have (they run on the Mac and in GitHub CI),
 // and three timing probes that failed on its runners; every behavioural test stays in. A source scan itself, so the
 // cloud plan leaves it out too. (No test plans: fails on Apple 335.)
@@ -20,12 +21,20 @@ final class TestPlanTests: XCTestCase {
         return result
     }
 
-    func testTheDefaultPlanRunsEverything() throws {
+    private func text(_ path: String) throws -> String {
+        try String(contentsOf: Self.root.appendingPathComponent(path), encoding: .utf8)
+    }
+
+    func testTheFullPlanRunsEverythingAndTheMacAndGitHubNameIt() throws {
         XCTAssertEqual(try skipped("PigTV.xctestplan"), ["PigTVTests": [], "PigTVUITests": []])
-        let scheme = try String(contentsOf: Self.root.appendingPathComponent("PigTV.xcodeproj/xcshareddata/xcschemes/PigTV.xcscheme"),
-                                encoding: .utf8)
-        XCTAssertTrue(scheme.contains("reference = \"container:PigTV.xctestplan\"\n            default = \"YES\""), "the default plan")
-        XCTAssertTrue(scheme.contains("container:XcodeCloud.xctestplan"))
+        let scheme = try text("PigTV.xcodeproj/xcshareddata/xcschemes/PigTV.xcscheme")
+        XCTAssertTrue(scheme.contains("reference = \"container:PigTV.xctestplan\">"))
+        XCTAssertTrue(scheme.contains("reference = \"container:XcodeCloud.xctestplan\"\n            default = \"YES\""),
+                      "the cloud plan is the default: Xcode Cloud can only use the scheme's settings")
+        XCTAssertTrue(try text("Tools/test.sh").contains("-scheme PigTV -testPlan PigTV "), "the Mac runs the full plan")
+        let ci = try text(".github/workflows/ci.yml")
+        XCTAssertTrue(ci.contains("xcodebuild test \\\n            -project PigTV.xcodeproj \\\n            -scheme PigTV \\\n            -testPlan PigTV \\"),
+                      "GitHub CI runs the full plan")
     }
 
     func testTheCloudPlanLeavesOutOnlySourceScansAndTheTimingProbes() throws {

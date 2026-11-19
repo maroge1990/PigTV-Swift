@@ -102,6 +102,7 @@ jobs:
           xcodebuild test \
             -project PigTV.xcodeproj \
             -scheme PigTV \
+            -testPlan PigTV \
             -destination "id=${{ steps.tvos_sim.outputs.device_id }}" \
             -only-testing:PigTVTests \
             -skip-testing:PigTVTests/PigTVTests/testServerContracts \

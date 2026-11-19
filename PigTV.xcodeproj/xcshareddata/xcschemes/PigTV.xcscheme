@@ -29,11 +29,11 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:PigTV.xctestplan"
-            default = "YES">
+            reference = "container:PigTV.xctestplan">
          </TestPlanReference>
          <TestPlanReference
-            reference = "container:XcodeCloud.xctestplan">
+            reference = "container:XcodeCloud.xctestplan"
+            default = "YES">
          </TestPlanReference>
       </TestPlans>
    </TestAction>

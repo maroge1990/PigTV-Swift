@@ -50,8 +50,9 @@ the regression UI tests), `visual` (the screenshot suites), `all` (fast, regress
 writes the git-ignored marker `.ui-full-passed` (the commit), which `Tools/testflight.sh` requires to equal HEAD, so an upload
 runs from the Mac's real clone, not an rsync copy. CI checks out the server's `test/golden`, so `GoldenChecks` runs there.
 
-**Test plans and Xcode Cloud (#351).** The scheme has two test plans. `PigTV.xctestplan` is the default (Xcode, `Tools/test.sh`,
-GitHub CI) and skips nothing. `XcodeCloud.xctestplan` is for the release workflow's Test actions: Xcode Cloud builds on one
+**Test plans and Xcode Cloud (#351).** The scheme has two test plans. `PigTV.xctestplan` skips nothing; `Tools/test.sh` and
+GitHub CI name it (`-testPlan PigTV`), and in Xcode choose it with Product › Test Plan. `XcodeCloud.xctestplan` is the scheme's
+default because the release workflow's Test actions can only "Use scheme settings" (Xcode 27): Xcode Cloud builds on one
 machine and runs `test-without-building` on another that has only the build products, so it leaves out the static source scans
 (`BrandRulesTests`, `HelperLinesGoneTests`, `SelectionFlatTests`, `SportHideScoresWriterTests`, `LaunchImageTests`,
 `TestPlanTests`, two `PolishTests` colour-catalogue reads, two `SportSpoilersTests` source scans), which run on the Mac and in

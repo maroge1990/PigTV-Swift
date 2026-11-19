@@ -26,7 +26,9 @@ UNIT="-only-testing:PigTVTests -skip-testing:PigTVTests/PigTVTests/testServerCon
 MARKER=".ui-full-passed"
 rm -f "$MARKER"
 
-xc() { xcodebuild -quiet -project PigTV.xcodeproj -scheme PigTV -destination "$DEST" "$@"; }
+# -testPlan PigTV: the full plan. The scheme's default is XcodeCloud, which Xcode Cloud's workflow can only take as "Use
+# scheme settings" (Xcode 27 offers no plan choice there, #351).
+xc() { xcodebuild -quiet -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "$DEST" "$@"; }
 trap 'xcrun simctl shutdown all >/dev/null 2>&1 || true' EXIT
 
 fast() {
