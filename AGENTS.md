@@ -116,7 +116,7 @@ server's `AGENTS.md` › Session checklist (issues first; the end-of-session doc
 - If Xcode re-saves `project.pbxproj` while you edit it by hand, check `platformFilters = (tvos)` survived on the extension's
   dependency and embed entries (the iOS build fails without it). Xcode also re-saves it with reordered lines after test runs:
   restore it, but not over an uncommitted build bump (re-run `bump-build.sh <n>`).
-- The scheme sets `PIGTV_SYNTHETIC_TESTS=1`, so the test host never restores a saved real-server session.
+- `PIGTV_SYNTHETIC_TESTS=1` is listed in the scheme but not applied (the Run action's environment overrides it), and the test plans set nothing: don't rely on it to stop the test host restoring a saved real-server session.
 - The simulators can overload the MacBook; then timing tests (e.g. `ChannelWarmerTests`) fail spuriously: rerun them
   alone, shut simulators down after a run, and don't run the server suite at the same time. `xcodebuild` can sit idle
   after a UI run while it collects diagnostics; the results are already in the log.
