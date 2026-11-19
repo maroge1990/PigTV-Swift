@@ -62,6 +62,38 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertEqual(still.transform, .identity, "Reduce Motion: no glide, a fade only")
     }
 
+    /// Codex sign-off of 325 (medium): the tabs' view is drawn low from when the probe finds it until the reveal. A splash
+    /// cancelled in that wait (the view went away) returned before land(), and a probe that left, or a tab controller
+    /// replaced, left the view drawn low (a second view was ignored while the first lived). Every way out now puts it
+    /// back. (No waitForHandoff, resetGlide or glideViewLost: fails to compile on c843b37.)
+    func testTheTabsAreNeverLeftDrawnLow() async {
+        let handoff = SplashHandoff(playing: true, contentRise: 18)
+        let tabs = UIView()
+        handoff.glide(tabs, rise: 18)
+        XCTAssertEqual(tabs.transform.ty, 18)
+        let wait = Task { try await handoff.waitForHandoff(poll: .milliseconds(10)) } // start-up never finishes
+        try? await Task.sleep(for: .milliseconds(60))
+        wait.cancel()
+        _ = await wait.result
+        XCTAssertEqual(tabs.transform, .identity, "cancelled while waiting: the retained view is back in place")
+
+        let replaced = SplashHandoff(playing: true, contentRise: 18)
+        let first = UIView(), second = UIView()
+        replaced.glide(first, rise: 18)
+        replaced.glide(first, rise: 18)
+        XCTAssertEqual(first.transform.ty, 18, "found again: unchanged")
+        replaced.glide(second, rise: 18)
+        XCTAssertEqual(first.transform, .identity, "the tab controller replaced: the old view is put back")
+        XCTAssertEqual(second.transform.ty, 18, "and the new one glides")
+        replaced.glideViewLost(first)
+        XCTAssertEqual(second.transform.ty, 18, "a view no longer gliding changes nothing")
+        replaced.glideViewLost(second)
+        XCTAssertEqual(second.transform, .identity, "its probe left the window: put back")
+        replaced.resetGlide()
+        replaced.land()
+        XCTAssertEqual(second.transform, .identity, "idempotent")
+    }
+
     /// Mark, 19 Nov 2026 (TestFlight 324): the pig lands on a page that is already still. The hand-off waits for the opening
     /// page's first content (and `pageSettle` for its layout), but never more than 4 s past the settled pig and name (or
     /// start-up's end). Before Apple 325 it went at max(2.0, start-up) whatever the page showed (no pageReadyAt: these

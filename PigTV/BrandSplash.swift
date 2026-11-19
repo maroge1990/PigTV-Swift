@@ -152,10 +152,47 @@ final class SplashHandoff {
 
     /// The view that holds Home's tabs was found under the splash: it is drawn `rise` low (0 under Reduce Motion) until
     /// the glide. A transform only: SwiftUI lays Home out as if it were in place, so its frames are the settled ones.
+    /// A view found again (the same probe) changes nothing; another view (the tab controller replaced) takes over, and the
+    /// one before is put back in place first.
     func glide(_ view: UIView, rise: CGFloat) {
-        guard !landed, !revealing, glideView == nil else { return }
+        guard !landed, !revealing, glideView !== view else { return }
+        resetGlide()
         glideView = view
         view.transform = CGAffineTransform(translationX: 0, y: rise)
+    }
+
+    /// The probe that found `view` left the window: the view is put back in place (a probe that finds it again glides it
+    /// again).
+    func glideViewLost(_ view: UIView) {
+        guard glideView === view else { return }
+        resetGlide()
+    }
+
+    /// Puts the tabs' view back in place at once and forgets it: the one way the glide's transform is undone without its
+    /// animation (land, a cancelled splash, a lost or replaced view, Reduce Motion). Idempotent.
+    func resetGlide() {
+        guard let view = glideView else { return }
+        view.layer.removeAllAnimations()
+        view.transform = .identity
+        glideView = nil
+    }
+
+    /// Waits for the hand-off's start (start-up, then the opening page's first content, capped: SplashTimeline), then up
+    /// to 0.6 s for the header to report its pig. Cancelled (the splash went away): the tabs' view is put back in place.
+    func waitForHandoff(poll: Duration = .milliseconds(50)) async throws {
+        do {
+            while true {
+                if let start = handoffStart, elapsed >= start { break }
+                try await Task.sleep(for: poll)
+            }
+            // Home has just been laid out under the splash: give its header a moment to report where its pig is.
+            if landingTitle != nil {
+                for _ in 0..<12 where target == nil { try await Task.sleep(for: poll) }
+            }
+        } catch {
+            resetGlide()
+            throw error
+        }
     }
 
     var elapsed: Double {
@@ -202,8 +239,7 @@ final class SplashHandoff {
     /// The header's mark takes over and the splash goes.
     func land() {
         revealing = true
-        glideView?.layer.removeAllAnimations()
-        glideView?.transform = .identity
+        resetGlide()
         contentShown = true
         landed = true
     }
@@ -239,21 +275,33 @@ private struct SplashGlideProbe: UIViewRepresentable {
         let probe = Probe()
         probe.isUserInteractionEnabled = false
         probe.found = { [weak handoff] view in handoff?.glide(view, rise: rise) }
+        probe.lost = { [weak handoff] view in handoff?.glideViewLost(view) }
         return probe
     }
 
     func updateUIView(_ probe: Probe, context: Context) {}
 
+    /// The probe went away with its view (the splash landed, or the page was rebuilt): its tabs' view is put back.
+    static func dismantleUIView(_ probe: Probe, coordinator: ()) { probe.detach() }
+
     final class Probe: UIView {
         var found: ((UIView) -> Void)?
+        var lost: ((UIView) -> Void)?
+        private weak var tabs: UIView?
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            guard window != nil else { return }
+            guard window != nil else { detach(); return }
             var view = superview
             while let candidate = view {
-                if candidate.next is UITabBarController { found?(candidate); return }
+                if candidate.next is UITabBarController { tabs = candidate; found?(candidate); return }
                 view = candidate.superview
             }
+        }
+
+        func detach() {
+            if let tabs { lost?(tabs) }
+            tabs = nil
         }
     }
 }
@@ -389,18 +437,11 @@ struct BrandSplashView: View {
             if !reduceMotion { withAnimation(SplashTimeline.bloomSettleAnimation) { bloom = .rest } }
             try await at(SplashTimeline.settled)
             guard let handoff else { return } // the splash alone stays on the settled pig and name
-            // Start-up, then the opening page's first content (capped: SplashTimeline.handoffStart).
-            while true {
-                if let start = handoff.handoffStart, handoff.elapsed >= start { break }
-                try await Task.sleep(for: .milliseconds(50))
-            }
-            // Home has just been laid out under the splash: give its header a moment to report where its pig is.
-            if handoff.landingTitle != nil {
-                for _ in 0..<12 where handoff.target == nil { try await Task.sleep(for: .milliseconds(50)) }
-            }
+            try await handoff.waitForHandoff()
             try await handOff(handoff, clock: clock)
         } catch {
-            return // cancelled: the view went away
+            handoff?.resetGlide() // cancelled: the view went away; Home's tabs are never left drawn low
+            return
         }
     }
 
