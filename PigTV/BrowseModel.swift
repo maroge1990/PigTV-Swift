@@ -527,17 +527,7 @@ final class BrowseModel: ObservableObject {
             let read = try await readSchedules()
             // A list asked for before one already published is older than it (Codex check of 320): not published, and
             // it settles nothing the newer one has not. Published here, where it is used (Codex sign-off of #347).
-            if scheduleTickets.publish(read.ticket) {
-                let stones = recordingStore.tombstones
-                let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
-                if planned != schedules { schedules = planned }
-                noteScheduleRead(read.askedAt)
-                // A removal with no answer is settled by a list asked for after it: the row there (it stands) or not
-                // (gone). A row still listed "cancelling" keeps it in progress (#347), so its own reads go on until the
-                // server has finished (Codex check of 320: a refresh then ended them, and the row stayed "cancelling").
-                let unsure = recordingStore.uncertainRemovals.filter { $0.value >= began || read.cancelling.contains($0.key) }
-                if unsure.count != recordingStore.uncertainRemovals.count { recordingStore.uncertainRemovals = unsure }
-            }
+            if scheduleTickets.publish(read.ticket) { publishSchedules(read) }
             settleTombstones(loadedSince: began) { !$0.hasPrefix("rule:") }
             recordingStore.updatedAt = Date()
             if recordingsError != nil { recordingsError = nil }
@@ -828,11 +818,22 @@ final class BrowseModel: ObservableObject {
     func readSchedulesOnce() async -> ScheduleReadOutcome {
         guard let read = try? await readSchedules() else { return .failed }
         guard scheduleTickets.publish(read.ticket) else { return .superseded }
+        publishSchedules(read)
+        return .published
+    }
+
+    /// An accepted (newest) scheduled-list read, by any reader: shown, and it settles every cancellation in progress
+    /// marked before it was asked for (#357, Codex review of 359-360: any such read, not only a cancellation's own).
+    /// A removal with no answer is settled by a list asked for after it: the row there (it stands) or not (gone). A row
+    /// still listed "cancelling" keeps it in progress (#347), so its own reads go on until the server has finished (Codex
+    /// check of 320: a refresh then ended them, and the row stayed "cancelling").
+    private func publishSchedules(_ read: ScheduleRead) {
         let stones = recordingStore.tombstones
         let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
         if planned != schedules { schedules = planned }
         noteScheduleRead(read.askedAt)
-        return .published
+        let unsure = recordingStore.uncertainRemovals.filter { $0.value >= read.askedAt || read.cancelling.contains($0.key) }
+        if unsure.count != recordingStore.uncertainRemovals.count { recordingStore.uncertainRemovals = unsure }
     }
 
     func cancel(_ item: ScheduledRecording) async {
@@ -1042,11 +1043,22 @@ final class BrowseModel: ObservableObject {
     }
 
     /// After a cancellation with no answer: its own read of the scheduled list, begun after the failure and apart from
-    /// the recordings files (Codex check of 320), again every `reconcileRetry` until one answers (at most `reconcileTries`).
+    /// the recordings files (Codex check of 320), again every `reconcileRetry` for `reconcileTries` reads, then less
+    /// often (each wait doubled, at most `reconcileMaxRetry`) for as long as it is unresolved (#357, Codex review of
+    /// 359-360: it gave up, and Record stayed disabled for the session while `/recordings` was down).
     /// The answer decides: the row gone (cancelled), or listed with another status than "cancelling" (the cancel failed:
     /// it stands); while the server lists it "cancelling" (C-M, #347) it is still in progress and the reads go on.
     var reconcileRetry: Duration = .seconds(5)
     var reconcileTries = 24
+    var reconcileMaxRetry: Duration = .seconds(60)
+
+    /// The wait before read `attempt` (from 0) of a cancellation's own reads.
+    func reconcileWait(before attempt: Int) -> Duration {
+        guard attempt > 0 else { return .zero }
+        guard attempt >= reconcileTries else { return reconcileRetry }
+        let doubled = reconcileRetry * (1 << min(attempt - reconcileTries + 1, 16))
+        return min(doubled, max(reconcileMaxRetry, reconcileRetry))
+    }
 
     /// The reads settling each unresolved cancellation, by its key (#357, Codex review of 359-360): one worker per
     /// schedule (a new one replaces it), all cancelled when the session is retired (`retirePrivateCaches`).
@@ -1068,9 +1080,12 @@ final class BrowseModel: ObservableObject {
     private func reconcileLostRemoval(_ key: String) async {
         // This attempt's uncertainty: a refresh that answered it, or a later attempt at the same item, ends these reads.
         guard let uncertainSince = recordingStore.uncertainRemovals[key] else { return }
-        for attempt in 0..<reconcileTries {
+        var attempt = 0
+        while true {
             // Cancelled (signed out, switched account, or replaced): no more reads, and nothing it has read is published.
-            if attempt > 0 { do { try await Task.sleep(for: reconcileRetry) } catch { return } }
+            let wait = reconcileWait(before: attempt)
+            attempt += 1
+            if wait > .zero { do { try await Task.sleep(for: wait) } catch { return } }
             guard !Task.isCancelled else { return }
             guard recordingStore.uncertainRemovals[key] == uncertainSince else { return } // a refresh after it has answered
             guard let read = try? await readSchedules() else { continue }
@@ -1081,13 +1096,8 @@ final class BrowseModel: ObservableObject {
             // owns is dropped without taking the watermark, which would have refused a valid older-ticket answer.
             guard recordingStore.uncertainRemovals[key] == uncertainSince else { return }
             guard scheduleTickets.publish(read.ticket) else { continue }
-            let stones = recordingStore.tombstones
-            let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
-            if planned != schedules { schedules = planned }
-            noteScheduleRead(read.askedAt)
-            if read.cancelling.contains(key) { continue } // still being cancelled
-            recordingStore.uncertainRemovals[key] = nil
-            return
+            publishSchedules(read) // settles it unless the server still lists it "cancelling"
+            if recordingStore.uncertainRemovals[key] != uncertainSince { return }
         }
     }
 
@@ -1097,7 +1107,9 @@ final class BrowseModel: ObservableObject {
     /// newer list (after a schedule or a cancel) no longer has. `cancelling`: the cancellation keys of the rows listed
     /// "cancelling" (#347). The read only takes its ticket; whoever publishes the answer advances the watermark
     /// (`ScheduleTickets.publish`), after checking it still owns the answer (Codex sign-off of #347).
-    private func readSchedules() async throws -> (list: [ScheduledRecording], ticket: Int, cancelling: Set<String>, askedAt: Date) {
+    typealias ScheduleRead = (list: [ScheduledRecording], ticket: Int, cancelling: Set<String>, askedAt: Date)
+
+    private func readSchedules() async throws -> ScheduleRead {
         let ticket = scheduleTickets.ask()
         let askedAt = Date()
         let fetched: [ScheduledRecording] = try await client.decodedOffMain(
