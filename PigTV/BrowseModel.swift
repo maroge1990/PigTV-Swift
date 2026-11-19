@@ -704,8 +704,10 @@ final class BrowseModel: ObservableObject {
     /// `gameId` (C-M since 0440): a Sport card's game, so the recording stops when the game ends.
     /// `guideEnd` (C-R #353): the airing's own guide end when `programme.endTime` is rolled on for an overrun; the
     /// Cancelling… check uses guide bounds, while `programEnd` still sends the rolled end (C-M unchanged).
+    /// `context` (Codex sign-off of #347): the sport request and the airing being recorded, so the write is checked by the
+    /// same rule as the page shows (its slots resolve each cancelling schedule to its own guide slot); never a stricter one.
     func schedule(channel: GuideChannel, programme: GuideProgramme, guideEnd: Double? = nil, before: Int?, after: Int?,
-                  gameId: String? = nil) async -> Bool {
+                  gameId: String? = nil, context: (request: RecordRequest, airing: RecordRequest.Airing)? = nil) async -> Bool {
         // The request is checked before anything else happens (Codex review of 320: never settle a cancellation for a
         // request that is then refused).
         guard programme.end > Date(), programme.end > programme.start else {
@@ -714,7 +716,9 @@ final class BrowseModel: ObservableObject {
         }
         // Mark, 19 Nov 2026: while an earlier recording of this (the same game, or this channel's overlapping airing) is
         // being cancelled, recording it again is not offered; a path that still gets here is refused, never raced.
-        if cancellingEarlier(gameId: gameId, channel: channel, start: programme.startTime, end: guideEnd ?? programme.endTime) {
+        let waits = context.map { cancellingEarlier($0.request, airing: $0.airing) }
+            ?? cancellingEarlier(gameId: gameId, channel: channel, start: programme.startTime, end: guideEnd ?? programme.endTime)
+        if waits {
             actionError = PageWords.cancellingEarlierText
             return false
         }

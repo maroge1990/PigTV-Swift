@@ -975,7 +975,7 @@ struct RecordPage: View {
         if model.cancellingEarlier(request, airing: airing) { error = PageWords.cancellingEarlierText; return }
         if await model.schedule(channel: airing.channel, programme: airing.programme, guideEnd: airing.guideEnd,
                                 before: before, after: after,
-                                gameId: request.gameId) {
+                                gameId: request.gameId, context: (request, airing)) {
             close()
         } else {
             error = model.actionError ?? "The recording could not be scheduled."

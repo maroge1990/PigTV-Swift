@@ -104,7 +104,7 @@ final class SportRecordFlow: ObservableObject {
             Task {
                 guard await browse.schedule(channel: first.channel, programme: first.programme, guideEnd: first.guideEnd,
                                             before: nil, after: nil,
-                                            gameId: request.gameId) else {
+                                            gameId: request.gameId, context: (request, first)) else {
                     app.record(event, game: game, error: browse.actionError ?? "The recording could not be scheduled.", card: card)
                     return
                 }
