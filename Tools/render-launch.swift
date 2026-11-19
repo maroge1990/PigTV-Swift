@@ -28,6 +28,12 @@ let outDir = args[2]
 guard let mark = NSImage(contentsOfFile: markPath) else { fail("cannot read \(markPath)") }
 
 let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+// #342 (Apple 325): the image is drawn and saved in Display P3. iOS and tvOS show the launch image's pixel values as Display
+// P3 whatever the file is tagged (measured on the simulators: the sRGB brand pink #F97BAB, (249,123,171), showed as
+// (255,115,172), which is exactly those values read as P3), while the app draws the same pink as sRGB: a colour pop at
+// the first frame. The brand colours are given in sRGB (the gradient below and mark.svg) and converted into P3 here, so
+// the launch screen shows the exact sRGB brand colours, and a pipeline that does read the tag shows them too.
+let displayP3 = CGColorSpace(name: CGColorSpace.displayP3)!
 
 func gradient(_ stops: [BrandLayout.Stop]) -> CGGradient {
     let comps = stops.flatMap { [CGFloat($0.r / 255), CGFloat($0.g / 255), CGFloat($0.b / 255), CGFloat($0.a)] }
@@ -37,7 +43,7 @@ func gradient(_ stops: [BrandLayout.Stop]) -> CGGradient {
 /// side: the layout square S in points; scale: 2 or 3.
 func render(side: Double, scale: Double, dark: Bool) -> CGImage {
     let px = Int((BrandLayout.launchSide * side * scale / 2).rounded()) * 2
-    let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0, space: srgb,
+    let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0, space: displayP3,
                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
     ctx.interpolationQuality = .high
     let centre = CGPoint(x: Double(px) / 2, y: Double(px) / 2)
