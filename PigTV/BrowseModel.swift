@@ -759,9 +759,20 @@ final class BrowseModel: ObservableObject {
             }
             PigHaptic.play(.record)
             return true
-        } catch PigTVError.scheduleRefused(let code, _) {
+        } catch PigTVError.scheduleRefused(let code, let refusedBy) {
             // The server's refusal (0876+): the lists are read again, so the page shows why (Cancelling…, or the slot's
             // own schedule), and nothing was made.
+            // #347 finding 2 (Codex sign-off, medium): a "cancelling" refusal names the schedule being cancelled. It is
+            // in progress at once, as a cancellation with no answer is (Cancelling… on the page whatever the reload
+            // below does, which stops at a failed `/recordings` before reading the scheduled list), and its own
+            // scheduled-list reads go on until one shows it no longer "cancelling" (`reconcileLostRemoval`).
+            if code == "cancelling", let refusedBy {
+                let key = PendingRemoval.key(.cancelSchedule, refusedBy)
+                if recordingStore.uncertainRemovals[key] == nil {
+                    recordingStore.uncertainRemovals[key] = Date()
+                    Task { await self.reconcileLostRemoval(key, id: refusedBy) }
+                }
+            }
             await loadRecordings(startedAfter: Date())
             actionError = code == "cancelling" ? PageWords.cancellingEarlierText : PageWords.slotTakenText
             return false

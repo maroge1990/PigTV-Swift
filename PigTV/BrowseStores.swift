@@ -98,7 +98,8 @@ final class RecordingsStore: ObservableObject {
     var tombstones: [String: Date] = [:]
     /// Removals whose answer never came (a transport error or a timeout), by key, with when: the server may or may not
     /// have done them, so they stay in progress until a scheduled-list refresh that began after then has answered
-    /// (Mark, 19 Nov 2026: nothing races a cancellation in progress).
+    /// (Mark, 19 Nov 2026: nothing races a cancellation in progress). Also a schedule a Record was refused for with 409
+    /// "cancelling" (#347 finding 2): in progress at once, until a scheduled-list read no longer lists it "cancelling".
     @Published var uncertainRemovals: [String: Date] = [:]
 }
 
