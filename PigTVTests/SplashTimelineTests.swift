@@ -94,6 +94,40 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertEqual(second.transform, .identity, "idempotent")
     }
 
+    /// Codex sign-off of 325 (medium): the probe took its rise when it was made, so Reduce Motion turned on after the
+    /// tabs were drawn low still had them animate back at the reveal. Now turning it on puts them back at once, the
+    /// reveal is told whether to glide, and nothing glides while it is on. (No reduceMotionChanged or reveal(glides:):
+    /// fails to compile on 7459b0f.)
+    func testReduceMotionTurnedOnMidSplashPutsTheTabsBackAtOnce() {
+        // Before the reveal.
+        let before = SplashHandoff(playing: true, contentRise: 18)
+        let tabs = UIView()
+        before.glide(tabs, rise: 18)
+        before.reduceMotionChanged(true)
+        XCTAssertEqual(tabs.transform, .identity, "back at once")
+        XCTAssertNil(tabs.layer.animationKeys(), "no animation")
+        before.glide(tabs, rise: 18)
+        XCTAssertEqual(tabs.transform, .identity, "nothing glides while Reduce Motion is on")
+        before.reveal(glides: true)
+        XCTAssertEqual(tabs.transform, .identity, "nor at the reveal")
+
+        // During the reveal: the motion decision passed in.
+        let during = SplashHandoff(playing: true, contentRise: 18)
+        let other = UIView()
+        during.glide(other, rise: 18)
+        during.reveal(glides: false)
+        XCTAssertEqual(other.transform, .identity, "a reveal under Reduce Motion puts them back, no glide")
+        XCTAssertNil(other.layer.animationKeys())
+
+        // Turned off again: the next splash glides as usual.
+        let again = SplashHandoff(playing: true, contentRise: 18)
+        again.reduceMotionChanged(true)
+        again.reduceMotionChanged(false)
+        let third = UIView()
+        again.glide(third, rise: 18)
+        XCTAssertEqual(third.transform.ty, 18)
+    }
+
     /// Mark, 19 Nov 2026 (TestFlight 324): the pig lands on a page that is already still. The hand-off waits for the opening
     /// page's first content (and `pageSettle` for its layout), but never more than 4 s past the settled pig and name (or
     /// start-up's end). Before Apple 325 it went at max(2.0, start-up) whatever the page showed (no pageReadyAt: these
@@ -162,7 +196,7 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertNil(handoff.target, "nothing to land on until the opening tab is known")
         handoff.landingTitle = "Sport"
         XCTAssertEqual(handoff.target, CGRect(x: 16, y: 70, width: 34, height: 28), "where the header is, and stays")
-        handoff.reveal()
+        handoff.reveal(glides: true)
         handoff.report(title: "Sport", frame: CGRect(x: 16, y: 80, width: 34, height: 28))
         XCTAssertEqual(handoff.target?.minY, 70, "frames reported while Home fades in are not taken")
         XCTAssertTrue(handoff.contentShown)

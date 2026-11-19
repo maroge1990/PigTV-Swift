@@ -142,6 +142,8 @@ final class SplashHandoff {
     @ObservationIgnored private var revealing = false
     /// The view that holds Home's tabs, drawn `contentRise` low until the glide (`SplashGlideProbe`).
     @ObservationIgnored private weak var glideView: UIView?
+    /// Reduce Motion is on now (BrandSplashView tells it, its first value included): nothing glides, a fade only.
+    @ObservationIgnored private(set) var motionReduced = false
     @ObservationIgnored private let started = ContinuousClock.now
 
     init(playing: Bool, contentRise: CGFloat = 0) {
@@ -155,7 +157,7 @@ final class SplashHandoff {
     /// A view found again (the same probe) changes nothing; another view (the tab controller replaced) takes over, and the
     /// one before is put back in place first.
     func glide(_ view: UIView, rise: CGFloat) {
-        guard !landed, !revealing, glideView !== view else { return }
+        guard !landed, !revealing, !motionReduced, glideView !== view else { return }
         resetGlide()
         glideView = view
         view.transform = CGAffineTransform(translationX: 0, y: rise)
@@ -166,6 +168,13 @@ final class SplashHandoff {
     func glideViewLost(_ view: UIView) {
         guard glideView === view else { return }
         resetGlide()
+    }
+
+    /// Reduce Motion changed, perhaps in the middle of the splash: turned on, the tabs' view is put back at once (no glide
+    /// left to animate back at the reveal).
+    func reduceMotionChanged(_ on: Bool) {
+        motionReduced = on
+        if on { resetGlide() }
     }
 
     /// Puts the tabs' view back in place at once and forgets it: the one way the glide's transform is undone without its
@@ -227,10 +236,12 @@ final class SplashHandoff {
         return markFrames[landingTitle]
     }
 
-    /// Home fades in and glides into place (ContentView draws no glide under Reduce Motion: it only fades).
-    func reveal() {
+    /// Home fades in and, when `glides` (Reduce Motion is off now), its tabs glide into place; else they are put back at
+    /// once and Home only fades.
+    func reveal(glides: Bool) {
         revealing = true
         contentShown = true
+        guard glides, !motionReduced else { resetGlide(); return }
         if let glideView {
             UIView.animate(withDuration: SplashTimeline.reveal, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) { glideView.transform = .identity } // motion: #342 Home glides in
         }
@@ -412,6 +423,8 @@ struct BrandSplashView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Starting PigTV")
         .task { await play() }
+        // Reduce Motion turned on mid-splash: the tabs' view is put back at once (the probe's rise was taken earlier).
+        .onChange(of: reduceMotion, initial: true) { _, on in handoff?.reduceMotionChanged(on) }
         .task {
             // A quiet progress indicator, only when start-up is still running after the sequence would have ended.
             try? await Task.sleep(for: .seconds(SplashTimeline.minimumLength))
@@ -461,7 +474,7 @@ struct BrandSplashView: View {
             try await at(SplashTimeline.revealDelay)
             withAnimation(SplashTimeline.revealAnimation) {
                 canvasGone = true
-                handoff.reveal()
+                handoff.reveal(glides: !reduceMotion)
             }
         case .crossFade:
             // Reduce Motion (or nothing to land on): the splash fades out as Home fades in; nothing moves.
@@ -471,7 +484,7 @@ struct BrandSplashView: View {
                 glowGone = true
                 nameGone = true
                 pigGone = true
-                handoff.reveal()
+                handoff.reveal(glides: !reduceMotion)
             }
         }
         try await at(SplashTimeline.handoff)
