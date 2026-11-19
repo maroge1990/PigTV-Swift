@@ -521,8 +521,8 @@ final class BrowseModel: ObservableObject {
             if let failure = await files.value { throw failure }
             let read = try await readSchedules()
             // A list asked for before one already published is older than it (Codex check of 320): not published, and
-            // it settles nothing the newer one has not.
-            if read.newest {
+            // it settles nothing the newer one has not. Published here, where it is used (Codex sign-off of #347).
+            if scheduleTickets.publish(read.ticket) {
                 let stones = recordingStore.tombstones
                 let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
                 if planned != schedules { schedules = planned }
@@ -914,8 +914,10 @@ final class BrowseModel: ObservableObject {
             guard let read = try? await readSchedules() else { continue }
             // Codex check of 320 (high): checked again after the answer, which can arrive after a newer list (a refresh,
             // a new schedule or cancel) has been published: then it is older than what is shown and decides nothing.
+            // Its owner is checked before its ticket (Codex sign-off of #347, medium): an answer this attempt no longer
+            // owns is dropped without taking the watermark, which would have refused a valid older-ticket answer.
             guard recordingStore.uncertainRemovals[key] == uncertainSince else { return }
-            guard read.newest else { continue }
+            guard scheduleTickets.publish(read.ticket) else { continue }
             let stones = recordingStore.tombstones
             let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
             if planned != schedules { schedules = planned }
@@ -929,21 +931,18 @@ final class BrowseModel: ObservableObject {
     /// check of 320 (high): answers can arrive out of order, so each read takes a number when it is asked for, and only an
     /// answer asked for after the last one published is `newest` (to be published); an older one would put back what a
     /// newer list (after a schedule or a cancel) no longer has. `cancelling`: the cancellation keys of the rows listed
-    /// "cancelling" (#347).
-    private func readSchedules() async throws -> (list: [ScheduledRecording], newest: Bool, cancelling: Set<String>) {
-        schedulesAsked += 1
-        let ticket = schedulesAsked
+    /// "cancelling" (#347). The read only takes its ticket; whoever publishes the answer advances the watermark
+    /// (`ScheduleTickets.publish`), after checking it still owns the answer (Codex sign-off of #347).
+    private func readSchedules() async throws -> (list: [ScheduledRecording], ticket: Int, cancelling: Set<String>) {
+        let ticket = scheduleTickets.ask()
         let fetched: [ScheduledRecording] = try await client.decodedOffMain(
             "recordings/scheduled", query: [URLQueryItem(name: "include", value: "recent")])
-        let newest = ticket > schedulesPublished
-        if newest { schedulesPublished = ticket }
         let cancelling = Set(fetched.filter(\.isCancelling).map { PendingRemoval.key(.cancelSchedule, $0.id) })
-        return (fetched, newest, cancelling)
+        return (fetched, ticket, cancelling)
     }
 
-    /// The scheduled-list reads asked for, and the number of the last one published (`readSchedules`).
-    private var schedulesAsked = 0
-    private var schedulesPublished = 0
+    /// The scheduled-list reads asked for, and the last one published (`readSchedules`).
+    private var scheduleTickets = ScheduleTickets()
 
     /// Sends one removal (a committed Undo, or one replayed from the log) and settles the log and the lists.
     private func sendRemoval(_ kind: PendingRemoval.Kind, id: Int, logged op: PendingRemoval?) {
@@ -1374,4 +1373,25 @@ protocol RecordingRuleOwner: AnyObject {
 
 extension BrowseModel: RecordingRuleOwner {
     func settlePendingRemoval(_ key: String) { presenter?.commitPendingUndo(key: key) }
+}
+
+/// The scheduled list's read tickets (Codex check of 320; Codex sign-off of #347): each read takes a number when it is
+/// asked for; an answer is published only if it was asked after the last one published, and only publishing advances
+/// that watermark, so an answer its reader drops (no longer its own) never refuses an older one still to be published.
+/// Pure (`ScheduleTicketsTests`).
+nonisolated struct ScheduleTickets: Sendable, Equatable {
+    private(set) var asked = 0
+    private(set) var published = 0
+
+    mutating func ask() -> Int {
+        asked += 1
+        return asked
+    }
+
+    /// True when `ticket`'s answer is newer than every one published: it is published, and the watermark moves to it.
+    mutating func publish(_ ticket: Int) -> Bool {
+        guard ticket > published else { return false }
+        published = ticket
+        return true
+    }
 }
