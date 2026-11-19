@@ -311,8 +311,9 @@ struct GuideView: View {
             .navigationDestination(for: GuideRoute.self) { route in destination(route) }
             .closesForOutsidePlay { path = []; menu = nil } // #179
         }
-        // #342: without sport the splash lands here, once the first channels (or the error) are in.
-        .splashPageReady("TV Guide", when: pageState != .loading)
+        // #342: without sport the splash lands here, once there are rows to show (or the page has settled on its empty or
+        // error state), not on channels the saved chip filters to none while more pages load.
+        .splashPageReady("TV Guide", when: PageState.guideSplashReady(pageState, rowsEmpty: rows.isEmpty))
     }
 
     /// #280: what the page shows: the model's state, or E1 when the chosen chip leaves no channels.

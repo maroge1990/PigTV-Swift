@@ -95,6 +95,18 @@ nonisolated enum PageState: Equatable, Sendable {
         return guide.isStale ? .emptyStale(since: guide.staleSince) : .empty
     }
 
+    /// #342 (Codex review of 325): whether the Guide, as drawn (`guideRows`), is ready for the start-up splash to land on
+    /// it (the TV Guide opens the app when the server has no sport): rows to show for its layout, or its settled empty or
+    /// error state. Channels that the saved chip (a category, Favourites) filters down to none while later pages are
+    /// still coming are not ready: the splash would land on a blank Guide.
+    static func guideSplashReady(_ drawn: PageState, rowsEmpty: Bool) -> Bool {
+        switch drawn {
+        case .loading: false
+        case .content, .stale: !rowsEmpty
+        case .empty, .emptyStale, .failed: true
+        }
+    }
+
     /// #280: Search over the loaded guide. A query under two letters shows its prompt (content); while the guide has not
     /// loaded, or has failed, the page says so; until the first search has run, its shape; then the results or E1. A
     /// search waiting on its debounce keeps the last results on screen (nothing jumps while typing).

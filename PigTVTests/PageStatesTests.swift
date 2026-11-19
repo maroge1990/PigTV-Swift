@@ -96,6 +96,23 @@ final class PageStatesTests: XCTestCase {
         XCTAssertEqual(PageWords.guideEmpty(filter: "cat:News", channels: 3).title, PageWords.noMatchingTitle)
     }
 
+    /// #342 (Codex review of 325): with no Sport tab the splash lands on the Guide once it is ready. Before, any unfiltered
+    /// channels counted (`pageState != .loading`), so a saved Favourites or category chip that left no rows while later
+    /// pages loaded had the splash land on a blank Guide. (No guideSplashReady: fails to compile on 325's commit b9232c0.)
+    func testTheSplashLandsOnTheGuideOnlyWithRowsOrASettledState() {
+        let pagingNothingShown = PageState.guideRows(.content, rowsEmpty: true, paging: true)
+        XCTAssertFalse(PageState.guideSplashReady(pagingNothingShown, rowsEmpty: true), "the chip shows nothing yet, more pages come")
+        XCTAssertTrue(PageState.guideSplashReady(PageState.guideRows(.content, rowsEmpty: false, paging: true), rowsEmpty: false),
+                      "rows to show")
+        XCTAssertTrue(PageState.guideSplashReady(PageState.guideRows(.content, rowsEmpty: true, paging: false), rowsEmpty: true),
+                      "paging done and still none: the chip's empty state")
+        XCTAssertFalse(PageState.guideSplashReady(.loading, rowsEmpty: true))
+        XCTAssertTrue(PageState.guideSplashReady(.failed(PageWords.guideFailed), rowsEmpty: true), "the error")
+        XCTAssertTrue(PageState.guideSplashReady(.emptyStale(since: nil), rowsEmpty: true))
+        XCTAssertFalse(PageState.guideSplashReady(.stale(since: nil), rowsEmpty: true), "stale channels the chip hides, paging")
+        XCTAssertTrue(PageState.guideSplashReady(.stale(since: nil), rowsEmpty: false))
+    }
+
     // MARK: Search and Jump to
 
     func testSearchHasALoadingAnErrorAndAnEmptyState() {
