@@ -218,7 +218,8 @@ struct SportFixtureContent: View {
         let sides = fixture.awayFirst ? [game.away, game.home] : [game.home, game.away]
         let channel = card?.channels.first?.name ?? game.channels.first?.name
         return Button {
-            SportCardActions.select(card: card, event: event, app: app, presenter: presenter)
+            SportCardActions.select(card: card, event: event, app: app, presenter: presenter, cardID: game.card,
+                                    finished: game.status == "done")
         } label: {
             VStack(alignment: .leading, spacing: PigSpacing.xs) {
                 ForEach(Array(sides.enumerated()), id: \.offset) { _, side in
@@ -270,8 +271,11 @@ struct SportFixtureContent: View {
         .contextMenu {
             // #345: the cards' hold menu: its C-R card's, with the fixture's own event when the card has no channel yet
             // (review: the Record section stays, as before #345), else its own event's while it is not over.
-            if let card { SportCardMenu(flow: flow, game: card, event: event) }
-            else if game.status != "done" { SportCardMenu(flow: flow, game: nil, event: event) }
+            // #347 (Codex review of 320): a finished game has no hold menu, whatever a stale front card says (its
+            // channels may now show the result).
+            if game.status == "done" { EmptyView() }
+            else if let card { SportCardMenu(flow: flow, game: card, event: event) }
+            else { SportCardMenu(flow: flow, game: nil, event: event, card: game.card) }
         }
         .accessibilityIdentifier("sport.fixture.game.\(game.id)")
     }

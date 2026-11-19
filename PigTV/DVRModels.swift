@@ -137,6 +137,9 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     /// schedule: this row is that schedule, and nothing new was made. Absent (or not a boolean) otherwise.
     var alreadyScheduled: Lenient<Bool>? = nil
     var wasAlreadyScheduled: Bool { alreadyScheduled?.value == true }
+    /// #345/#347: the sport game (a C-R card id) the schedule was made for, else nil; decoded leniently.
+    var gameId: Lenient<String>? = nil
+    var game: String? { gameId?.value }
     /// #329: what the app says when a schedule found the existing one, nil when it made a new one.
     var alreadyScheduledText: String? {
         guard wasAlreadyScheduled else { return nil }
@@ -147,9 +150,13 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     var end: Date { Date(timeIntervalSince1970: program_end / 1000) }
     var canCancel: Bool { ["scheduled", "waiting", "recording"].contains(status) }
     var isActive: Bool { ["scheduled", "waiting", "recording"].contains(status) }
+    /// #347 (C-M "Cancelling"): the server is cancelling it (from this device or another): not active, no actions,
+    /// shown as "Cancelling…"; recording the same thing again waits until it has gone (or its cancel failed).
+    var isCancelling: Bool { status == "cancelling" }
     /// Server 0324 (#12, C-M): up to ten other schedules this one clashes with; nil when none.
     var conflictsWith: [Int]? = nil
     var statusLabel: String {
+        if isCancelling { return PageWords.cancelling }
         guard status == "waiting" else { return status.capitalized }
         // Server 0324: a schedule can also wait for the recording slot; its `error` says which.
         if error?.contains("recording slot") == true { return "Waiting — another recording has the slot" }

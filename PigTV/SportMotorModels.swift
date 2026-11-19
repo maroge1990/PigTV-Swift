@@ -12,10 +12,12 @@ nonisolated enum SportMotorText {
     /// one past its end); its tile then plays only its recording, never a channel still airing the coverage after it.
     static func finished(_ session: F1Session, now: Date) -> Bool { F1PageText.finished(session, now: now) }
 
-    /// The session's C-R card id (the one a recording of it carries): the front's F1 card for the same session, by
-    /// name and start (within an hour); nil when the front has none (practice sessions have no card).
+    /// The session's C-R card id (the one a recording of it carries). #347: the session's own `card`, whether or not the
+    /// front page still has it; from an older server (no `card`), the front's F1 card for the same session, by name and
+    /// start (within an hour), else nil.
     static func gameId(_ session: F1Session, in front: SportFront?) -> String? {
-        front?.games.first { game in
+        if let card = session.card { return card }
+        return front?.games.first { game in
             game.league == "F1" && game.session?.caseInsensitiveCompare(session.name) == .orderedSame
                 && abs(game.start - session.startTime) <= 3_600_000
         }?.id

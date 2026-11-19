@@ -31,6 +31,8 @@ nonisolated struct FixtureLeague: Equatable, Sendable {
         var home: Side
         var away: Side
         var channels: [SportEventChannel]
+        /// #347: the page's `card` (C-Q, C-T): the front page's card id for this game; nil from an older server.
+        var card: String? = nil
         var followed: Bool { home.followed || away.followed }
         var ongoing: Bool { status == "live" || status == "break" }
     }
@@ -105,7 +107,7 @@ nonisolated enum FixtureText {
                                        detail: detail(game.detail, status: game.status.rawValue, spoilerFree: spoilerFree),
                                        situation: spoilerFree || game.status != .live ? nil : game.situation?.downDistance,
                                        home: side(game.home, game: game), away: side(game.away, game: game),
-                                       channels: game.channels)
+                                       channels: game.channels, card: game.card)
                 },
                 note: week.byes.isEmpty ? nil : "Bye: " + week.byes.map { NFLPageText.name($0, in: page) }.joined(separator: ", "))
         }
@@ -146,7 +148,8 @@ nonisolated enum FixtureText {
             FixtureLeague.Round(key: round.key, label: round.label, current: round.current, games: round.games.map { game in
                 FixtureLeague.Game(id: game.id, start: game.start, status: game.status,
                                    detail: detail(game.detail, status: game.status, spoilerFree: spoilerFree), situation: nil,
-                                   home: side(game.home, game: game), away: side(game.away, game: game), channels: game.channels)
+                                   home: side(game.home, game: game), away: side(game.away, game: game), channels: game.channels,
+                                   card: game.card)
             }, note: nil)
         }
         let tables = page.standings.map { group in
@@ -231,9 +234,11 @@ nonisolated enum FixtureText {
     }
 
     /// The game's C-R card on the front page (same league, both teams named, starting within 90 minutes), whose channels
-    /// and actions Watch and Record use; nil when the front page has none.
+    /// and actions Watch and Record use; nil when the front page has none. #347: a game with a `card` is that card or
+    /// none (exactly; the name-and-time match is only for a game without one, from an older server).
     static func card(for game: FixtureLeague.Game, league: String, in front: SportFront?) -> SportsGame? {
         guard let front else { return nil }
+        if let id = game.card { return front.game(id) }
         return front.games.first { card in
             guard card.league == league, abs(card.start - game.start) <= 90 * 60_000, card.competitors.count == 2 else { return false }
             let names = card.competitors.map { $0.name.lowercased() }

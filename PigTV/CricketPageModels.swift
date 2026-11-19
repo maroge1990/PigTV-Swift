@@ -130,10 +130,12 @@ nonisolated struct CricketLead: Decodable, Equatable, Sendable {
     var days: [CricketDay]
     var nextStart: Double?
     var channels: [SportEventChannel]
+    /// #347: the front page's card id for the same game (C-R; opaque), nil from an older server or without an ESPN id.
+    var card: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, seriesId, competition, league, label, format, venue, city, start, end, status, breakLabel, day, session, teams, innings,
-             summary, crease, seriesLine, days, nextStart, channels
+             summary, crease, seriesLine, days, nextStart, channels, card
     }
 
     init(id: String, status: CricketStatus, teams: [CricketTeam], innings: [[CricketInnings]] = [], label: String? = nil,
@@ -167,6 +169,7 @@ nonisolated struct CricketLead: Decodable, Equatable, Sendable {
         days = c.optional(LossyList<CricketDay>.self, .days)?.items ?? []
         nextStart = c.optional(Double.self, .nextStart)
         channels = c.optional(LossyList<SportEventChannel>.self, .channels)?.items ?? []
+        card = SportCardID.decode(c, .card)
     }
 }
 
@@ -179,8 +182,10 @@ nonisolated struct CricketSeries: Decodable, Equatable, Sendable {
         var status: CricketStatus
         var result: String?
         var current: Bool
+        /// #347: the front page's card id for the same game (C-R; opaque), nil from an older server or without an ESPN id.
+        var card: String? = nil
 
-        enum CodingKeys: String, CodingKey { case id, label, start, end, status, result, current }
+        enum CodingKeys: String, CodingKey { case id, label, start, end, status, result, current, card }
         init(id: String, label: String?, start: Double?, end: Double?, status: CricketStatus, result: String? = nil, current: Bool = false) {
             self.id = id; self.label = label; self.start = start; self.end = end; self.status = status; self.result = result; self.current = current
         }
@@ -194,6 +199,7 @@ nonisolated struct CricketSeries: Decodable, Equatable, Sendable {
             status = c.status(.status)
             result = c.optional(String.self, .result)
             current = c.optional(Bool.self, .current) ?? false
+            card = SportCardID.decode(c, .card)
         }
     }
     var id: String?
@@ -227,8 +233,10 @@ nonisolated struct CricketOther: Decodable, Equatable, Identifiable, Sendable {
     var start: Double?
     var nextStart: Double?
     var channels: [SportEventChannel]
+    /// #347: the front page's card id for the same game (C-R; opaque), nil from an older server or without an ESPN id.
+    var card: String? = nil
 
-    enum CodingKeys: String, CodingKey { case id, seriesId, competition, league, teams, scores, line, status, start, nextStart, channels }
+    enum CodingKeys: String, CodingKey { case id, seriesId, competition, league, teams, scores, line, status, start, nextStart, channels, card }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         guard let id = c.cricketID(.id) else { throw DecodingError.keyNotFound(CodingKeys.id, .init(codingPath: c.codingPath, debugDescription: "no id")) }
@@ -243,6 +251,7 @@ nonisolated struct CricketOther: Decodable, Equatable, Identifiable, Sendable {
         start = c.optional(Double.self, .start)
         nextStart = c.optional(Double.self, .nextStart)
         channels = c.optional(LossyList<SportEventChannel>.self, .channels)?.items ?? []
+        card = SportCardID.decode(c, .card)
     }
 }
 
@@ -483,6 +492,16 @@ nonisolated enum CricketPageText {
             break
         }
         return out
+    }
+
+    /// #347: a finished match's button and its rows' hint.
+    static let playRecording = "Play recording"
+
+    /// #347: a finished match (the lead or a series row) plays its recording, found by its `card` as a finished front card
+    /// is by its id (C-R): only when it has a card and there is such a recording.
+    static func playsRecording(card: String?, finished: Bool, recordings: [Recording]) -> Bool {
+        guard finished, card != nil else { return false }
+        return SportCardRules.finished(gameId: card, recordings: recordings) != .none
     }
 
     static func label(_ action: Action) -> String {

@@ -126,11 +126,15 @@ nonisolated struct F1Session: Decodable, Equatable, Identifiable, Sendable {
     /// C-P since 0423 (#203, D-42 point 5, additive): a scheduled session starting within 30 min whose coverage is on
     /// air. Absent (an older server) or of another type: false.
     var onAir: Bool = false
+    /// #347 (C-R card id, additive): the front page's card id for the same game, built from ESPN's ids, so the same
+    /// whether or not the front page still shows it. Sent as `gameId` when recording; its recording is found by it. nil
+    /// from an older server or when ESPN gives no id (then no gameId, as before).
+    var card: String? = nil
 
     var start: Date { Date(timeIntervalSince1970: startTime / 1000) }
     var end: Date { Date(timeIntervalSince1970: endTime / 1000) }
 
-    enum CodingKeys: String, CodingKey { case id, name, start, end, status, top, channels, onAir }
+    enum CodingKeys: String, CodingKey { case id, name, start, end, status, top, channels, onAir, card }
 
     init(id: String, name: String, startTime: Double, endTime: Double, status: Status, top: Top? = nil,
          channels: [SportEventChannel] = [], onAir: Bool = false) {
@@ -150,6 +154,7 @@ nonisolated struct F1Session: Decodable, Equatable, Identifiable, Sendable {
         top = (try? c.decodeIfPresent(Top.self, forKey: .top)) ?? nil
         channels = ((try? c.decodeIfPresent(LossyList<SportEventChannel>.self, forKey: .channels)) ?? nil)?.items ?? []
         onAir = ((try? c.decodeIfPresent(Bool.self, forKey: .onAir)) ?? nil) ?? false
+        card = SportCardID.decode(c, .card)
     }
 }
 

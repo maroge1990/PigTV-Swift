@@ -22,9 +22,12 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
     case details
     case schedule
     case favourite(channel: String, isFavourite: Bool)
+    /// Mark, 19 Nov 2026: an earlier recording of this is being cancelled: the RECORD section is this, disabled.
+    case cancelling
 
     var id: String {
         switch self {
+        case .cancelling: "cancelling"
         case .recordThis: "recordThis"
         case .changeRecording: "changeRecording"
         case .recordEvery: "recordEvery"
@@ -39,6 +42,7 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
 
     var title: String {
         switch self {
+        case .cancelling: PageWords.cancelling
         case .recordThis(let game): game ? "Record this game" : "Record this programme"
         case .changeRecording: "Change recording"
         case .recordEvery(let title): title
@@ -59,15 +63,22 @@ nonisolated enum ProgrammeMenuItem: Equatable, Identifiable, Sendable {
         }
     }
 
+    /// Whether choosing it does anything: Cancelling… (an earlier recording of this being cancelled) is shown disabled,
+    /// in every menu that draws these items (ProgrammeMenuCard, the iPhone's On Now menu).
+    var isAvailable: Bool { self != .cancelling }
+    /// VoiceOver's label for it.
+    var accessibilityTitle: String { self == .cancelling ? PageWords.cancellingLabel : title }
+
     var isRecordSection: Bool {
         switch self {
-        case .recordThis, .changeRecording, .recordEvery, .moreOptions: true
+        case .recordThis, .changeRecording, .recordEvery, .moreOptions, .cancelling: true
         default: false
         }
     }
 
     var systemImage: String {
         switch self {
+        case .cancelling: "hourglass"
         case .recordThis: "record.circle"
         case .changeRecording: "record.circle.fill"
         case .recordEvery: "repeat.circle"
@@ -96,6 +107,8 @@ nonisolated struct ProgrammeMenuSubject: Equatable, Sendable {
     var isFavourite = false
     /// #257: how many channels carry this live event (0 or 1: no Watch on…).
     var watchOnChannels = 0
+    /// Mark, 19 Nov 2026: an earlier recording of this is being cancelled (`BrowseModel.cancellingEarlier`).
+    var cancelling = false
 
     /// "ABC TV · 10:20 pm – 11:20 pm" under the menu's title.
     var subtitle: String { [channelName, programme?.timeRange].compactMap { $0 }.joined(separator: " · ") }
@@ -105,7 +118,9 @@ nonisolated struct ProgrammeMenuSubject: Equatable, Sendable {
 nonisolated enum ProgrammeMenu {
     static func items(_ subject: ProgrammeMenuSubject, now: Date) -> [ProgrammeMenuItem] {
         var items: [ProgrammeMenuItem] = []
-        if let programme = subject.programme, programme.end > now {
+        if let programme = subject.programme, programme.end > now, subject.cancelling {
+            items.append(.cancelling)
+        } else if let programme = subject.programme, programme.end > now {
             if let status = subject.recordingStatus {
                 items.append(.changeRecording(status: status))
             } else {
@@ -230,7 +245,9 @@ struct ProgrammeMenuCard: View {
         }
         .buttonStyle(PigMenuRowStyle())
         .focused($focus, equals: item.id)
-        .disabled(busy != nil)
+        .disabled(busy != nil || !item.isAvailable)
+        .opacity(item.isAvailable ? 1 : 0.45)
+        .accessibilityLabel(item.accessibilityTitle)
         .accessibilityIdentifier("menu.\(item.id)")
     }
 
@@ -323,11 +340,53 @@ extension ScheduledRecording {
     }
 }
 
+/// Programme details' recording action (`BrowseModel.programmeRecordAction`).
+enum ProgrammeRecordAction: Equatable { case change, record, cancelling, nothing }
+
 extension BrowseModel {
-    /// The active schedule recording this programme, if any.
+    /// The active schedule recording this programme, if any: at its start, on this channel by the server's identity
+    /// (`sameChannel`, the rule a cancellation in progress is matched by). Codex check of 320 (high): by name and start
+    /// it could be another channel's of the same name, and Change recording or Cancel then changed that one. A row
+    /// matched by name only (no item or stable id: an older server) is bound only when nothing else could be meant: it is
+    /// the only such row, and no other guide channel has that name.
     func activeSchedule(channel: GuideChannel, programme: GuideProgramme) -> ScheduledRecording? {
-        let key = ScheduledRecording.key(channel: channel.name, start: programme.startTime)
-        return schedules.first { $0.isActive && $0.guideKey == key }
+        let start = Int64(programme.startTime)
+        let matches = schedules.filter { $0.isActive && Int64($0.program_start) == start && Self.sameChannel($0, channel) }
+        if let identified = matches.first(where: { Self.identifiesChannel($0, channel) }) { return identified }
+        guard matches.count == 1, let byName = matches.first else { return nil }
+        let namesake = guide.contains { other in
+            other.id != channel.id && other.name == channel.name && byName.source_id.map { $0 == other.sourceId } != false
+        }
+        return namesake ? nil : byName
+    }
+
+    /// The schedule names its channel by the server's identity (stable id where both have one, else its item), not only
+    /// by the display name (`sameChannel`'s last resort).
+    nonisolated static func identifiesChannel(_ schedule: ScheduledRecording, _ channel: GuideChannel) -> Bool {
+        guard let source = schedule.source_id, source == channel.sourceId else { return false }
+        if let stable = schedule.channel_stable_id, !stable.isEmpty, let mine = channel.stableId, !mine.isEmpty {
+            return stable == mine
+        }
+        guard let item = schedule.channel_item_id, !item.isEmpty else { return false }
+        return item == channel.rawID
+    }
+
+    /// The active schedule a sport record request binds to (Change recording): never one whose cancellation is in
+    /// progress (`cancellationInProgress`; its page shows Cancelling… instead, Mark, 19 Nov 2026).
+    func bindableSchedule(channel: GuideChannel, programme: GuideProgramme) -> ScheduledRecording? {
+        activeSchedule(channel: channel, programme: programme).flatMap { cancellationInProgress($0) ? nil : $0 }
+    }
+
+    /// Programme details' recording action: Change recording of its schedule, Record while it has not ended, nothing
+    /// after; Cancelling… (disabled) instead of either while an earlier recording of it is being cancelled, by the
+    /// record page's own check (`cancellingEarlier`): its Undo open, sent with no answer yet, or listed "cancelling" by
+    /// the server (Mark, 19 Nov 2026, D-72; Codex check of 320: the details page still offered Record or Change
+    /// recording then).
+    func programmeRecordAction(channel: GuideChannel, programme: GuideProgramme, now: Date) -> ProgrammeRecordAction {
+        let scheduled = activeSchedule(channel: channel, programme: programme) != nil
+        guard scheduled || programme.end > now else { return .nothing }
+        if cancellingEarlier(gameId: nil, channel: channel, start: programme.startTime, end: programme.endTime) { return .cancelling }
+        return scheduled ? .change : .record
     }
 
     /// C-L: the recording this programme's schedule is making, when it can be watched from its start.

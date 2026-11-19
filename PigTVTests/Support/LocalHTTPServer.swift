@@ -23,6 +23,8 @@ final class LocalHTTPServer: @unchecked Sendable {
         var contentType: String
         var body: Data
         var delay: TimeInterval = 0
+        /// The connection is closed with no answer (the client sees a transport error).
+        var drop = false
 
         static func json(_ text: String, status: Int = 200) -> Response {
             Response(status: status, contentType: "application/json", body: Data(text.utf8))
@@ -99,6 +101,10 @@ final class LocalHTTPServer: @unchecked Sendable {
 
     private func respond(to request: Request, on connection: NWConnection) {
         var response = handler(request)
+        if response.drop {
+            queue.asyncAfter(deadline: .now() + response.delay) { connection.cancel() }
+            return
+        }
         var status = response.status
         var extra = ""
         // Byte ranges, for players that ask for part of a file.

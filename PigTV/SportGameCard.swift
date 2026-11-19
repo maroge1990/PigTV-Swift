@@ -59,7 +59,9 @@ final class SportRecordFlow: ObservableObject {
     func attach(_ app: AppModel) { self.app = app }
 
     /// The record page (Change recording when one of its channels has it scheduled).
-    func record(_ event: SportEvent, game: SportsGame? = nil, team: String? = nil) { app?.record(event, game: game, team: team) }
+    func record(_ event: SportEvent, game: SportsGame? = nil, team: String? = nil, card: String? = nil) {
+        app?.record(event, game: game, team: team, card: card)
+    }
 
     /// #345: the record page of a game the guide does not list yet (Record when it's listed).
     func recordWhenListed(_ game: SportsGame, team: String? = nil, presenter: SportPresenter?) {
@@ -71,9 +73,13 @@ final class SportRecordFlow: ObservableObject {
 
     /// The menu's RECORD items for a card: the same items as the Guide's (`ProgrammeMenu`), for its best channel.
     /// `team`: the follow the menu is for (#49), so "Record every <team> game" is that team's.
-    func menuItems(_ event: SportEvent, game: SportsGame?, team: String? = nil, now: Date = Date()) -> [ProgrammeMenuItem] {
+    func menuItems(_ event: SportEvent, game: SportsGame?, team: String? = nil, card: String? = nil,
+                   now: Date = Date()) -> [ProgrammeMenuItem] {
         guard let browse = app?.browse else { return [] }
-        return Self.menuItems(browse.recordRequest(event: event, game: game, team: team, now: now), now: now)
+        let request = browse.recordRequest(event: event, game: game, team: team, now: now, card: card)
+        // Mark, 19 Nov 2026: while an earlier recording of it is being cancelled, the hold menu has no Record.
+        if let request, browse.cancellingEarlier(request) { return [] }
+        return Self.menuItems(request, now: now)
     }
 
     /// Pure; tested (SportRecordMenuTests).
@@ -87,15 +93,17 @@ final class SportRecordFlow: ObservableObject {
 
     /// A menu item chosen: Record this game at once on the best channel (with the game's id, the usual padding), a team
     /// rule, or the record page. A quick one that fails opens the page with its error.
-    func run(_ item: ProgrammeMenuItem, event: SportEvent, game: SportsGame?, team: String? = nil) {
-        guard let app, let browse = app.browse, let request = browse.recordRequest(event: event, game: game, team: team),
+    /// `card` (#347): a sport page item's front card id, the recording's `gameId` when there is no `game`.
+    func run(_ item: ProgrammeMenuItem, event: SportEvent, game: SportsGame?, team: String? = nil, card: String? = nil) {
+        guard let app, let browse = app.browse,
+              let request = browse.recordRequest(event: event, game: game, team: team, card: card),
               let first = request.airings.first else { return }
         switch item {
         case .recordThis:
             Task {
                 guard await browse.schedule(channel: first.channel, programme: first.programme, before: nil, after: nil,
                                             gameId: request.gameId) else {
-                    app.record(event, game: game, error: browse.actionError ?? "The recording could not be scheduled.")
+                    app.record(event, game: game, error: browse.actionError ?? "The recording could not be scheduled.", card: card)
                     return
                 }
             }
@@ -104,12 +112,12 @@ final class SportRecordFlow: ObservableObject {
                   let rule = RecordPlan.rule(.everyTeam(team), request: request, before: nil, after: nil) else { return }
             Task {
                 guard await browse.addRule(rule) else {
-                    app.record(event, game: game, team: team, error: browse.actionError ?? "The rule could not be added.")
+                    app.record(event, game: game, team: team, error: browse.actionError ?? "The rule could not be added.", card: card)
                     return
                 }
             }
         default:
-            app.record(event, game: game, team: team)
+            app.record(event, game: game, team: team, card: card)
         }
     }
 }
@@ -120,13 +128,15 @@ struct SportRecordMenu: View {
     let event: SportEvent
     var game: SportsGame? = nil
     var team: String? = nil
+    /// #347: a sport page item's front card id (when there is no `game`).
+    var card: String? = nil
 
     var body: some View {
-        let items = flow.menuItems(event, game: game, team: team)
+        let items = flow.menuItems(event, game: game, team: team, card: card)
         if !items.isEmpty {
             Section("Record") {
                 ForEach(items) { item in
-                    Button { flow.run(item, event: event, game: game, team: team) } label: {
+                    Button { flow.run(item, event: event, game: game, team: team, card: card) } label: {
                         Label {
                             Text(item.title)
                             if let detail = item.detail { Text(detail) }
@@ -232,6 +242,8 @@ struct SportCardMenu: View {
     var event: SportEvent? = nil
     /// The follow the menu is for (#49).
     var team: String? = nil
+    /// #347: a sport page item's front card id (an F1 session, a fixture or a cricket match with no `game`).
+    var card: String? = nil
     @Environment(\.sportPresenter) private var presenter
 
     var body: some View {
@@ -240,10 +252,10 @@ struct SportCardMenu: View {
         let hold = SportCardRules.hold(game: game, event: event, now: now)
         if let shown {
             if hold.watchAnother, let presenter {
-                Button("Watch another channel", systemImage: "play.rectangle.on.rectangle") { presenter.open(shown, .channels) }
+                Button("Watch another channel", systemImage: "play.rectangle.on.rectangle") { presenter.open(shown, .channels, gameID: game?.id ?? card) }
                     .accessibilityIdentifier("menu.watchAnother")
             }
-            if hold.record { SportRecordMenu(flow: flow, event: shown, game: game, team: team) }
+            if hold.record { SportRecordMenu(flow: flow, event: shown, game: game, team: team, card: card) }
             if hold.remind {
                 Button("Remind me", systemImage: "bell") { flow.remind(shown) }
                     .accessibilityIdentifier("menu.remind")

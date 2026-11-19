@@ -88,6 +88,10 @@ final class RecordingsStore: ObservableObject {
     /// Apple 125 (Codex 5b round 1, medium): removals the server confirmed, by key, with when. Each stays hidden (and is
     /// filtered out of any list fetched before it) until a refresh that began after it has loaded.
     var tombstones: [String: Date] = [:]
+    /// Removals whose answer never came (a transport error or a timeout), by key, with when: the server may or may not
+    /// have done them, so they stay in progress until a scheduled-list refresh that began after then has answered
+    /// (Mark, 19 Nov 2026: nothing races a cancellation in progress).
+    @Published var uncertainRemovals: [String: Date] = [:]
 }
 
 /// Favourites. Nothing draws the load's busy or error

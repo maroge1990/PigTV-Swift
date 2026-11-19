@@ -129,12 +129,19 @@ struct SportFollowStar: View {
 /// channels as a C-I event.
 @MainActor
 enum SportCardActions {
-    static func select(card: SportsGame?, event: SportEvent?, app: AppModel, presenter: SportPresenter?) {
-        // A card with no channel yet while the page's own event has one (a fixture, #345 review): the event decides,
-        // the card's game (its id) kept for the recording.
-        if let card, !SportCardRules.usesPageEvent(card: card, event: event) {
+    /// `cardID` (#347): the page item's own front card id, for an item the front page no longer has (`card` nil): its
+    /// recording's game, and once `finished` the recording it plays.
+    static func select(card: SportsGame?, event: SportEvent?, app: AppModel, presenter: SportPresenter?,
+                       cardID: String? = nil, finished: Bool = false) {
+        switch route(card: card, event: event, cardID: cardID, finished: finished) {
+        case .recording(let game):
+            SportGamePress.playFinished(gameId: game, app: app)
+            return
+        case .card(let card):
             SportGamePress.select(card, app: app, presenter: presenter)
             return
+        case .event:
+            break
         }
         // #345: the cards' one rule (`SportCardRules`): Watch while it airs, the record page before, else nothing.
         guard let event else { return }
@@ -143,9 +150,21 @@ enum SportCardActions {
             // The best of its channels on air now (#345 review: not the best channel when that one is not airing it).
             guard let live = SportCardRules.playable(event, now: Date()) else { return }
             if let presenter { presenter.play(live) } else { app.playSportEvent(live, origin: SportFrontView.origin) }
-        case .record: app.record(event, game: card)
+        case .record: app.record(event, game: card, card: cardID)
         case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
         }
+    }
+
+    nonisolated enum Route: Equatable, Sendable { case recording(String?), card(SportsGame), event }
+
+    /// Which rule a press follows (pure, `SportPageCardTests`). #347 (Codex review of 320): a finished page item plays
+    /// its recording (by its own card id, else its front card's) first, whatever a front card cached earlier says: a stale
+    /// live card would otherwise play its channel, which now shows the result. A card with no channel yet while the
+    /// page's own event has one (a fixture, #345 review): the event decides, the card's game kept for the recording.
+    nonisolated static func route(card: SportsGame?, event: SportEvent?, cardID: String?, finished: Bool) -> Route {
+        if finished { return .recording(cardID ?? card?.id) }
+        if let card, !SportCardRules.usesPageEvent(card: card, event: event) { return .card(card) }
+        return .event
     }
 }
 

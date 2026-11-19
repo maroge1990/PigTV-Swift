@@ -76,10 +76,12 @@ nonisolated struct NFLGame: Decodable, Equatable, Identifiable, Sendable {
     var situation: Situation?
     var broadcasts: [String]
     var channels: [SportEventChannel]
+    /// #347: the front page's card id for the same game (C-R; opaque), nil from an older server or without an ESPN id.
+    var card: String? = nil
 
     var start: Date { Date(timeIntervalSince1970: startTime / 1000) }
 
-    enum CodingKeys: String, CodingKey { case id, start, status, detail, home, away, situation, broadcasts, channels }
+    enum CodingKeys: String, CodingKey { case id, start, status, detail, home, away, situation, broadcasts, channels, card }
 
     init(id: String, startTime: Double, status: Status, detail: String? = nil, home: Side, away: Side,
          situation: Situation? = nil, broadcasts: [String] = [], channels: [SportEventChannel] = []) {
@@ -98,6 +100,7 @@ nonisolated struct NFLGame: Decodable, Equatable, Identifiable, Sendable {
         situation = (try? c.decodeIfPresent(Situation.self, forKey: .situation)) ?? nil
         broadcasts = (try? c.decodeIfPresent([String].self, forKey: .broadcasts)) ?? []
         channels = (try? c.decodeIfPresent([SportEventChannel].self, forKey: .channels)) ?? []
+        card = SportCardID.decode(c, .card)
     }
 }
 

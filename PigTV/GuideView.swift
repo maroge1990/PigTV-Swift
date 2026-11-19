@@ -796,7 +796,9 @@ struct GuideView: View {
                              recordingStatus: programme.flatMap { model.activeSchedule(channel: channel, programme: $0)?.statusWord },
                              canWatchFromStart: programme.flatMap { model.recordingInProgress(channel: channel, programme: $0) } != nil,
                              isFavourite: model.isFavourite(asChannel(channel)),
-                             watchOnChannels: liveEvent(channel, programme).map { WatchOn.onAir($0, now: Date()).channels.count } ?? 0)
+                             watchOnChannels: liveEvent(channel, programme).map { WatchOn.onAir($0, now: Date()).channels.count } ?? 0,
+                             cancelling: programme.map { model.cancellingEarlier(gameId: nil, channel: channel,
+                                                                                 start: $0.startTime, end: $0.endTime) } ?? false)
     }
 
     /// #257: the live sport event this programme is, when the server has sport events (several channels may carry it).
@@ -867,6 +869,8 @@ struct GuideView: View {
         case .favourite(_, let isFavourite):
             guard await model.setFavourite(asChannel(channel), !isFavourite) else { return "Favourites could not be changed." }
             closeMenu()
+        case .cancelling:
+            break // disabled: an earlier recording of this is being cancelled
         }
         return nil
     }

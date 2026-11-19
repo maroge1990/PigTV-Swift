@@ -12,6 +12,9 @@ enum SportPage: String, Sendable {
 struct SportPresentation: Identifiable {
     let event: SportEvent
     let page: SportPage
+    /// #347 (Codex review of 320): the game a recording made from the page is for (the front card's id, or a page item's
+    /// `card`), sent as its `gameId`; nil: none, as before.
+    var gameID: String? = nil
     var id: String { "\(event.id)|\(page.rawValue)" }
 }
 
@@ -35,7 +38,9 @@ final class SportPresenter: ObservableObject {
 
     init(app: AppModel, origin: String? = nil) { self.app = app; self.origin = origin }
 
-    func open(_ event: SportEvent, _ page: SportPage) { presented = SportPresentation(event: event, page: page) }
+    func open(_ event: SportEvent, _ page: SportPage, gameID: String? = nil) {
+        presented = SportPresentation(event: event, page: page, gameID: gameID)
+    }
     func play(_ event: SportEvent) { app.playSportEvent(event, origin: origin) }
 
     /// #234: what a card without a listing offers (its hold menu, the record page), if anything.
@@ -121,10 +126,11 @@ private struct SportPages: ViewModifier {
             .detailCover(item: $presenter.presented, onDismiss: presenter.dismissed) { presentation in
                 switch presentation.page {
                 case .details:
-                    SportEventDetails(event: presentation.event, app: app, browse: browse, play: presenter.close(then:))
+                    SportEventDetails(event: presentation.event, app: app, browse: browse, play: presenter.close(then:),
+                                      gameID: presentation.gameID)
                 case .channels:
                     SportChannelPicker(event: presentation.event, app: app, browse: browse, clock: clock,
-                                       play: presenter.close(then:))
+                                       play: presenter.close(then:), gameID: presentation.gameID)
                 }
             }
     }
@@ -200,6 +206,8 @@ struct SportChannelPicker: View {
     let clock: Date
     /// Closes the picker, then runs the action (playback or a wait).
     let play: (@escaping () -> Void) -> Void
+    /// #347: the recording's game (`SportPresentation.gameID`).
+    var gameID: String? = nil
 
     var body: some View {
         DetailPage(title: "Choose a channel") {
@@ -212,7 +220,7 @@ struct SportChannelPicker: View {
                         Text(event.title).font(DetailType.channel)
                         Text(SportRows.timing(event, now: now)).font(DetailType.meta).foregroundStyle(.secondary)
                     }
-                    SportChannelList(event: event, app: app, browse: browse, clock: now, play: play)
+                    SportChannelList(event: event, app: app, browse: browse, clock: now, play: play, gameID: gameID)
                 }
             }
         }
@@ -238,14 +246,18 @@ struct SportChannelList: View {
     /// Closes the covering page, then runs the action (playback or a wait).
     let play: (@escaping () -> Void) -> Void
     @State private var choosing: SportEventChannel?
+    /// #347: the recording's game, sent as its `gameId` by every Record on a channel here.
+    let gameID: String?
 
-    init(event: SportEvent, app: AppModel, browse: BrowseModel, clock: Date, play: @escaping (@escaping () -> Void) -> Void) {
+    init(event: SportEvent, app: AppModel, browse: BrowseModel, clock: Date, play: @escaping (@escaping () -> Void) -> Void,
+         gameID: String? = nil) {
         self.event = event
         self.app = app
         self.browse = browse
         _marks = ObservedObject(wrappedValue: browse.marks)
         self.clock = clock
         self.play = play
+        self.gameID = gameID
     }
 
     #if os(iOS)
@@ -271,7 +283,7 @@ struct SportChannelList: View {
                 Button("Record on \(channel.name)", systemImage: "record.circle") {
                     choosing = nil
                     // Apple 114: the record page, on this channel (it lists the others too); this page closes first.
-                    play { app.record(event, onChannel: channel.id) }
+                    play { app.record(event, onChannel: channel.id, card: gameID) }
                 }
             }
             Button("Watch \(channel.name) when it starts", systemImage: "alarm") {
@@ -296,7 +308,7 @@ struct SportChannelList: View {
                                  action: { SportRows.channelAction(event, on: $0, now: clock) },
                                  startText: event.start(on: best).formatted(date: .omitted, time: .shortened),
                                  choose: phoneChoose,
-                                 record: { channel in play { app.record(event, onChannel: channel.id) } },
+                                 record: { channel in play { app.record(event, onChannel: channel.id, card: gameID) } },
                                  watchAtStart: { channel in play { app.watchWhenStarts(event, channel: channel, now: clock) } })
             #endif
         } else if group.choosesQuality {
@@ -314,7 +326,7 @@ struct SportChannelList: View {
     private func phoneChoose(_ channel: SportEventChannel) {
         switch PhoneChannelTap.of(SportRows.channelAction(event, on: channel, now: Date())) {
         case .play: play { app.playSportEvent(event, channel: channel) }
-        case .record: play { app.record(event, onChannel: channel.id) }
+        case .record: play { app.record(event, onChannel: channel.id, card: gameID) }
         case .none: break
         }
     }
@@ -578,7 +590,12 @@ struct SportEventDetails: View {
     /// Closes the page, then runs the action (playback).
     let play: (@escaping () -> Void) -> Void
 
-    init(event: SportEvent, app: AppModel, browse: BrowseModel, play: @escaping (@escaping () -> Void) -> Void) {
+    /// #347: the recording's game (`SportPresentation.gameID`).
+    var gameID: String? = nil
+
+    init(event: SportEvent, app: AppModel, browse: BrowseModel, play: @escaping (@escaping () -> Void) -> Void,
+         gameID: String? = nil) {
+        self.gameID = gameID
         self.event = event
         self.app = app
         self.browse = browse
@@ -671,7 +688,7 @@ struct SportEventDetails: View {
                 }
             }
             PigSectionHeader(title: event.channels.count == 1 ? "Channel" : "Channels")
-            SportChannelList(event: event, app: app, browse: browse, clock: now, play: play)
+            SportChannelList(event: event, app: app, browse: browse, clock: now, play: play, gameID: gameID)
         }
     }
 
@@ -719,7 +736,7 @@ struct SportEventDetails: View {
                 // Apple 114: one Record (the record page: this game, every game of a side or the league, the channel);
                 // Change recording when it is scheduled. This page closes first (one page at a time).
                 Button(browse.isScheduled(event, on: best) ? "Change recording" : "Record", systemImage: "record.circle") {
-                    play { app.record(event) }
+                    play { app.record(event, card: gameID) }
                 }
                 .pigSecondaryButton()
                 .disabled(browse.mutationBusy)

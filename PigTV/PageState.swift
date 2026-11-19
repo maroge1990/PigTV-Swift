@@ -306,6 +306,10 @@ nonisolated enum PageWords {
     static let cancelFailed = "The recording couldn’t be cancelled. Try again."
     static let changeFailed = "The recording couldn’t be changed. Try again."
     static let removeFailed = "That couldn’t be removed. Try again."
+    /// Mark, 19 Nov 2026: Record while an earlier recording of the same thing is being cancelled.
+    static let cancelling = "Cancelling…"
+    static let cancellingLabel = "Cancelling the earlier recording"
+    static let cancellingEarlierText = "The earlier recording is still being cancelled. Try again once it has gone."
     static let chooseFailed = "That recording couldn’t be chosen. Try again."
     static let deleteFailed = "That couldn’t be deleted. Try again."
     static let ruleAddFailed = "The rule couldn’t be added. Try again."

@@ -510,11 +510,19 @@ final class BrowseModel: ObservableObject {
         defer { recordingsLoading = false; if !quietly { recordingsBusy = false } }
         do {
             if let failure = await files.value { throw failure }
-            let fetched: [ScheduledRecording] = try await client.decodedOffMain("recordings/scheduled",
-                                                                                query: [URLQueryItem(name: "include", value: "recent")])
-            let stones = recordingStore.tombstones
-            let planned = fetched.filter { stones[RecordingsHome.key($0)] == nil }
-            if planned != schedules { schedules = planned }
+            let read = try await readSchedules()
+            // A list asked for before one already published is older than it (Codex check of 320): not published, and
+            // it settles nothing the newer one has not.
+            if read.newest {
+                let stones = recordingStore.tombstones
+                let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
+                if planned != schedules { schedules = planned }
+                // A removal with no answer is settled by a list asked for after it: the row there (it stands) or not
+                // (gone). A row still listed "cancelling" keeps it in progress (#347), so its own reads go on until the
+                // server has finished (Codex check of 320: a refresh then ended them, and the row stayed "cancelling").
+                let unsure = recordingStore.uncertainRemovals.filter { $0.value >= began || read.cancelling.contains($0.key) }
+                if unsure.count != recordingStore.uncertainRemovals.count { recordingStore.uncertainRemovals = unsure }
+            }
             settleTombstones(loadedSince: began) { !$0.hasPrefix("rule:") }
             recordingStore.updatedAt = Date()
             if recordingsError != nil { recordingsError = nil }
@@ -684,11 +692,19 @@ final class BrowseModel: ObservableObject {
     /// `gameId` (C-M since 0440): a Sport card's game, so the recording stops when the game ends.
     func schedule(channel: GuideChannel, programme: GuideProgramme, before: Int?, after: Int?,
                   gameId: String? = nil) async -> Bool {
-        guard !mutationBusy else { return false }
+        // The request is checked before anything else happens (Codex review of 320: never settle a cancellation for a
+        // request that is then refused).
         guard programme.end > Date(), programme.end > programme.start else {
             actionError = "This programme has ended. Refresh the guide to choose another programme."
             return false
         }
+        // Mark, 19 Nov 2026: while an earlier recording of this (the same game, or this channel's overlapping airing) is
+        // being cancelled, recording it again is not offered; a path that still gets here is refused, never raced.
+        if cancellingEarlier(gameId: gameId, channel: channel, start: programme.startTime, end: programme.endTime) {
+            actionError = PageWords.cancellingEarlierText
+            return false
+        }
+        guard !mutationBusy else { return false }
         mutationBusy = true
         actionError = nil
         actionMessage = nil
@@ -806,6 +822,9 @@ final class BrowseModel: ObservableObject {
     /// before deleting it (C-M).
     private func removeWithUndo(_ kind: PendingRemoval.Kind, id: Int, message: String, presenter: AppPresenter) {
         let key = PendingRemoval.key(kind, id)
+        // Codex check of 320: a second removal of something whose removal is already in progress is not made (it would
+        // commit the first one's Undo early).
+        guard !recordingStore.pendingRemovals.contains(key), recordingStore.uncertainRemovals[key] == nil else { return }
         PigHaptic.play(.delete)
         recordingStore.pendingRemovals.insert(key)
         // Apple 126 (Codex 5b round 2, high): while its Undo is open, a logged removal of this item is never replayed.
@@ -828,6 +847,95 @@ final class BrowseModel: ObservableObject {
     /// The items whose Undo is on screen now (never replayed meanwhile).
     private var openUndoKeys: Set<String> = []
 
+    // MARK: Cancellations in progress (Mark, 19 Nov 2026)
+
+    /// A schedule's cancellation is in progress: made (its Undo open), sent and not yet answered, or sent with no answer
+    /// (a transport error) until a scheduled-list refresh has answered. A refused one is not (the schedule stands); a
+    /// confirmed one is not (the schedule is gone).
+    func cancellationInProgress(_ schedule: ScheduledRecording) -> Bool {
+        let key = PendingRemoval.key(.cancelSchedule, schedule.id)
+        return schedule.isCancelling // the server's own state (#347 C-M "Cancelling"), whoever cancelled it
+            || (recordingStore.pendingRemovals.contains(key) && recordingStore.tombstones[key] == nil)
+            || recordingStore.uncertainRemovals[key] != nil
+    }
+
+    /// Recording this waits for an earlier recording of it being cancelled: a schedule whose cancellation is in progress
+    /// overlaps the airing and is the same game (`gameId`) or the same channel. Another day of a multi-day game does not
+    /// overlap, so it stays recordable.
+    func cancellingEarlier(gameId: String?, channel: GuideChannel, start: Double, end: Double) -> Bool {
+        schedules.contains { schedule in
+            schedule.program_start < end && schedule.program_end > start
+                && ((gameId != nil && schedule.game == gameId) || Self.sameChannel(schedule, channel))
+                && cancellationInProgress(schedule)
+        }
+    }
+
+    /// The server's identity of a schedule's channel (Codex check of 320): its source and item, or stable id where both
+    /// have one; the display name only for a row without identity (an older server). A renamed channel is the same one.
+    nonisolated static func sameChannel(_ schedule: ScheduledRecording, _ channel: GuideChannel) -> Bool {
+        guard let source = schedule.source_id else { return schedule.channel_name == channel.name }
+        guard source == channel.sourceId else { return false }
+        if let stable = schedule.channel_stable_id, !stable.isEmpty, let mine = channel.stableId, !mine.isEmpty {
+            return stable == mine
+        }
+        if let item = schedule.channel_item_id, !item.isEmpty { return item == channel.rawID }
+        return schedule.channel_name == channel.name
+    }
+
+    /// A record page's request: any of its airings waits (`cancellingEarlier`).
+    func cancellingEarlier(_ request: RecordRequest) -> Bool {
+        request.airings.contains {
+            cancellingEarlier(gameId: request.gameId, channel: $0.channel, start: $0.programme.startTime, end: $0.programme.endTime)
+        }
+    }
+
+    /// After a cancellation with no answer: its own read of the scheduled list, begun after the failure and apart from
+    /// the recordings files (Codex check of 320), again every `reconcileRetry` until one answers (at most `reconcileTries`).
+    /// The answer decides: the row gone (cancelled), or listed with another status than "cancelling" (the cancel failed:
+    /// it stands); while the server lists it "cancelling" (C-M, #347) it is still in progress and the reads go on.
+    var reconcileRetry: Duration = .seconds(5)
+    var reconcileTries = 24
+
+    private func reconcileLostRemoval(_ key: String, id: Int) async {
+        // This attempt's uncertainty: a refresh that answered it, or a later attempt at the same item, ends these reads.
+        guard let uncertainSince = recordingStore.uncertainRemovals[key] else { return }
+        for attempt in 0..<reconcileTries {
+            if attempt > 0 { try? await Task.sleep(for: reconcileRetry) }
+            guard recordingStore.uncertainRemovals[key] == uncertainSince else { return } // a refresh after it has answered
+            guard let read = try? await readSchedules() else { continue }
+            // Codex check of 320 (high): checked again after the answer, which can arrive after a newer list (a refresh,
+            // a new schedule or cancel) has been published: then it is older than what is shown and decides nothing.
+            guard recordingStore.uncertainRemovals[key] == uncertainSince else { return }
+            guard read.newest else { continue }
+            let stones = recordingStore.tombstones
+            let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
+            if planned != schedules { schedules = planned }
+            if read.cancelling.contains(key) { continue } // still being cancelled
+            recordingStore.uncertainRemovals[key] = nil
+            return
+        }
+    }
+
+    /// One read of the scheduled list, by either reader (a recordings load, or a lost cancellation's own reads). Codex
+    /// check of 320 (high): answers can arrive out of order, so each read takes a number when it is asked for, and only an
+    /// answer asked for after the last one published is `newest` (to be published); an older one would put back what a
+    /// newer list (after a schedule or a cancel) no longer has. `cancelling`: the cancellation keys of the rows listed
+    /// "cancelling" (#347).
+    private func readSchedules() async throws -> (list: [ScheduledRecording], newest: Bool, cancelling: Set<String>) {
+        schedulesAsked += 1
+        let ticket = schedulesAsked
+        let fetched: [ScheduledRecording] = try await client.decodedOffMain(
+            "recordings/scheduled", query: [URLQueryItem(name: "include", value: "recent")])
+        let newest = ticket > schedulesPublished
+        if newest { schedulesPublished = ticket }
+        let cancelling = Set(fetched.filter(\.isCancelling).map { PendingRemoval.key(.cancelSchedule, $0.id) })
+        return (fetched, newest, cancelling)
+    }
+
+    /// The scheduled-list reads asked for, and the number of the last one published (`readSchedules`).
+    private var schedulesAsked = 0
+    private var schedulesPublished = 0
+
     /// Sends one removal (a committed Undo, or one replayed from the log) and settles the log and the lists.
     private func sendRemoval(_ kind: PendingRemoval.Kind, id: Int, logged op: PendingRemoval?) {
         let key = PendingRemoval.key(kind, id)
@@ -837,7 +945,8 @@ final class BrowseModel: ObservableObject {
             await self.waitForMutation()
             // Done meanwhile by another send of the same operation: nothing to do.
             if let op, !self.removalLog.contains(op) { return }
-            switch await self.performRemoval(kind, id: id) {
+            let outcome = await self.performRemoval(kind, id: id)
+            switch outcome {
             case .done:
                 if let op { self.removalLog.remove(op) }
                 // Apple 125: hidden until a refresh that began after now has loaded (`settleTombstones`); a refresh
@@ -845,11 +954,14 @@ final class BrowseModel: ObservableObject {
                 self.recordingStore.tombstones[key] = Date()
                 await self.loadRecordings()
                 if kind == .rule { await self.reloadRules() }
-            case .failed(let message):
+            case .failed(let message), .unknown(let message):
                 // Apple 126: the item is back with the reason; nothing of it runs later without a new decision.
                 if let op { self.removalLog.remove(op) }
                 self.actionError = message
+                // No answer: still in progress until the schedules, read again at once, say whether it is there.
+                if case .unknown = outcome { self.recordingStore.uncertainRemovals[key] = Date() }
                 self.recordingStore.pendingRemovals.remove(key)
+                if case .unknown = outcome { await self.reconcileLostRemoval(key, id: id) }
             }
         }
     }
@@ -874,7 +986,8 @@ final class BrowseModel: ObservableObject {
         }
     }
 
-    enum RemovalOutcome: Equatable { case done, failed(String) }
+    /// `unknown`: no answer came (a transport error or a timeout): the server may or may not have done it.
+    enum RemovalOutcome: Equatable { case done, failed(String), unknown(String) }
 
     /// One removal's call. The item already gone (404, or the server's "not found") counts as done.
     private func performRemoval(_ kind: PendingRemoval.Kind, id: Int) async -> RemovalOutcome {
@@ -906,6 +1019,9 @@ final class BrowseModel: ObservableObject {
             return .done
         } catch PigTVError.http(404) {
             return .done
+        } catch let error as URLError {
+            // Codex sign-off of 320: no answer is not a refusal; the server may still have cancelled it.
+            return .unknown(Self.actionText(PageWords.removeFailed, error) ?? PageWords.removeFailed)
         } catch {
             return .failed(Self.actionText(PageWords.removeFailed, error) ?? PageWords.removeFailed)
         }

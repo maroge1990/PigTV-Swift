@@ -70,6 +70,8 @@ struct CricketPageView: View {
     @ObservedObject var preferences: F1PageModel
     /// Observed for the bells (a pending "watch when it starts").
     @ObservedObject private var appState: AppModel
+    /// #347: the recordings, for a finished match's Play recording (found by its `card`).
+    @ObservedObject private var recordingStore: RecordingsStore
     @Environment(\.sportPresenter) private var presenter
     /// #345: the other competitions' cards' hold menu (RECORD).
     @StateObject private var flow = SportRecordFlow()
@@ -96,6 +98,7 @@ struct CricketPageView: View {
         self.model = browse.cricketPage
         self.preferences = browse.f1Page
         _appState = ObservedObject(wrappedValue: app)
+        _recordingStore = ObservedObject(wrappedValue: browse.recordingStore)
     }
 
     private var wide: Bool {
@@ -444,6 +447,12 @@ struct CricketPageView: View {
         // iPhone: one under the other (the labels would not fit side by side).
         let layout = !compact ? AnyLayout(HStackLayout(spacing: PigSpacing.m)) : AnyLayout(VStackLayout(alignment: .leading, spacing: PigSpacing.s))
         layout {
+            // #347: a finished match plays its recording (by its `card`), when there is one; never its channels.
+            if CricketPageText.playsRecording(card: lead.card, finished: lead.status == .done, recordings: recordingStore.recordings) {
+                Button(CricketPageText.playRecording, systemImage: "play.fill") { SportGamePress.playFinished(gameId: lead.card, app: app) }
+                    .pigPrimaryButton().focused($focus, equals: .primary)
+                    .accessibilityIdentifier("cricket.action.playRecording")
+            }
             ForEach(Array(offered.enumerated()), id: \.offset) { index, action in
                 actionButton(action, lead: lead, event: event, primary: index == 0)
             }
@@ -462,14 +471,15 @@ struct CricketPageView: View {
                 if let current = model.page?.lead, CricketPageText.actions(current, now: Date(), pendingEventID: nil).contains(.watchLive) {
                     play(CricketPageText.event(current))
                 }
-            case .otherChannels: presenter?.open(event, .channels)
+            case .otherChannels: presenter?.open(event, .channels, gameID: lead.card)
             case .cancelRemind: app.cancelPendingWatch()
-            case .record: app.record(event)
+            // #347: with the match's front card id (every day of a Test carries the same one).
+            case .record: app.record(event, card: lead.card)
             }
         }
         // #345 (Codex review): the lead match's hold menu, on its action buttons in both layouts (they are its focusable
         // surface): Watch another channel, RECORD and Remind me, as every game card's.
-        .contextMenu { SportCardMenu(flow: flow, game: nil, event: event) }
+        .contextMenu { SportCardMenu(flow: flow, game: nil, event: event, card: lead.card) }
         .accessibilityIdentifier("cricket.action.\(identifier(action))")
         if primary {
             button.pigPrimaryButton().focused($focus, equals: .primary)
@@ -512,8 +522,33 @@ struct CricketPageView: View {
                 }
             }
             ForEach(series.matches) { match in
+                seriesRow(match, lead: lead, now: now, spoilerFree: spoilerFree)
+            }
+        }
+        .padding(CricketMetrics.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: CricketMetrics.radius + 4, style: .continuous))
+    }
+
+    /// A series match's row. #347: a finished one with a recording (by its `card`) is pressed to play it.
+    @ViewBuilder
+    private func seriesRow(_ match: CricketSeries.Match, lead: CricketLead?, now: Date, spoilerFree: Bool) -> some View {
+        if CricketPageText.playsRecording(card: match.card, finished: match.status == .done, recordings: recordingStore.recordings) {
+            Button { SportGamePress.playFinished(gameId: match.card, app: app) } label: {
+                seriesRowContent(match, lead: lead, now: now, spoilerFree: spoilerFree)
+            }
+            .buttonStyle(PigSurfaceButtonStyle(cornerRadius: CricketMetrics.radius))
+            .accessibilityHint(CricketPageText.playRecording)
+            .accessibilityIdentifier("cricket.series.\(match.id)")
+        } else {
+            seriesRowContent(match, lead: lead, now: now, spoilerFree: spoilerFree)
+                .accessibilityIdentifier("cricket.series.\(match.id)")
+        }
+    }
+
+    private func seriesRowContent(_ match: CricketSeries.Match, lead: CricketLead?, now: Date, spoilerFree: Bool) -> some View {
                 let text = CricketPageText.seriesResult(match, lead: lead, spoilerFree: spoilerFree, now: now)
-                HStack(spacing: PigSpacing.m) {
+                return HStack(spacing: PigSpacing.m) {
                     VStack(alignment: .leading, spacing: PigSpacing.xxs) {
                         Text(match.label ?? "Match").font(CricketMetrics.detail.weight(.bold)).lineLimit(1)
                         if let when = CricketPageText.span(start: match.start, end: match.end) {
@@ -538,12 +573,6 @@ struct CricketPageView: View {
                 .background(match.current ? Color.pigDanger.opacity(0.08) : .clear)
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.pigBorder).frame(height: 1) }
                 .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("cricket.series.\(match.id)")
-            }
-        }
-        .padding(CricketMetrics.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: CricketMetrics.radius + 4, style: .continuous))
     }
 
     // MARK: Other competitions
@@ -606,18 +635,19 @@ struct CricketPageView: View {
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: CricketMetrics.radius))
         // #345: the game cards' hold menu (Watch another channel, RECORD, Remind me), while it is not over.
-        .contextMenu { if other.status != .done { SportCardMenu(flow: flow, game: nil, event: CricketPageText.event(other)) } }
+        .contextMenu { if other.status != .done { SportCardMenu(flow: flow, game: nil, event: CricketPageText.event(other), card: other.card) } }
         .accessibilityIdentifier("cricket.other.\(other.id)")
     }
 
     /// #345: the game cards' one rule (`SportCardRules`, decided at the press): live plays the best of its channels on
     /// air, before it the record page, once over nothing.
     private func select(_ other: CricketOther) {
-        guard other.status != .done else { return }
+        // #347: once over, its recording (by its `card`), else nothing.
+        guard other.status != .done else { SportGamePress.playFinished(gameId: other.card, app: app); return }
         let event = CricketPageText.event(other)
         switch SportCardRules.select(event, now: Date()) {
         case .watch: if let live = SportCardRules.playable(event, now: Date()) { play(live) }
-        case .record: app.record(event)
+        case .record: app.record(event, card: other.card)
         case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
         }
     }

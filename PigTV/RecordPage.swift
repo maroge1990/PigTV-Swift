@@ -267,14 +267,17 @@ extension BrowseModel {
     func recordRequest(channel: GuideChannel, programme: GuideProgramme) -> RecordRequest {
         RecordRequest(title: programme.title, airings: [.init(channel: channel, programme: programme, quality: quality(of: channel),
                                                               measured: channel.measured?.known, nameKey: channel.nameKey)],
-                      schedule: activeSchedule(channel: channel, programme: programme))
+                      // Never Change recording of a schedule whose cancellation is in progress: the page shows
+                      // Cancelling… then (Codex check of 320).
+                      schedule: bindableSchedule(channel: channel, programme: programme))
     }
 
     /// A Sport event (with its C-O/C-R card when there is one: the game's id, its teams and their logos): every channel
     /// carrying it that has not ended, best first; Change recording on the channel that is scheduled (`RecordPlan.bind`),
     /// or on `preferredChannel` when it is, else a new recording there.
+    /// `card` (#347): a sport page item's front card id, the recording's game when there is no card (`game`) itself.
     func recordRequest(event: SportEvent, game: SportsGame? = nil, team: String? = nil, now: Date = Date(),
-                       preferredChannel: String? = nil) -> RecordRequest? {
+                       preferredChannel: String? = nil, card: String? = nil) -> RecordRequest? {
         let channels = SportFrontText.recordChoices(event, now: now)
         let airings = (channels.isEmpty ? event.best.map { [$0] } ?? [] : channels).map { channel in
             RecordRequest.Airing(channel: recordingRow(event, on: channel), programme: event.programme(on: channel),
@@ -282,9 +285,11 @@ extension BrowseModel {
         }
         guard !airings.isEmpty else { return nil }
         let sides = recordSides(title: event.title, league: event.league, game: game, team: team)
-        let bound = RecordPlan.bind(schedules: airings.map { activeSchedule(channel: $0.channel, programme: $0.programme) },
+        // A schedule whose cancellation is in progress is never bound as Change recording (the page waits with
+        // Cancelling… until its outcome is known, Mark, 19 Nov 2026).
+        let bound = RecordPlan.bind(schedules: airings.map { bindableSchedule(channel: $0.channel, programme: $0.programme) },
                                     channels: airings.map(\.channel.id), preferred: preferredChannel)
-        var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id,
+        var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id ?? card,
                                     teams: sides.teams, followedTeam: sides.followed, followedTeams: sides.followedTeams,
                                     sport: sportFront.front?.sports.first { $0.league == event.league }?.sport, isGame: true,
                                     schedule: bound.schedule)
@@ -348,9 +353,11 @@ extension BrowseModel {
 
 extension AppModel {
     /// Opens the record page for a Sport event (its card when there is one) through the app's presentation layer.
+    /// `card` (#347): a sport page item's front card id (an F1 session, a fixture, a cricket match), sent as its `gameId`.
     func record(_ event: SportEvent, game: SportsGame? = nil, team: String? = nil, error: String? = nil,
-                onChannel channel: String? = nil) {
-        guard let browse, var request = browse.recordRequest(event: event, game: game, team: team, preferredChannel: channel) else { return }
+                onChannel channel: String? = nil, card: String? = nil) {
+        guard let browse, var request = browse.recordRequest(event: event, game: game, team: team, preferredChannel: channel,
+                                                             card: card) else { return }
         request.error = error
         presenter.present(.record(request))
     }
@@ -799,8 +806,31 @@ struct RecordPage: View {
         #endif
     }
 
+    /// Mark, 19 Nov 2026: an earlier recording of this (the game, or this channel's overlapping airing) is being
+    /// cancelled: Record and Change recording wait until its outcome is known.
+    private var cancelling: Bool { model.cancellingEarlier(request) }
+
     @ViewBuilder
     private func actionButtons(stacked: Bool) -> some View {
+        if cancelling {
+            Button {} label: {
+                Label(PageWords.cancelling, systemImage: "hourglass").lineLimit(1).frame(maxWidth: stacked ? .infinity : nil)
+            }
+            .pigSecondaryButton()
+            .disabled(true)
+            #if os(tvOS)
+            .opacity(0.45)
+            #endif
+            .accessibilityLabel(PageWords.cancellingLabel)
+            .accessibilityIdentifier("record.cancelling")
+        } else {
+            primaryButton(stacked: stacked)
+        }
+        secondaryButtons(stacked: stacked)
+    }
+
+    @ViewBuilder
+    private func primaryButton(stacked: Bool) -> some View {
         Button { Task { await primary() } } label: {
             Label(RecordPlan.primaryTitle(what, request: request), systemImage: changing ? "checkmark.circle" : "record.circle")
                 .lineLimit(1)
@@ -814,6 +844,10 @@ struct RecordPage: View {
         #endif
         .focused($focus, equals: .primary)
         .accessibilityIdentifier("record.schedule")
+    }
+
+    @ViewBuilder
+    private func secondaryButtons(stacked: Bool) -> some View {
         if changing {
             Button { if let live { cancel(live) } } label: {
                 Label(live?.status == "recording" ? "Stop recording" : "Cancel recording", systemImage: "xmark.circle")

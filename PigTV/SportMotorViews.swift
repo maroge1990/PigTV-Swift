@@ -91,7 +91,8 @@ struct SportF1Content: View {
                         case .watch:
                             guard let live = SportCardRules.playable(event, now: Date()) else { return }
                             if let presenter { presenter.play(live) } else { app.playSportEvent(live) }
-                        case .record: app.record(event)
+                        // #347: with the session's front card id, so the recording names its game.
+                        case .record: app.record(event, card: session.card)
                         case .recordWhenListed, .playRecording, .playRecordingFromStart, .none: break
                         }
                     }
@@ -346,7 +347,8 @@ struct F1TileRow: View {
             }
         }
         .buttonStyle(PigSurfaceButtonStyle(cornerRadius: SportPageMetrics.radius))
-        .modifier(F1TileMenu(flow: flow, event: airing, finished: session.map { SportMotorText.finished($0, now: Date()) } ?? true))
+        .modifier(F1TileMenu(flow: flow, event: airing, finished: session.map { SportMotorText.finished($0, now: Date()) } ?? true,
+                             card: session?.card))
         .accessibilityIdentifier("f1.session.\(tile.id)")
     }
 
@@ -407,10 +409,12 @@ private struct F1TileMenu: ViewModifier {
     let event: SportEvent?
     /// A finished session has no hold menu (#345 review: its channels may still air the coverage after it).
     let finished: Bool
+    /// #347: the session's front card id (its recording's game).
+    var card: String? = nil
 
     func body(content: Content) -> some View {
         if let flow, let event, event.best != nil, SportCardRules.hold(event, finished: finished, now: Date()).offersAnything {
-            content.contextMenu { SportCardMenu(flow: flow, game: nil, event: event) }
+            content.contextMenu { SportCardMenu(flow: flow, game: nil, event: event, card: card) }
         } else {
             content
         }

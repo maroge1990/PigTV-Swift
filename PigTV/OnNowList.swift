@@ -77,6 +77,10 @@ struct OnNowList: View {
                 if let detail = item.detail { Text(detail) }
             } icon: { Image(systemName: item.systemImage) }
         }
+        // Cancelling… is shown, disabled (ProgrammeMenuItem.isAvailable, as ProgrammeMenuCard).
+        .disabled(!item.isAvailable)
+        .accessibilityLabel(item.accessibilityTitle)
+        .accessibilityIdentifier("menu.\(item.id)")
     }
 }
 

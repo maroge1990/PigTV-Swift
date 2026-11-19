@@ -5,7 +5,7 @@ BUILD_DIR="${PIGTV_TEST_BUILD_DIR:-$(mktemp -d)}"
 mkdir -p "$BUILD_DIR"
 xcrun swiftc -parse-as-library -module-name PigTVContractTests \
   -module-cache-path "$BUILD_DIR/module-cache" \
-  PigTV/Models.swift PigTV/ChannelQuality.swift PigTV/DVRModels.swift PigTV/APIClient.swift PigTV/PrivateCaches.swift PigTV/PlaybackCapabilities.swift PigTV/Labs.swift PigTV/ProviderReminders.swift \
+  PigTV/Models.swift PigTV/ChannelQuality.swift PigTV/DVRModels.swift PigTV/APIClient.swift PigTV/PrivateCaches.swift PigTV/PlaybackCapabilities.swift PigTV/Labs.swift PigTV/ProviderReminders.swift PigTV/PageState.swift \
   PigTV/SportModels.swift PigTV/SportsGameModels.swift PigTV/F1PageModels.swift PigTV/SportBannerModels.swift PigTV/SportFrontModels.swift PigTV/CricketPageModels.swift \
   PigTV/SportFollowModels.swift PigTV/NFLPageModels.swift PigTV/LeaguePageModels.swift PigTV/SportEventsModels.swift \
   PigTV/SportFixtureModels.swift PigTV/SportMotorModels.swift PigTV/LibrarySearchModels.swift \

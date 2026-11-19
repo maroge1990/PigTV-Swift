@@ -111,8 +111,12 @@ nonisolated struct LeagueGame: Decodable, Equatable, Identifiable, Sendable {
     var venue: String?
     var competition: String?
     var channels: [SportEventChannel]
+    /// #347 (C-R card id, additive): the front page's card id for the same game, built from ESPN's ids, so the same
+    /// whether or not the front page still shows it. Sent as `gameId` when recording; its recording is found by it. nil
+    /// from an older server or when ESPN gives no id (then no gameId, as before).
+    var card: String? = nil
 
-    enum CodingKeys: String, CodingKey { case id, start, status, detail, home, away, venue, competition, channels }
+    enum CodingKeys: String, CodingKey { case id, start, status, detail, home, away, venue, competition, channels, card }
     init(id: String, start: Double, status: String, detail: String? = nil, home: Side, away: Side, venue: String? = nil,
          competition: String? = nil, channels: [SportEventChannel] = []) {
         self.id = id; self.start = start; self.status = status; self.detail = detail; self.home = home; self.away = away
@@ -132,6 +136,16 @@ nonisolated struct LeagueGame: Decodable, Equatable, Identifiable, Sendable {
         venue = c.leagueOptional(String.self, .venue)
         competition = c.leagueOptional(String.self, .competition)
         channels = c.leagueOptional(LossyList<SportEventChannel>.self, .channels)?.items ?? []
+        card = SportCardID.decode(c, .card)
+    }
+}
+
+/// #347: a sport page item's `card` (C-P, C-Q, C-S, C-T): a non-empty string, else nil (absent, null, another type).
+nonisolated enum SportCardID {
+    static func decode<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ key: K) -> String? {
+        guard let text = (try? c.decodeIfPresent(String.self, forKey: key)) ?? nil else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

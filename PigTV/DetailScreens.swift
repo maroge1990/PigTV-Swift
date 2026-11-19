@@ -85,7 +85,8 @@ struct ProgrammeDetails: View {
                             }
                             .accessibilityIdentifier("details.watchFromStart")
                         }
-                        if schedule != nil {
+                        switch model.programmeRecordAction(channel: channel, programme: programme, now: now) {
+                        case .change:
                             // Apple 114 (R5-Programme-*): Change recording opens the record page on this schedule; Cancel
                             // recording (with Undo) is there.
                             let button = Button("Change recording", systemImage: "record.circle.fill") {
@@ -95,8 +96,12 @@ struct ProgrammeDetails: View {
                             .focused($focus, equals: .record)
                             .accessibilityIdentifier("details.changeRecording")
                             if live { button } else { button.pigPrimaryButton() }
-                        } else if programme.end > now {
+                        case .record:
                             recordButton(primary: !live)
+                        case .cancelling:
+                            cancellingButton
+                        case .nothing:
+                            EmptyView()
                         }
                         if programme.end > now && !ruleAdded {
                             // C-M: every airing of this title on this channel.
@@ -150,6 +155,19 @@ struct ProgrammeDetails: View {
             .focused($focus, equals: .record)
             .accessibilityIdentifier("details.record")
         if primary { button.pigPrimaryButton() } else { button.pigSecondaryButton() }
+    }
+
+    /// Mark, 19 Nov 2026 (D-72), Codex check of 320: an earlier recording of this is being cancelled (here or on the
+    /// server): neither Record nor Change recording, but Cancelling…, disabled, as on the record page.
+    private var cancellingButton: some View {
+        Button {} label: { Label(PageWords.cancelling, systemImage: "hourglass").lineLimit(1) }
+            .pigSecondaryButton()
+            .disabled(true)
+            #if os(tvOS)
+            .opacity(0.45)
+            #endif
+            .accessibilityLabel(PageWords.cancellingLabel)
+            .accessibilityIdentifier("details.cancelling")
     }
 
     private var channelLine: String {
