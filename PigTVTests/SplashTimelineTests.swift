@@ -169,6 +169,26 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertFalse(SplashTimeline.showsProgress(at: 4, restoreFinished: true))
     }
 
+    /// #354 (Codex sign-off of 325, medium): the flight's landing was worked out once; an iPhone rotated or an iPad window
+    /// resized during the hand-off moved the header, and the pig flew to where it had been. The screen changing size now
+    /// abandons the flight for a cross-fade (and puts the tabs back, `resetGlide`). (No flightHolds: fails to compile on
+    /// the commit before.)
+    func testAScreenChangeDuringTheFlightFallsBackToACrossFade() {
+        XCTAssertTrue(SplashTimeline.flightHolds(started: CGSize(width: 402, height: 874), now: CGSize(width: 402, height: 874)))
+        XCTAssertTrue(SplashTimeline.flightHolds(started: CGSize(width: 402, height: 874), now: CGSize(width: 402.2, height: 874)),
+                      "rounding is not a change")
+        XCTAssertFalse(SplashTimeline.flightHolds(started: CGSize(width: 402, height: 874), now: CGSize(width: 874, height: 402)),
+                       "rotated: cross-fade")
+        XCTAssertFalse(SplashTimeline.flightHolds(started: CGSize(width: 1032, height: 1376), now: CGSize(width: 700, height: 1376)),
+                       "an iPad window resized: cross-fade")
+        let handoff = SplashHandoff(playing: true, contentRise: 18)
+        let tabs = UIView()
+        handoff.glide(tabs, rise: 18)
+        handoff.resetGlide()
+        handoff.reveal(glides: false)
+        XCTAssertEqual(tabs.transform, .identity, "the fallback puts the tabs back, no glide")
+    }
+
     func testTheFlightNeedsMotionAndAHeaderPig() {
         XCTAssertEqual(SplashTimeline.handoff(reduceMotion: false, hasTarget: true), .flight)
         XCTAssertEqual(SplashTimeline.handoff(reduceMotion: true, hasTarget: true), .crossFade, "Reduce Motion: a plain cross-fade")

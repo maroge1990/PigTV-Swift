@@ -99,6 +99,12 @@ nonisolated enum SplashTimeline {
         !reduceMotion && hasTarget ? .flight : .crossFade
     }
 
+    /// #354: the flight's landing is worked out once, for the screen it started on. The screen changing size during the
+    /// hand-off (an iPhone rotated, an iPad window resized) moves the header, so the flight is abandoned for a cross-fade.
+    static func flightHolds(started: CGSize, now: CGSize) -> Bool {
+        abs(started.width - now.width) < 0.5 && abs(started.height - now.height) < 0.5
+    }
+
     // The splash's own timing (brand §8 and #342's mock), so each is marked for BrandRulesTests.
     static var bloomSwellAnimation: Animation { .easeInOut(duration: bloomSwell) } // motion: #342 splash bloom
     static var bloomSettleAnimation: Animation { .easeInOut(duration: bloomSettle) } // motion: #342 splash bloom
@@ -423,6 +429,7 @@ struct BrandSplashView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Starting PigTV")
         .task { await play() }
+        .onChange(of: frame.size) { _, size in screenChanged(to: size) }
         // Reduce Motion turned on mid-splash: the tabs' view is put back at once (the probe's rise was taken earlier).
         .onChange(of: reduceMotion, initial: true) { _, on in handoff?.reduceMotionChanged(on) }
         .task {
@@ -435,6 +442,25 @@ struct BrandSplashView: View {
     }
 
     @State private var frame: CGRect = .zero
+    /// #354: the screen's size when the flight started (nil before), and whether a change of it abandoned the flight.
+    @State private var flightScreen: CGSize? = nil
+    @State private var fellBack = false
+
+    /// #354: the screen changed size during the flight: the pig and the splash fade where they are (no landing), Home's
+    /// tabs are put back at once (no glide), and Home fades in as the cross-fade has it.
+    private func screenChanged(to size: CGSize) {
+        guard let started = flightScreen, !fellBack, let handoff, !handoff.landed,
+              !SplashTimeline.flightHolds(started: started, now: size) else { return }
+        fellBack = true
+        handoff.resetGlide()
+        withAnimation(SplashTimeline.revealAnimation) {
+            pigGone = true
+            nameGone = true
+            glowGone = true
+            canvasGone = true
+            handoff.reveal(glides: false)
+        }
+    }
 
     /// Plays the timeline from the launch frame (the first frame is already on screen).
     private func play() async {
@@ -464,8 +490,10 @@ struct BrandSplashView: View {
         withAnimation(PigMotion.standard) { slowStart = false }
         switch SplashTimeline.handoff(reduceMotion: reduceMotion, hasTarget: handoff.target != nil) {
         case .flight:
+            flightScreen = frame.size
             withAnimation(SplashTimeline.nameOutAnimation) { nameGone = true }
             try await at(SplashTimeline.flightDelay)
+            if fellBack { break }
             if let target = handoff.target {
                 let to = SplashFlight.landing(mark: target, splash: frame, pigInkWidth: BrandLayout.pigInkWidth * Self.side)
                 withAnimation(SplashTimeline.flightAnimation) { landing = to }
@@ -474,7 +502,7 @@ struct BrandSplashView: View {
             try await at(SplashTimeline.revealDelay)
             withAnimation(SplashTimeline.revealAnimation) {
                 canvasGone = true
-                handoff.reveal(glides: !reduceMotion)
+                handoff.reveal(glides: !reduceMotion && !fellBack)
             }
         case .crossFade:
             // Reduce Motion (or nothing to land on): the splash fades out as Home fades in; nothing moves.
