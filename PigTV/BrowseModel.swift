@@ -767,6 +767,36 @@ final class BrowseModel: ObservableObject {
         }
     }
 
+    /// The record page's Record for a sport airing (Codex sign-off of #347, high): the scheduled list is read fresh at the
+    /// press, and only a successful answer lets it go on, so a cancellation another device started since the last poll is
+    /// seen (Cancelling…) before anything is sent; then the page's own per-airing rule, then the write. A server that
+    /// still finds the airing being cancelled answers 409 "cancelling" (`schedule()`): the lists are read again, the
+    /// page shows Cancelling… for that airing and stays open.
+    func record(_ request: RecordRequest, airing: RecordRequest.Airing, before: Int?, after: Int?) async -> Bool {
+        guard await readSchedulesNow() else {
+            actionError = PageWords.scheduleCheckFailed
+            return false
+        }
+        if cancellingEarlier(request, airing: airing) {
+            actionError = PageWords.cancellingEarlierText
+            return false
+        }
+        return await schedule(channel: airing.channel, programme: airing.programme, guideEnd: airing.guideEnd,
+                              before: before, after: after, gameId: request.gameId, context: (request, airing))
+    }
+
+    /// One read of the scheduled list now, published when it is the newest: true when it answered.
+    func readSchedulesNow() async -> Bool {
+        guard let read = try? await readSchedules() else { return false }
+        if scheduleTickets.publish(read.ticket) {
+            let stones = recordingStore.tombstones
+            let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
+            if planned != schedules { schedules = planned }
+            recordingStore.schedulesAskedAt = read.askedAt
+        }
+        return true
+    }
+
     func cancel(_ item: ScheduledRecording) async {
         guard !mutationBusy else { return }
         mutationBusy = true

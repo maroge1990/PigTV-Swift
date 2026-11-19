@@ -971,11 +971,8 @@ struct RecordPage: View {
             return
         }
         guard let airing else { return }
-        // Codex review of #347: the same current per-airing check as the page's Cancelling…, at the press.
-        if model.cancellingEarlier(request, airing: airing) { error = PageWords.cancellingEarlierText; return }
-        if await model.schedule(channel: airing.channel, programme: airing.programme, guideEnd: airing.guideEnd,
-                                before: before, after: after,
-                                gameId: request.gameId, context: (request, airing)) {
+        // Codex review and sign-off of #347: the scheduled list read fresh, the page's per-airing check, then the write.
+        if await model.record(request, airing: airing, before: before, after: after) {
             close()
         } else {
             error = model.actionError ?? "The recording could not be scheduled."

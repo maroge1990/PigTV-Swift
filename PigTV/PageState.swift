@@ -319,6 +319,8 @@ nonisolated enum PageWords {
     static let removeFailed = "That couldn’t be removed. Try again."
     /// Mark, 19 Nov 2026: Record while an earlier recording of the same thing is being cancelled.
     static let cancelling = "Cancelling…"
+    /// Codex sign-off of #347: Record reads the recordings on the server first; it could not.
+    static let scheduleCheckFailed = "PigTV couldn’t check the recordings on your server, so nothing was recorded. Try again."
     /// Codex sign-off of #347: the slot this game airs in holds another game's recording (the guide changed): nothing was
     /// recorded.
     static let slotTakenText = "Another game’s recording is set for this channel and time, so this one wasn’t recorded. Refresh, then try again."
