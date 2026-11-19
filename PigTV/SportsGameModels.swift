@@ -44,6 +44,22 @@ nonisolated struct SportsGame: Decodable, Identifiable, Equatable, Sendable {
   /// C-O/C-R since 0423 (#203, D-42 point 5, additive): the coverage is on air while play starts within 30 minutes;
   /// `status` stays `scheduled`. Decoded leniently: absent (an older server) or of another type is not on air.
   var onAir: Lenient<Bool>? = nil
+  /// C-R since #353 (server 0862+, additive): `channels` and then each later airing of one of them that `channels` leaves
+  /// out (a Test's day two on day one's channel), by start; absent when it would equal `channels` or from an older server.
+  /// Record offers these (Watch keeps `channels`). Decoded leniently: malformed is absent.
+  var slots: Lenient<[SportEventChannel]>? = nil
+  /// C-R since #353 (D-72, additive): the game's schedules whose cancel is under way, each with its guide slot (ms);
+  /// absent when none or from an older server. Record waits ("Cancelling…") on an airing that overlaps one.
+  var recordingCancelling: Lenient<[CancellingSlot]>? = nil
+
+  /// Record's airings: `slots` when the server sent them, else `channels`.
+  var recordSlots: [SportEventChannel] { slots?.value.flatMap { $0.isEmpty ? nil : $0 } ?? channels }
+
+  struct CancellingSlot: Decodable, Equatable, Sendable {
+    let scheduleId: Int
+    let start: Double
+    let end: Double
+  }
 
   /// #203: on air before play: worded "On air · starts 3:10 pm" with the live dot and Watch, never as a result.
   var isOnAir: Bool { onAir?.value == true && status == "scheduled" }

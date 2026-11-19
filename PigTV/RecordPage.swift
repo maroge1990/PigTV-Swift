@@ -26,8 +26,13 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
         var measured: MeasuredQuality? = nil
         /// D-65 (#266): the server's name key, else nil (grouped on the name).
         var nameKey: String? = nil
-        var id: String { channel.id }
+        /// C-R #353: the airing's own guide end when the card's `end` is rolled on (an overrun); nil: the programme's end.
+        var guideEnd: Double? = nil
+        /// A channel can carry several airings (a Test's two days, C-R `slots`): each is its own choice.
+        var id: String { "\(channel.id)@\(Int64(programme.startTime))" }
         var chip: QualityChip? { QualityChip.make(measured: measured, quality: quality) }
+        /// Its guide bounds (C-R #353): what schedules and cancellations are matched by, never the rolled end.
+        var guideBounds: (start: Double, end: Double) { (programme.startTime, guideEnd ?? programme.endTime) }
     }
 
     let title: String
@@ -52,6 +57,9 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
     var isGame = false
     /// Change recording: the active schedule this is.
     var schedule: ScheduledRecording? = nil
+    /// C-R #353: the card's `recordingCancelling` (its game's schedules being cancelled, with their guide slots); nil when
+    /// the card has none or the server is older (then the client's own inference decides Cancelling…).
+    var serverCancelling: [SportsGame.CancellingSlot]? = nil
     /// Shown on opening (a quick Record from a menu that failed).
     var error: String? = nil
     /// The channel to start on (a channel row's "Record on <channel>"), by its id; else the best.
@@ -236,8 +244,14 @@ nonisolated enum RecordPlan {
     /// D-65 (#266): Record on's rows: one per channel name, its copies' qualities as chips (best first; copies with the
     /// same name and quality fold into one chip). Each copy is its index in `request.airings`; a chip selects its first.
     static func channelGroups(_ request: RecordRequest) -> [ChannelNameGroup<Int>] {
-        ChannelGrouping.group(Array(request.airings.indices), name: { request.airings[$0].channel.name },
-                              serverKey: { request.airings[$0].nameKey },
+        // C-R #353 `slots`: a channel with several airings (a Test's two days) is a row per airing, each with its day.
+        let repeated = Set(Dictionary(grouping: request.airings, by: \.channel.id).filter { $0.value.count > 1 }.keys)
+        return ChannelGrouping.group(Array(request.airings.indices), name: { request.airings[$0].channel.name },
+                              serverKey: { index in
+                                  let airing = request.airings[index]
+                                  guard repeated.contains(airing.channel.id) else { return airing.nameKey }
+                                  return "\(airing.nameKey ?? airing.channel.name)@\(Int64(airing.programme.startTime))"
+                              },
                               airing: { (start: request.airings[$0].programme.startTime, end: request.airings[$0].programme.endTime) },
                               chip: { request.airings[$0].chip })
     }
@@ -278,10 +292,15 @@ extension BrowseModel {
     /// `card` (#347): a sport page item's front card id, the recording's game when there is no card (`game`) itself.
     func recordRequest(event: SportEvent, game: SportsGame? = nil, team: String? = nil, now: Date = Date(),
                        preferredChannel: String? = nil, card: String? = nil) -> RecordRequest? {
-        let channels = SportFrontText.recordChoices(event, now: now)
-        let airings = (channels.isEmpty ? event.best.map { [$0] } ?? [] : channels).map { channel in
-            RecordRequest.Airing(channel: recordingRow(event, on: channel), programme: event.programme(on: channel),
-                                 quality: channel.quality, measured: channel.measured, nameKey: channel.nameKey)
+        // C-R #353: the card's `slots` (each later airing of its channels too, a Test's day two), else its channels.
+        let offered = game.flatMap { $0.slots?.value }.flatMap { $0.isEmpty ? nil : $0 }
+            .map { SportEvent(id: event.id, title: event.title, league: event.league, startTime: event.startTime,
+                              endTime: event.endTime, channels: $0, kind: event.kind, serverEventID: event.serverEventID) } ?? event
+        let channels = SportFrontText.recordChoices(offered, now: now)
+        let airings = (channels.isEmpty ? offered.best.map { [$0] } ?? [] : channels).map { channel in
+            RecordRequest.Airing(channel: recordingRow(offered, on: channel), programme: offered.programme(on: channel),
+                                 quality: channel.quality, measured: channel.measured, nameKey: channel.nameKey,
+                                 guideEnd: channel.guideEndTime)
         }
         guard !airings.isEmpty else { return nil }
         let sides = recordSides(title: event.title, league: event.league, game: game, team: team)
@@ -294,6 +313,7 @@ extension BrowseModel {
                                     sport: sportFront.front?.sports.first { $0.league == event.league }?.sport, isGame: true,
                                     schedule: bound.schedule)
         request.preferredChannel = bound.channel
+        request.serverCancelling = game?.recordingCancelling?.value
         return request
     }
 
@@ -808,7 +828,8 @@ struct RecordPage: View {
 
     /// Mark, 19 Nov 2026: an earlier recording of this (the game, or this channel's overlapping airing) is being
     /// cancelled: Record and Change recording wait until its outcome is known.
-    private var cancelling: Bool { model.cancellingEarlier(request) }
+    /// The chosen airing waits (C-R #353: other airings, another day of a Test, stay recordable).
+    private var cancelling: Bool { airing.map { model.cancellingEarlier(request, airing: $0) } ?? false }
 
     @ViewBuilder
     private func actionButtons(stacked: Bool) -> some View {
@@ -903,7 +924,8 @@ struct RecordPage: View {
             return
         }
         guard let airing else { return }
-        if await model.schedule(channel: airing.channel, programme: airing.programme, before: before, after: after,
+        if await model.schedule(channel: airing.channel, programme: airing.programme, guideEnd: airing.guideEnd,
+                                before: before, after: after,
                                 gameId: request.gameId) {
             close()
         } else {

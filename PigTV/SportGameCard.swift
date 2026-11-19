@@ -78,7 +78,8 @@ final class SportRecordFlow: ObservableObject {
         guard let browse = app?.browse else { return [] }
         let request = browse.recordRequest(event: event, game: game, team: team, now: now, card: card)
         // Mark, 19 Nov 2026: while an earlier recording of it is being cancelled, the hold menu has no Record.
-        if let request, browse.cancellingEarlier(request) { return [] }
+        // The quick Record acts on the first airing (C-R #353: other airings, another day, stay recordable on the page).
+        if let request, let first = request.airings.first, browse.cancellingEarlier(request, airing: first) { return [] }
         return Self.menuItems(request, now: now)
     }
 
@@ -101,7 +102,8 @@ final class SportRecordFlow: ObservableObject {
         switch item {
         case .recordThis:
             Task {
-                guard await browse.schedule(channel: first.channel, programme: first.programme, before: nil, after: nil,
+                guard await browse.schedule(channel: first.channel, programme: first.programme, guideEnd: first.guideEnd,
+                                            before: nil, after: nil,
                                             gameId: request.gameId) else {
                     app.record(event, game: game, error: browse.actionError ?? "The recording could not be scheduled.", card: card)
                     return

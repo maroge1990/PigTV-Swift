@@ -699,7 +699,9 @@ final class BrowseModel: ObservableObject {
 
     /// `before`/`after` nil: the server's own start-early and finish-late minutes (D-44's "Record this programme").
     /// `gameId` (C-M since 0440): a Sport card's game, so the recording stops when the game ends.
-    func schedule(channel: GuideChannel, programme: GuideProgramme, before: Int?, after: Int?,
+    /// `guideEnd` (C-R #353): the airing's own guide end when `programme.endTime` is rolled on for an overrun; the
+    /// Cancelling… check uses guide bounds, while `programEnd` still sends the rolled end (C-M unchanged).
+    func schedule(channel: GuideChannel, programme: GuideProgramme, guideEnd: Double? = nil, before: Int?, after: Int?,
                   gameId: String? = nil) async -> Bool {
         // The request is checked before anything else happens (Codex review of 320: never settle a cancellation for a
         // request that is then refused).
@@ -709,7 +711,7 @@ final class BrowseModel: ObservableObject {
         }
         // Mark, 19 Nov 2026: while an earlier recording of this (the same game, or this channel's overlapping airing) is
         // being cancelled, recording it again is not offered; a path that still gets here is refused, never raced.
-        if cancellingEarlier(gameId: gameId, channel: channel, start: programme.startTime, end: programme.endTime) {
+        if cancellingEarlier(gameId: gameId, channel: channel, start: programme.startTime, end: guideEnd ?? programme.endTime) {
             actionError = PageWords.cancellingEarlierText
             return false
         }
@@ -862,20 +864,28 @@ final class BrowseModel: ObservableObject {
     /// (a transport error) until a scheduled-list refresh has answered. A refused one is not (the schedule stands); a
     /// confirmed one is not (the schedule is gone).
     func cancellationInProgress(_ schedule: ScheduledRecording) -> Bool {
+        schedule.isCancelling // the server's own state (#347 C-M "Cancelling"), whoever cancelled it
+            || cancellingHere(schedule)
+    }
+
+    /// A cancellation this device has made and the server may not list yet: its Undo open, or sent with no answer.
+    func cancellingHere(_ schedule: ScheduledRecording) -> Bool {
         let key = PendingRemoval.key(.cancelSchedule, schedule.id)
-        return schedule.isCancelling // the server's own state (#347 C-M "Cancelling"), whoever cancelled it
-            || (recordingStore.pendingRemovals.contains(key) && recordingStore.tombstones[key] == nil)
+        return (recordingStore.pendingRemovals.contains(key) && recordingStore.tombstones[key] == nil)
             || recordingStore.uncertainRemovals[key] != nil
     }
 
     /// Recording this waits for an earlier recording of it being cancelled: a schedule whose cancellation is in progress
     /// overlaps the airing and is the same game (`gameId`) or the same channel. Another day of a multi-day game does not
     /// overlap, so it stays recordable.
-    func cancellingEarlier(gameId: String?, channel: GuideChannel, start: Double, end: Double) -> Bool {
+    /// Both sides are compared by guide bounds (C-R #353): `start`/`end` the airing's guide slot, a schedule's its guide
+    /// end (`guideEnd`), never a rolled end, so the programme after an overrunning game is not the game's.
+    func cancellingEarlier(gameId: String?, channel: GuideChannel, start: Double, end: Double,
+                           onlyHere: Bool = false) -> Bool {
         schedules.contains { schedule in
-            schedule.program_start < end && schedule.program_end > start
+            schedule.program_start < end && schedule.guideEnd > start
                 && ((gameId != nil && schedule.game == gameId) || Self.sameChannel(schedule, channel))
-                && cancellationInProgress(schedule)
+                && (onlyHere ? cancellingHere(schedule) : cancellationInProgress(schedule))
         }
     }
 
@@ -891,11 +901,23 @@ final class BrowseModel: ObservableObject {
         return schedule.channel_name == channel.name
     }
 
-    /// A record page's request: any of its airings waits (`cancellingEarlier`).
-    func cancellingEarlier(_ request: RecordRequest) -> Bool {
-        request.airings.contains {
-            cancellingEarlier(gameId: request.gameId, channel: $0.channel, start: $0.programme.startTime, end: $0.programme.endTime)
+    /// A record page's airing waits (`cancellingEarlier`), by its guide bounds. With the card's `recordingCancelling`
+    /// (C-R #353) the server's list decides what it is cancelling, by overlap with the airing; the client adds only what
+    /// the server cannot know yet (a cancellation made here, its Undo open or its answer not in). Without it (an older
+    /// server, or nothing being cancelled) the client's own inference decides.
+    func cancellingEarlier(_ request: RecordRequest, airing: RecordRequest.Airing) -> Bool {
+        let bounds = airing.guideBounds
+        guard let entries = request.serverCancelling else {
+            return cancellingEarlier(gameId: request.gameId, channel: airing.channel, start: bounds.start, end: bounds.end)
         }
+        if entries.contains(where: { $0.start < bounds.end && $0.end > bounds.start }) { return true }
+        return cancellingEarlier(gameId: request.gameId, channel: airing.channel, start: bounds.start, end: bounds.end,
+                                 onlyHere: true)
+    }
+
+    /// Any of a request's airings waits.
+    func cancellingEarlier(_ request: RecordRequest) -> Bool {
+        request.airings.contains { cancellingEarlier(request, airing: $0) }
     }
 
     /// After a cancellation with no answer: its own read of the scheduled list, begun after the failure and apart from

@@ -123,6 +123,10 @@ nonisolated struct ScheduledRecording: Decodable, Identifiable, Equatable, Senda
     let channel_name: String?
     let program_start: Double
     let program_end: Double
+    /// C-M: the guide's own end when `program_end` was rolled on (a schedule made while the game overran); nil otherwise.
+    var program_end_original: Double? = nil
+    /// The schedule's guide end (C-R #353: schedules match airings by guide bounds, never by a rolled end).
+    var guideEnd: Double { program_end_original ?? program_end }
     let status: String
     // Server 0156: missed/failed schedules carry an error message.
     var error: String? = nil

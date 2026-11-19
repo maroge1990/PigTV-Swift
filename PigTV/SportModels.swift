@@ -47,11 +47,14 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
     /// #20 (server 0337): when **this** channel airs the event, in ms; nil from an older server.
     var startTime: Double? = nil
     var endTime: Double? = nil
+    /// C-R since #353 (server 0862+, additive): an overrunning airing's own guide end (ms); `endTime` is then rolled on for
+    /// Watch. Nil otherwise (or from an older server): the guide end is `endTime`. Schedules match airings by guide bounds.
+    var guideEndTime: Double? = nil
 
     var id: String { "\(sourceId):\(rawID)" }
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
 
-    enum CodingKeys: String, CodingKey { case sourceId, rawID = "id", stableId, name, number, logo, quality, measured, nameKey, start, end }
+    enum CodingKeys: String, CodingKey { case sourceId, rawID = "id", stableId, name, number, logo, quality, measured, nameKey, start, end, guideEnd }
 
     init(sourceId: Int, rawID: String, stableId: String? = nil, name: String, number: Int? = nil,
          logo: String? = nil, quality: SportQuality? = nil, startTime: Double? = nil, endTime: Double? = nil,
@@ -75,6 +78,7 @@ nonisolated struct SportEventChannel: Decodable, Identifiable, Equatable, Sendab
         nameKey = ((try? c.decodeIfPresent(String.self, forKey: .nameKey)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
         startTime = (try? c.decodeIfPresent(Double.self, forKey: .start)) ?? nil
         endTime = (try? c.decodeIfPresent(Double.self, forKey: .end)) ?? nil
+        guideEndTime = (try? c.decodeIfPresent(Double.self, forKey: .guideEnd)) ?? nil
     }
 }
 
