@@ -567,11 +567,14 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
 - **Launch screen:** `UILaunchScreen` in `AppConfiguration.plist` (colour `LaunchEdge` = the PigCanvas colours, `#FBF8FA` / `#15111A`, + image
   `LaunchBrand`): a **transparent** PNG (any/dark; tv @2x, phone @2x/@3x) holding the static halo as an alpha radial gradient and the mark. No text.
   (The kit's square icon art is not canvas-coloured at its edges, which would seam.)
-- **Splash:** `BrandSplashView` (`ContentView` while `!initialRestoreFinished`). First frame = launch screen (halo at full opacity, no bloom, no
-  name). Then the kit's stacked lockup fades in over 250 ms, its pig exactly on the launch pig (same drawing and ink width), and the halo breathes: halo opacity 1 → 0.25, bloom (core 0.75 r + wide 1.6 r radial
-  gradients) opacity 0 → 1 and scale 0.9 → 1.12, `.easeInOut(duration: 4).repeatForever(autoreverses: true)`. The pig never moves or scales.
-  It ends exactly when start-up ends (never waits for a cycle); progress spinner after 2 s. Reduce Motion: static halo, wordmark shown, no
-  animation. Reduce Transparency: plain canvas, no glow. Fixture: `PIGTV_UI_TEST_SCREEN=splash` (+ `PIGTV_UI_TEST_APPEARANCE`).
+- **Splash:** `BrandSplashView` (#342, `BrandSplash.swift`'s header has the timeline), on a cold launch with a saved sign-in only; a
+  return from the background shows the app as it was left. First frame = launch screen: the splash frames itself to the whole
+  screen (not the safe area) so its pig is the launch image's to the pixel (`SplashLaunchFrameUITests`). Bloom and name, then the
+  pig flies onto the opening tab's header mark (`splashLandingSpot`) while Home fades in where it is (never offset: moving Home
+  against the safe area re-lays it out). The hand-off waits for start-up and for the opening page's first content
+  (`splashPageReady`), at most 4 s past the settled pig (`SplashTimeline`, pure). Reduce Motion: cross-fade, no flight. Reduce
+  Transparency: plain canvas, no glow. Fixtures: `PIGTV_UI_TEST_SCREEN=splash`; `PIGTV_UI_TEST_LAUNCH=home` (the real start-up
+  path; `PIGTV_UI_TEST_FRONT_DELAY` delays the Sport answer).
 - **Canvas:** `PigPageBackground` = canvas colour + one rose (`#EF7AAE`) radial gradient from the top **leading** corner (mirrored for
   right-to-left), alpha 0.16 → 0.067 at 27.9% → 0 at 62% of the diagonal (light; 0.13/0.055 dark); plain canvas with Reduce Transparency. The
   UIKit guide grid (`GuideGridViewController` view and collection view) is clear over that SwiftUI background; the UIKit containers painted by
