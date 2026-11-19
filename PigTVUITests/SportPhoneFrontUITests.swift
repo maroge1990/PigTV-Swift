@@ -24,8 +24,7 @@ final class SportPhoneFrontUITests: XCTestCase {
                         front change: ((inout [String: Any]) -> Void)? = nil) throws -> XCUIApplication {
         guard UIDevice.current.userInterfaceIdiom == idiom else { throw XCTSkip("\(idiom == .pad ? "iPad" : "iPhone") layout only") }
         XCUIDevice.shared.orientation = .portrait
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures/sport-pages-d43.json")
+        let fixture = try UIFixture.url("sport-pages-d43.json")
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
         if frontSpoilerFree, var front = json["front"] as? [String: Any] {
             front["spoilerFree"] = true

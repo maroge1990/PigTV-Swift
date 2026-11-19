@@ -54,8 +54,7 @@ final class SportPagesUITests: XCTestCase {
 
     private func launch(sport: String, spoilers: Bool = false, f1: Bool = false, nobodyFollowed: Bool = false,
                         f1Live: Bool = false, nfl: Bool = false, nflFollow: String? = nil) throws -> XCUIApplication {
-        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures")
+        let fixtures = try UIFixture.folder()
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent("sport-pages-d43.json")))
             as? [String: Any])
         if nobodyFollowed { Self.unfollowed(&json) }

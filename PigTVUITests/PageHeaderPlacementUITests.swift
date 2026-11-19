@@ -67,8 +67,7 @@ final class PageHeaderPlacementUITests: XCTestCase {
         #if os(iOS)
         XCUIDevice.shared.orientation = .portrait
         #endif
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures/sport-front-0427.json")
+        let fixture = try UIFixture.url("sport-front-0427.json")
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
         let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
         let app = XCUIApplication()

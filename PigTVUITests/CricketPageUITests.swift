@@ -21,8 +21,7 @@ final class CricketPageUITests: XCTestCase {
     }
 
     private func launch() throws -> XCUIApplication {
-        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures")
+        let fixtures = try UIFixture.folder()
         // The lead's Fox Cricket airing around now (the answer was made on 31 Oct 2026 at 01:56 UTC).
         var cricket = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent("cricket-page-0387-live.json"))) as? [String: Any])
         var lead = try XCTUnwrap(cricket["lead"] as? [String: Any])

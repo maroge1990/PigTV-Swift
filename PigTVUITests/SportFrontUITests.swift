@@ -21,8 +21,7 @@ final class SportFrontUITests: XCTestCase {
     }
 
     private func launch(_ change: (inout [String: Any]) -> Void = { _ in }) throws -> XCUIApplication {
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures/sport-front-0381.json")
+        let fixture = try UIFixture.url("sport-front-0381.json")
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
         change(&json)
         let app = XCUIApplication()

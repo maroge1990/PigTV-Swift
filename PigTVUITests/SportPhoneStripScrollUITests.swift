@@ -32,8 +32,7 @@ final class SportPhoneStripScrollUITests: XCTestCase {
     func testThePageMovesOnlyWithTheFingerAsTheHeroBecomesTheStrip() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
         XCUIDevice.shared.orientation = .portrait
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures/sport-pages-d43.json")
+        let fixture = try UIFixture.url("sport-pages-d43.json")
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
         let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
         let app = XCUIApplication()

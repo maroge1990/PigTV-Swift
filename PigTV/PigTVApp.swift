@@ -265,7 +265,10 @@ private struct HomeTestScreen: View {
     var initialTab: String? = nil
     static let presentsPlayer = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_DASHBOARD_PLAY"] == "1"
     static let front: SportFront? = {
+        // #351: the fixture is in the Debug app's bundle (a membership exception of PigTVTests/Fixtures; the Release
+        // configuration excludes it), so a test runner without the source tree has it; the source tree is the fallback.
         let data = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_FRONT_JSON"].flatMap { Data(base64Encoded: $0) }
+            ?? Bundle.main.url(forResource: "sport-front-0381", withExtension: "json").flatMap { try? Data(contentsOf: $0) }
             ?? (try? Data(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("PigTVTests/Fixtures/sport-front-0381.json")))
         return data.flatMap { try? JSONDecoder().decode(SportFront.self, from: $0) }

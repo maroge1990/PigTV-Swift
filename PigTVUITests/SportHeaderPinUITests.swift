@@ -26,17 +26,14 @@ final class SportHeaderPinUITests: XCTestCase {
         #if os(iOS)
         XCUIDevice.shared.orientation = .portrait
         #endif
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "front"
         app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
         #if os(tvOS)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: root
-            .appendingPathComponent("PigTVTests/Fixtures/sport-front-0381.json"))) as? [String: Any])
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: UIFixture.url("sport-front-0381.json"))) as? [String: Any])
         app.launchEnvironment["PIGTV_UI_TEST_FRONT_JSON"] = try JSONSerialization.data(withJSONObject: json).base64EncodedString()
         #else
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: root
-            .appendingPathComponent("PigTVTests/Fixtures/sport-pages-d43.json"))) as? [String: Any])
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: UIFixture.url("sport-pages-d43.json"))) as? [String: Any])
         let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
         app.launchEnvironment["PIGTV_UI_TEST_PAGES_JSON"] = try JSONSerialization.data(withJSONObject: Self.shifted(json, by: delta))
             .base64EncodedString()

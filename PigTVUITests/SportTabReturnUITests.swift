@@ -12,8 +12,7 @@ final class SportTabReturnUITests: XCTestCase {
     }
 
     private func launch() throws -> XCUIApplication {
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures/sport-pages-d43.json")
+        let fixture = try UIFixture.url("sport-pages-d43.json")
         let json = try Data(contentsOf: fixture)
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "front"

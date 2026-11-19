@@ -21,8 +21,7 @@ final class SportFitUITests: XCTestCase {
     }
 
     private func launch(_ environment: [String: String] = [:], arguments: [String] = []) throws -> XCUIApplication {
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PigTVTests/Fixtures/sport-pages-d43.json")
+        let fixture = try UIFixture.url("sport-pages-d43.json")
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
         let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
         let app = XCUIApplication()

@@ -63,6 +63,26 @@
 			);
 			target = B2FE9B083056B8D20018450A /* PigTVTopShelf */;
 		};
+		C51A00013056B8D20018450A /* Exceptions for "PigTVTests" folder in "PigTV" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Fixtures/sport-front-0381.json",
+			);
+			target = B2FE99EA3056B8D00018450A /* PigTV */;
+		};
+		C51A00023056B8D20018450A /* Exceptions for "PigTVTests" folder in "PigTVUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Fixtures/cricket-page-0387-live.json",
+				"Fixtures/cricket-page-0387-stumps.json",
+				"Fixtures/f1-page-0346.json",
+				"Fixtures/nfl-page-0379.json",
+				"Fixtures/sport-front-0381.json",
+				"Fixtures/sport-front-0427.json",
+				"Fixtures/sport-pages-d43.json",
+			);
+			target = B2FE9A013056B8D20018450A /* PigTVUITests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -73,6 +93,10 @@
 		};
 		B2FE99FB3056B8D20018450A /* PigTVTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C51A00013056B8D20018450A /* Exceptions for "PigTVTests" folder in "PigTV" target */,
+				C51A00023056B8D20018450A /* Exceptions for "PigTVTests" folder in "PigTVUITests" target */,
+			);
 			path = PigTVTests;
 			sourceTree = "<group>";
 		};
@@ -186,6 +210,7 @@
 				B2FE99F43056B8D20018450A /* Sources */,
 				B2FE99F53056B8D20018450A /* Frameworks */,
 				B2FE99F63056B8D20018450A /* Resources */,
+				C51A00033056B8D20018450A /* Golden answers */,
 			);
 			buildRules = (
 			);
@@ -326,6 +351,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		C51A00033056B8D20018450A /* Golden answers */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Golden answers";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# #351: the server's golden API answers (../PigTV/test/golden, or PIGTV_GOLDEN_DIR) go into the test bundle as\n# golden/, so GoldenChecks reads them on a test runner without the source tree (Xcode Cloud: ci_scripts/ci_post_clone.sh\n# fetches them on the build machine). Absent (no server checkout here): nothing is copied, and GoldenChecks says so.\nsrc=\"${PIGTV_GOLDEN_DIR:-$SRCROOT/../PigTV/test/golden}\"\ndest=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/golden\"\nrm -rf \"$dest\"\nif [ -f \"$src/routes.json\" ]; then\n    mkdir -p \"$dest\"\n    cp \"$src\"/*.json \"$dest\"/\n    echo \"golden answers: $(ls \"$dest\" | wc -l | tr -d ' ') files from $src\"\nelse\n    echo \"golden answers: none at $src (GoldenChecks will skip)\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B2FE99E73056B8D00018450A /* Sources */ = {
@@ -552,6 +599,7 @@
 		B2FE9A0E3056B8D20018450A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				EXCLUDED_SOURCE_FILE_NAMES = "sport-front-0381.json";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletv*]" = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -594,6 +642,7 @@
 		B2FE9A103056B8D20018450A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -617,6 +666,7 @@
 		B2FE9A113056B8D20018450A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

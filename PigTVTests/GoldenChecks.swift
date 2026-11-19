@@ -31,7 +31,10 @@ enum GoldenChecks {
         let fromEnv = (env["PIGTV_GOLDEN_DIR"] ?? env["SIMULATOR_PIGTV_GOLDEN_DIR"]).flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
         let beside = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("PigTV/test/golden")
-        for candidate in [fromEnv, beside].compactMap({ $0 }) where FileManager.default.fileExists(atPath: candidate.appendingPathComponent("routes.json").path) {
+        // #351: the test bundle's copy (its "Golden answers" build phase copies ../PigTV/test/golden in when it is there),
+        // so a test runner without the source tree (Xcode Cloud) reads them too.
+        let bundled = Bundle.allBundles.lazy.compactMap { $0.url(forResource: "golden", withExtension: nil) }.first
+        for candidate in [fromEnv, bundled, beside].compactMap({ $0 }) where FileManager.default.fileExists(atPath: candidate.appendingPathComponent("routes.json").path) {
             return candidate
         }
         return nil
