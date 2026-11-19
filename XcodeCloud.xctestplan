@@ -1,0 +1,46 @@
+{
+  "configurations": [
+    {
+      "id": "7C3E2A10-4F51-4B0E-9D6A-35B1E0C1A002",
+      "name": "Test Scheme Action",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "skippedTests": [
+        "BrandRulesTests",
+        "HelperLinesGoneTests",
+        "LaunchImageTests",
+        "PolishTests\/testEveryLeagueColourKeepsItsWhiteLettersAtFourAndAHalfToOne()",
+        "PolishTests\/testIncreasedContrastGivesTheStrongerRoles()",
+        "SelectionFlatTests",
+        "SportHideScoresWriterTests",
+        "SportSpoilersTests\/testEveryDecisionCallsTheOneFunction()",
+        "SportSpoilersTests\/testNoScreenCombinesTheInputsItself()",
+        "TestPlanTests"
+      ],
+      "target": {
+        "containerPath": "container:PigTV.xcodeproj",
+        "identifier": "B2FE99F73056B8D20018450A",
+        "name": "PigTVTests"
+      }
+    },
+    {
+      "parallelizable": false,
+      "skippedTests": [
+        "OutsidePlayUITests\/testAPlayLinkClosesAnOpenGuidePageAndThePlayerAppears()",
+        "TabSwitchUITests\/testSwitchingTabsOnAThousandChannelsIsQuick()",
+        "TouchLayoutUITests\/testPhoneGuideMenuOffersWatchOnForALiveEventOnSeveralChannels()"
+      ],
+      "target": {
+        "containerPath": "container:PigTV.xcodeproj",
+        "identifier": "B2FE9A013056B8D20018450A",
+        "name": "PigTVUITests"
+      }
+    }
+  ],
+  "version": 1
+}

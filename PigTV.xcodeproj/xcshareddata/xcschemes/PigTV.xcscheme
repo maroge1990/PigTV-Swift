@@ -27,25 +27,15 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
-      <EnvironmentVariables>
-         <EnvironmentVariable key="PIGTV_SYNTHETIC_TESTS" value="1" isEnabled="YES"/>
-      </EnvironmentVariables>
-      <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "B2FE99F73056B8D20018450A"
-               BuildableName = "PigTVTests.xctest"
-               BlueprintName = "PigTVTests"
-               ReferencedContainer = "container:PigTV.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference skipped="NO" parallelizable="NO">
-            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B2FE9A013056B8D20018450A" BuildableName="PigTVUITests.xctest" BlueprintName="PigTVUITests" ReferencedContainer="container:PigTV.xcodeproj"/>
-         </TestableReference>
-      </Testables>
+      <TestPlans>
+         <TestPlanReference
+            reference = "container:PigTV.xctestplan"
+            default = "YES">
+         </TestPlanReference>
+         <TestPlanReference
+            reference = "container:XcodeCloud.xctestplan">
+         </TestPlanReference>
+      </TestPlans>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

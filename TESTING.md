@@ -49,6 +49,19 @@ CI runs none of the UI tiers (D-49). `Tools/test.sh` tiers: `fast` (build, the c
 the regression UI tests), `visual` (the screenshot suites), `all` (fast, regression and visual). A pass of `all` on a clean tree
 writes the git-ignored marker `.ui-full-passed` (the commit), which `Tools/testflight.sh` requires to equal HEAD, so an upload
 runs from the Mac's real clone, not an rsync copy. CI checks out the server's `test/golden`, so `GoldenChecks` runs there.
+
+**Test plans and Xcode Cloud (#351).** The scheme has two test plans. `PigTV.xctestplan` is the default (Xcode, `Tools/test.sh`,
+GitHub CI) and skips nothing. `XcodeCloud.xctestplan` is for the release workflow's Test actions: Xcode Cloud builds on one
+machine and runs `test-without-building` on another that has only the build products, so it leaves out the static source scans
+(`BrandRulesTests`, `HelperLinesGoneTests`, `SelectionFlatTests`, `SportHideScoresWriterTests`, `LaunchImageTests`,
+`TestPlanTests`, two `PolishTests` colour-catalogue reads, two `SportSpoilersTests` source scans), which run on the Mac and in
+GitHub CI, and three timing probes that failed on its runners (`TabSwitchUITests`' thousand-channel switch, `OutsidePlayUITests`,
+`TouchLayoutUITests`' Watch on menu). `TestPlanTests` pins both lists. What tests read ships in their bundles: the JSON fixtures
+are also members of `PigTVUITests` (read through `UIFixture`), the Debug app carries `sport-front-0381.json` for the offline
+Home (Release excludes it), and the PigTVTests "Golden answers" build phase copies `../PigTV/test/golden` (or
+`PIGTV_GOLDEN_DIR`) into the bundle as `golden/` (`ci_scripts/ci_post_clone.sh` fetches it on Xcode Cloud's build machine).
+To check a change against the cloud runner: build for testing, copy `Build/Products` elsewhere, move the source tree away, and run
+`xcodebuild test-without-building -xctestrun Products/PigTV_XcodeCloud_<platform>.xctestrun`.
 - `PigTVUITests`: Settings › Appearance switching. `PigTVUITestsLaunchTests`: launch screenshot.
 - `GuideGridNavigationUITests`: the UIKit guide's remote navigation, Now/Earlier/Later, long-press menu, focus after details;
   build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h

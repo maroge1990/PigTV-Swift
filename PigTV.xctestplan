@@ -1,0 +1,29 @@
+{
+  "configurations": [
+    {
+      "id": "7C3E2A10-4F51-4B0E-9D6A-35B1E0C1A001",
+      "name": "Test Scheme Action",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:PigTV.xcodeproj",
+        "identifier": "B2FE99F73056B8D20018450A",
+        "name": "PigTVTests"
+      }
+    },
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:PigTV.xcodeproj",
+        "identifier": "B2FE9A013056B8D20018450A",
+        "name": "PigTVUITests"
+      }
+    }
+  ],
+  "version": 1
+}
