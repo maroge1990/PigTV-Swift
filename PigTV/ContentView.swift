@@ -8,6 +8,8 @@ struct ContentView: View {
     /// sign-in at once. #342: when it shows, it plays its whole sequence and hands over to Home (`SplashHandoff`).
     @State private var initialRestoreFinished: Bool
     @State private var splash: SplashHandoff
+    /// Links that arrive while the scene is not active (or its background clean-up still runs) wait (`LinkGate`).
+    @State private var links = LinkGate()
 
     init() {
         let step = LaunchStep.current()
@@ -100,7 +102,17 @@ struct ContentView: View {
             initialRestoreFinished = true
             splash.restoreFinished()
         }
-        .onChange(of: scenePhase) { _, phase in AppRootCover.sceneChanged(to: phase, model: model) }
+        .onChange(of: scenePhase, initial: true) { old, phase in
+            // The first call only tells the link gate the phase (the scene was not just changed).
+            if old != phase, let cleanup = AppRootCover.sceneChanged(to: phase, model: model) {
+                links.cleanupStarted()
+                Task { @MainActor in
+                    await cleanup.value
+                    for url in links.cleanupFinished() { model.open(url) }
+                }
+            }
+            for url in links.sceneChanged(active: phase == .active) { model.open(url) }
+        }
         // #46, #216: while active and signed in, the guide is kept current and the Top Shelf exported, now and every
         // minute, whichever tab shows (returning to the foreground restarts it, so a stale guide is fixed at once).
         .task(id: scenePhase == .active ? model.browse.map(ObjectIdentifier.init) : nil) {
@@ -111,8 +123,9 @@ struct ContentView: View {
             // only, so opening the player restarts nothing.
             await AppRootCover.keepFresh(browse, model: model)
         }
-        // A4.1: Top Shelf items open pigtv://play.
-        .onOpenURL { model.open($0) }
+        // A4.1: Top Shelf items open pigtv://play: at once while the scene is active; one that arrives before it is active
+        // waits for it and for the trip to the background's clean-up, which would otherwise cancel it (LinkGate).
+        .onOpenURL { url in if links.arrived(url) { model.open(url) } }
         .alert("PigTV", isPresented: Binding(
             // Not while the player is up: an alert under a full-screen cover can't take
             // the tvOS focus, so it could not be dismissed. It shows once the player closes.
@@ -709,16 +722,19 @@ struct AppRootCover: ViewModifier {
             .environment(\.pigRecordingPlayerCover, { [weak model] up in model?.recordingPlayer(presented: up) })
     }
 
-    /// The scene phase changed. `exportOnBackground` is the Top Shelf's background export (tests count it).
+    /// The scene phase changed. `exportOnBackground` is the Top Shelf's background export (tests count it). Returns the
+    /// background clean-up (`AppModel.background()`) when the scene went to the background, so links wait for it.
+    @discardableResult
     static func sceneChanged(to phase: ScenePhase, model: AppModel,
-                             exportOnBackground: (BrowseModel) -> Void = { AppFreshness.exportOnBackground($0) }) {
+                             exportOnBackground: (BrowseModel) -> Void = { AppFreshness.exportOnBackground($0) }) -> Task<Void, Never>? {
         model.warmer.setActive(phase == .active) // R11: any other phase cancels warming
         model.playback?.sceneActive = phase == .active // #239: the conflict poll rests while the app is not active
         if phase == .background {
             model.presenter.commitPendingUndo() // #49: an action waiting on its Undo is done before the app is suspended
             if let browse = model.browse { exportOnBackground(browse) } // #301: no pass wrote it while a player was up
-            Task { await model.background() }
+            return Task { await model.background() }
         }
+        return nil
     }
 
     /// #46, #216, #278: the minute pass while active, resting while any player covers the pages. `sleep` and `pass`
