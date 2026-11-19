@@ -4,8 +4,8 @@ import Combine
 
 // Codex sign-off of #347 (medium): the card still listed a cancellation the cached list had already dropped. The page
 // waits for a list read after it opened; an identical answer moved only an unpublished field, so the open page was not
-// told and kept a disabled Cancelling… through later polls. The accepted read's time is now published. (Fails on the
-// commit before: the identical second answer published nothing.)
+// told and kept a disabled Cancelling… through later polls. While such a page is open every accepted read is published
+// (and only then: a quiet refresh still publishes nothing, ObservationTests). (Fails to compile on 627b21b's parent.)
 @MainActor
 final class ScheduleReadRevisionTests: XCTestCase {
     func testAnIdenticalAcceptedReadStillTellsTheOpenPage() async throws {
@@ -24,6 +24,7 @@ final class ScheduleReadRevisionTests: XCTestCase {
         var request = try XCTUnwrap(browse.recordRequest(event: event, card: "espn:afl:B"))
         request.serverCancelling = [.init(scheduleId: 5, start: Double(start), end: Double(start + 7 * hour))]
         XCTAssertTrue(browse.cancellingEarlier(request, airing: request.airings[0]), "Cancelling… from the card")
+        browse.recordingStore.readWaiters += 1 // the page is open (RecordPage.onAppear)
         var told = 0
         let watching = browse.recordingStore.objectWillChange.sink { told += 1 }
         defer { watching.cancel() }

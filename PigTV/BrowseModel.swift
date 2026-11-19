@@ -528,7 +528,7 @@ final class BrowseModel: ObservableObject {
                 let stones = recordingStore.tombstones
                 let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
                 if planned != schedules { schedules = planned }
-                recordingStore.schedulesAskedAt = read.askedAt
+                noteScheduleRead(read.askedAt)
                 // A removal with no answer is settled by a list asked for after it: the row there (it stands) or not
                 // (gone). A row still listed "cancelling" keeps it in progress (#347), so its own reads go on until the
                 // server has finished (Codex check of 320: a refresh then ended them, and the row stayed "cancelling").
@@ -789,6 +789,12 @@ final class BrowseModel: ObservableObject {
                               before: before, after: after, gameId: request.gameId, context: (request, airing))
     }
 
+    /// An accepted scheduled-list read: when it was asked for, and an open record page waiting on one is told.
+    private func noteScheduleRead(_ askedAt: Date) {
+        recordingStore.schedulesAskedAt = askedAt
+        if recordingStore.readWaiters > 0 { recordingStore.readsSeen += 1 }
+    }
+
     /// One read of the scheduled list now, published when it is the newest: true when it answered.
     func readSchedulesNow() async -> Bool {
         guard let read = try? await readSchedules() else { return false }
@@ -796,7 +802,7 @@ final class BrowseModel: ObservableObject {
             let stones = recordingStore.tombstones
             let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
             if planned != schedules { schedules = planned }
-            recordingStore.schedulesAskedAt = read.askedAt
+            noteScheduleRead(read.askedAt)
         }
         return true
     }
@@ -1030,7 +1036,7 @@ final class BrowseModel: ObservableObject {
             let stones = recordingStore.tombstones
             let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
             if planned != schedules { schedules = planned }
-            recordingStore.schedulesAskedAt = read.askedAt
+            noteScheduleRead(read.askedAt)
             if read.cancelling.contains(key) { continue } // still being cancelled
             recordingStore.uncertainRemovals[key] = nil
             return

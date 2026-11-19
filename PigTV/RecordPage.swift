@@ -506,6 +506,10 @@ struct RecordPage: View {
         .accessibilityIdentifier("record.page")
         // Codex 5a round 1: once it records, Start early shows (and keeps) the schedule's own value, never an edit that
         // the server would refuse; the list is refreshed while Change recording is open.
+        // Codex sign-off of #347: a card listing cancellations waits for a newer scheduled-list read; while open, every
+        // accepted read is published to it, even one with the same rows.
+        .onAppear { if opened.serverCancelling != nil { store.readWaiters += 1 } }
+        .onDisappear { if opened.serverCancelling != nil { store.readWaiters = max(0, store.readWaiters - 1) } }
         .onChange(of: live?.status) { _, status in
             if status == "recording" { before = live?.startEarly }
         }
