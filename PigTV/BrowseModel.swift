@@ -419,6 +419,7 @@ final class BrowseModel: ObservableObject {
     /// `task`, the whole load (with `/recordings/scheduled`).
     private struct RecordingsLoad {
         let id: UUID
+        let began: Date
         let files: Task<Error?, Never>
         let task: Task<Void, Never>
     }
@@ -469,6 +470,14 @@ final class BrowseModel: ObservableObject {
         await beginRecordingsLoad(quietly: quietly).task.value
     }
 
+    /// After a write (a schedule made, changed or cancelled): a load whose reads began after `write`. A load in flight
+    /// that began before it is waited out, never joined: its scheduled list may have been read before the write (Codex
+    /// sign-off of #347: the new schedule was then missing from the list `schedule()` returned with).
+    func loadRecordings(startedAfter write: Date) async {
+        while let inFlight = recordingsInFlight, inFlight.began < write { await inFlight.task.value }
+        await beginRecordingsLoad(quietly: false).task.value
+    }
+
     /// The load in flight, else a new one: its `/recordings` answer is published as soon as it arrives (#345), then the
     /// scheduled list is asked for.
     private func beginRecordingsLoad(quietly: Bool) -> RecordingsLoad {
@@ -483,7 +492,7 @@ final class BrowseModel: ObservableObject {
             await self.fetchRecordings(quietly: quietly, began: began, files: files)
             if self.recordingsInFlight?.id == id { self.recordingsInFlight = nil }
         }
-        let load = RecordingsLoad(id: id, files: files, task: task)
+        let load = RecordingsLoad(id: id, began: began, files: files, task: task)
         recordingsInFlight = load
         return load
     }
@@ -717,7 +726,7 @@ final class BrowseModel: ObservableObject {
                     channelName: channel.name, channelLogo: channel.logo, title: programme.title,
                     description: programme.description, programStart: programme.startTime,
                     programEnd: programme.endTime, preBufferMin: before, postBufferMin: after, gameId: gameId))
-            await loadRecordings()
+            await loadRecordings(startedAfter: Date())
             // #329: the game was already set to record (perhaps on another channel): that one stands, nothing new.
             if let already = made.alreadyScheduledText {
                 scheduleAlready = already
@@ -749,7 +758,7 @@ final class BrowseModel: ObservableObject {
                 throw PigTVError.message("The server still lists this recording as active. Refresh, then try again.")
             }
             actionMessage = "Schedule cancelled or recording stopped."
-            await loadRecordings()
+            await loadRecordings(startedAfter: Date())
         } catch { actionError = Self.actionText(PageWords.cancelFailed, error) }
     }
 
@@ -768,7 +777,7 @@ final class BrowseModel: ObservableObject {
         do {
             let _: ScheduledRecording = try await client.request("recordings/scheduled/\(item.id)", method: "PUT", body: change)
             actionMessage = "Recording changed."
-            await loadRecordings()
+            await loadRecordings(startedAfter: Date())
             return true
         } catch PigTVError.http(405) {
             actionError = Self.cannotChangeText
