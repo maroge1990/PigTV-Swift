@@ -101,10 +101,10 @@ final class SportRecordFlow: ObservableObject {
               let first = request.airings.first else { return }
         switch item {
         case .recordThis:
+            // #357 (Codex review of 359-360): through the record page's own press, so the scheduled list is read at the
+            // press (a superseded read once more), and nothing is sent without a usable answer.
             Task {
-                guard await browse.schedule(channel: first.channel, programme: first.programme, guideEnd: first.guideEnd,
-                                            before: nil, after: nil,
-                                            gameId: request.gameId, context: (request, first)) else {
+                guard await browse.record(request, airing: first, before: nil, after: nil) else {
                     app.record(event, game: game, error: browse.actionError ?? "The recording could not be scheduled.", card: card)
                     return
                 }
