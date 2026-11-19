@@ -755,16 +755,19 @@ final class BrowseModel: ObservableObject {
         } catch PigTVError.scheduleRefused(let code, let refusedBy) {
             // The server's refusal (0876+): the lists are read again, so the page shows why (Cancelling…, or the slot's
             // own schedule), and nothing was made.
-            // #347 finding 2 (Codex sign-off, medium): a "cancelling" refusal names the schedule being cancelled. It is
-            // in progress at once, as a cancellation with no answer is (Cancelling… on the page whatever the reload
-            // below does, which stops at a failed `/recordings` before reading the scheduled list), and its own
-            // scheduled-list reads go on until one shows it no longer "cancelling" (`reconcileLostRemoval`).
+            // #347 finding 2 (Codex sign-off, medium): a "cancelling" refusal names the schedule being cancelled. The
+            // airing tried waits at once (Cancelling… on the page whatever the reload below does, which stops at a failed
+            // `/recordings` before reading the scheduled list), tied to the airing as well as the schedule, so it waits
+            // even when the list on show has no such row (#357, Codex review of 359-360: one made and cancelled on another
+            // device since the press read). Its own scheduled-list reads go on until an accepted read asked for after the
+            // refusal shows that schedule not "cancelling", or gone (`publishSchedules`, `reconcileLostRemoval`).
             if code == "cancelling", let refusedBy {
                 let key = PendingRemoval.key(.cancelSchedule, refusedBy)
-                if recordingStore.uncertainRemovals[key] == nil {
-                    recordingStore.uncertainRemovals[key] = Date()
-                    startReconciling(key)
-                }
+                recordingStore.refusedAirings[key] = RefusedAiring(
+                    scheduleId: refusedBy, gameId: gameId, sourceId: channel.sourceId, rawID: channel.rawID,
+                    stableId: channel.stableId, channelName: channel.name, start: programme.startTime,
+                    end: guideEnd ?? programme.endTime, since: Date())
+                startReconciling(key)
             }
             await loadRecordings(startedAfter: Date())
             actionError = code == "cancelling" ? PageWords.cancellingEarlierText : PageWords.slotTakenText
@@ -834,6 +837,8 @@ final class BrowseModel: ObservableObject {
         noteScheduleRead(read.askedAt)
         let unsure = recordingStore.uncertainRemovals.filter { $0.value >= read.askedAt || read.cancelling.contains($0.key) }
         if unsure.count != recordingStore.uncertainRemovals.count { recordingStore.uncertainRemovals = unsure }
+        let refused = recordingStore.refusedAirings.filter { $0.value.since >= read.askedAt || read.cancelling.contains($0.key) }
+        if refused.count != recordingStore.refusedAirings.count { recordingStore.refusedAirings = refused }
     }
 
     func cancel(_ item: ScheduledRecording) async {
@@ -969,9 +974,13 @@ final class BrowseModel: ObservableObject {
     /// Both sides are compared by guide bounds (C-R #353): `start`/`end` the airing's guide slot, a schedule's its guide
     /// end (`guideEnd`), never a rolled end, so the programme after an overrunning game is not the game's.
     /// `slots`: a sport request's airings, which resolve a schedule to its own slot first (`scheduleGuideEnd`).
+    /// A Record the server refused 409 "cancelling" (#357) waits too, by the airing it tried, whatever the list on show.
     func cancellingEarlier(gameId: String?, channel: GuideChannel, start: Double, end: Double,
                            onlyHere: Bool = false, slots: [RecordRequest.Airing] = []) -> Bool {
-        schedules.contains { schedule in
+        if recordingStore.refusedAirings.values.contains(where: { $0.covers(gameId: gameId, channel: channel, start: start, end: end) }) {
+            return true
+        }
+        return schedules.contains { schedule in
             schedule.program_start < end
                 && ((gameId != nil && schedule.game == gameId) || Self.sameChannel(schedule, channel))
                 && (onlyHere ? cancellingHere(schedule) : cancellationInProgress(schedule))
@@ -1077,9 +1086,22 @@ final class BrowseModel: ObservableObject {
         return worker
     }
 
+    /// What keeps a cancellation in progress: no answer to it (`uncertainRemovals`), or a Record refused for it
+    /// (`refusedAirings`), each with when.
+    private struct CancellationMark: Equatable {
+        let uncertain: Date?
+        let refused: Date?
+        var isSet: Bool { uncertain != nil || refused != nil }
+    }
+
+    private func cancellationMark(_ key: String) -> CancellationMark {
+        CancellationMark(uncertain: recordingStore.uncertainRemovals[key], refused: recordingStore.refusedAirings[key]?.since)
+    }
+
     private func reconcileLostRemoval(_ key: String) async {
         // This attempt's uncertainty: a refresh that answered it, or a later attempt at the same item, ends these reads.
-        guard let uncertainSince = recordingStore.uncertainRemovals[key] else { return }
+        let uncertainSince = cancellationMark(key)
+        guard uncertainSince.isSet else { return }
         var attempt = 0
         while true {
             // Cancelled (signed out, switched account, or replaced): no more reads, and nothing it has read is published.
@@ -1087,17 +1109,17 @@ final class BrowseModel: ObservableObject {
             attempt += 1
             if wait > .zero { do { try await Task.sleep(for: wait) } catch { return } }
             guard !Task.isCancelled else { return }
-            guard recordingStore.uncertainRemovals[key] == uncertainSince else { return } // a refresh after it has answered
+            guard cancellationMark(key) == uncertainSince else { return } // a refresh after it has answered
             guard let read = try? await readSchedules() else { continue }
             guard !Task.isCancelled else { return }
             // Codex check of 320 (high): checked again after the answer, which can arrive after a newer list (a refresh,
             // a new schedule or cancel) has been published: then it is older than what is shown and decides nothing.
             // Its owner is checked before its ticket (Codex sign-off of #347, medium): an answer this attempt no longer
             // owns is dropped without taking the watermark, which would have refused a valid older-ticket answer.
-            guard recordingStore.uncertainRemovals[key] == uncertainSince else { return }
+            guard cancellationMark(key) == uncertainSince else { return }
             guard scheduleTickets.publish(read.ticket) else { continue }
             publishSchedules(read) // settles it unless the server still lists it "cancelling"
-            if recordingStore.uncertainRemovals[key] != uncertainSince { return }
+            if cancellationMark(key) != uncertainSince { return }
         }
     }
 

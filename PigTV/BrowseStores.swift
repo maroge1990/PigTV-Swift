@@ -98,9 +98,37 @@ final class RecordingsStore: ObservableObject {
     var tombstones: [String: Date] = [:]
     /// Removals whose answer never came (a transport error or a timeout), by key, with when: the server may or may not
     /// have done them, so they stay in progress until a scheduled-list refresh that began after then has answered
-    /// (Mark, 19 Nov 2026: nothing races a cancellation in progress). Also a schedule a Record was refused for with 409
-    /// "cancelling" (#347 finding 2): in progress at once, until a scheduled-list read no longer lists it "cancelling".
+    /// (Mark, 19 Nov 2026: nothing races a cancellation in progress).
     @Published var uncertainRemovals: [String: Date] = [:]
+    /// #357 (Codex review of 359-360): Records the server refused 409 "cancelling", by the cancellation key of the
+    /// schedule it named, with the airing tried: that airing waits (Cancelling…) until an accepted scheduled-list read
+    /// asked for after the refusal lists the schedule not "cancelling", or not at all, whether or not the list on show
+    /// has its row.
+    @Published var refusedAirings: [String: RefusedAiring] = [:]
+}
+
+/// A Record refused 409 "cancelling" (#357): the schedule the server named, the airing tried (its game, channel identity
+/// and guide bounds) and when.
+nonisolated struct RefusedAiring: Equatable, Sendable {
+    let scheduleId: Int
+    let gameId: String?
+    let sourceId: Int
+    let rawID: String
+    let stableId: String?
+    let channelName: String
+    let start: Double
+    let end: Double
+    let since: Date
+
+    /// An airing that overlaps this one and is the same game or on the same channel (by identity, as
+    /// `BrowseModel.sameChannel`) waits with it.
+    func covers(gameId: String?, channel: GuideChannel, start: Double, end: Double) -> Bool {
+        guard start < self.end, self.start < end else { return false }
+        if let gameId, gameId == self.gameId { return true }
+        guard channel.sourceId == sourceId else { return false }
+        if let stable = stableId, !stable.isEmpty, let mine = channel.stableId, !mine.isEmpty { return stable == mine }
+        return channel.rawID == rawID
+    }
 }
 
 /// Favourites. Nothing draws the load's busy state, so it is a plain property: a load that finds nothing new publishes
