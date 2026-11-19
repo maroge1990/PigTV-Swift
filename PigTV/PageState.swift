@@ -102,6 +102,13 @@ nonisolated enum PageState: Equatable, Sendable {
     /// paging that is running now (`BrowseModel.guidePagingActive`), not the retry cursor: paging stopped on a failure
     /// with no rows is the stale empty state, with its Try again, not blank content.
     /// `favouritesPending`: the Favourites chip is chosen and the favourites' first answer (or failure) has not come.
+    /// #355: the Favourites chip's page carries the favourites' own outcome. With none to show because their request
+    /// failed, it is that failure (with Try again), never "No favourites", which is only for a successful empty answer.
+    static func guideChip(_ drawn: PageState, favouritesChip: Bool, favouritesEmpty: Bool, favouritesFailed: Bool) -> PageState {
+        guard favouritesChip, favouritesEmpty, favouritesFailed, drawn != .loading else { return drawn }
+        return .failed(PageWords.favouritesFailed)
+    }
+
     static func guideSplashReady(_ drawn: PageState, rowsEmpty: Bool, favouritesPending: Bool = false) -> Bool {
         if favouritesPending { return false }
         switch drawn {
@@ -242,6 +249,10 @@ nonisolated enum PageWords {
     static let guideFailed = PageFailure(reason: .couldNotLoad, title: "The TV Guide didn’t load",
                                          message: "PigTV couldn’t get the programme times from your server.",
                                          stillWorks: "Sport and your recordings still work.")
+    /// #355: the Favourites chip when the favourites' request failed (Try again asks again).
+    static let favouritesFailed = PageFailure(reason: .couldNotLoad, title: "Your favourites didn’t load",
+                                              message: "PigTV couldn’t get your favourite channels from your server.",
+                                              stillWorks: "Show all channels still works.")
     /// The guide's answer had no channels at all: nothing in the app adds one, so there is no button.
     static let noChannelsTitle = "No channels yet"
     static let noChannelsText = "Channels appear once a provider has been added in PigTV on the web."

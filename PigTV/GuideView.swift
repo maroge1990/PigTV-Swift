@@ -185,6 +185,9 @@ struct GuideView: View {
                                 // D-44 (Apple 106): the slim focus strip, then the chips and the tools, above the grid.
                                 if !compact { focusStrip.padding(.horizontal, PigSpacing.l) }
                                 filters(compact: compact)
+                            } else if state.failure == PageWords.favouritesFailed {
+                                // #355: only the favourites failed: the chips stay, so another chip shows the channels.
+                                filters(compact: compact)
                             }
                         }
                     }
@@ -194,7 +197,9 @@ struct GuideView: View {
                     if let failure = state.failure {
                         // #280 (R1): retried by the app's next freshness pass (its countdown), or now.
                         ScrollView {
-                            PigErrorState(failure: failure, retry: { await model.retryGuide() }, identifier: "guide.error",
+                            PigErrorState(failure: failure, retry: {
+                                if failure == PageWords.favouritesFailed { await model.loadFavourites() } else { await model.retryGuide() }
+                            }, identifier: "guide.error",
                                           schedule: guideStore.schedule)
                                 .pigStateFillsPage()
                         }
@@ -321,7 +326,10 @@ struct GuideView: View {
     private var pageState: PageState {
         // #342 (Codex sign-off of 325): the paging running now, not the retry cursor: paging stopped on a failure with no
         // rows for the chip is the stale empty state (with Try again), not blank content.
-        PageState.guideRows(model.guideState, rowsEmpty: rows.isEmpty, paging: model.guidePagingActive)
+        // #355: the Favourites chip with no favourites because their request failed shows that failure, not "No favourites".
+        PageState.guideChip(PageState.guideRows(model.guideState, rowsEmpty: rows.isEmpty, paging: model.guidePagingActive),
+                            favouritesChip: filter == "favourites", favouritesEmpty: model.favourites.isEmpty,
+                            favouritesFailed: library.favouritesError != nil)
     }
 
     /// #280 (R1): channels on screen whose refresh (or a later page) failed: they stay, with the slim notice.

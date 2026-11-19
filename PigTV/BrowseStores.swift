@@ -94,16 +94,15 @@ final class RecordingsStore: ObservableObject {
     @Published var uncertainRemovals: [String: Date] = [:]
 }
 
-/// Favourites. Nothing draws the load's busy or error
-/// state, so those are plain properties: a load that finds nothing new
-/// publishes nothing.
+/// Favourites. Nothing draws the load's busy state, so it is a plain property: a load that finds nothing new publishes
+/// nothing. The error is published: the Guide's Favourites chip shows it (#355).
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published var favourites: [Channel] = []
     /// The favourites' first answer (or failure) has come (#342: the Guide's Favourites chip waits for it).
     @Published var favouritesAnswered = false
     var favouritesBusy = false
-    var favouritesError: String?
+    @Published var favouritesError: String?
 }
 
 /// Which programmes are scheduled and which channels are recording now,
