@@ -322,9 +322,11 @@ extension BrowseModel {
         let sides = recordSides(title: event.title, league: event.league, game: game, team: team)
         // A schedule whose cancellation is in progress is never bound as Change recording (the page waits with
         // Cancelling… until its outcome is known, Mark, 19 Nov 2026).
-        let bound = RecordPlan.bind(schedules: airings.map { bindableSchedule(channel: $0.channel, programme: $0.programme) },
+        // The card's game binds first (Codex review of #347, high): a row naming another game is never this one's.
+        let gameId = game?.id ?? card
+        let bound = RecordPlan.bind(schedules: airings.map { bindableSchedule(channel: $0.channel, programme: $0.programme, gameId: gameId) },
                                     channels: airings.map(\.channel.id), preferred: preferredChannel)
-        var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: game?.id ?? card,
+        var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: gameId,
                                     teams: sides.teams, followedTeam: sides.followed, followedTeams: sides.followedTeams,
                                     sport: sportFront.front?.sports.first { $0.league == event.league }?.sport, isGame: true,
                                     schedule: bound.schedule)

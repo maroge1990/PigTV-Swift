@@ -350,14 +350,19 @@ extension BrowseModel {
     /// matched by name only (no item or stable id: an older server) is bound only when nothing else could be meant: it is
     /// the only such row, the guide's whole channel list has loaded (Codex sign-off of #347, high: while it still pages, a
     /// channel of the same name on a later page is not known yet), and no other guide channel has that name.
-    func activeSchedule(channel: GuideChannel, programme: GuideProgramme) -> ScheduledRecording? {
+    /// `gameId` (Codex review of #347, high): the sport request's game. A row that names another game is never this
+    /// one's (the guide may have put game B in the slot game A's schedule was made for); a row naming this game comes
+    /// first; a row naming none binds by the guarded channel-and-start rule.
+    func activeSchedule(channel: GuideChannel, programme: GuideProgramme, gameId: String? = nil) -> ScheduledRecording? {
         let start = Int64(programme.startTime)
         // A row whose cancellation the server has confirmed (tombstoned) is gone, though the list it is still in has not
         // been read again yet: it is never bound (Change recording would edit what no longer exists).
         let matches = schedules.filter {
             $0.isActive && Int64($0.program_start) == start && Self.sameChannel($0, channel)
                 && recordingStore.tombstones[PendingRemoval.key(.cancelSchedule, $0.id)] == nil
+                && !(gameId != nil && $0.game != nil && $0.game != gameId)
         }
+        if let gameId, let named = matches.first(where: { $0.game == gameId }) { return named }
         if let identified = matches.first(where: { Self.identifiesChannel($0, channel) }) { return identified }
         guard matches.count == 1, let byName = matches.first, guideChannelsComplete else { return nil }
         let namesake = guide.contains { other in
@@ -384,13 +389,13 @@ extension BrowseModel {
     /// A record page's bound schedule is still the one its airings bind to now (Codex sign-off of #347, high): checked
     /// again before Save changes or Cancel recording, so a binding made on a partial or since-changed guide is never acted on.
     func stillBinds(_ schedule: ScheduledRecording, _ request: RecordRequest) -> Bool {
-        request.airings.contains { activeSchedule(channel: $0.channel, programme: $0.programme)?.id == schedule.id }
+        request.airings.contains { activeSchedule(channel: $0.channel, programme: $0.programme, gameId: request.gameId)?.id == schedule.id }
     }
 
     /// The active schedule a sport record request binds to (Change recording): never one whose cancellation is in
     /// progress (`cancellationInProgress`; its page shows Cancelling… instead, Mark, 19 Nov 2026).
-    func bindableSchedule(channel: GuideChannel, programme: GuideProgramme) -> ScheduledRecording? {
-        activeSchedule(channel: channel, programme: programme).flatMap { cancellationInProgress($0) ? nil : $0 }
+    func bindableSchedule(channel: GuideChannel, programme: GuideProgramme, gameId: String? = nil) -> ScheduledRecording? {
+        activeSchedule(channel: channel, programme: programme, gameId: gameId).flatMap { cancellationInProgress($0) ? nil : $0 }
     }
 
     /// Programme details' recording action: Change recording of its schedule, Record while it has not ended, nothing
