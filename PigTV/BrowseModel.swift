@@ -584,17 +584,21 @@ final class BrowseModel: ObservableObject {
         guard !favouritesBusy else { return }
         lastLoads["favourites"] = Date()
         favouritesBusy = true
-        if favouritesError != nil { favouritesError = nil }
+        // Codex sign-off of #347: a failure stays until a request succeeds. Cleared as a retry started, the Guide's
+        // Favourites chip fell back to "No favourites" (and lost its Try again) while it waited, and for good when the
+        // retry was cancelled.
         defer { favouritesBusy = false }
         do {
             let loaded: [Channel] = try await client.request("library/favourites")
             if loaded != favourites { favourites = loaded }
+            if favouritesError != nil { favouritesError = nil }
             if !library.favouritesAnswered { library.favouritesAnswered = true }
             exportTopShelf()
         }
         catch {
+            guard !UserMessage.isCancellation(error) else { return } // cancelled: what was shown stays
             favouritesError = UserMessage.text(for: error)
-            if !UserMessage.isCancellation(error), !library.favouritesAnswered { library.favouritesAnswered = true }
+            if !library.favouritesAnswered { library.favouritesAnswered = true }
         }
     }
 
