@@ -80,6 +80,9 @@ final class BrowseModel: ObservableObject {
     /// and drop any save still in flight.
     func retirePrivateCaches() {
         guideCache.retire()
+        // #357 (Codex review of 359-360): an old session's scheduled-list reads stop with it (never sent on its token).
+        for worker in reconcilers.values { worker.cancel() }
+        reconcilers.removeAll()
         // A2: and its Top Shelf publication: nothing it still exports is written.
         if topShelfGeneration == TopShelfPublication.shared.current { TopShelfPublication.shared.retire() }
     }
@@ -770,7 +773,7 @@ final class BrowseModel: ObservableObject {
                 let key = PendingRemoval.key(.cancelSchedule, refusedBy)
                 if recordingStore.uncertainRemovals[key] == nil {
                     recordingStore.uncertainRemovals[key] = Date()
-                    Task { await self.reconcileLostRemoval(key, id: refusedBy) }
+                    startReconciling(key)
                 }
             }
             await loadRecordings(startedAfter: Date())
@@ -1045,13 +1048,33 @@ final class BrowseModel: ObservableObject {
     var reconcileRetry: Duration = .seconds(5)
     var reconcileTries = 24
 
-    private func reconcileLostRemoval(_ key: String, id: Int) async {
+    /// The reads settling each unresolved cancellation, by its key (#357, Codex review of 359-360): one worker per
+    /// schedule (a new one replaces it), all cancelled when the session is retired (`retirePrivateCaches`).
+    private var reconcilers: [String: Task<Void, Never>] = [:]
+
+    /// Starts the reads that settle `key` (replacing any still running for it); the task ends when they do.
+    @discardableResult
+    private func startReconciling(_ key: String) -> Task<Void, Never> {
+        reconcilers[key]?.cancel()
+        let worker = Task { [weak self] in
+            await self?.reconcileLostRemoval(key)
+            // Only a worker nobody replaced or retired is still listed (each one replaced or retired was cancelled).
+            if !Task.isCancelled { self?.reconcilers[key] = nil }
+        }
+        reconcilers[key] = worker
+        return worker
+    }
+
+    private func reconcileLostRemoval(_ key: String) async {
         // This attempt's uncertainty: a refresh that answered it, or a later attempt at the same item, ends these reads.
         guard let uncertainSince = recordingStore.uncertainRemovals[key] else { return }
         for attempt in 0..<reconcileTries {
-            if attempt > 0 { try? await Task.sleep(for: reconcileRetry) }
+            // Cancelled (signed out, switched account, or replaced): no more reads, and nothing it has read is published.
+            if attempt > 0 { do { try await Task.sleep(for: reconcileRetry) } catch { return } }
+            guard !Task.isCancelled else { return }
             guard recordingStore.uncertainRemovals[key] == uncertainSince else { return } // a refresh after it has answered
             guard let read = try? await readSchedules() else { continue }
+            guard !Task.isCancelled else { return }
             // Codex check of 320 (high): checked again after the answer, which can arrive after a newer list (a refresh,
             // a new schedule or cancel) has been published: then it is older than what is shown and decides nothing.
             // Its owner is checked before its ticket (Codex sign-off of #347, medium): an answer this attempt no longer
@@ -1111,7 +1134,7 @@ final class BrowseModel: ObservableObject {
                 // No answer: still in progress until the schedules, read again at once, say whether it is there.
                 if case .unknown = outcome { self.recordingStore.uncertainRemovals[key] = Date() }
                 self.recordingStore.pendingRemovals.remove(key)
-                if case .unknown = outcome { await self.reconcileLostRemoval(key, id: id) }
+                if case .unknown = outcome { await self.startReconciling(key).value }
             }
         }
     }
