@@ -528,6 +528,7 @@ final class BrowseModel: ObservableObject {
                 let stones = recordingStore.tombstones
                 let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
                 if planned != schedules { schedules = planned }
+                recordingStore.schedulesAskedAt = read.askedAt
                 // A removal with no answer is settled by a list asked for after it: the row there (it stands) or not
                 // (gone). A row still listed "cancelling" keeps it in progress (#347), so its own reads go on until the
                 // server has finished (Codex check of 320: a refresh then ended them, and the row stayed "cancelling").
@@ -932,7 +933,17 @@ final class BrowseModel: ObservableObject {
     /// server, or nothing being cancelled) the client's own inference decides.
     func cancellingEarlier(_ request: RecordRequest, airing: RecordRequest.Airing) -> Bool {
         let bounds = airing.guideBounds
-        guard let entries = request.serverCancelling else {
+        guard var entries = request.serverCancelling else {
+            return cancellingEarlier(gameId: request.gameId, channel: airing.channel, start: bounds.start, end: bounds.end,
+                                     slots: request.airings)
+        }
+        // Codex review of #347: the card's list is as old as the card. A scheduled list asked for after the request was
+        // built decides instead: an entry stands only while that list still has its schedule "cancelling", and a
+        // cancellation that list shows (another device's, on another airing) counts too. The open page follows it.
+        if let asked = recordingStore.schedulesAskedAt, asked > request.builtAt {
+            let cancelling = Set(schedules.filter(\.isCancelling).map(\.id))
+            entries = entries.filter { cancelling.contains($0.scheduleId) }
+            if entries.contains(where: { $0.start < bounds.end && $0.end > bounds.start }) { return true }
             return cancellingEarlier(gameId: request.gameId, channel: airing.channel, start: bounds.start, end: bounds.end,
                                      slots: request.airings)
         }
@@ -969,6 +980,7 @@ final class BrowseModel: ObservableObject {
             let stones = recordingStore.tombstones
             let planned = read.list.filter { stones[RecordingsHome.key($0)] == nil }
             if planned != schedules { schedules = planned }
+            recordingStore.schedulesAskedAt = read.askedAt
             if read.cancelling.contains(key) { continue } // still being cancelled
             recordingStore.uncertainRemovals[key] = nil
             return
@@ -981,12 +993,13 @@ final class BrowseModel: ObservableObject {
     /// newer list (after a schedule or a cancel) no longer has. `cancelling`: the cancellation keys of the rows listed
     /// "cancelling" (#347). The read only takes its ticket; whoever publishes the answer advances the watermark
     /// (`ScheduleTickets.publish`), after checking it still owns the answer (Codex sign-off of #347).
-    private func readSchedules() async throws -> (list: [ScheduledRecording], ticket: Int, cancelling: Set<String>) {
+    private func readSchedules() async throws -> (list: [ScheduledRecording], ticket: Int, cancelling: Set<String>, askedAt: Date) {
         let ticket = scheduleTickets.ask()
+        let askedAt = Date()
         let fetched: [ScheduledRecording] = try await client.decodedOffMain(
             "recordings/scheduled", query: [URLQueryItem(name: "include", value: "recent")])
         let cancelling = Set(fetched.filter(\.isCancelling).map { PendingRemoval.key(.cancelSchedule, $0.id) })
-        return (fetched, ticket, cancelling)
+        return (fetched, ticket, cancelling, askedAt)
     }
 
     /// The scheduled-list reads asked for, and the last one published (`readSchedules`).

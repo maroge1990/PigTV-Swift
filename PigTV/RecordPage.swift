@@ -60,6 +60,8 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
     /// C-R #353: the card's `recordingCancelling` (its game's schedules being cancelled, with their guide slots); nil when
     /// the card has none or the server is older (then the client's own inference decides Cancelling…).
     var serverCancelling: [SportsGame.CancellingSlot]? = nil
+    /// When the request was built (its card's `recordingCancelling` is that old, or older).
+    var builtAt = Date()
     /// Shown on opening (a quick Record from a menu that failed).
     var error: String? = nil
     /// The channel to start on (a channel row's "Record on <channel>"), by its id; else the best.
@@ -969,6 +971,8 @@ struct RecordPage: View {
             return
         }
         guard let airing else { return }
+        // Codex review of #347: the same current per-airing check as the page's Cancelling…, at the press.
+        if model.cancellingEarlier(request, airing: airing) { error = PageWords.cancellingEarlierText; return }
         if await model.schedule(channel: airing.channel, programme: airing.programme, guideEnd: airing.guideEnd,
                                 before: before, after: after,
                                 gameId: request.gameId) {
