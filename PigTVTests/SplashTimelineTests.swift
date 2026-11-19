@@ -189,6 +189,17 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertEqual(tabs.transform, .identity, "the fallback puts the tabs back, no glide")
     }
 
+    /// Codex sign-off of #347 (medium): a resize near the landing started the fallback's 0.8 s fade, but the splash still
+    /// went (and the header's mark showed) at the fixed 1.2 s, cutting the fade to a frame or two: a visible jump. The
+    /// splash now goes once the fallback fade has run. (No landsAt: fails to compile on the commit before.)
+    func testAResizeJustBeforeTheLandingLetsTheFallbackFadeFinish() {
+        XCTAssertEqual(SplashTimeline.landsAt(fallbackStartedAt: nil), SplashTimeline.handoff, accuracy: 1e-9, "no resize: at 1.2 s")
+        XCTAssertEqual(SplashTimeline.landsAt(fallbackStartedAt: 0.1), SplashTimeline.handoff, accuracy: 1e-9,
+                       "an early resize's fade ends before the landing")
+        XCTAssertEqual(SplashTimeline.landsAt(fallbackStartedAt: 1.15), 1.15 + SplashTimeline.reveal, accuracy: 1e-9,
+                       "a resize 50 ms before the landing: the splash goes when its fade has run (1.95 s)")
+    }
+
     func testTheFlightNeedsMotionAndAHeaderPig() {
         XCTAssertEqual(SplashTimeline.handoff(reduceMotion: false, hasTarget: true), .flight)
         XCTAssertEqual(SplashTimeline.handoff(reduceMotion: true, hasTarget: true), .crossFade, "Reduce Motion: a plain cross-fade")

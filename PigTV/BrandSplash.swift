@@ -105,6 +105,13 @@ nonisolated enum SplashTimeline {
         abs(started.width - now.width) < 0.5 && abs(started.height - now.height) < 0.5
     }
 
+    /// When the splash goes and the header's mark shows, in seconds from the hand-off's start (Codex sign-off of #347):
+    /// at `handoff`, or, when a screen change started the fallback fade (`fallbackStartedAt`), once that fade has run its
+    /// whole `reveal`, so a resize just before the landing never cuts it to a frame or two.
+    static func landsAt(fallbackStartedAt: Double?) -> Double {
+        max(handoff, (fallbackStartedAt ?? -.infinity) + reveal)
+    }
+
     // The splash's own timing (brand §8 and #342's mock), so each is marked for BrandRulesTests.
     static var bloomSwellAnimation: Animation { .easeInOut(duration: bloomSwell) } // motion: #342 splash bloom
     static var bloomSettleAnimation: Animation { .easeInOut(duration: bloomSettle) } // motion: #342 splash bloom
@@ -445,6 +452,9 @@ struct BrandSplashView: View {
     /// #354: the screen's size when the flight started (nil before), and whether a change of it abandoned the flight.
     @State private var flightScreen: CGSize? = nil
     @State private var fellBack = false
+    /// The hand-off's start, and when (seconds into it) the fallback fade began (`SplashTimeline.landsAt`).
+    @State private var handoffBegan: ContinuousClock.Instant? = nil
+    @State private var fallbackStartedAt: Double? = nil
 
     /// #354: the screen changed size during the flight: the pig and the splash fade where they are (no landing), Home's
     /// tabs are put back at once (no glide), and Home fades in as the cross-fade has it.
@@ -452,6 +462,10 @@ struct BrandSplashView: View {
         guard let started = flightScreen, !fellBack, let handoff, !handoff.landed,
               !SplashTimeline.flightHolds(started: started, now: size) else { return }
         fellBack = true
+        if let began = handoffBegan {
+            let d = ContinuousClock.now - began
+            fallbackStartedAt = Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
+        }
         handoff.resetGlide()
         withAnimation(SplashTimeline.revealAnimation) {
             pigGone = true
@@ -486,6 +500,7 @@ struct BrandSplashView: View {
 
     private func handOff(_ handoff: SplashHandoff, clock: ContinuousClock) async throws {
         let start = clock.now
+        handoffBegan = start
         func at(_ t: Double) async throws { try await clock.sleep(until: start + .milliseconds(Int(t * 1000))) }
         withAnimation(PigMotion.standard) { slowStart = false }
         switch SplashTimeline.handoff(reduceMotion: reduceMotion, hasTarget: handoff.target != nil) {
@@ -515,7 +530,13 @@ struct BrandSplashView: View {
                 handoff.reveal(glides: !reduceMotion)
             }
         }
-        try await at(SplashTimeline.handoff)
+        // The splash goes when the hand-off is done, or once a fallback fade (a resize) has finished, if that is later.
+        var landing = SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt)
+        try await at(landing)
+        while SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt) > landing {
+            landing = SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt)
+            try await at(landing)
+        }
         var instant = Transaction()
         instant.disablesAnimations = true
         withTransaction(instant) { handoff.land() }
