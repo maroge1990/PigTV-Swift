@@ -531,11 +531,11 @@ struct BrandSplashView: View {
             }
         }
         // The splash goes when the hand-off is done, or once a fallback fade (a resize) has finished, if that is later.
-        var landing = SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt)
-        try await at(landing)
-        while SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt) > landing {
-            landing = SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt)
-            try await at(landing)
+        var landsAt = SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt)
+        try await at(landsAt)
+        while SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt) > landsAt {
+            landsAt = SplashTimeline.landsAt(fallbackStartedAt: fallbackStartedAt)
+            try await at(landsAt)
         }
         var instant = Transaction()
         instant.disablesAnimations = true
