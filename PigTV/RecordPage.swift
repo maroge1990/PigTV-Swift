@@ -64,6 +64,9 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
     var error: String? = nil
     /// The channel to start on (a channel row's "Record on <channel>"), by its id; else the best.
     var preferredChannel: String? = nil
+    /// The airing to start on (`Airing.id`: its channel and guide start), when the bound schedule is one of several
+    /// airings of that channel (C-R `slots`); else the first airing of `preferredChannel`.
+    var preferredAiring: String? = nil
     /// #345: a game to come that the guide does not list yet (#234), with no airings: "This game" is its `game` rule.
     var listing: Listing? = nil
 
@@ -183,15 +186,28 @@ nonisolated enum RecordPlan {
     /// Codex 5a round 1 (medium): which schedule the page is about. A channel chosen explicitly (`preferred`) is that
     /// channel's schedule, or a new recording when it has none; otherwise the first channel that has one, and the page
     /// shows that channel (its id is returned), so Change recording never shows one channel and changes another.
+    /// A channel can carry several airings (C-R `slots`): the airing returned (`index`) is the one whose schedule is bound,
+    /// so the page opens on it (a Test's scheduled day two, not day one), matched by channel plus guide start.
     static func bind(schedules: [ScheduledRecording?], channels: [String], preferred: String?)
-        -> (schedule: ScheduledRecording?, channel: String?) {
-        if let preferred, let index = channels.firstIndex(of: preferred) {
-            return (schedules.indices.contains(index) ? schedules[index] : nil, preferred)
+        -> (schedule: ScheduledRecording?, channel: String?, index: Int?) {
+        if let preferred {
+            let indices = channels.indices.filter { channels[$0] == preferred }
+            if let first = indices.first {
+                let index = indices.first { schedules.indices.contains($0) && schedules[$0] != nil } ?? first
+                return (schedules.indices.contains(index) ? schedules[index] : nil, preferred, index)
+            }
         }
         for (index, schedule) in schedules.enumerated() where schedule != nil && channels.indices.contains(index) {
-            return (schedule, channels[index])
+            return (schedule, channels[index], index)
         }
-        return (nil, nil)
+        return (nil, nil, nil)
+    }
+
+    /// The airing the page opens on: the bound airing (`preferredAiring`), else the first of `preferredChannel`, else the best.
+    static func openingAiring(_ request: RecordRequest) -> Int {
+        request.preferredAiring.flatMap { id in request.airings.firstIndex { $0.id == id } }
+            ?? request.preferredChannel.flatMap { id in request.airings.firstIndex { $0.channel.id == id } }
+            ?? 0
     }
 
     /// Codex 5a round 1 (medium): the schedule as the refreshed list has it now, while the page is open; nil once it has
@@ -313,6 +329,7 @@ extension BrowseModel {
                                     sport: sportFront.front?.sports.first { $0.league == event.league }?.sport, isGame: true,
                                     schedule: bound.schedule)
         request.preferredChannel = bound.channel
+        request.preferredAiring = bound.index.map { airings[$0].id }
         request.serverCancelling = game?.recordingCancelling?.value
         return request
     }
@@ -425,9 +442,7 @@ struct RecordPage: View {
         _before = State(initialValue: request.schedule?.startEarly)
         _after = State(initialValue: request.schedule?.finishLate)
         _error = State(initialValue: request.error)
-        _airingIndex = State(initialValue: request.preferredChannel.flatMap { id in
-            request.airings.firstIndex { $0.channel.id == id }
-        } ?? 0)
+        _airingIndex = State(initialValue: RecordPlan.openingAiring(request))
     }
 
     private var airing: RecordRequest.Airing? {

@@ -63,6 +63,23 @@ final class CardSlotsCancellingTests: XCTestCase {
         XCTAssertEqual(try self.request(try self.browse(), try game(extra: "")).airings.count, 1, "no slots: the channels")
     }
 
+    /// A Test whose day two is the one scheduled: the record page opens on day two (the bound airing, by channel and guide
+    /// start), as Change recording of it. Before, it opened on the channel's first airing (day one) while changing day two.
+    /// (No preferredAiring or RecordPlan.openingAiring: fails to compile on the commit before.)
+    func testTheRecordPageOpensOnTheBoundAiring() throws {
+        let test = try game(extra: #","slots":[\#(channel(t0, t0 + 7 * hour)),\#(channel(t0 + day, t0 + day + 7 * hour))]"#)
+        let browse = try browse()
+        browse.schedules = [try JSONDecoder().decode(ScheduledRecording.self, from: Data(
+            #"{"id":31,"title":"Australia v India","channel_name":"Fox Cricket","source_id":1,"channel_item_id":"fox","program_start":\#(t0 + day),"program_end":\#(t0 + day + 7 * hour),"status":"scheduled"}"#.utf8))]
+        let request = try request(browse, test)
+        XCTAssertEqual(request.schedule?.id, 31, "Change recording of day two")
+        let opening = RecordPlan.openingAiring(request)
+        XCTAssertEqual(request.airings[opening].programme.startTime, Double(t0 + day), "the page opens on day two")
+        // Nothing scheduled: the best airing, as before.
+        browse.schedules = []
+        XCTAssertEqual(RecordPlan.openingAiring(try self.request(browse, test)), 0)
+    }
+
     /// `recordingCancelling`: the airing that overlaps an entry waits (Cancelling…); day two stays recordable. With the
     /// field present it is preferred over the client's inference; without it (0861) the inference stays.
     func testTheCardsCancellingListDecidesPerAiring() throws {
