@@ -352,7 +352,12 @@ extension BrowseModel {
     /// channel of the same name on a later page is not known yet), and no other guide channel has that name.
     func activeSchedule(channel: GuideChannel, programme: GuideProgramme) -> ScheduledRecording? {
         let start = Int64(programme.startTime)
-        let matches = schedules.filter { $0.isActive && Int64($0.program_start) == start && Self.sameChannel($0, channel) }
+        // A row whose cancellation the server has confirmed (tombstoned) is gone, though the list it is still in has not
+        // been read again yet: it is never bound (Change recording would edit what no longer exists).
+        let matches = schedules.filter {
+            $0.isActive && Int64($0.program_start) == start && Self.sameChannel($0, channel)
+                && recordingStore.tombstones[PendingRemoval.key(.cancelSchedule, $0.id)] == nil
+        }
         if let identified = matches.first(where: { Self.identifiesChannel($0, channel) }) { return identified }
         guard matches.count == 1, let byName = matches.first, guideChannelsComplete else { return nil }
         let namesake = guide.contains { other in

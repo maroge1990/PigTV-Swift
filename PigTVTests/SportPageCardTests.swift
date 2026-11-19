@@ -226,6 +226,18 @@ final class SportPageCardTests: XCTestCase {
         XCTAssertNil(rig.request()?.schedule, "a new recording")
     }
 
+    /// The server confirmed the cancellation, and the list still holds the row until it is read again: Record is a new
+    /// recording at once, never Change recording of the cancelled row. Before, the row bound until the list was re-read
+    /// (testOnceTheCancellationIsConfirmedRecordReturns raced it on the iPhone simulator).
+    func testAConfirmedCancellationIsNeverBoundBeforeTheListIsReadAgain() throws {
+        let rig = try rig()
+        defer { rig.http.stop() }
+        XCTAssertEqual(rig.request()?.schedule?.id, 9)
+        rig.browse.recordingStore.tombstones[PendingRemoval.key(.cancelSchedule, 9)] = Date()
+        XCTAssertEqual(rig.browse.schedules.map(\.id), [9], "the list is not read again yet")
+        XCTAssertNil(rig.request()?.schedule, "a new recording")
+    }
+
     /// The server refuses the cancellation: Record is back as Change recording of the schedule that stands.
     func testARefusedCancellationGivesBackChangeRecording() async throws {
         let rig = try rig()
