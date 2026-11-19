@@ -227,6 +227,12 @@ final class APIClient {
                 }
                 if let recording = conflict.recording { throw PigTVError.recordingConflict(recording) }
             }
+            // C-M (#347, server 0876+): a schedule refused because its airing is being cancelled, or its slot is another
+            // game's schedule.
+            if method == "POST", path == "recordings/schedule", response.statusCode == 409,
+               let code = serverError?.code, ["cancelling", "slotTaken"].contains(code) {
+                throw PigTVError.scheduleRefused(code: code, scheduleId: serverError?.scheduleId)
+            }
             // C-M since 0444: a padding change the server refuses (400 a bad value, 409 not now) says why, in its words.
             if method == "PUT", path.hasPrefix("recordings/scheduled/"), [400, 409].contains(response.statusCode),
                let text = serverError?.error?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {

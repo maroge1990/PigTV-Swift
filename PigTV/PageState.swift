@@ -319,6 +319,9 @@ nonisolated enum PageWords {
     static let removeFailed = "That couldn’t be removed. Try again."
     /// Mark, 19 Nov 2026: Record while an earlier recording of the same thing is being cancelled.
     static let cancelling = "Cancelling…"
+    /// Codex sign-off of #347: the slot this game airs in holds another game's recording (the guide changed): nothing was
+    /// recorded.
+    static let slotTakenText = "Another game’s recording is set for this channel and time, so this one wasn’t recorded. Refresh, then try again."
     /// Codex sign-off of #347: a record page's recording can no longer be told apart from another channel's (the guide
     /// changed, or is still loading): nothing is changed or cancelled.
     static let bindingChangedText = "This recording can’t be matched to its channel now. Try again once the guide has loaded."
@@ -406,7 +409,7 @@ struct SignInFailure: Equatable {
             case .password, .saved: "Signing in didn’t work"
             }
             return SignInFailure(title: title, check: text)
-        case .http, .decoding, .recordingConflict, .recordingPreparationFailed:
+        case .http, .decoding, .recordingConflict, .recordingPreparationFailed, .scheduleRefused:
             return SignInFailure(title: "Your server didn’t answer as expected",
                                  check: "Check that PigTV on the server is up to date, then try again.")
         }

@@ -422,6 +422,9 @@ enum PigTVError: LocalizedError, Equatable {
     /// #147: a sentence the server wrote to be shown, with the HTTP status it came with (which decides whether
     /// retrying can help).
     case serverMessage(String, status: Int)
+    /// C-M (#347, server 0876+): POST recordings/schedule refused with 409 and a `code`: "cancelling" (the airing's
+    /// recording is still being cancelled) or "slotTaken" (the slot is another game's schedule), with that schedule's id.
+    case scheduleRefused(code: String, scheduleId: Int?)
 
     var errorDescription: String? {
         switch self {
@@ -437,6 +440,8 @@ enum PigTVError: LocalizedError, Equatable {
         case .decoding: return "Your server didn’t answer as expected. Check that PigTV on the server is up to date."
         case .message(let message): return message
         case .serverMessage(let message, _): return message
+        case .scheduleRefused(let code, _):
+            return code == "cancelling" ? PageWords.cancellingEarlierText : PageWords.slotTakenText
         }
     }
 }
@@ -495,6 +500,9 @@ struct ServerErrorResponse: Decodable {
     let conflict: PlaybackConflict?
     let retryAfterSec: Int?
     let reason: String?
+    /// C-M (#347): a refused schedule's reason and the schedule it is about.
+    var code: String? = nil
+    var scheduleId: Int? = nil
 }
 
 struct DeclineBody: Encodable {

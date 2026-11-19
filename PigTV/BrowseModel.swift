@@ -736,6 +736,12 @@ final class BrowseModel: ObservableObject {
                     description: programme.description, programStart: programme.startTime,
                     programEnd: programme.endTime, preBufferMin: before, postBufferMin: after, gameId: gameId))
             await loadRecordings(startedAfter: Date())
+            // Codex sign-off of #347 (high): an older server answers with the existing schedule of the channel and start,
+            // whatever its game. One naming another game is not this game's recording: nothing was made for it.
+            if let gameId, let named = made.game, named != gameId {
+                actionError = PageWords.slotTakenText
+                return false
+            }
             // #329: the game was already set to record (perhaps on another channel): that one stands, nothing new.
             if let already = made.alreadyScheduledText {
                 scheduleAlready = already
@@ -749,6 +755,12 @@ final class BrowseModel: ObservableObject {
             }
             PigHaptic.play(.record)
             return true
+        } catch PigTVError.scheduleRefused(let code, _) {
+            // The server's refusal (0876+): the lists are read again, so the page shows why (Cancelling…, or the slot's
+            // own schedule), and nothing was made.
+            await loadRecordings(startedAfter: Date())
+            actionError = code == "cancelling" ? PageWords.cancellingEarlierText : PageWords.slotTakenText
+            return false
         } catch {
             actionError = Self.actionText(PageWords.scheduleUnconfirmed, error)
             return false
