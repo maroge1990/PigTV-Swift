@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import PigTV
 
 // maroge1990/PigTV#342 (option C, "Into the header"): the splash plays its whole sequence (about 3.2 s) even when
@@ -132,6 +133,22 @@ final class SplashTimelineTests: XCTestCase {
         handoff.landingTitle = "Sport"
         handoff.report(title: "Sport", frame: CGRect(x: 80, y: 157, width: 58, height: 48))
         XCTAssertEqual(handoff.target, CGRect(x: 80, y: 157, width: 58, height: 48))
+    }
+
+    /// #342, iPhone (TestFlight 324): the pig did not fly onto the Sport header. The splash's bloom (1088 pt across on an
+    /// iPhone, 1960 on the Apple TV) made the splash wider than the screen, and ContentView's ZStack took its size, so Home
+    /// was laid out 1088 pt wide under the splash: the iPhone's header mark sat at x -327 and the pig flew off to the top
+    /// left (the iPad's, 28 pt off, snapped across when the splash went). The splash now takes exactly the screen it is
+    /// given. Fails on Apple 324 (1088.6 pt wide).
+    func testTheSplashNeverOutgrowsTheScreen() {
+        #if os(tvOS)
+        let screen = CGSize(width: 1920, height: 1080)
+        #else
+        let screen = CGSize(width: 402, height: 874)
+        #endif
+        let size = UIHostingController(rootView: BrandSplashView()).sizeThatFits(in: screen)
+        XCTAssertLessThanOrEqual(size.width, screen.width, "the splash is no wider than the screen")
+        XCTAssertLessThanOrEqual(size.height, screen.height, "the splash is no taller than the screen")
     }
 
     func testTheNameSitsWhereTheStackedLockupHasIt() {
