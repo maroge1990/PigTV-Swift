@@ -64,6 +64,10 @@ nonisolated struct RecordRequest: Identifiable, Sendable {
     var error: String? = nil
     /// The channel to start on (a channel row's "Record on <channel>"), by its id; else the best.
     var preferredChannel: String? = nil
+    /// A sport request's bound schedule per airing (`Airing.id`), when it has several: the page is Change recording for
+    /// a chosen airing that has one and Record for one that has none (Codex review of #347). Nil: `schedule` is the
+    /// whole request's (a guide programme).
+    var airingSchedules: [String: ScheduledRecording]? = nil
     /// The airing to start on (`Airing.id`: its channel and guide start), when the bound schedule is one of several
     /// airings of that channel (C-R `slots`); else the first airing of `preferredChannel`.
     var preferredAiring: String? = nil
@@ -203,6 +207,16 @@ nonisolated enum RecordPlan {
         return (nil, nil, nil)
     }
 
+    /// The request as the page shows it for the airing at `index` (Codex review of #347): with several airings, Change
+    /// recording when that airing has its schedule, else Record (another day of a Test stays recordable while one day is
+    /// set to record); a guide programme's request as it is.
+    static func forAiring(_ opened: RecordRequest, _ index: Int) -> RecordRequest {
+        guard let perAiring = opened.airingSchedules, opened.airings.indices.contains(index) else { return opened }
+        var shown = opened
+        shown.schedule = perAiring[opened.airings[index].id]
+        return shown
+    }
+
     /// The airing the page opens on: the bound airing (`preferredAiring`), else the first of `preferredChannel`, else the best.
     static func openingAiring(_ request: RecordRequest) -> Int {
         request.preferredAiring.flatMap { id in request.airings.firstIndex { $0.id == id } }
@@ -324,7 +338,8 @@ extension BrowseModel {
         // Cancelling… until its outcome is known, Mark, 19 Nov 2026).
         // The card's game binds first (Codex review of #347, high): a row naming another game is never this one's.
         let gameId = game?.id ?? card
-        let bound = RecordPlan.bind(schedules: airings.map { bindableSchedule(channel: $0.channel, programme: $0.programme, gameId: gameId) },
+        let perAiring = airings.map { bindableSchedule(channel: $0.channel, programme: $0.programme, gameId: gameId) }
+        let bound = RecordPlan.bind(schedules: perAiring,
                                     channels: airings.map(\.channel.id), preferred: preferredChannel)
         var request = RecordRequest(title: event.title, league: event.league, airings: airings, gameId: gameId,
                                     teams: sides.teams, followedTeam: sides.followed, followedTeams: sides.followedTeams,
@@ -332,6 +347,10 @@ extension BrowseModel {
                                     schedule: bound.schedule)
         request.preferredChannel = bound.channel
         request.preferredAiring = bound.index.map { airings[$0].id }
+        if airings.count > 1 {
+            request.airingSchedules = Dictionary(zip(airings, perAiring).compactMap { airing, schedule in
+                schedule.map { (airing.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        }
         request.serverCancelling = game?.recordingCancelling?.value
         return request
     }
@@ -421,8 +440,10 @@ struct RecordPage: View {
     /// The schedules, so Change recording follows its schedule while open (it starts recording, or ends).
     @ObservedObject private var store: RecordingsStore
     let presenter: AppPresenter
-    let request: RecordRequest
+    /// The request as opened; `request` is it for the chosen airing (`RecordPlan.forAiring`).
+    let opened: RecordRequest
     let close: () -> Void
+    private var request: RecordRequest { RecordPlan.forAiring(opened, airingIndex) }
 
     @State private var what: RecordPlan.What = .this
     @State private var before: Int?
@@ -439,7 +460,7 @@ struct RecordPage: View {
         _actions = ObservedObject(wrappedValue: model.actions)
         _store = ObservedObject(wrappedValue: model.recordingStore)
         self.presenter = presenter
-        self.request = request
+        self.opened = request
         self.close = close
         _before = State(initialValue: request.schedule?.startEarly)
         _after = State(initialValue: request.schedule?.finishLate)
@@ -486,6 +507,12 @@ struct RecordPage: View {
         .onChange(of: live?.status) { _, status in
             if status == "recording" { before = live?.startEarly }
         }
+        // Another airing chosen: its own schedule's padding (Change recording), else the usual, and "This game".
+        .onChange(of: airingIndex) {
+            before = request.schedule?.startEarly
+            after = request.schedule?.finishLate
+            what = .this
+        }
         .task(id: changing) {
             guard changing, !model.isFixture else { return }
             while !Task.isCancelled {
@@ -501,7 +528,8 @@ struct RecordPage: View {
             let whats = RecordPlan.whats(request)
             if !whats.isEmpty { whatSection(whats, now: now) }
             if !stopsWaiting { stopSection(now: now) }
-            if !changing && request.airings.count > 1 { recordOn(now: now) }
+            // Codex review of #347: a sport request's airings stay choosable while one of them is set to record.
+            if request.airings.count > 1 && (!changing || opened.airingSchedules != nil) { recordOn(now: now) }
             if let note = cardNote(now: now) {
                 Text(note).font(Metrics.note).foregroundStyle(Color.pigSecondary)
                     .fixedSize(horizontal: false, vertical: true)
