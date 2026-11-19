@@ -313,12 +313,15 @@ struct GuideView: View {
         }
         // #342: without sport the splash lands here, once there are rows to show (or the page has settled on its empty or
         // error state), not on channels the saved chip filters to none while more pages load.
-        .splashPageReady("TV Guide", when: PageState.guideSplashReady(pageState, rowsEmpty: rows.isEmpty))
+        .splashPageReady("TV Guide", when: PageState.guideSplashReady(pageState, rowsEmpty: rows.isEmpty, favouritesPending:
+            filter == "favourites" && model.favourites.isEmpty && !library.favouritesAnswered))
     }
 
     /// #280: what the page shows: the model's state, or E1 when the chosen chip leaves no channels.
     private var pageState: PageState {
-        PageState.guideRows(model.guideState, rowsEmpty: rows.isEmpty, paging: model.guideHasMore)
+        // #342 (Codex sign-off of 325): the paging running now, not the retry cursor: paging stopped on a failure with no
+        // rows for the chip is the stale empty state (with Try again), not blank content.
+        PageState.guideRows(model.guideState, rowsEmpty: rows.isEmpty, paging: model.guidePagingActive)
     }
 
     /// #280 (R1): channels on screen whose refresh (or a later page) failed: they stay, with the slim notice.

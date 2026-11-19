@@ -113,6 +113,48 @@ final class PageStatesTests: XCTestCase {
         XCTAssertTrue(PageState.guideSplashReady(.stale(since: nil), rowsEmpty: false))
     }
 
+    /// Codex sign-off of 325 (medium): `guideHasMore` is the cursor a retry resumes from, not paging that runs. A later
+    /// page that failed through its retries kept it, so the Guide counted as "more channels coming": with the chip
+    /// showing no rows the splash waited to its cap, then landed on a blank Guide. Now the paging that runs is tracked
+    /// (`guidePaging`), and when it has stopped on a failure the Guide is its stale empty state (Try again), which is
+    /// ready. (No guidePaging: fails to compile on 35c441f.)
+    func testPagingThatStoppedOnAFailureIsTheStaleEmptyStateAndReady() async throws {
+        let firstOfTwo = Data(#"{"total":2,"channels":[{"id":"a","sourceId":1,"name":"A","programmes":[]}],"nextCursor":"p2"}"#.utf8)
+        PageRoutes.set(Self.guide, body: firstOfTwo)
+        // The second page fails (no retries in these tests).
+        PageRoutes.during = { if PageRoutes.count(Self.guide) >= 2 { PageRoutes.set(Self.guide, status: 500) } }
+        let m = try browse()
+        await m.loadGuide()
+        for _ in 0..<100 where m.guidePaging { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(m.guidePaging, "paging stopped")
+        XCTAssertTrue(m.guideHasMore, "the retry cursor stays")
+        XCTAssertNotNil(m.guideError)
+        XCTAssertFalse(m.guidePagingActive)
+        let drawn = PageState.guideRows(m.guideState, rowsEmpty: true, paging: m.guidePagingActive)
+        XCTAssertEqual(drawn, .emptyStale(since: m.guideLoadedAt), "the chip's empty state with the notice and Try again")
+        XCTAssertTrue(PageState.guideSplashReady(drawn, rowsEmpty: true), "ready: the splash lands on it")
+        XCTAssertFalse(PageState.guideSplashReady(PageState.guideRows(m.guideState, rowsEmpty: true, paging: m.guideHasMore),
+                                                  rowsEmpty: true), "by the retry cursor it never was (the bug)")
+    }
+
+    /// Codex sign-off of 325 (medium): on a cold launch with the Favourites chip saved, the last guide page could settle
+    /// the chip's empty state before the favourites had answered: the splash landed on "No favourites". It waits for their
+    /// first answer or failure. (No favouritesPending: fails to compile on 35c441f.)
+    func testTheFavouritesChipWaitsForTheFavouritesFirstAnswer() async throws {
+        XCTAssertFalse(PageState.guideSplashReady(.empty, rowsEmpty: true, favouritesPending: true))
+        XCTAssertFalse(PageState.guideSplashReady(.content, rowsEmpty: false, favouritesPending: true))
+        XCTAssertTrue(PageState.guideSplashReady(.empty, rowsEmpty: true, favouritesPending: false))
+        let m = try browse()
+        XCTAssertFalse(m.library.favouritesAnswered)
+        PageRoutes.set("/api/library/favourites", status: 500)
+        await m.loadFavourites()
+        XCTAssertTrue(m.library.favouritesAnswered, "a failure is an answer: the chip shows its error state")
+        let ok = try browse()
+        PageRoutes.set("/api/library/favourites", body: Self.none)
+        await ok.loadFavourites()
+        XCTAssertTrue(ok.library.favouritesAnswered, "none: the chip's empty state is settled")
+    }
+
     // MARK: Search and Jump to
 
     func testSearchHasALoadingAnErrorAndAnEmptyState() {

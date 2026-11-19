@@ -98,12 +98,16 @@ nonisolated enum PageState: Equatable, Sendable {
     /// #342 (Codex review of 325): whether the Guide, as drawn (`guideRows`), is ready for the start-up splash to land on
     /// it (the TV Guide opens the app when the server has no sport): rows to show for its layout, or its settled empty or
     /// error state. Channels that the saved chip (a category, Favourites) filters down to none while later pages are
-    /// still coming are not ready: the splash would land on a blank Guide.
-    static func guideSplashReady(_ drawn: PageState, rowsEmpty: Bool) -> Bool {
+    /// still coming are not ready: the splash would land on a blank Guide. `drawn` must come from `guideRows` with the
+    /// paging that is running now (`BrowseModel.guidePagingActive`), not the retry cursor: paging stopped on a failure
+    /// with no rows is the stale empty state, with its Try again, not blank content.
+    /// `favouritesPending`: the Favourites chip is chosen and the favourites' first answer (or failure) has not come.
+    static func guideSplashReady(_ drawn: PageState, rowsEmpty: Bool, favouritesPending: Bool = false) -> Bool {
+        if favouritesPending { return false }
         switch drawn {
-        case .loading: false
-        case .content, .stale: !rowsEmpty
-        case .empty, .emptyStale, .failed: true
+        case .loading: return false
+        case .content, .stale: return !rowsEmpty
+        case .empty, .emptyStale, .failed: return true
         }
     }
 

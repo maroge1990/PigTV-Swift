@@ -31,6 +31,9 @@ final class GuideStore: ObservableObject {
     @Published var guideBusy = false
     @Published var guideError: String?
     @Published var guideHasMore = false
+    /// Later pages are being fetched now (the first page's load, or the paging after it). `guideHasMore` is only the
+    /// cursor a retry resumes from: it stays when paging stopped on a failure (#342, Codex sign-off of 325).
+    @Published var guidePaging = false
     @Published var window = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970 / 1800) * 1800)
     @Published var guideTotal = 0
     @Published var guideLoadedAt: Date?
@@ -93,6 +96,8 @@ final class RecordingsStore: ObservableObject {
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published var favourites: [Channel] = []
+    /// The favourites' first answer (or failure) has come (#342: the Guide's Favourites chip waits for it).
+    @Published var favouritesAnswered = false
     var favouritesBusy = false
     var favouritesError: String?
 }

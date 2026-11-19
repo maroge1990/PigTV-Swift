@@ -16,6 +16,10 @@ final class BrowseModel: ObservableObject {
     var guideBusy: Bool { get { guideStore.guideBusy } set { guideStore.change(\.guideBusy, to: newValue) } }
     var guideError: String? { get { guideStore.guideError } set { guideStore.change(\.guideError, to: newValue) } }
     var guideHasMore: Bool { get { guideStore.guideHasMore } set { guideStore.change(\.guideHasMore, to: newValue) } }
+    /// Later guide pages are being fetched now (not the retry cursor `guideHasMore`).
+    var guidePaging: Bool { get { guideStore.guidePaging } set { guideStore.change(\.guidePaging, to: newValue) } }
+    /// What the Guide treats as "more channels coming": a page in flight or paging that is still running.
+    var guidePagingActive: Bool { guideBusy || guidePaging }
     var window: Date { get { guideStore.window } set { guideStore.change(\.window, to: newValue) } }
     private(set) var guideTotal: Int { get { guideStore.guideTotal } set { guideStore.change(\.guideTotal, to: newValue) } }
     private(set) var guideLoadedAt: Date? { get { guideStore.guideLoadedAt } set { guideStore.change(\.guideLoadedAt, to: newValue) } }
@@ -88,6 +92,7 @@ final class BrowseModel: ObservableObject {
         if reset {
             guidePrefetch?.cancel()
             guidePrefetch = nil
+            guidePaging = false
             guideGeneration = UUID()
             guideCursor = nil
             loadedGuideIds = []
@@ -113,7 +118,9 @@ final class BrowseModel: ObservableObject {
         defer { if generation == guideGeneration { guideBusy = false } }
         await fetchGuidePage(generation: generation)
         guard reset, generation == guideGeneration, guideHasMore, guideError == nil else { return }
+        guidePaging = true
         guidePrefetch = Task { [weak self] in
+            defer { if let self, generation == self.guideGeneration { self.guidePaging = false } }
             while !Task.isCancelled {
                 guard let self, generation == self.guideGeneration,
                       self.guideHasMore, self.guideError == nil else { return }
@@ -562,9 +569,13 @@ final class BrowseModel: ObservableObject {
         do {
             let loaded: [Channel] = try await client.request("library/favourites")
             if loaded != favourites { favourites = loaded }
+            if !library.favouritesAnswered { library.favouritesAnswered = true }
             exportTopShelf()
         }
-        catch { favouritesError = UserMessage.text(for: error) }
+        catch {
+            favouritesError = UserMessage.text(for: error)
+            if !UserMessage.isCancellation(error), !library.favouritesAnswered { library.favouritesAnswered = true }
+        }
     }
 
     /// The guide's row for a channel: by id, else by stable identity (a
