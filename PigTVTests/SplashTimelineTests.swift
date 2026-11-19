@@ -60,22 +60,20 @@ final class SplashTimelineTests: XCTestCase {
                        40.0 * 1000 / 797 / 200, accuracy: 1e-9)
     }
 
-    func testTheHandoffLandsWhereTheHeaderSettlesAndHidesItsMarkUntilThen() {
-        let handoff = SplashHandoff(playing: true, contentRise: 18)
+    func testTheHandoffLandsWhereTheHeaderIsAndHidesItsMarkUntilThen() {
+        let handoff = SplashHandoff(playing: true)
         XCTAssertFalse(handoff.landed, "the header's mark is hidden while the splash's pig is the one on screen")
         XCTAssertFalse(handoff.contentShown)
-        XCTAssertEqual(handoff.contentRise, 18)
-        handoff.report(title: "Sport", frame: CGRect(x: 16, y: 88, width: 34, height: 28))
+        handoff.report(title: "Sport", frame: CGRect(x: 16, y: 70, width: 34, height: 28))
         handoff.report(title: "TV Guide", frame: CGRect(x: 16, y: 120, width: 34, height: 28))
         XCTAssertNil(handoff.target, "nothing to land on until the opening tab is known")
         handoff.landingTitle = "Sport"
-        XCTAssertEqual(handoff.target, CGRect(x: 16, y: 70, width: 34, height: 28), "where the header will be once Home has risen")
+        XCTAssertEqual(handoff.target, CGRect(x: 16, y: 70, width: 34, height: 28), "where the header is, and stays")
         handoff.reveal()
         handoff.report(title: "Sport", frame: CGRect(x: 16, y: 80, width: 34, height: 28))
-        XCTAssertEqual(handoff.target?.minY, 70, "frames reported while Home rises are not taken")
+        XCTAssertEqual(handoff.target?.minY, 70, "frames reported while Home fades in are not taken")
         XCTAssertTrue(handoff.contentShown)
-        XCTAssertFalse(handoff.homeInteractive, "Home rises under the splash but takes no input or focus yet (#342 review)")
-        XCTAssertEqual(handoff.contentRise, 0)
+        XCTAssertFalse(handoff.homeInteractive, "Home fades in under the splash but takes no input or focus yet (#342 review)")
         XCTAssertNil(handoff.restoreFinishedAt)
         handoff.restoreFinished()
         XCTAssertNotNil(handoff.restoreFinishedAt)
@@ -83,11 +81,22 @@ final class SplashTimelineTests: XCTestCase {
         XCTAssertTrue(handoff.landed)
         XCTAssertTrue(handoff.homeInteractive, "the splash gone: Home takes input and focus")
 
-        let none = SplashHandoff(playing: false, contentRise: 18)
+        let none = SplashHandoff(playing: false)
         XCTAssertTrue(none.landed, "no splash (no saved sign-in): the header's mark shows")
         XCTAssertTrue(none.contentShown)
         XCTAssertTrue(none.homeInteractive)
-        XCTAssertEqual(none.contentRise, 0)
+    }
+
+    /// Apple 325: Home no longer rises 18 pt under the splash. An offset moved it against the safe area, and its page was
+    /// laid out again for the new insets (measured on the Apple TV simulator: the Sport header 60 pt lower while risen), so
+    /// the pig landed where the header was while risen, not where it settles. A guard: the landing spot is the frame the
+    /// header reports, unchanged (ContentView built 324's handoff with an 18 pt rise, which no unit test can reach: the
+    /// before/after is the simulator trace in the commit).
+    func testHomeNeverMovesUnderTheSplashSoItsHeaderIsTheLandingSpot() {
+        let handoff = SplashHandoff(playing: true)
+        handoff.landingTitle = "Sport"
+        handoff.report(title: "Sport", frame: CGRect(x: 80, y: 157, width: 58, height: 48))
+        XCTAssertEqual(handoff.target, CGRect(x: 80, y: 157, width: 58, height: 48))
     }
 
     func testTheNameSitsWhereTheStackedLockupHasIt() {

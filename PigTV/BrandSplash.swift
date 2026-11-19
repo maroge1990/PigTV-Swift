@@ -7,8 +7,12 @@ import SwiftUI
 //   0.6 s on  the halo's bloom swells and settles (1.5 s); the name alone (the kit's wordmark, placed where the stacked
 //             lockup has it, never a second pig) rises 10 pt and fades in under the pig (from 0.95 s, 0.65 s).
 //   2.0 s on  (or when start-up finishes, if later) the name fades out; the pig glides and shrinks onto the pig mark of
-//             Home's page header (PigPageHeader) while the halo, the bloom and the canvas fade and Home rises 18 pt into
-//             place; at 3.2 s the header's own mark takes over at the same place and size, so nothing visibly swaps.
+//             Home's page header (PigPageHeader) while the halo, the bloom and the canvas fade and Home fades in where it
+//             is; at 3.2 s the header's own mark takes over at the same place and size, so nothing visibly swaps.
+// Home does not move under the splash (Apple 325): it used to rise 18 pt into place, but an offset moves Home against
+// the screen's safe area, and SwiftUI lays a page out again by its new insets, so the risen page was a different layout
+// (60 pt lower on the Apple TV, a 1-2 pt shimmer on the iPad and iPhone): the pig landed where the header was while
+// risen, and the page jumped when it settled.
 // The splash holds its full length even when start-up is quicker (this changes brand §8's "never adds delay"; Mark's
 // choice). With no saved sign-in there is no splash (LaunchStep): the first screen is sign-in, not Home.
 //
@@ -28,7 +32,7 @@ nonisolated enum SplashTimeline {
     static let nameIn: Double = 0.65
     /// The earliest hand-off: the pig and the name have settled.
     static let settled: Double = 2.0
-    /// From the hand-off's start: the name fades out at once; the pig flies after `flightDelay`; Home rises in after
+    /// From the hand-off's start: the name fades out at once; the pig flies after `flightDelay`; Home fades in after
     /// `revealDelay`. Both end together.
     static let nameOut: Double = 0.3
     static let flightDelay: Double = 0.35
@@ -38,9 +42,8 @@ nonisolated enum SplashTimeline {
     /// Halo and bloom fade out over the flight's first part.
     static let glowOut: Double = 0.5
 
-    /// How far the name rises and Home rises, in points on a 600 pt splash (scaled with the splash's side).
+    /// How far the name rises, in points on a 600 pt splash (scaled with the splash's side).
     static let nameRise: CGFloat = 10
-    static let contentRise: CGFloat = 18
 
     /// From the hand-off's start to Home on its own (the header's mark taking over): 1.2 s.
     static var handoff: Double { max(flightDelay + flight, revealDelay + reveal) }
@@ -86,7 +89,7 @@ nonisolated enum SplashTimeline {
     static var nameOutAnimation: Animation { .easeOut(duration: nameOut) } // motion: #342 splash name
     static var flightAnimation: Animation { .timingCurve(0.65, 0, 0.25, 1, duration: flight) } // motion: #342 flight
     static var glowOutAnimation: Animation { .easeOut(duration: glowOut) } // motion: #342 splash glow
-    static var revealAnimation: Animation { .easeOut(duration: reveal) } // motion: #342 Home rises in
+    static var revealAnimation: Animation { .easeOut(duration: reveal) } // motion: #342 Home fades in
 }
 
 /// #342: where the splash's pig lands. The header mark is a `PigBrandMark` (its ink centred in its frame, as wide as
@@ -104,25 +107,23 @@ nonisolated enum SplashFlight {
 final class SplashHandoff {
     /// The splash is over (or never played): the header's own mark shows and the splash is gone.
     private(set) var landed: Bool
-    /// Home is shown, and how far below its place it is (the visual reveal only).
+    /// Home is shown (it fades in where it is: it never moves under the splash).
     private(set) var contentShown: Bool
     /// Home takes touches, presses, focus and VoiceOver only once the splash is gone (#342, Codex review: not while it
-    /// still rises under the splash's overlay).
+    /// still fades in under the splash's overlay).
     var homeInteractive: Bool { landed }
-    private(set) var contentRise: CGFloat
     /// Start-up finished, in seconds from the splash's first frame.
     private(set) var restoreFinishedAt: Double?
     /// The header Home opens on (its title), once signed in; nil: there is no header to land on.
     var landingTitle: String?
-    /// Each header mark's frame in window coordinates as it will be once Home has risen into place.
+    /// Each header mark's frame in window coordinates: where it is and stays, since Home never moves under the splash.
     @ObservationIgnored private(set) var markFrames: [String: CGRect] = [:]
     @ObservationIgnored private var revealing = false
     @ObservationIgnored private let started = ContinuousClock.now
 
-    init(playing: Bool, contentRise: CGFloat = 0) {
+    init(playing: Bool) {
         landed = !playing
         contentShown = !playing
-        self.contentRise = playing ? contentRise : 0
     }
 
     var elapsed: Double {
@@ -132,11 +133,10 @@ final class SplashHandoff {
 
     func restoreFinished() { if restoreFinishedAt == nil { restoreFinishedAt = elapsed } }
 
-    /// A header mark's frame (window coordinates). Taken only before Home starts rising, while it sits `contentRise`
-    /// below its place, so the landing spot is where it will settle.
+    /// A header mark's frame (window coordinates), taken until Home starts fading in.
     func report(title: String, frame: CGRect) {
         guard !landed, !revealing else { return }
-        markFrames[title] = frame.offsetBy(dx: 0, dy: -contentRise)
+        markFrames[title] = frame
     }
 
     /// Where the pig lands: the opening tab's header mark.
@@ -145,17 +145,15 @@ final class SplashHandoff {
         return markFrames[landingTitle]
     }
 
-    /// Home rises into place and fades in (under Reduce Motion ContentView draws no rise, so it only fades).
+    /// Home fades in.
     func reveal() {
         revealing = true
         contentShown = true
-        contentRise = 0
     }
 
     /// The header's mark takes over and the splash goes.
     func land() {
         revealing = true
-        contentRise = 0
         contentShown = true
         landed = true
     }

@@ -4,7 +4,6 @@ import AVKit
 struct ContentView: View {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Brand 1.8 §8 (#280): the splash shows only while a saved sign-in is being restored; with none the app opens on
     /// sign-in at once. #342: when it shows, it plays its whole sequence and hands over to Home (`SplashHandoff`).
     @State private var initialRestoreFinished: Bool
@@ -13,8 +12,7 @@ struct ContentView: View {
     init() {
         let step = LaunchStep.current()
         _initialRestoreFinished = State(initialValue: step == .firstScreen)
-        _splash = State(initialValue: SplashHandoff(playing: step == .splash,
-                                                    contentRise: SplashTimeline.contentRise * BrandSplashView.unit))
+        _splash = State(initialValue: SplashHandoff(playing: step == .splash))
     }
     // Appearance is owned here (a View), not in the App/Scene: an @AppStorage
     // change re-renders a View immediately, where the Scene-level modifier only
@@ -69,9 +67,9 @@ struct ContentView: View {
                 else if let notice = model.unreachable { UnreachableView(model: model, notice: notice).tint(Color("AccentColor")) }
                 else { OnboardingView(model: model).tint(Color("AccentColor")) }
             }
-            // #342: under the splash until it hands over; Home then rises into place (fades only, under Reduce Motion).
+            // #342: under the splash until it hands over, then it fades in. Never offset: moving Home against the safe area
+            // lays it out again (BrandSplash.swift's header), so the pig would land where the header no longer is.
             .opacity(splash.contentShown ? 1 : 0)
-            .offset(y: reduceMotion ? 0 : splash.contentRise)
             // Review of #342: until the splash is gone (`homeInteractive`, after the reveal), Home takes no touch, press or
             // focus and is not read by VoiceOver; on the TV focus then moves into it.
             .allowsHitTesting(splash.homeInteractive)
