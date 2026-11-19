@@ -76,8 +76,9 @@ final class RecordingsStore: ObservableObject {
     /// When the list shown was received (the stale notice's time). Not published: it changes with every quiet refresh.
     var updatedAt: Date?
     /// When the scheduled list on show was asked for (Codex review of #347: a card's `recordingCancelling` older than it
-    /// is reconciled against it).
-    var schedulesAskedAt: Date?
+    /// is reconciled against it). Published (Codex sign-off of #347): an accepted read with the same rows still changes
+    /// what an open record page decides, so the page follows it.
+    @Published var schedulesAskedAt: Date?
     /// #280 (one retry clock): the next request the polling makes (AppFreshness, or the Recordings page's own loop);
     /// published only while the list has failed.
     @Published var schedule: RefreshSchedule?
