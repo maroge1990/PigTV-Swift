@@ -93,5 +93,68 @@ final class SportPhoneStripScrollUITests: XCTestCase {
             if let at { XCTAssertGreaterThanOrEqual(moves[at], typical - 12, "\(name): at the hand-over (step \(at)) the row moved \(moves[at]) pt: \(trace)") }
         }
     }
+
+    /// #352 (Codex's open medium): the band under the slim strip (its room, where the page draws nothing) passes no tap
+    /// and no VoiceOver focus to the rows beneath it, and a drag that starts on it still scrolls the page (a shield laid
+    /// over the band made that a dead zone). Before: a tap just below the strip opened the row hidden under it.
+    @MainActor
+    func testTheBandUnderTheStripTakesNoTapButStillScrolls() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
+        XCUIDevice.shared.orientation = .portrait
+        let fixture = try UIFixture.url("sport-pages-d43.json")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+        let delta = Date().timeIntervalSince1970 * 1000 - (json["now"] as? Double ?? 0)
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "front"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launchEnvironment["PIGTV_UI_TEST_PAGES_JSON"] = try JSONSerialization.data(withJSONObject: Self.shifted(json, by: delta))
+            .base64EncodedString()
+        app.launch()
+        let any = app.descendants(matching: .any)
+        XCTAssertTrue(any["sport.front.carousel"].waitForExistence(timeout: 15))
+        let strip = any["sport.front.strip"]
+        let window = app.windows.firstMatch.frame
+        func drag(from y: CGFloat, by dy: CGFloat) {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: window.midX, dy: y))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: dy)),
+                        withVelocity: XCUIGestureVelocity(120), thenHoldForDuration: 0.3)
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        // Up until the strip shows.
+        for _ in 0..<12 where !strip.exists { drag(from: window.height * 0.7, by: -60) }
+        XCTAssertTrue(strip.exists, "the strip shows")
+        let bandTop = strip.frame.minY, bandBottom = strip.frame.minY + 52
+        let bandY = strip.frame.maxY + 4 // the band's gap under the strip, over the page's rows
+        let rows = any.matching(NSPredicate(format: "identifier BEGINSWITH 'sport.front.game.'"))
+        func frames() -> String { rows.allElementsBoundByIndex.prefix(8).map { "\($0.identifier.suffix(12)) \(Int($0.frame.minY))-\(Int($0.frame.maxY))" }.joined(separator: ", ") }
+        // Nudge until a game row lies under the band's gap: its frame straddles it (or, cut to its part below the band,
+        // starts at the band's bottom).
+        var under: XCUIElement?
+        for _ in 0..<12 {
+            under = rows.allElementsBoundByIndex.first {
+                $0.frame.minY < bandBottom - 6 && $0.frame.maxY > bandBottom + 10
+            }
+            if under != nil { break }
+            drag(from: window.height * 0.7, by: -15)
+        }
+        let row = try XCTUnwrap(under, "a row under the band's gap at \(bandY): \(frames())")
+        let rowID = row.identifier
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: window.midX, dy: bandBottom - 2)).tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        attach(app, "352-after-band-tap")
+        XCTAssertTrue(strip.exists, "the page stayed where it was (\(frames()))")
+        XCTAssertTrue(any[rowID].isHittable, "nothing opened: the tap on the band reached no row (\(frames()))")
+        // No game row wholly inside the band is offered to VoiceOver.
+        let wholly = rows.allElementsBoundByIndex.filter { $0.frame.minY >= bandTop - 1 && $0.frame.maxY <= bandBottom + 1 && $0.frame.height > 1 }
+        XCTAssertTrue(wholly.isEmpty, "rows wholly under the band are hidden from VoiceOver: \(wholly.map(\.identifier)) (\(frames()))")
+        let headers = any.matching(NSPredicate(format: "identifier BEGINSWITH 'sport.rail.header.'"))
+        let follow = try XCTUnwrap(headers.allElementsBoundByIndex.first { $0.frame.minY > 250 && $0.frame.minY < window.height * 0.7 },
+                                   "a row to follow")
+        let before = (follow.identifier, follow.frame.minY)
+        // A drag that starts on the band scrolls the page.
+        drag(from: bandY, by: 100)
+        let after = any[before.0].frame.minY
+        XCTAssertGreaterThan(after - before.1, 40, "the page moved with a drag starting on the band (\(before.1) → \(after))")
+    }
 }
 #endif

@@ -211,6 +211,7 @@ struct SportPhoneRowsCard: View {
                     .pigPressable()
                     .contextMenu { SportCardMenu(flow: flow, game: game) }
                     .accessibilityIdentifier("\(identifier).\(game.id)")
+                    .modifier(SportBandGuard()) // the front page's strip band (#352); nothing elsewhere
                 }
             }
         }

@@ -70,7 +70,7 @@ struct SportFrontPhonePage: View {
                 // The strip's words are worked out here, with the page, never at the hand-over.
                 let words = model.front.flatMap { $0.isEmpty ? nil : strip($0, now: now) }
                 ZStack(alignment: .top) {
-                    page(now: now)
+                    page(now: now, hasStrip: words != nil)
                         .mask(alignment: .top) { SportPhoneStripMask(past: past, hasStrip: words != nil) }
                     SportPhoneStripLayer(past: past, words: words) { words, shows in
                         SportHeroStripView(strip: words, onTap: {
@@ -94,7 +94,7 @@ struct SportFrontPhonePage: View {
         return SportHeroStrip(hero: words, items: SportFrontLayout.followItems(front, now: now), selected: model.heroFollowIndex)
     }
 
-    private func page(now: Date) -> some View {
+    private func page(now: Date, hasStrip: Bool) -> some View {
         ScrollView(.vertical) {
             // #280: the four states (PageState), as on the Apple TV and iPad (SportFrontTVPage.page).
             VStack(alignment: .leading, spacing: PigSpacing.m) {
@@ -130,6 +130,7 @@ struct SportFrontPhonePage: View {
                         }
                         carousel(front, now: now)
                             .id(Self.carouselID)
+                            .modifier(SportBandGuard())
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { carouselHeight = $0 }
                         ForEach(SportPhoneLayout.groups(front, hidden: hidden, now: now, labels: model.labels)) { group in
                             groupView(group, front: front, now: now)
@@ -142,7 +143,9 @@ struct SportFrontPhonePage: View {
             .pigScrollProbe()
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sport.front")
+            .environment(\.sportStripBand, hasStrip ? past : nil)
         }
+        .coordinateSpace(name: SportBandGuardRule.space)
         .onScrollPast({ [carouselHeight] in
             SportHeroStrip.shows(scrolled: $0, bannerHeight: carouselHeight, stripHeight: SportHeroStripMetrics.height)
         }, action: { [past] in past.value = $0 })
@@ -189,6 +192,7 @@ struct SportFrontPhonePage: View {
             .pigPressable()
             .accessibilityLabel("\(group.sport), \(group.note), open its page")
             .accessibilityIdentifier("sport.rail.header.\(group.sport)")
+            .modifier(SportBandGuard())
             SportPhoneRowsCard(app: app, browse: browse, flow: flow, front: front, rows: group.rows, identifier: "sport.front.game")
         }
         .padding(.horizontal, SportPhoneMetrics.edge)
@@ -223,6 +227,7 @@ struct SportFrontPhonePage: View {
                             }
                             .pigPressable()
                             .accessibilityIdentifier("sport.also.\(sport)")
+                            .modifier(SportBandGuard())
                         }
                     }
                 }
@@ -266,6 +271,64 @@ private struct SportPhoneStripLayer<Strip: View>: View {
                 .accessibilityHidden(!shows)
                 .pigAnimation(value: shows, moves: true)
         }
+    }
+}
+
+/// #352 (Codex's open medium): while the strip shows, the band under it (its room at the page's top, where the mask
+/// draws nothing of the page) passes no tap and no VoiceOver focus to the rows beneath. Nothing is laid over the band (a
+/// hit-absorbing shield there made a scroll dead zone, as a drag starting on it never reached the scroll view): a row
+/// partly under the band takes no tap until it has scrolled out of it, and a row wholly under it is hidden from
+/// accessibility. A drag starting on the band still starts inside the scroll view, so it scrolls.
+private struct SportBandKey: EnvironmentKey {
+    static let defaultValue: SportPhoneStripPast? = nil
+}
+
+extension EnvironmentValues {
+    /// The iPhone front page's strip state while it has a strip; nil elsewhere (no band to guard).
+    var sportStripBand: SportPhoneStripPast? {
+        get { self[SportBandKey.self] }
+        set { self[SportBandKey.self] = newValue }
+    }
+}
+
+/// A row on the iPhone front page: its part under the strip's band takes no tap, and wholly under it, no VoiceOver focus.
+struct SportBandGuard: ViewModifier {
+    @Environment(\.sportStripBand) private var band
+
+    func body(content: Content) -> some View {
+        if let band { content.modifier(SportBandGuardActive(past: band)) } else { content }
+    }
+}
+
+private struct SportBandGuardActive: ViewModifier {
+    @ObservedObject var past: SportPhoneStripPast
+    /// How much of the row's top is under the band now (points, whole), and its height.
+    @State private var hiddenTop: CGFloat = 0
+    @State private var height: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        let hidden = past.value ? hiddenTop : 0
+        content
+            // A row any part of which is under the band takes no tap (its hidden part would take it: a contentShape cut
+            // to the visible part narrowed only its accessibility frame, not the button's own touch area). Touches then
+            // fall through to the scroll view, so a drag starting there still scrolls.
+            .allowsHitTesting(hidden == 0)
+            .accessibilityHidden(past.value && height > 0 && hidden >= height - 1)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SportBandGuardRule.space)) } action: { frame in
+                let covered = SportBandGuardRule.hiddenTop(rowTop: frame.minY, rowHeight: frame.height)
+                if abs(covered - hiddenTop) >= 1 || (covered == 0) != (hiddenTop == 0) { hiddenTop = covered }
+                if abs(frame.height - height) >= 1 { height = frame.height }
+            }
+    }
+}
+
+/// The band's rule (pure, `SportBandGuardTests`).
+enum SportBandGuardRule {
+    /// The page's ScrollView (its visible frame); a row inside a sideways scroll is still measured against it.
+    static let space = "sport.front.page"
+    /// How much of a row (its top and height in the scroll view's visible frame) is under the strip's band.
+    static func hiddenTop(rowTop: CGFloat, rowHeight: CGFloat) -> CGFloat {
+        min(max(0, SportHeroStripMetrics.room - rowTop), max(0, rowHeight)).rounded(.up)
     }
 }
 
