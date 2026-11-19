@@ -308,6 +308,9 @@ nonisolated enum PageWords {
     static let removeFailed = "That couldn’t be removed. Try again."
     /// Mark, 19 Nov 2026: Record while an earlier recording of the same thing is being cancelled.
     static let cancelling = "Cancelling…"
+    /// Codex sign-off of #347: a record page's recording can no longer be told apart from another channel's (the guide
+    /// changed, or is still loading): nothing is changed or cancelled.
+    static let bindingChangedText = "This recording can’t be matched to its channel now. Try again once the guide has loaded."
     static let cancellingLabel = "Cancelling the earlier recording"
     static let cancellingEarlierText = "The earlier recording is still being cancelled. Try again once it has gone."
     static let chooseFailed = "That recording couldn’t be chosen. Try again."

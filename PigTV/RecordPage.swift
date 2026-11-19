@@ -849,7 +849,10 @@ struct RecordPage: View {
     @ViewBuilder
     private func secondaryButtons(stacked: Bool) -> some View {
         if changing {
-            Button { if let live { cancel(live) } } label: {
+            Button {
+                guard let live else { return }
+                if model.stillBinds(live, request) { cancel(live) } else { error = PageWords.bindingChangedText }
+            } label: {
                 Label(live?.status == "recording" ? "Stop recording" : "Cancel recording", systemImage: "xmark.circle")
                     .lineLimit(1)
                     .frame(maxWidth: stacked ? .infinity : nil)
@@ -874,6 +877,7 @@ struct RecordPage: View {
         defer { busy = false }
         if changing {
             guard let schedule = live else { error = RecordPlan.goneText; return }
+            guard model.stillBinds(schedule, request) else { error = PageWords.bindingChangedText; return }
             guard let change = RecordPlan.change(schedule, before: before, after: after) else { return }
             if await model.changeSchedule(schedule, change) { close() } else { error = model.actionError ?? "The recording could not be changed." }
             return

@@ -403,9 +403,43 @@ final class SportPageCardTests: XCTestCase {
         XCTAssertNil(browse.recordRequest(channel: fox, programme: programme).schedule, "ambiguous: unbound")
         // One such row binds, as before, unless the guide has another channel of that name.
         browse.schedules = [try row(11, "Fox Cricket", "")]
+        browse.guide = [fox]
         XCTAssertEqual(browse.recordRequest(channel: fox, programme: programme).schedule?.id, 11)
         browse.guide = [fox, kayo]
         XCTAssertNil(browse.recordRequest(channel: fox, programme: programme).schedule, "either channel's: unbound")
+    }
+
+    /// Codex sign-off of #347 (high): a name-only (older server) schedule bound to a channel while the guide was still
+    /// paging, though a channel of the same name could be on a page not loaded yet; and the record page then saved or
+    /// cancelled that binding. Now a name-only row binds only once the whole channel list has loaded, and the page checks
+    /// the binding again before Save changes or Cancel recording (`stillBinds`). (No stillBinds: fails to compile on the
+    /// commit before; on it the paging case bound row 11.)
+    func testANameOnlyScheduleBindsOnlyOnceTheWholeGuideHasLoaded() throws {
+        let browse = BrowseModel(client: APIClient(address: try ServerAddress("http://127.0.0.1:9"), token: "fixture", accountID: 1),
+                                 accountID: 1)
+        let start = Int64((Date().timeIntervalSince1970 + 3600) * 1000), end = start + 7_200_000
+        let legacy = try decode(ScheduledRecording.self,
+            #"{"id":11,"title":"Australia v India","channel_name":"Fox Cricket","program_start":\#(start),"program_end":\#(end),"status":"scheduled"}"#)
+        let programme = GuideProgramme(title: "Australia v India", description: nil, startTime: Double(start), endTime: Double(end))
+        let fox = GuideChannel(rawID: "fox", sourceId: 1, name: "Fox Cricket", logo: nil, category: nil, programmes: [])
+        let kayo = GuideChannel(rawID: "kayo", sourceId: 1, name: "Fox Cricket", logo: nil, category: nil, programmes: [])
+        browse.schedules = [legacy]
+        browse.guide = [fox]
+        browse.guideHasMore = true // a later page (with Kayo's "Fox Cricket") still to come
+        XCTAssertNil(browse.recordRequest(channel: fox, programme: programme).schedule, "not bound while the guide pages")
+        browse.guideHasMore = false
+        let request = browse.recordRequest(channel: fox, programme: programme)
+        XCTAssertEqual(request.schedule?.id, 11, "the whole list loaded, no namesake: bound")
+        XCTAssertTrue(browse.stillBinds(legacy, request))
+        // The page stays open while the namesake arrives: Save changes or Cancel recording is refused.
+        browse.guide = [fox, kayo]
+        XCTAssertFalse(browse.stillBinds(legacy, request), "checked again before save or cancel")
+        // An identified row binds while paging (no name is needed).
+        browse.guideHasMore = true
+        let identified = try decode(ScheduledRecording.self,
+            #"{"id":12,"title":"Australia v India","channel_name":"Fox Cricket","source_id":1,"channel_item_id":"fox","program_start":\#(start),"program_end":\#(end),"status":"scheduled"}"#)
+        browse.schedules = [identified]
+        XCTAssertEqual(browse.recordRequest(channel: fox, programme: programme).schedule?.id, 12)
     }
 
     /// Codex check of 320 (medium): a routine refresh between a lost cancellation's reads still lists the row
