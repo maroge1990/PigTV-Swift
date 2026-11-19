@@ -882,13 +882,36 @@ final class BrowseModel: ObservableObject {
     /// overlap, so it stays recordable.
     /// Both sides are compared by guide bounds (C-R #353): `start`/`end` the airing's guide slot, a schedule's its guide
     /// end (`guideEnd`), never a rolled end, so the programme after an overrunning game is not the game's.
+    /// `slots`: a sport request's airings, which resolve a schedule to its own slot first (`scheduleGuideEnd`).
     func cancellingEarlier(gameId: String?, channel: GuideChannel, start: Double, end: Double,
-                           onlyHere: Bool = false) -> Bool {
+                           onlyHere: Bool = false, slots: [RecordRequest.Airing] = []) -> Bool {
         schedules.contains { schedule in
-            schedule.program_start < end && schedule.guideEnd > start
+            schedule.program_start < end
                 && ((gameId != nil && schedule.game == gameId) || Self.sameChannel(schedule, channel))
                 && (onlyHere ? cancellingHere(schedule) : cancellationInProgress(schedule))
+                && scheduleGuideEnd(schedule, channel: channel, slots: slots) > start
         }
+    }
+
+    /// A schedule's guide end (C-R #353; Codex review of #347): its own guide slot first, by channel identity and start
+    /// (a sport request's airing, the channel being asked about, or the loaded guide), since a schedule made while its
+    /// game overran stores the rolled end as `program_end` and may have no `program_end_original`; the stored end only
+    /// when no slot is found (the server does the same since 0874).
+    func scheduleGuideEnd(_ schedule: ScheduledRecording, channel: GuideChannel? = nil, slots: [RecordRequest.Airing] = []) -> Double {
+        let start = Int64(schedule.program_start)
+        if let slot = slots.first(where: { Int64($0.programme.startTime) == start && Self.sameChannel(schedule, $0.channel) }) {
+            return slot.guideBounds.end
+        }
+        if let channel, Self.sameChannel(schedule, channel),
+           let own = channel.programmes.first(where: { Int64($0.startTime) == start }) {
+            return own.endTime
+        }
+        if let source = schedule.source_id, let item = schedule.channel_item_id, !item.isEmpty,
+           let listed = guideStore.channel(id: "\(source):\(item)"),
+           let own = listed.programmes.first(where: { Int64($0.startTime) == start }) {
+            return own.endTime
+        }
+        return schedule.guideEnd
     }
 
     /// The server's identity of a schedule's channel (Codex check of 320): its source and item, or stable id where both
@@ -910,11 +933,12 @@ final class BrowseModel: ObservableObject {
     func cancellingEarlier(_ request: RecordRequest, airing: RecordRequest.Airing) -> Bool {
         let bounds = airing.guideBounds
         guard let entries = request.serverCancelling else {
-            return cancellingEarlier(gameId: request.gameId, channel: airing.channel, start: bounds.start, end: bounds.end)
+            return cancellingEarlier(gameId: request.gameId, channel: airing.channel, start: bounds.start, end: bounds.end,
+                                     slots: request.airings)
         }
         if entries.contains(where: { $0.start < bounds.end && $0.end > bounds.start }) { return true }
         return cancellingEarlier(gameId: request.gameId, channel: airing.channel, start: bounds.start, end: bounds.end,
-                                 onlyHere: true)
+                                 onlyHere: true, slots: request.airings)
     }
 
     /// Any of a request's airings waits.
