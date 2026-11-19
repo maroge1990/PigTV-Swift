@@ -566,12 +566,13 @@ with `PigTV/BrandLayout.swift`). `AppIcon.icon/icon.json` is hand-maintained in 
   centre is the square's centre; `PigBrandMark` sizes its square frame by the ink fraction so the pig keeps its on-screen size.
 - **Launch screen:** `UILaunchScreen` in `AppConfiguration.plist` (colour `LaunchEdge` = the PigCanvas colours, `#FBF8FA` / `#15111A`, + image
   `LaunchBrand`): a **transparent** PNG (any/dark; tv @2x, phone @2x/@3x) holding the static halo as an alpha radial gradient and the mark. No text.
+  Drawn in **Display P3** by `Tools/render-launch.swift` (the launch screen reads an image's values as P3 whatever its tag; `LaunchImageTests`).
   (The kit's square icon art is not canvas-coloured at its edges, which would seam.)
 - **Splash:** `BrandSplashView` (#342, `BrandSplash.swift`'s header has the timeline), on a cold launch with a saved sign-in only; a
   return from the background shows the app as it was left. First frame = launch screen: the splash frames itself to the whole
   screen (not the safe area) so its pig is the launch image's to the pixel (`SplashLaunchFrameUITests`). Bloom and name, then the
-  pig flies onto the opening tab's header mark (`splashLandingSpot`) while Home fades in where it is (never offset: moving Home
-  against the safe area re-lays it out). The hand-off waits for start-up and for the opening page's first content
+  pig flies onto the opening tab's header mark (`splashLandingSpot`) while Home fades in and its tabs glide 18 pt up: a UIKit
+  transform on the tab bar controller's view (`SplashGlideProbe`), never a SwiftUI offset, which re-lays Home out by its safe area. The hand-off waits for start-up and for the opening page's first content
   (`splashPageReady`), at most 4 s past the settled pig (`SplashTimeline`, pure). Reduce Motion: cross-fade, no flight. Reduce
   Transparency: plain canvas, no glow. Fixtures: `PIGTV_UI_TEST_SCREEN=splash`; `PIGTV_UI_TEST_LAUNCH=home` (the real start-up
   path; `PIGTV_UI_TEST_FRONT_DELAY` delays the Sport answer).
