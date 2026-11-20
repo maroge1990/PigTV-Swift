@@ -76,19 +76,18 @@ final class BrowseModel: ObservableObject {
         guideCache = GuideCacheStore(scope: CacheScope(address: client.address, accountID: accountID), directory: guideCacheDirectory)
     }
 
-    /// #358 (Codex review of 366): Settings' usual padding for the record page's steppers, read once per session
-    /// (`GET /api/settings`, C-M); private to it, dropped on retirement.
-    var recordDefaults: RecordPlan.PadDefaults?
+    /// The offline UI fixtures' Settings padding (they make no request).
+    var fixtureRecordDefaults: RecordPlan.PadDefaults?
 
-    /// Settings' usual padding, read when a record page opens and kept for the session; nil when it can't be read (the
-    /// page's steppers then stay off). A fixture makes no request.
+    /// #358: Settings' usual padding for the record page's steppers (`GET /api/settings`, C-M), read every time a record
+    /// page opens and never kept: Codex sign-off of 368 (high), a session-long copy went stale once Finish late changed on
+    /// the web (5 to 30) and one + sent 6. Nil when it can't be read (the page's steppers then stay off) or the session
+    /// has been retired.
     func loadRecordDefaults() async -> RecordPlan.PadDefaults? {
-        if let cached = recordDefaults { return cached }
-        guard !isRetired, !isFixture else { return nil }
-        guard let answer = try? await client.response("settings") else { return nil }
-        guard !isRetired, let read = RecordPlan.PadDefaults.decode(answer.data) else { return nil }
-        recordDefaults = read
-        return read
+        if isFixture { return fixtureRecordDefaults }
+        guard !isRetired, let answer = try? await client.response("settings") else { return nil }
+        guard !isRetired else { return nil }
+        return RecordPlan.PadDefaults.decode(answer.data)
     }
 
     /// Sign-out or a server/account switch: delete this account's guide cache
@@ -97,7 +96,6 @@ final class BrowseModel: ObservableObject {
         // #357 (Codex sign-off of 359-364, high): retired for good, before its workers are cancelled, so a press-time read
         // or a late answer that returns afterwards sends nothing on this session's token.
         isRetired = true
-        recordDefaults = nil
         guideCache.retire()
         // #357 (Codex review of 359-360): an old session's scheduled-list reads stop with it (never sent on its token).
         for worker in reconcilers.values { worker.cancel() }

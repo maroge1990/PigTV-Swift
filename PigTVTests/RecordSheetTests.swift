@@ -136,7 +136,7 @@ final class RecordSheetTests: XCTestCase {
         let read = await model.loadRecordDefaults()
         XCTAssertEqual(read, RecordPlan.PadDefaults(before: 3, after: 30))
         _ = await model.loadRecordDefaults()
-        XCTAssertEqual(reads.value, 1, "kept for the session")
+        XCTAssertEqual(reads.value, 2, "read again for each page, never kept")
         let usual = RecordPlan.usual(.everyEpisode, request: guideProgramme(), settings: read)
         XCTAssertEqual(usual, .init(before: 3, after: 30))
         let shown = RecordPlan.PadDraft.shown(nil, schedule: nil, usual: usual.after)
@@ -148,7 +148,38 @@ final class RecordSheetTests: XCTestCase {
         XCTAssertNil(RecordPlan.stepped(more, by: -1, usual: usual.after, limit: RecordPlan.maxFinishLate, keepsValue: false),
                      "back at the usual: cleared, nothing sent")
         model.retirePrivateCaches()
-        XCTAssertNil(model.recordDefaults, "private to the session")
+        let retired = await model.loadRecordDefaults()
+        XCTAssertNil(retired, "nothing read on a retired session's token")
+        XCTAssertEqual(reads.value, 2)
+    }
+
+    /// Codex sign-off of 368 (high): Settings were kept for the whole session, so after Finish late changed from 5 to 30
+    /// on the web a later Record page started from 5 and one + sent 6. Each page's opening reads them again; a read that
+    /// fails on a later opening leaves the steppers off (nothing from an earlier page is used).
+    @MainActor
+    func testEachRecordPageReadsTheSettingsAgain() async throws {
+        let answer = Locked<LocalHTTPServer.Response>(.json(#"{"defaultPreBufferMin":1,"defaultPostBufferMin":5}"#))
+        let http = try LocalHTTPServer { request in
+            request.method == "GET" && request.path == "/api/settings" ? answer.value : .notFound
+        }
+        defer { http.stop() }
+        let model = try browse(http)
+        // The first page.
+        let first = await model.loadRecordDefaults()
+        XCTAssertEqual(first, RecordPlan.PadDefaults(before: 1, after: 5))
+        // Finish late changed on the web; the next page.
+        answer.value = .json(#"{"defaultPreBufferMin":1,"defaultPostBufferMin":30}"#)
+        let second = await model.loadRecordDefaults()
+        let usual = RecordPlan.usual(.this, request: guideProgramme(), settings: second)
+        let more = RecordPlan.stepped(RecordPlan.PadDraft.shown(nil, schedule: nil, usual: usual.after), by: 1,
+                                      usual: usual.after, limit: RecordPlan.maxFinishLate, keepsValue: false)
+        XCTAssertEqual(more, 31, "one + from the Settings as they are now")
+        // The read fails on a third page: its steppers wait, and nothing is sent.
+        answer.value = .json(#"{"error":"nope"}"#, status: 500)
+        let third = await model.loadRecordDefaults()
+        XCTAssertNil(third)
+        let shown = RecordPlan.PadDraft.shown(nil, schedule: nil, usual: RecordPlan.usual(.this, request: guideProgramme(), settings: third).after)
+        XCTAssertFalse(RecordPlan.canStep(shown, by: 1, limit: RecordPlan.maxFinishLate), "+ off without this page's read")
     }
 
     /// Settings can't be read: the steppers that depend on them stay off ("—"), and Record still works with the padding
@@ -170,7 +201,6 @@ final class RecordSheetTests: XCTestCase {
         let model = try browse(http)
         let read = await model.loadRecordDefaults()
         XCTAssertNil(read)
-        XCTAssertNil(model.recordDefaults, "a failed read is not kept: the next page tries again")
         let usual = RecordPlan.usual(.this, request: guideProgramme(), settings: read)
         let shownBefore = RecordPlan.PadDraft.shown(nil, schedule: nil, usual: usual.before)
         XCTAssertNil(shownBefore)

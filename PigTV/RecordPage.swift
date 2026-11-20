@@ -568,7 +568,8 @@ struct RecordPage: View {
     @State private var what: RecordPlan.What = .this
     /// What the person changed in Extra time, per field (nil: untouched, never sent).
     @State private var draft: RecordPlan.PadDraft
-    /// Settings' padding (`BrowseModel.loadRecordDefaults`); nil until read: the steppers that depend on it wait.
+    /// Settings' padding as this opening read it (`BrowseModel.loadRecordDefaults`); nil until then: the steppers that
+    /// depend on it wait (never a copy from an earlier page).
     @State private var defaults: RecordPlan.PadDefaults?
     @State private var airingIndex = 0
     @State private var error: String?
@@ -584,7 +585,6 @@ struct RecordPage: View {
         self.opened = request
         self.close = close
         _draft = State(initialValue: .opening(request))
-        _defaults = State(initialValue: model.recordDefaults)
         _error = State(initialValue: request.error)
         _airingIndex = State(initialValue: RecordPlan.openingAiring(request))
         #if DEBUG
@@ -664,11 +664,10 @@ struct RecordPage: View {
             draft = .opening(request)
             what = .this
         }
-        // Codex review of 366 (high): Settings' padding, read once per session; the steppers wait for it (a failed read
-        // leaves them off, and Record still works with the padding untouched, so the server applies its own).
-        .task {
-            if defaults == nil, let read = await model.loadRecordDefaults() { defaults = read }
-        }
+        // Codex review of 366 and sign-off of 368 (high): Settings' padding, read each time the page opens; the steppers
+        // wait for it (a failed read leaves them off, and Record still works with the padding untouched, so the server
+        // applies its own).
+        .task { defaults = await model.loadRecordDefaults() }
         .task(id: changing) {
             guard changing, !model.isFixture else { return }
             while !Task.isCancelled {
