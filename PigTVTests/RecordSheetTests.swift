@@ -50,7 +50,7 @@ final class RecordSheetTests: XCTestCase {
 
     /// Finish late's usual is 0 (ESPN's end) for what the server stops at the game's end, else Settings'.
     func testTheUsualFinishLateIsZeroForAGameESPNFollows() throws {
-        let settings = RecordPlan.Usual(before: 2, after: 10)
+        let settings = RecordPlan.PadDefaults(before: 2, after: 10)
         XCTAssertEqual(RecordPlan.usual(.this, request: game(), settings: settings), .init(before: 2, after: 0), "a card's game")
         XCTAssertEqual(RecordPlan.usual(.this, request: game(gameId: nil), settings: settings).after, 10, "no game id: the guide's end")
         XCTAssertEqual(RecordPlan.usual(.everyTeam("Liverpool"), request: game(), settings: settings).after, 0, "a team rule's games")
@@ -59,8 +59,10 @@ final class RecordSheetTests: XCTestCase {
         XCTAssertEqual(RecordPlan.usual(.everyLeague("EPL"), request: game(), settings: settings).after, 10, "a league's keyword rule")
         XCTAssertEqual(RecordPlan.usual(.this, request: guideProgramme(), settings: settings).after, 10)
         XCTAssertEqual(RecordPlan.usual(.everyEpisode, request: guideProgramme(), settings: settings).after, 10)
-        XCTAssertEqual(RecordPlan.usual(.this, request: guideProgramme()), RecordPlan.Usual.builtIn, "the server's own defaults")
-        XCTAssertEqual(RecordPlan.Usual.builtIn, .init(before: 1, after: 5))
+        XCTAssertEqual(RecordPlan.usual(.this, request: guideProgramme(), settings: nil), .init(before: nil, after: nil),
+                       "Settings not known: nothing to start from")
+        XCTAssertEqual(RecordPlan.usual(.this, request: game(), settings: nil), .init(before: nil, after: 0),
+                       "a game ESPN follows: Finish late's usual 0 needs no Settings")
 
         var set = guideProgramme()
         set.schedule = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"scheduled","gameId":"espn:soccer/eng.1:1"}"#)
@@ -106,6 +108,86 @@ final class RecordSheetTests: XCTestCase {
         let one = RecordPlan.stepped(two, by: -1, usual: 1, limit: 60, keepsValue: true)
         XCTAssertEqual(one, 1)
         XCTAssertEqual(RecordPlan.change(scheduled, before: one, after: 5), ScheduleChangeBody(preBufferMin: 1))
+    }
+
+    // MARK: Settings' padding (Codex review of 366, high)
+
+    @MainActor
+    private func browse(_ http: LocalHTTPServer) throws -> BrowseModel {
+        BrowseModel(client: APIClient(address: try ServerAddress(http.baseURL), token: "fixture", accountID: 1), accountID: 1)
+    }
+
+    /// The steppers start from the server's Settings (Finish late 30 here), never a built-in 5: one + asks for 31, not 6
+    /// (which would have cut 24 minutes). Read once per session, dropped when it is retired. Stepping back to the usual
+    /// clears the value again (nothing sent).
+    @MainActor
+    func testTheSteppersStartFromTheServersSettings() async throws {
+        let reads = Locked(0)
+        let http = try LocalHTTPServer { request in
+            switch (request.method, request.path) {
+            case ("GET", "/api/settings"):
+                reads.value += 1
+                return .json(#"{"defaultPreBufferMin":3,"defaultPostBufferMin":30,"recordingsPath":"/x","notifyWebhookSet":false}"#)
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let model = try browse(http)
+        let read = await model.loadRecordDefaults()
+        XCTAssertEqual(read, RecordPlan.PadDefaults(before: 3, after: 30))
+        _ = await model.loadRecordDefaults()
+        XCTAssertEqual(reads.value, 1, "kept for the session")
+        let usual = RecordPlan.usual(.everyEpisode, request: guideProgramme(), settings: read)
+        XCTAssertEqual(usual, .init(before: 3, after: 30))
+        let shown = RecordPlan.PadDraft.shown(nil, schedule: nil, usual: usual.after)
+        XCTAssertEqual(shown, 30)
+        let more = RecordPlan.stepped(shown, by: 1, usual: usual.after, limit: RecordPlan.maxFinishLate, keepsValue: false)
+        XCTAssertEqual(more, 31, "one more minute than the server's usual")
+        XCTAssertEqual(RecordPlan.rule(.everyEpisode, request: guideProgramme(), before: nil, after: more)?.postBufferMin, 31)
+        XCTAssertEqual(RecordPlan.extraWords(before: nil, after: more, usual: usual), "3 min early, 31 min late")
+        XCTAssertNil(RecordPlan.stepped(more, by: -1, usual: usual.after, limit: RecordPlan.maxFinishLate, keepsValue: false),
+                     "back at the usual: cleared, nothing sent")
+        model.retirePrivateCaches()
+        XCTAssertNil(model.recordDefaults, "private to the session")
+    }
+
+    /// Settings can't be read: the steppers that depend on them stay off ("—"), and Record still works with the padding
+    /// untouched, so nothing is sent and the server applies its own usual.
+    @MainActor
+    func testWithoutSettingsTheSteppersWaitAndRecordSendsNoPadding() async throws {
+        let bodies = Locked<[Data]>([])
+        let http = try LocalHTTPServer { request in
+            switch (request.method, request.path) {
+            case ("GET", "/api/settings"): return .json(#"{"error":"nope"}"#, status: 500)
+            case ("POST", "/api/recordings/schedule"):
+                bodies.value.append(request.body)
+                return .json(#"{"id":9,"title":"Four Corners","program_start":1,"program_end":2,"status":"scheduled"}"#, status: 201)
+            case ("GET", "/api/recordings/scheduled"), ("GET", "/api/recordings"): return .json("[]")
+            default: return .notFound
+            }
+        }
+        defer { http.stop() }
+        let model = try browse(http)
+        let read = await model.loadRecordDefaults()
+        XCTAssertNil(read)
+        XCTAssertNil(model.recordDefaults, "a failed read is not kept: the next page tries again")
+        let usual = RecordPlan.usual(.this, request: guideProgramme(), settings: read)
+        let shownBefore = RecordPlan.PadDraft.shown(nil, schedule: nil, usual: usual.before)
+        XCTAssertNil(shownBefore)
+        XCTAssertFalse(RecordPlan.canStep(shownBefore, by: 1, limit: RecordPlan.maxStartEarly), "no + while the usual is unknown")
+        XCTAssertFalse(RecordPlan.canStep(shownBefore, by: -1, limit: RecordPlan.maxStartEarly))
+        XCTAssertNil(RecordPlan.stepped(shownBefore, by: 1, usual: usual.before, limit: RecordPlan.maxStartEarly, keepsValue: false))
+        XCTAssertEqual(RecordPlan.extraWords(before: shownBefore, after: nil, usual: usual), "Usual")
+        let draft = RecordPlan.PadDraft.opening(guideProgramme())
+        let airing = guideProgramme().airings[0]
+        let made = await model.schedule(channel: airing.channel, programme: airing.programme, before: draft.before, after: draft.after)
+        XCTAssertTrue(made, model.actionError ?? "")
+        let sent = try XCTUnwrap(bodies.value.first.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+        XCTAssertNil(sent["preBufferMin"])
+        XCTAssertNil(sent["postBufferMin"])
+        // A malformed answer is not known either.
+        XCTAssertNil(RecordPlan.PadDefaults.decode(Data(#"{"defaultPreBufferMin":"two","defaultPostBufferMin":5}"#.utf8)))
+        XCTAssertNil(RecordPlan.PadDefaults.decode(Data(#"{"defaultPreBufferMin":1,"defaultPostBufferMin":500}"#.utf8)))
     }
 
     // MARK: Set to record

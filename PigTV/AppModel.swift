@@ -787,6 +787,7 @@ final class AppModel: ObservableObject {
         let client = APIClient(address: address, token: "fixture", info: info, accountID: 1)
         let model = BrowseModel(client: client, accountID: 1)
         model.isFixture = true
+        model.recordDefaults = RecordPlan.PadDefaults(before: 1, after: 5) // the server's shipped Settings (#358)
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(logos: true), to: GuideFixtures.requestedCount)
         model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
         model.recordings = GuideFixtures.recordings()

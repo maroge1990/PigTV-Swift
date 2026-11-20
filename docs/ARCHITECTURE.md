@@ -106,9 +106,11 @@ controls are not used for live play.
   row per channel name with a tick, BEST on the first, the quality chips; times only when the airings differ; not
   pressable with one airing, nor for a rule) and **Extra time** (opens a page with Start early and Finish late as
   − value + steppers, one minute per press, 0-60 and 0-180; on Apple TV left and right on the focused row). The row says
-  "Usual" until a value differs from the usual (Settings' padding, the server's shipped 1 and 5 since the client does not
-  read Settings; Finish late 0 for a game ESPN follows, C-M since #358); an untouched value is left out, and a value
-  stepped back to the usual is left out again. All of it is pure (`RecordPlan`; `RecordPageTests`, `RecordSheetTests`).
+  "Usual" until a value differs from the usual (Settings' padding, read once per session from `GET /api/settings`,
+  `BrowseModel.loadRecordDefaults`, dropped on retirement; Finish late 0 for a game ESPN follows, C-M since #358). A
+  stepper whose usual is not known yet shows "—" and waits (a failed read leaves it off; Record still works, sending
+  none). An untouched value is left out, a value stepped back to the usual is left out again, and Set to record's Done
+  sends only the fields the person changed (`RecordPlan.PadDraft`), so another device's change is kept. All of it is pure (`RecordPlan`; `RecordPageTests`, `RecordSheetTests`).
   A scheduled programme opens it as **Set to record** (its state where What is): its own padding
   (`pre_buffer_min`/`post_buffer_min`, decoded leniently with `endsWith`), Done sends only what changed (`PUT
   recordings/scheduled/:id`, C-M since 0444; Start early shows "Started" once it records) and otherwise closes, the

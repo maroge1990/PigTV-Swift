@@ -179,13 +179,31 @@ nonisolated enum RecordPlan {
     static let maxStartEarly = 60
     static let maxFinishLate = 180
 
-    /// The usual Start early and Finish late: what the server applies when the page sends none.
+    /// The usual Start early and Finish late: what the server applies when the page sends none; nil while not known.
     struct Usual: Equatable, Sendable {
-        var before: Int
-        var after: Int
-        /// The server's defaults as shipped (Settings' Start early 1 and Finish late 5): the client does not read
-        /// Settings, so these stand for them.
-        static let builtIn = Usual(before: 1, after: 5)
+        var before: Int?
+        var after: Int?
+    }
+
+    /// Settings' padding as the server has it (`GET /api/settings`, C-M #358: `defaultPreBufferMin`, `defaultPostBufferMin`;
+    /// any signed-in user or paired device may read it). Codex review of 366 (high): the steppers started from the
+    /// server's shipped 1 and 5, so with Settings' Finish late 30 one + sent 6 and shortened the recording.
+    struct PadDefaults: Equatable, Sendable {
+        let before: Int
+        let after: Int
+
+        /// The two fields from the settings answer: whole minutes within the server's ranges, else nil (not known).
+        static func decode(_ data: Data) -> PadDefaults? {
+            struct Body: Decodable {
+                let defaultPreBufferMin: Lenient<Double>?
+                let defaultPostBufferMin: Lenient<Double>?
+            }
+            guard let body = try? JSONDecoder().decode(Body.self, from: data),
+                  let pre = body.defaultPreBufferMin?.value, let post = body.defaultPostBufferMin?.value,
+                  pre.isFinite, post.isFinite, pre == pre.rounded(), post == post.rounded(),
+                  (0...Double(maxStartEarly)).contains(pre), (0...Double(maxFinishLate)).contains(post) else { return nil }
+            return PadDefaults(before: Int(pre), after: Int(post))
+        }
     }
 
     /// #358 (C-M "a game's usual Finish late is 0"): what the server stops at ESPN's end, with no Finish late, when the
@@ -201,17 +219,19 @@ nonisolated enum RecordPlan {
         }
     }
 
-    /// The usual padding for this choice: Settings' Start early, and Finish late 0 for a game ESPN follows, else Settings'.
-    static func usual(_ what: What, request: RecordRequest, settings: Usual = .builtIn) -> Usual {
-        Usual(before: settings.before, after: followsGame(what, request: request) ? 0 : settings.after)
+    /// The usual padding for this choice: Settings' Start early, and Finish late 0 for a game ESPN follows, else Settings';
+    /// nil where it depends on Settings and they are not known (the stepper waits).
+    static func usual(_ what: What, request: RecordRequest, settings: PadDefaults?) -> Usual {
+        Usual(before: settings?.before, after: followsGame(what, request: request) ? 0 : settings?.after)
     }
 
     /// The Extra time row's value: "Usual" while both are the usual, else "2 min early, 8 min late" (the web's words).
-    /// `before`/`after`: the value chosen (or the schedule's), nil for the usual.
+    /// `before`/`after`: the values shown (the edit, the schedule's, or the usual), nil while not known; a side not
+    /// known is left out.
     static func extraWords(before: Int?, after: Int?, usual: Usual) -> String {
         let early = before ?? usual.before, late = after ?? usual.after
         if early == usual.before && late == usual.after { return "Usual" }
-        return "\(early) min early, \(late) min late"
+        return [early.map { "\($0) min early" }, late.map { "\($0) min late" }].compactMap { $0 }.joined(separator: ", ")
     }
 
     /// A stepper's value in words ("8 min").
@@ -541,6 +561,8 @@ struct RecordPage: View {
     @State private var what: RecordPlan.What = .this
     /// What the person changed in Extra time, per field (nil: untouched, never sent).
     @State private var draft: RecordPlan.PadDraft
+    /// Settings' padding (`BrowseModel.loadRecordDefaults`); nil until read: the steppers that depend on it wait.
+    @State private var defaults: RecordPlan.PadDefaults?
     @State private var airingIndex = 0
     @State private var error: String?
     @State private var busy = false
@@ -555,6 +577,7 @@ struct RecordPage: View {
         self.opened = request
         self.close = close
         _draft = State(initialValue: .opening(request))
+        _defaults = State(initialValue: model.recordDefaults)
         _error = State(initialValue: request.error)
         _airingIndex = State(initialValue: RecordPlan.openingAiring(request))
         #if DEBUG
@@ -578,7 +601,7 @@ struct RecordPage: View {
     private var leagueLabel: String? { request.league.flatMap { model.sportFront.labels[$0] } }
     /// #345: "Don't record it" (a game set to record once listed): nothing to pad.
     private var stopsWaiting: Bool { what == .this && request.listing?.offer != nil && request.listing?.offer != .record }
-    private var usual: RecordPlan.Usual { RecordPlan.usual(what, request: request) }
+    private var usual: RecordPlan.Usual { RecordPlan.usual(what, request: request, settings: defaults) }
     /// The schedule as the list has it now (Set to record), else as it opened.
     private var scheduleNow: ScheduledRecording? { live ?? request.schedule }
     private var shownBefore: Int? { RecordPlan.PadDraft.shown(draft.before, schedule: scheduleNow?.startEarly, usual: usual.before) }
@@ -633,6 +656,11 @@ struct RecordPage: View {
         .onChange(of: airingIndex) {
             draft = .opening(request)
             what = .this
+        }
+        // Codex review of 366 (high): Settings' padding, read once per session; the steppers wait for it (a failed read
+        // leaves them off, and Record still works with the padding untouched, so the server applies its own).
+        .task {
+            if defaults == nil, let read = await model.loadRecordDefaults() { defaults = read }
         }
         .task(id: changing) {
             guard changing, !model.isFixture else { return }

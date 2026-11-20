@@ -76,12 +76,28 @@ final class BrowseModel: ObservableObject {
         guideCache = GuideCacheStore(scope: CacheScope(address: client.address, accountID: accountID), directory: guideCacheDirectory)
     }
 
+    /// #358 (Codex review of 366): Settings' usual padding for the record page's steppers, read once per session
+    /// (`GET /api/settings`, C-M); private to it, dropped on retirement.
+    var recordDefaults: RecordPlan.PadDefaults?
+
+    /// Settings' usual padding, read when a record page opens and kept for the session; nil when it can't be read (the
+    /// page's steppers then stay off). A fixture makes no request.
+    func loadRecordDefaults() async -> RecordPlan.PadDefaults? {
+        if let cached = recordDefaults { return cached }
+        guard !isRetired, !isFixture else { return nil }
+        guard let answer = try? await client.response("settings") else { return nil }
+        guard !isRetired, let read = RecordPlan.PadDefaults.decode(answer.data) else { return nil }
+        recordDefaults = read
+        return read
+    }
+
     /// Sign-out or a server/account switch: delete this account's guide cache
     /// and drop any save still in flight.
     func retirePrivateCaches() {
         // #357 (Codex sign-off of 359-364, high): retired for good, before its workers are cancelled, so a press-time read
         // or a late answer that returns afterwards sends nothing on this session's token.
         isRetired = true
+        recordDefaults = nil
         guideCache.retire()
         // #357 (Codex review of 359-360): an old session's scheduled-list reads stop with it (never sent on its token).
         for worker in reconcilers.values { worker.cancel() }
