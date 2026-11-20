@@ -54,8 +54,9 @@ final class CardSlotsCancellingTests: XCTestCase {
         XCTAssertEqual(Set(request.airings.map(\.id)).count, 2, "each airing its own choice")
         let groups = RecordPlan.channelGroups(request)
         XCTAssertEqual(groups.count, 2, "a row per airing")
-        let details = groups.enumerated().map { index, group in
-            RecordPlan.airingDetail(request.airings[group.best.copy], index: index, first: request.airings.first, now: now)
+        XCTAssertTrue(RecordPlan.channelsTimed(request), "the days differ")
+        let details = groups.map { group in
+            RecordPlan.channelDetail(request.airings[group.best.copy], timed: true, now: now)
         }
         XCTAssertEqual(details.count, 2)
         XCTAssertTrue(details.allSatisfy { $0 != nil }, "each shows its day and time: \(details)")

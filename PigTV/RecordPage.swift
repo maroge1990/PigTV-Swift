@@ -1,12 +1,14 @@
 import SwiftUI
 
-// D-44 batch 5 (Apple 114, R5-Record-*): the one record page, a centred sheet on the page canvas, opened from the
-// long-press menu's More options… (the TV Guide and Sport alike) and from every Record button. What (this one, or a
-// rule: every new episode / every episode; every <team> game / every <league> game) · When it stops (a Sport card's
-// game: when ESPN says it's over, else the guide end, plus Start early / Finish late) · Record on (Sport only, when
-// several channels carry it). A programme already scheduled opens it as Change recording: its padding can change
-// (C-M since 0444, `PUT recordings/scheduled/:id`; Finish late only once it records), and Cancel recording acts at
-// once with the 10 s Undo. The choices are pure (`RecordPlan`, tested in RecordPageTests).
+// D-44 batch 5 (Apple 114), remade to Mark's final design (#358, 20 Nov 2026; the web's Record window, server 0882): the
+// one record page, opened from the long-press menu's More options… (the TV Guide and Sport alike) and from every Record
+// button. A centred sheet on Apple TV and iPad, a half-height sheet on iPhone. Its main page: the header (the date and
+// time once), What (this one, or a rule: every new episode / every episode; every <team> game / every <league> game) as a
+// switch, then two rows: Channel (a page of the channels that carry it) and Extra time (a page of two steppers, Start
+// early and Finish late), then Record and Cancel. A programme already scheduled opens as "Set to record": its padding can
+// change (C-M since 0444, `PUT recordings/scheduled/:id`; Finish late only once it records) with Done, and Cancel
+// recording acts at once with the 10 s Undo. The choices are pure (`RecordPlan`, tested in RecordPageTests and
+// RecordSheetTests).
 
 /// A team on the page's header (a Sport card's competitor) and the name "Every <team> game" follows.
 nonisolated struct RecordTeam: Equatable, Sendable {
@@ -100,10 +102,6 @@ nonisolated enum RecordPlan {
         case everyLeague(String)
     }
 
-    /// Start early and Finish late, in minutes; nil is the server's usual padding.
-    static let startEarly: [Int?] = [nil, 0, 1, 2, 5, 10]
-    static let finishLate: [Int?] = [nil, 0, 2, 5, 10, 15, 30]
-
     /// The What choices: this one, then the rules. A game: every game of the followed team
     /// (else of each side), then every game of its league. A programme: every new episode, every episode. Change
     /// recording has none (it is one schedule).
@@ -124,23 +122,34 @@ nonisolated enum RecordPlan {
         return out
     }
 
-    /// A What tile's lines: its title and, for the one-off choices, the time or what repeats.
-    static func label(_ what: What, request: RecordRequest, leagueLabel: String? = nil, now: Date) -> (title: String, detail: String?) {
+    /// A What choice's words on the switch (#358: the date and time are the header's alone). `short`: the iPhone's
+    /// narrow switch ("All Bulls", "All NBA", Mark's iPhone design).
+    static func title(_ what: What, request: RecordRequest, leagueLabel: String? = nil, short: Bool = false) -> String {
         switch what {
         case .this:
-            let start = request.airings.first?.programme.start ?? request.listing.map { SportFrontText.date($0.game.start) }
-            let when = start.map { "\(DetailText.day($0, now: now)) \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
-            return (request.isGame || request.league != nil ? "This game" : "This programme", when)
+            return request.isGame || request.league != nil ? "This game" : "This programme"
         case .everyNewEpisode:
-            return ("Every new episode", nil)
+            return "Every new episode"
         case .everyEpisode:
-            return ("Every episode", "Repeats as well")
+            return "Every episode"
         case .everyTeam(let team):
-            return ("Every \(team) game", nil)
+            return short ? "All \(team)" : "Every \(team) game"
         case .everyLeague(let league):
             let name = leagueLabel ?? league
-            return (request.teams.count == 2 ? "Every \(name) game" : "Everything in \(name)", nil)
+            if short { return "All \(name)" }
+            return request.teams.count == 2 ? "Every \(name) game" : "Everything in \(name)"
         }
+    }
+
+    /// The header's one date line (#358: shown once, never under the rows): the chosen airing's day and times, or a game
+    /// the guide does not list yet's day and start.
+    static func when(_ request: RecordRequest, airing: RecordRequest.Airing?, now: Date) -> String? {
+        if let airing {
+            return "\(DetailText.day(airing.programme.start, now: now)) · \(airing.programme.timeRange)"
+        }
+        guard let listing = request.listing else { return nil }
+        let start = SportFrontText.date(listing.game.start)
+        return "\(DetailText.day(start, now: now)) · \(start.formatted(date: .omitted, time: .shortened))"
     }
 
     /// The rule a What makes (nil for "this one").
@@ -164,30 +173,124 @@ nonisolated enum RecordPlan {
         }
     }
 
-    /// The chips of one padding row: on Change recording the schedule's own value (added when it is not one of them)
-    /// and never "Usual" (it has a value).
-    static func chips(_ base: [Int?], current: Int?, changing: Bool) -> [Int?] {
-        guard changing else { return base }
-        var minutes = base.compactMap { $0 }
-        if let current, !minutes.contains(current) { minutes.append(current); minutes.sort() }
-        return minutes.map { Optional($0) }
+    // MARK: Extra time (#358)
+
+    /// The server's ranges (C-M since 0444: whole minutes, 0-60 and 0-180, as a rule's).
+    static let maxStartEarly = 60
+    static let maxFinishLate = 180
+
+    /// The usual Start early and Finish late: what the server applies when the page sends none.
+    struct Usual: Equatable, Sendable {
+        var before: Int
+        var after: Int
+        /// The server's defaults as shipped (Settings' Start early 1 and Finish late 5): the client does not read
+        /// Settings, so these stand for them.
+        static let builtIn = Usual(before: 1, after: 5)
     }
 
-    static func chipTitle(_ minutes: Int?) -> String {
-        guard let minutes else { return "Usual" }
-        return minutes == 0 ? "On time" : "\(minutes) min"
+    /// #358 (C-M "a game's usual Finish late is 0"): what the server stops at ESPN's end, with no Finish late, when the
+    /// page sends none: a Sport card's game recorded on its own (its id is sent; a game the guide does not list yet is its
+    /// `game` rule), a `team` rule's games, and a schedule made for a game. A keyword `sport` rule (a league, a team whose
+    /// sport is not known) and a guide programme keep Settings' Finish late.
+    static func followsGame(_ what: What, request: RecordRequest) -> Bool {
+        if let schedule = request.schedule { return schedule.game != nil }
+        switch what {
+        case .this: return request.gameId != nil
+        case .everyTeam: return rule(what, request: request, before: nil, after: nil)?.kind == "team"
+        case .everyNewEpisode, .everyEpisode, .everyLeague: return false
+        }
+    }
+
+    /// The usual padding for this choice: Settings' Start early, and Finish late 0 for a game ESPN follows, else Settings'.
+    static func usual(_ what: What, request: RecordRequest, settings: Usual = .builtIn) -> Usual {
+        Usual(before: settings.before, after: followsGame(what, request: request) ? 0 : settings.after)
+    }
+
+    /// The Extra time row's value: "Usual" while both are the usual, else "2 min early, 8 min late" (the web's words).
+    /// `before`/`after`: the value chosen (or the schedule's), nil for the usual.
+    static func extraWords(before: Int?, after: Int?, usual: Usual) -> String {
+        let early = before ?? usual.before, late = after ?? usual.after
+        if early == usual.before && late == usual.after { return "Usual" }
+        return "\(early) min early, \(late) min late"
+    }
+
+    /// A stepper's value in words ("8 min").
+    static func minutes(_ value: Int) -> String { "\(value) min" }
+
+    /// One press of − or + (`delta` ±1): the new value, within 0 and `limit`. A new recording's value that comes back to
+    /// the usual is nil again, so nothing is sent and a later switch to a rule with another usual follows that rule
+    /// (Codex on the web window, #358); Change recording keeps the number (it is compared with the schedule's).
+    static func stepped(_ value: Int?, by delta: Int, usual: Int, limit: Int, keepsValue: Bool) -> Int? {
+        let next = min(limit, max(0, (value ?? usual) + delta))
+        return !keepsValue && next == usual ? nil : next
+    }
+
+    /// Whether − (`delta` < 0) or + can still move the value shown.
+    static func canStep(_ value: Int?, by delta: Int, usual: Int, limit: Int) -> Bool {
+        let shown = value ?? usual
+        return delta < 0 ? shown > 0 : shown < limit
     }
 
     /// Start early can change only before it records.
     static func canChangeStartEarly(_ schedule: ScheduledRecording) -> Bool { schedule.status != "recording" }
 
-    /// What "Save changes" sends: only what changed (Start early not once it records); nil when nothing has.
+    /// What Done sends: only what changed (Start early not once it records); nil when nothing has.
     static func change(_ schedule: ScheduledRecording, before: Int?, after: Int?) -> ScheduleChangeBody? {
         var body = ScheduleChangeBody()
         if canChangeStartEarly(schedule), let before, before != schedule.startEarly { body.preBufferMin = before }
         if let after, after != schedule.finishLate { body.postBufferMin = after }
         return body == ScheduleChangeBody() ? nil : body
     }
+
+    /// The line where What is when it is already set to record (the web's words).
+    static func stateWords(_ schedule: ScheduledRecording?, gone: Bool) -> String {
+        if gone { return "Ended" }
+        switch schedule?.status {
+        case "recording": return "Recording now"
+        case "waiting": return "Waiting to record"
+        default: return "Set to record"
+        }
+    }
+
+    // MARK: Channel (#358)
+
+    /// Whether the Channel row opens the Channel page: when there is more than one airing to choose. Set to record, it
+    /// records where it was set; a sport request's airings stay choosable while one of them is set to record (Codex review
+    /// of #347: another day of a Test stays recordable), as before.
+    static func channelChoosable(_ opened: RecordRequest, changing: Bool) -> Bool {
+        opened.airings.count > 1 && (!changing || opened.airingSchedules != nil)
+    }
+
+    /// Whether the airings differ in time (a Test's two days, a later showing): only then does the Channel page show each
+    /// row's day and times.
+    static func channelsTimed(_ request: RecordRequest) -> Bool {
+        guard let first = request.airings.first else { return false }
+        return request.airings.contains {
+            $0.programme.startTime != first.programme.startTime || $0.programme.endTime != first.programme.endTime
+        }
+    }
+
+    /// A Channel page row's second line: its day and times when the airings differ in time, else nothing.
+    static func channelDetail(_ airing: RecordRequest.Airing, timed: Bool, now: Date) -> String? {
+        timed ? "\(DetailText.day(airing.programme.start, now: now)) \(airing.programme.timeRange)" : nil
+    }
+
+    /// D-65 (#266): the Channel page's rows: one per channel name, its copies' qualities as chips (best first; copies with
+    /// the same name and quality fold into one chip). Each copy is its index in `request.airings`; a chip selects its first.
+    static func channelGroups(_ request: RecordRequest) -> [ChannelNameGroup<Int>] {
+        // C-R #353 `slots`: a channel with several airings (a Test's two days) is a row per airing, each with its day.
+        let repeated = Set(Dictionary(grouping: request.airings, by: \.channel.id).filter { $0.value.count > 1 }.keys)
+        return ChannelGrouping.group(Array(request.airings.indices), name: { request.airings[$0].channel.name },
+                              serverKey: { index in
+                                  let airing = request.airings[index]
+                                  guard repeated.contains(airing.channel.id) else { return airing.nameKey }
+                                  return "\(airing.nameKey ?? airing.channel.name)@\(Int64(airing.programme.startTime))"
+                              },
+                              airing: { (start: request.airings[$0].programme.startTime, end: request.airings[$0].programme.endTime) },
+                              chip: { request.airings[$0].chip })
+    }
+
+    // MARK: Binding the page to its schedule
 
     /// Codex 5a round 1 (medium): which schedule the page is about. A channel chosen explicitly (`preferred`) is that
     /// channel's schedule, or a new recording when it has none; otherwise the first channel that has one, and the page
@@ -240,11 +343,6 @@ nonisolated enum RecordPlan {
         return request.gameId != nil
     }
 
-    /// When it stops, in words (#341: one line; the guide end and Finish late are not repeated under it).
-    static func stopTitle(_ request: RecordRequest) -> String {
-        stopsWithGame(request) ? "When the game ends (ESPN)" : "When the guide says it ends"
-    }
-
     /// #345: the note under a game the guide does not list yet (the words of #234's question).
     /// #341: only the offer to record says anything; a game already set to record has no note.
     static func listingNote(_ listing: RecordRequest.Listing) -> String? {
@@ -255,7 +353,7 @@ nonisolated enum RecordPlan {
 
     /// The primary button.
     static func primaryTitle(_ what: What, request: RecordRequest) -> String {
-        if request.schedule != nil { return "Save changes" }
+        if request.schedule != nil { return "Done" }
         if what == .this, let listing = request.listing {
             return listing.offer == .record ? SportFutureRecord.recordTitle : SportFutureRecord.cancelTitle
         }
@@ -271,38 +369,6 @@ nonisolated enum RecordPlan {
     static func streamNote(_ airing: RecordRequest.Airing?, now: Date) -> String? {
         guard let programme = airing?.programme, programme.start <= now else { return nil }
         return "It has started: only the rest of it is recorded."
-    }
-
-    /// D-65 (#266): Record on's rows: one per channel name, its copies' qualities as chips (best first; copies with the
-    /// same name and quality fold into one chip). Each copy is its index in `request.airings`; a chip selects its first.
-    static func channelGroups(_ request: RecordRequest) -> [ChannelNameGroup<Int>] {
-        // C-R #353 `slots`: a channel with several airings (a Test's two days) is a row per airing, each with its day.
-        let repeated = Set(Dictionary(grouping: request.airings, by: \.channel.id).filter { $0.value.count > 1 }.keys)
-        return ChannelGrouping.group(Array(request.airings.indices), name: { request.airings[$0].channel.name },
-                              serverKey: { index in
-                                  let airing = request.airings[index]
-                                  guard repeated.contains(airing.channel.id) else { return airing.nameKey }
-                                  return "\(airing.nameKey ?? airing.channel.name)@\(Int64(airing.programme.startTime))"
-                              },
-                              airing: { (start: request.airings[$0].programme.startTime, end: request.airings[$0].programme.endTime) },
-                              chip: { request.airings[$0].chip })
-    }
-
-    /// Record on's note: one channel's qualities; nil when several channels carry it (#341: the count is not said).
-    static func recordOnNote(_ groups: [ChannelNameGroup<Int>]) -> String? {
-        guard groups.count == 1 else { return nil }
-        let qualities = groups[0].choices.count
-        return qualities > 1 ? "1 channel in your guide carries it, in \(qualities) qualities" : "1 channel in your guide carries it"
-    }
-
-    /// Record on's second line for one channel: its times, unless they are the first channel's (#341: no "Best channel",
-    /// no "Same times").
-    static func airingDetail(_ airing: RecordRequest.Airing, index: Int, first: RecordRequest.Airing?, now: Date) -> String? {
-        let times = "\(DetailText.day(airing.programme.start, now: now)) \(airing.programme.timeRange)"
-        if index == 0 { return times }
-        guard let first, first.programme.startTime == airing.programme.startTime,
-              first.programme.endTime == airing.programme.endTime else { return times }
-        return nil
     }
 }
 
@@ -447,15 +513,19 @@ struct RecordPage: View {
     let close: () -> Void
     private var request: RecordRequest { RecordPlan.forAiring(opened, airingIndex) }
 
+    /// #358: the main page, or one of the two pages its rows open (inside the same sheet, with Back).
+    enum Screen: Hashable { case main, channel, extra }
+
+    @State private var screen: Screen = .main
     @State private var what: RecordPlan.What = .this
+    /// A new recording: the minutes chosen, nil for the usual (nothing is sent). Set to record: the schedule's.
     @State private var before: Int?
     @State private var after: Int?
     @State private var airingIndex = 0
     @State private var error: String?
     @State private var busy = false
-    private enum Focus: Hashable { case primary, cancel }
+    private enum Focus: Hashable { case primary, cancel, channelRow, extraRow, channel(Int), before, after }
     @FocusState private var focus: Focus?
-    @Environment(\.horizontalSizeClass) private var sizeClass
 
     init(model: BrowseModel, presenter: AppPresenter, request: RecordRequest, close: @escaping () -> Void) {
         self.model = model
@@ -468,6 +538,14 @@ struct RecordPage: View {
         _after = State(initialValue: request.schedule?.finishLate)
         _error = State(initialValue: request.error)
         _airingIndex = State(initialValue: RecordPlan.openingAiring(request))
+        #if DEBUG
+        // T3 screenshots: PIGTV_UI_TEST_RECORD_PAGE=channel | extra opens the page on the Channel or Extra time page.
+        switch ProcessInfo.processInfo.environment["PIGTV_UI_TEST_RECORD_PAGE"] {
+        case "channel": _screen = State(initialValue: .channel)
+        case "extra": _screen = State(initialValue: .extra)
+        default: break
+        }
+        #endif
     }
 
     private var airing: RecordRequest.Airing? {
@@ -477,32 +555,50 @@ struct RecordPage: View {
     /// Change recording's schedule as it is now (nil: gone, or not Change recording).
     private var live: ScheduledRecording? { request.schedule.flatMap { RecordPlan.live($0, in: model.schedules) } }
     private var gone: Bool { changing && live == nil }
-    /// Busy, or Change recording with nothing changed.
-    private var saveOff: Bool {
-        busy || (changing && live.flatMap { RecordPlan.change($0, before: before, after: after) } == nil)
-    }
+    private var primaryOff: Bool { busy }
     private var leagueLabel: String? { request.league.flatMap { model.sportFront.labels[$0] } }
     /// #345: "Don't record it" (a game set to record once listed): nothing to pad.
     private var stopsWaiting: Bool { what == .this && request.listing?.offer != nil && request.listing?.offer != .record }
+    private var usual: RecordPlan.Usual { RecordPlan.usual(what, request: request) }
+    /// Start early cannot change once it records, nor anything once the schedule has gone.
+    private var startLocked: Bool { changing && (live.map { !RecordPlan.canChangeStartEarly($0) } ?? true) }
+    private var started: Bool { changing && live?.status == "recording" }
+    /// The iPhone's layout (Mark's iPhone design). By the device, not the size class: inside the iPad's form sheet the
+    /// width is compact too, and the iPad keeps its own design (full words, the kicker, the actions side by side).
+    private var compact: Bool {
+        #if os(tvOS)
+        false
+        #else
+        UIDevice.current.userInterfaceIdiom == .phone
+        #endif
+    }
 
     var body: some View {
         let now = Date()
         ZStack {
             PigPageBackground().ignoresSafeArea()
-            ScrollView {
-                card(now: now)
-                    .frame(maxWidth: Metrics.cardWidth)
-                    .padding(Metrics.outer)
-                    .frame(maxWidth: .infinity)
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack {
+                        card(now: now)
+                            .frame(maxWidth: Metrics.cardWidth)
+                            .padding(Metrics.outer)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: Metrics.centred ? geometry.size.height : nil,
+                           alignment: Metrics.centred ? .center : .top)
+                }
+                .scrollClipDisabled()
             }
-            .scrollClipDisabled()
         }
         #if os(tvOS)
         .buttonStyle(PigSecondaryButtonStyle())
+        // Back (Menu) on the Channel or Extra time page returns to the main page; on the main page it closes the sheet.
+        .onExitCommand(perform: screen == .main ? nil : { show(.main) })
         #endif
         .presentationBackground { PigPageBackground() }
+        .modifier(SheetSize(screen: screen, compact: compact))
         .interactiveDismissDisabled(busy)
-        .defaultFocus($focus, changing ? .cancel : .primary)
+        .defaultFocus($focus, .primary)
         .accessibilityIdentifier("record.page")
         // Codex 5a round 1: once it records, Start early shows (and keeps) the schedule's own value, never an edit that
         // the server would refuse; the list is refreshed while Change recording is open.
@@ -528,54 +624,76 @@ struct RecordPage: View {
         }
     }
 
+    /// Opens a page of the sheet and puts focus where it belongs: on a page, its chosen row; back on the main page, the
+    /// row that opened it (the web's window does the same).
+    private func show(_ next: Screen) {
+        let from = screen
+        screen = next
+        let target: Focus?
+        switch next {
+        case .main: target = from == .channel ? .channelRow : from == .extra ? .extraRow : .primary
+        case .channel: target = .channel(airingIndex)
+        case .extra: target = startLocked ? .after : .before
+        }
+        Task { @MainActor in focus = target }
+    }
+
     private func card(now: Date) -> some View {
         VStack(alignment: .leading, spacing: Metrics.gap) {
-            header(now: now)
-            let whats = RecordPlan.whats(request)
-            if !whats.isEmpty { whatSection(whats, now: now) }
-            if !stopsWaiting { stopSection(now: now) }
-            // Codex review of #347: a sport request's airings stay choosable while one of them is set to record.
-            if request.airings.count > 1 && (!changing || opened.airingSchedules != nil) { recordOn(now: now) }
-            if let note = cardNote(now: now) {
-                Text(note).font(Metrics.note).foregroundStyle(Color.pigSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            switch screen {
+            case .main: mainPage(now: now)
+            case .channel: channelPage(now: now)
+            case .extra: extraPage
             }
-            if let error {
-                Text(error).font(Metrics.note.weight(.semibold)).foregroundStyle(Color.pigWarning)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("record.error")
-            }
-            buttons
         }
         .padding(Metrics.padding)
-        // #340: flat, as the rest of the app: no drop shadow, and on a compact iPhone the page itself is the surface
-        // (the raised card inside the full-screen sheet read as a second, shadowed layer).
-        .background(sizeClass == .compact ? Color.clear : Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
+        // #340: flat, as the rest of the app: no drop shadow. On iPhone and iPad the sheet itself is the surface (Mark's
+        // designs); the television's cover draws the card.
+        .background(Metrics.cardFill, in: RoundedRectangle(cornerRadius: PigRadius.hero, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(changing ? "Change recording of \(request.title)" : "Record \(request.title)")
     }
 
-    /// The one note under the choices, if any (#341).
+    // MARK: Main page
+
+    @ViewBuilder
+    private func mainPage(now: Date) -> some View {
+        header(now: now)
+        if changing {
+            stateLine
+        } else {
+            let whats = RecordPlan.whats(request)
+            if whats.count > 1 { whatSwitch(whats) }
+        }
+        rows
+        if let note = cardNote(now: now) {
+            Text(note).font(Metrics.note).foregroundStyle(Color.pigSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        errorText
+        buttons
+    }
+
+    /// The one note under the rows, if any (#341).
     private func cardNote(now: Date) -> String? {
-        if changing { return changeNote }
+        if changing { return gone ? RecordPlan.goneText : nil }
         if let listing = request.listing { return RecordPlan.listingNote(listing) }
         return RecordPlan.streamNote(airing, now: now)
     }
 
-    private var changeNote: String {
-        guard changing else { return "" }
-        guard let schedule = live else { return RecordPlan.goneText }
-        return RecordPlan.canChangeStartEarly(schedule)
-            ? "Changes apply to this recording only."
-            : "It is recording: only Finish late can change."
+    @ViewBuilder
+    private var errorText: some View {
+        if let error {
+            Text(error).font(Metrics.note.weight(.semibold)).foregroundStyle(Color.pigWarning)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("record.error")
+        }
     }
-
-    // MARK: Header
 
     private func header(now: Date) -> some View {
         HStack(alignment: .center, spacing: Metrics.headerGap) {
             if request.teams.count == 2 {
-                HStack(spacing: PigSpacing.s) {
+                HStack(spacing: compact ? -PigSpacing.s : PigSpacing.s) {
                     ForEach(Array(request.teams.enumerated()), id: \.offset) { _, team in
                         SportBadge(name: team.name, logo: team.logo, league: request.league ?? "", client: model.client,
                                    size: Metrics.badge)
@@ -584,76 +702,83 @@ struct RecordPage: View {
                 .accessibilityHidden(true)
             } else if let airing {
                 ChannelLogoTile(logo: model.logo(for: airing.channel), client: model.client, name: airing.channel.name,
-                                size: DetailMetrics.smallLogo)
+                                size: Metrics.logo)
                     .accessibilityHidden(true)
             }
-            VStack(alignment: .leading, spacing: PigSpacing.xs) {
-                // Two lines on a narrow screen rather than "CHANGE RECORDING · RECOR…".
-                Text(kicker).font(Metrics.kicker).tracking(2).foregroundStyle(Color.pigSecondary).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+                // Mark's iPhone design: no kicker line; the league leads the date line.
+                if !compact {
+                    Text(kicker).font(Metrics.kicker).tracking(2).foregroundStyle(Color.pigSecondary).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text(request.title).font(Metrics.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
-                if let airing {
-                    Text("\(DetailText.day(airing.programme.start, now: now)) · \(airing.programme.timeRange) · \(airing.channel.name)")
-                        .font(Metrics.meta).foregroundStyle(Color.pigSecondary).pigFigures()
-                        .lineLimit(2)
-                } else if let listing = request.listing {
-                    let start = SportFrontText.date(listing.game.start)
-                    Text("\(DetailText.day(start, now: now)) · \(start.formatted(date: .omitted, time: .shortened)) · \(SportFrontText.channelLine(listing.game))")
-                        .font(Metrics.meta).foregroundStyle(Color.pigSecondary).pigFigures()
-                        .lineLimit(2)
+                if let when = metaLine(now: now) {
+                    Text(when).font(Metrics.meta).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(2)
+                        .accessibilityIdentifier("record.when")
                 }
             }
         }
     }
 
     private var kicker: String {
-        var parts = [changing ? "CHANGE RECORDING" : "RECORD"]
-        if let schedule = live ?? request.schedule { parts.append(gone ? "ENDED" : schedule.statusWord.uppercased()) }
-        if let league = leagueLabel ?? request.league { parts.append(league.uppercased()) }
-        return parts.joined(separator: " · ")
+        ["RECORD", (leagueLabel ?? request.league)?.uppercased()].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func metaLine(now: Date) -> String? {
+        guard let when = RecordPlan.when(request, airing: airing, now: now) else { return nil }
+        guard compact, let league = leagueLabel ?? request.league else { return when }
+        return "\(league) · \(when)"
+    }
+
+    /// Set to record: its state where What is (Recording now, Waiting to record, Ended).
+    private var stateLine: some View {
+        HStack(spacing: PigSpacing.s) {
+            Circle().fill(gone ? Color.pigSecondary : Color.pigAccent).frame(width: Metrics.dot, height: Metrics.dot)
+                .accessibilityHidden(true)
+            Text(RecordPlan.stateWords(live ?? request.schedule, gone: gone))
+                .font(Metrics.state).foregroundStyle(gone ? Color.pigSecondary : Color.pigAccentText)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("record.state")
     }
 
     // MARK: What
 
-    private func whatSection(_ whats: [RecordPlan.What], now: Date) -> some View {
-        VStack(alignment: .leading, spacing: PigSpacing.s) {
-            sectionTitle("What")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: PigSpacing.m, alignment: .top), count: whatColumns(whats.count)),
-                      alignment: .leading, spacing: PigSpacing.m) {
-                ForEach(whats, id: \.self) { option in
-                    let label = RecordPlan.label(option, request: request, leagueLabel: leagueLabel, now: now)
-                    Button { what = option } label: {
-                        VStack(alignment: .leading, spacing: PigSpacing.xs) {
-                            Text(label.title).font(Metrics.choice).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                            if let detail = label.detail {
-                                Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).lineLimit(2)
-                                    .pigFigures()
-                            }
-                        }
-                        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.m)
-                        .frame(maxWidth: .infinity, minHeight: Metrics.choiceHeight, alignment: .leading)
-                        .modifier(Selected(on: what == option))
+    /// What as a switch: one choice per segment (#358, Mark's design A).
+    private func whatSwitch(_ whats: [RecordPlan.What]) -> some View {
+        HStack(spacing: PigSpacing.xs) {
+            ForEach(whats, id: \.self) { option in
+                let words = RecordPlan.title(option, request: request, leagueLabel: leagueLabel, short: compact)
+                let on = what == option
+                Button { what = option } label: {
+                    Text(words).font(on ? Metrics.segmentOn : Metrics.segment)
+                        .multilineTextAlignment(.center).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(on ? Metrics.segmentOnText : Color.pigText)
+                        .padding(.horizontal, PigSpacing.xs).padding(.vertical, Metrics.segmentPad)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(on ? Metrics.segmentOnFill : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
                         .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                    .accessibilityLabel(label.detail.map { "\(label.title), \($0)" } ?? label.title)
-                    .accessibilityAddTraits(what == option ? .isSelected : [])
-                    .accessibilityIdentifier("record.what.\(whatID(option))")
                 }
+                #if os(tvOS)
+                .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: PigRadius.compact, lift: .control))
+                #else
+                .buttonStyle(PigPressStyle())
+                #endif
+                .accessibilityLabel(words)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("record.what.\(whatID(option))")
             }
-            #if os(tvOS)
-            .focusSection()
-            #endif
         }
-    }
-
-    private func whatColumns(_ count: Int) -> Int {
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(PigSpacing.xs)
+        .background(Metrics.segmentTrack, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
         #if os(tvOS)
-        min(count, 4)
-        #else
-        sizeClass == .regular ? min(count, 3) : 1
+        .focusSection()
         #endif
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("What to record")
     }
 
     private func whatID(_ what: RecordPlan.What) -> String {
@@ -666,227 +791,379 @@ struct RecordPage: View {
         }
     }
 
-    // MARK: When it stops
+    // MARK: The two rows
 
-    private func stopSection(now: Date) -> some View {
-        return VStack(alignment: .leading, spacing: PigSpacing.s) {
-            sectionTitle("When it stops")
-            HStack(spacing: PigSpacing.m) {
-                Circle().strokeBorder(Color.pigAccent, lineWidth: 3)
-                    .overlay { Circle().fill(Color.pigAccent).padding(PigSpacing.xs) }
-                    .frame(width: Metrics.radio, height: Metrics.radio)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                    Text(RecordPlan.stopTitle(request)).font(Metrics.choice)
+    /// Channel (only for this one: a rule records each on its own channel; none for a game the guide does not list yet)
+    /// and Extra time (not for "Don't record it").
+    @ViewBuilder
+    private var rows: some View {
+        let showsChannel = what == .this && airing != nil
+        if showsChannel || !stopsWaiting {
+            VStack(spacing: 0) {
+                if showsChannel, let shown = airing {
+                    row("Channel", id: "channel", opens: RecordPlan.channelChoosable(opened, changing: changing), focus: .channelRow,
+                        label: "Channel, \(shown.channel.name)\(shown.chip.map { ", \($0.spoken)" } ?? "")") {
+                        Text(shown.channel.name).font(Metrics.rowValue).lineLimit(1)
+                        if let chip = shown.chip { QualityBadge(chip: chip, font: Metrics.badgeFont) }
+                    } action: { show(.channel) }
                 }
-                Spacer(minLength: 0)
+                if showsChannel && !stopsWaiting { divider }
+                if !stopsWaiting {
+                    let words = RecordPlan.extraWords(before: before, after: after, usual: usual)
+                    row("Extra time", id: "extra", opens: !gone, focus: .extraRow, label: "Extra time, \(words)") {
+                        Text(words).font(Metrics.rowValue).lineLimit(1).pigFigures()
+                    } action: { show(.extra) }
+                }
             }
-            .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-            .background(Color.pigSelection, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("record.stop")
-            let startLocked = changing && (live.map { !RecordPlan.canChangeStartEarly($0) } ?? true)
-            chipRow("Start early", RecordPlan.chips(RecordPlan.startEarly, current: request.schedule?.startEarly, changing: changing),
-                    selection: $before, id: "before", locked: startLocked)
-            chipRow("Finish late", RecordPlan.chips(RecordPlan.finishLate, current: request.schedule?.finishLate, changing: changing),
-                    selection: $after, id: "after", locked: gone)
-        }
-    }
-
-    private func chipRow(_ title: String, _ options: [Int?], selection: Binding<Int?>, id: String, locked: Bool) -> some View {
-        #if os(tvOS)
-        let chips = ForEach(options, id: \.self) { minutes in
-            Button { selection.wrappedValue = minutes } label: {
-                Text(RecordPlan.chipTitle(minutes)).lineLimit(1).fixedSize().pigFigures()
+            .background(Metrics.groupFill, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+            .overlay {
+                if Metrics.groupBorder {
+                    RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigBorder, lineWidth: 1)
+                }
             }
-            .buttonStyle(GuideFilterStyle(selected: selection.wrappedValue == minutes))
-            .disabled(locked)
-            .accessibilityLabel("\(title): \(RecordPlan.chipTitle(minutes))")
-            .accessibilityIdentifier("record.\(id).\(minutes.map(String.init) ?? "usual")")
-            .id(chipID(id, minutes))
-        }
-        #endif
-        return Group {
             #if os(tvOS)
-            HStack(spacing: PigSpacing.s) {
-                Text(title).font(Metrics.rowLabel).foregroundStyle(Color.pigSecondary).frame(width: 170, alignment: .leading)
-                chips
-            }
             .focusSection()
-            #else
-            // #253 (Mark, 8 Nov: a menu per row): one line each, the choice on the right; a sideways row of chips ran
-            // past the card's edge on iPhone, and wrapping them looked cluttered.
-            HStack {
-                Text(title).font(Metrics.rowLabel).foregroundStyle(Color.pigSecondary)
-                Spacer(minLength: PigSpacing.m)
-                Menu {
-                    Picker(title, selection: selection) {
-                        ForEach(options, id: \.self) { minutes in
-                            Text(RecordPlan.chipTitle(minutes)).tag(minutes)
-                                .accessibilityIdentifier("record.\(id).\(minutes.map(String.init) ?? "usual")")
-                        }
-                    }
-                } label: {
-                    HStack(spacing: PigSpacing.xs) {
-                        Text(RecordPlan.chipTitle(selection.wrappedValue)).pigFigures()
-                        Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold))
-                    }
-                    .font(Metrics.rowLabel)
-                }
-                .disabled(locked)
-                .accessibilityLabel("\(title): \(RecordPlan.chipTitle(selection.wrappedValue))")
-                .accessibilityIdentifier("record.\(id)")
-            }
-            .padding(.vertical, PigSpacing.xs)
             #endif
         }
-        .opacity(locked ? 0.5 : 1)
     }
 
-    private func chipID(_ row: String, _ minutes: Int?) -> String { "\(row).\(minutes.map(String.init) ?? "usual")" }
-
-    // MARK: Record on
-
-    private func recordOn(now: Date) -> some View {
-        VStack(alignment: .leading, spacing: PigSpacing.s) {
-            let groups = RecordPlan.channelGroups(request)
-            HStack(alignment: .firstTextBaseline) {
-                sectionTitle("Record on")
-                Spacer()
-                if let note = RecordPlan.recordOnNote(groups) {
-                    Text(note).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary)
-                }
-            }
-            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                let on = group.indices.contains(airingIndex)
-                // The row's words follow the copy chosen in it, else its best.
-                let shown = on ? airingIndex : group.best.copy
-                let option = request.airings[shown]
-                let detail = RecordPlan.airingDetail(option, index: index, first: request.airings.first, now: now)
-                if group.choosesQuality {
-                    recordOnChips(group, index: index, option: option, detail: detail, on: on)
-                } else {
-                    Button { airingIndex = group.best.copy } label: {
-                        HStack(spacing: PigSpacing.m) {
-                            radio(on)
-                            VStack(alignment: .leading, spacing: PigSpacing.xxs) {
-                                Text(option.channel.name).font(Metrics.choice).lineLimit(1)
-                                if let detail {
-                                    Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            if let chip = option.chip { QualityBadge(chip: chip, font: Metrics.badgeFont) }
-                        }
-                        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .modifier(Selected(on: on))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card))
-                    .accessibilityLabel("\(option.channel.name)\(detail.map { ", \($0)" } ?? "")\(option.chip.map { ", \($0.spoken)" } ?? "")")
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                    .accessibilityIdentifier("record.on.\(index)")
-                }
-            }
-        }
-        #if os(tvOS)
-        .focusSection()
-        #endif
-    }
-
-    private func radio(_ on: Bool) -> some View {
-        Circle().strokeBorder(on ? Color.pigAccent : Color.pigSecondary, lineWidth: 3)
-            .overlay { if on { Circle().fill(Color.pigAccent).padding(PigSpacing.xs) } }
-            .frame(width: Metrics.radio, height: Metrics.radio)
+    private var divider: some View {
+        Rectangle().fill(Color.pigBorder).frame(height: 1).padding(.leading, Metrics.rowInsets.leading)
             .accessibilityHidden(true)
     }
 
-    /// D-65 (#266): a channel name carried in several qualities: one row, a chip per quality (best first) that chooses
-    /// that copy; the radio shows whether any of its copies is the one chosen.
-    private func recordOnChips(_ group: ChannelNameGroup<Int>, index: Int, option: RecordRequest.Airing, detail: String?,
-                               on: Bool) -> some View {
-        HStack(spacing: PigSpacing.m) {
-            radio(on)
-            VStack(alignment: .leading, spacing: PigSpacing.xs) {
-                Text(option.channel.name).font(Metrics.choice).lineLimit(1)
-                if let detail {
-                    Text(detail).font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
-                }
-                ScrollView(.horizontal) {
-                    HStack(spacing: PigSpacing.s) {
-                        ForEach(Array(group.choices.enumerated()), id: \.element.id) { chipIndex, choice in
-                            let picked = choice.indices.contains(airingIndex)
-                            Button { airingIndex = choice.copy } label: {
-                                HStack(spacing: PigSpacing.xs) {
-                                    if let chip = choice.chip {
-                                        QualityBadge(chip: chip, font: Metrics.badgeFont)
-                                    } else {
-                                        Text("Other").font(Metrics.badgeFont).foregroundStyle(Color.pigSecondary)
-                                    }
-                                    // A copy airing at another time than the row's shows its start.
-                                    if group.startsDifferently(choice) {
-                                        Text(request.airings[choice.copy].programme.start.formatted(date: .omitted, time: .shortened))
-                                            .font(Metrics.choiceDetail).foregroundStyle(Color.pigSecondary).pigFigures()
-                                    }
-                                }
-                                .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
-                                .background(picked ? Color.pigSelection : .clear,
-                                            in: RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .control))
-                            .accessibilityLabel("\(option.channel.name), \(choice.chip?.spoken ?? "other quality")"
-                                                + (group.startsDifferently(choice)
-                                                   ? ", starts \(request.airings[choice.copy].programme.start.formatted(date: .omitted, time: .shortened))" : ""))
-                            .accessibilityAddTraits(picked ? .isSelected : [])
-                            .accessibilityIdentifier("record.on.\(index).\(chipIndex)")
-                        }
-                    }
-                    .padding(.vertical, PigSpacing.xxs)
-                }
-                .scrollIndicators(.hidden)
-                .scrollClipDisabled()
-            }
+    /// A row of the main page: its name, its value, and › when it opens a page; otherwise plain words.
+    @ViewBuilder
+    private func row<Value: View>(_ name: String, id: String, opens: Bool, focus target: Focus, label: String,
+                                  @ViewBuilder value: () -> Value, action: @escaping () -> Void) -> some View {
+        let content = HStack(spacing: Metrics.rowGap) {
+            Text(name).font(Metrics.rowName).foregroundStyle(Color.pigSecondary)
+                .frame(width: Metrics.rowNameWidth, alignment: .leading)
+            HStack(spacing: PigSpacing.s) { value() }
             Spacer(minLength: 0)
+            if opens {
+                Image(systemName: "chevron.right").font(Metrics.chevron).foregroundStyle(Color.pigSecondary)
+                    .accessibilityHidden(true)
+            }
         }
-        .padding(.horizontal, PigSpacing.m).padding(.vertical, PigSpacing.s)
+        .padding(Metrics.rowInsets)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(Selected(on: on))
+        if opens {
+            Button(action: action) { content.contentShape(Rectangle()) }
+                #if os(tvOS)
+                .buttonStyle(PigSurfaceButtonStyle(drawSurface: false, cornerRadius: PigRadius.card, lift: .row))
+                #else
+                .buttonStyle(PigPressStyle())
+                .pigTouchTarget()
+                #endif
+                .focused($focus, equals: target)
+                .accessibilityLabel(label)
+                .accessibilityIdentifier("record.row.\(id)")
+        } else {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(label)
+                .accessibilityIdentifier("record.row.\(id)")
+        }
+    }
+
+    // MARK: Channel page
+
+    private func subHeader(_ title: String) -> some View {
+        VStack(alignment: .leading, spacing: PigSpacing.s) {
+            #if os(tvOS)
+            // Menu is Back on the television; the line says where it goes.
+            Label(request.title, systemImage: "chevron.left").font(Metrics.back).foregroundStyle(Color.pigSecondary)
+                .lineLimit(1)
+                .accessibilityHidden(true)
+            #else
+            Button { show(.main) } label: {
+                Label("Back", systemImage: "chevron.left").font(Metrics.back).foregroundStyle(Color.pigAccentText)
+            }
+            .buttonStyle(PigPressStyle())
+            .pigTouchTarget(alignment: .leading)
+            .accessibilityIdentifier("record.back")
+            #endif
+            Text(title).font(Metrics.pageTitle).accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    @ViewBuilder
+    private func channelPage(now: Date) -> some View {
+        subHeader("Channel")
+        let groups = RecordPlan.channelGroups(request)
+        let timed = RecordPlan.channelsTimed(request)
+        VStack(alignment: .leading, spacing: Metrics.channelGap) {
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                channelRow(group, index: index, last: index == groups.count - 1, timed: timed, now: now)
+            }
+        }
+        .background(Metrics.listFill, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .overlay {
+            if Metrics.groupBorder {
+                RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigBorder, lineWidth: 1)
+            }
+        }
         #if os(tvOS)
         .focusSection()
         #endif
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("record.on.\(index)")
     }
+
+    /// One channel name: a tick on the chosen one, BEST on the first, its quality (D-65: a name carried in several
+    /// qualities has a chip per quality to choose from); its day and times only when the airings differ in time.
+    /// Choosing returns to the main page.
+    @ViewBuilder
+    private func channelRow(_ group: ChannelNameGroup<Int>, index: Int, last: Bool, timed: Bool, now: Date) -> some View {
+        let on = group.indices.contains(airingIndex)
+        // The row's words follow the copy chosen in it, else its best.
+        let copy = on ? airingIndex : group.best.copy
+        let option = request.airings[copy]
+        let detail = RecordPlan.channelDetail(option, timed: timed, now: now)
+        let name = group.choosesQuality ? group.name : option.channel.name
+        VStack(alignment: .leading, spacing: PigSpacing.xs) {
+            Button { choose(group.best.copy) } label: {
+                HStack(spacing: Metrics.rowGap) {
+                    Image(systemName: "checkmark").font(Metrics.tick).foregroundStyle(Color.pigAccentText)
+                        .opacity(on ? 1 : 0)
+                        .frame(width: Metrics.tickWidth)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: PigSpacing.xxs) {
+                        Text(name).font(Metrics.channelName).lineLimit(1)
+                        if let detail {
+                            Text(detail).font(Metrics.note).foregroundStyle(Color.pigSecondary).pigFigures().lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if index == 0 {
+                        Text("BEST").font(Metrics.best).tracking(1).foregroundStyle(Color.pigSecondary)
+                    }
+                    if !group.choosesQuality, let chip = option.chip { QualityBadge(chip: chip, font: Metrics.badgeFont) }
+                }
+                .padding(Metrics.rowInsets)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            #if os(tvOS)
+            .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card, lift: .row,
+                                               restingFill: on ? Color.pigSelection : Color.pigRaised))
+            #else
+            .buttonStyle(PigPressStyle())
+            .pigTouchTarget()
+            #endif
+            .focused($focus, equals: .channel(copy))
+            .accessibilityLabel([name, detail, index == 0 ? "best" : nil, group.choosesQuality ? nil : option.chip?.spoken]
+                .compactMap { $0 }.joined(separator: ", "))
+            .accessibilityAddTraits(on ? .isSelected : [])
+            .accessibilityIdentifier("record.on.\(index)")
+            if group.choosesQuality { qualityChips(group, index: index, name: name) }
+        }
+        if !last && Metrics.listDividers { divider }
+    }
+
+    /// D-65 (#266): a channel name carried in several qualities: a chip per quality (best first) that chooses that copy.
+    private func qualityChips(_ group: ChannelNameGroup<Int>, index: Int, name: String) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: PigSpacing.s) {
+                ForEach(Array(group.choices.enumerated()), id: \.element.id) { chipIndex, choice in
+                    let picked = choice.indices.contains(airingIndex)
+                    let starts = group.startsDifferently(choice)
+                        ? request.airings[choice.copy].programme.start.formatted(date: .omitted, time: .shortened) : nil
+                    Button { choose(choice.copy) } label: {
+                        HStack(spacing: PigSpacing.xs) {
+                            if let chip = choice.chip {
+                                QualityBadge(chip: chip, font: Metrics.badgeFont)
+                            } else {
+                                Text("Other").font(Metrics.badgeFont).foregroundStyle(Color.pigSecondary)
+                            }
+                            // A copy airing at another time than the row's shows its start.
+                            if let starts {
+                                Text(starts).font(Metrics.note).foregroundStyle(Color.pigSecondary).pigFigures()
+                            }
+                        }
+                        .padding(.horizontal, PigSpacing.s).padding(.vertical, PigSpacing.xs)
+                        .background(picked ? Color.pigSelection : .clear,
+                                    in: RoundedRectangle(cornerRadius: PigRadius.compact, style: .continuous))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.compact, lift: .control))
+                    .accessibilityLabel("\(name), \(choice.chip?.spoken ?? "other quality")" + (starts.map { ", starts \($0)" } ?? ""))
+                    .accessibilityAddTraits(picked ? .isSelected : [])
+                    .accessibilityIdentifier("record.on.\(index).\(chipIndex)")
+                }
+            }
+            .padding(.leading, Metrics.rowInsets.leading + Metrics.tickWidth + Metrics.rowGap)
+            .padding(.vertical, PigSpacing.xxs)
+        }
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
+        #if os(tvOS)
+        .focusSection()
+        #endif
+    }
+
+    private func choose(_ copy: Int) {
+        airingIndex = copy
+        error = nil
+        show(.main)
+    }
+
+    // MARK: Extra time page
+
+    @ViewBuilder
+    private var extraPage: some View {
+        subHeader("Extra time")
+        VStack(spacing: Metrics.stepperGap) {
+            stepper("Start early", id: "before", value: $before, usual: usual.before, limit: RecordPlan.maxStartEarly,
+                    locked: startLocked, lockedWords: started ? "Started" : nil, target: .before)
+            stepper("Finish late", id: "after", value: $after, usual: usual.after, limit: RecordPlan.maxFinishLate,
+                    locked: gone, lockedWords: nil, target: .after)
+        }
+        errorText
+    }
+
+    /// Start early or Finish late: − value +, one minute per press (held: repeats), within the server's range, no words
+    /// besides (Mark's design). On the television the row is one focusable item: left and right change it, select
+    /// does nothing. Locked (Start early once it records, both once it has gone): the value alone ("Started"), dimmed.
+    @ViewBuilder
+    private func stepper(_ name: String, id: String, value: Binding<Int?>, usual base: Int, limit: Int, locked: Bool,
+                         lockedWords: String?, target: Focus) -> some View {
+        let shown = value.wrappedValue ?? base
+        let words = lockedWords ?? RecordPlan.minutes(shown)
+        let less = !locked && RecordPlan.canStep(value.wrappedValue, by: -1, usual: base, limit: limit)
+        let more = !locked && RecordPlan.canStep(value.wrappedValue, by: 1, usual: base, limit: limit)
+        let step = { (delta: Int) in
+            guard !locked, RecordPlan.canStep(value.wrappedValue, by: delta, usual: base, limit: limit) else { return }
+            value.wrappedValue = RecordPlan.stepped(value.wrappedValue, by: delta, usual: base, limit: limit, keepsValue: changing)
+        }
+        let valueText = Text(words).font(Metrics.stepperValue).pigFigures().lineLimit(1)
+            .frame(minWidth: Metrics.stepperValueWidth)
+            .accessibilityIdentifier("record.\(id).value")
+        #if os(tvOS)
+        let content = HStack(spacing: Metrics.rowGap) {
+            Text(name).font(Metrics.channelName)
+            Spacer(minLength: 0)
+            if !locked { sign("minus", on: less) }
+            valueText
+            if !locked { sign("plus", on: more) }
+        }
+        .padding(Metrics.rowInsets)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if locked {
+            content
+                .background(Color.pigRaised, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+                .opacity(0.45)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(name), \(words)")
+                .accessibilityIdentifier("record.\(id)")
+        } else {
+            Button {} label: { content }
+                .buttonStyle(PigSurfaceButtonStyle(cornerRadius: PigRadius.card, lift: .row, restingFill: Color.pigRaised))
+                .focused($focus, equals: target)
+                .onMoveCommand { direction in
+                    switch direction {
+                    case .left: step(-1)
+                    case .right: step(1)
+                    default: break
+                    }
+                }
+                .accessibilityLabel("\(name), \(words)")
+                .accessibilityIdentifier("record.\(id)")
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: step(1)
+                    case .decrement: step(-1)
+                    @unknown default: break
+                    }
+                }
+        }
+        #else
+        HStack(spacing: PigSpacing.m) {
+            Text(name).font(Metrics.channelName)
+            Spacer(minLength: 0)
+            if !locked {
+                stepButton("minus", on: less, label: "\(name): one minute less", id: "record.\(id).less") { step(-1) }
+            }
+            valueText
+            if !locked {
+                stepButton("plus", on: more, label: "\(name): one minute more", id: "record.\(id).more") { step(1) }
+            }
+        }
+        .padding(Metrics.rowInsets)
+        .background(Color.pigSurface, in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous).strokeBorder(Color.pigBorder, lineWidth: 1) }
+        .opacity(locked ? 0.45 : 1)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("record.\(id)")
+        #endif
+    }
+
+    #if os(tvOS)
+    /// − or + drawn in its disc on the television's stepper row (the row takes the presses).
+    private func sign(_ symbol: String, on: Bool) -> some View {
+        Image(systemName: symbol).font(Metrics.sign).foregroundStyle(Color.pigAccentText)
+            .frame(width: Metrics.signDisc, height: Metrics.signDisc)
+            .background(Color.pigCanvas, in: Circle())
+            .opacity(on ? 1 : 0.35)
+            .accessibilityHidden(true)
+    }
+    #else
+    private func stepButton(_ symbol: String, on: Bool, label: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(Metrics.sign).foregroundStyle(Color.pigAccentText)
+                .frame(width: Metrics.signDisc, height: Metrics.signDisc)
+                .background(Color.pigRaised, in: Circle())
+        }
+        .buttonStyle(PigPressStyle())
+        .buttonRepeatBehavior(.enabled)
+        .pigTouchTarget()
+        .disabled(!on)
+        .opacity(on ? 1 : 0.35)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+    }
+    #endif
 
     // MARK: Buttons
 
-    /// The actions: in a row, or stacked full width on a compact width (an upright iPhone), where a row wrapped.
+    /// Record and Cancel (Set to record: Done and Cancel recording). Television: centred, Record first; iPad: side by side,
+    /// Cancel first; iPhone: stacked full width, the second a plain line under it (Mark's designs).
     @ViewBuilder
     private var buttons: some View {
         #if os(tvOS)
-        HStack(spacing: PigSpacing.m) { actionButtons(stacked: false) }
-            .focusSection()
+        HStack(spacing: PigSpacing.l) {
+            primaryButton(stretched: false)
+            secondaryButton(stretched: false)
+            if busy { ProgressView() }
+        }
+        .frame(maxWidth: .infinity)
+        .focusSection()
         #else
-        if sizeClass == .regular {
-            HStack(spacing: PigSpacing.l) { actionButtons(stacked: false) }
+        if compact {
+            VStack(spacing: PigSpacing.s) {
+                primaryButton(stretched: true)
+                secondaryButton(stretched: true)
+                if busy { ProgressView() }
+            }
         } else {
-            VStack(spacing: PigSpacing.m) { actionButtons(stacked: true) }
+            HStack(spacing: PigSpacing.m) {
+                secondaryButton(stretched: true)
+                primaryButton(stretched: true)
+            }
+            .overlay { if busy { ProgressView() } }
         }
         #endif
     }
 
     /// Mark, 19 Nov 2026: an earlier recording of this (the game, or this channel's overlapping airing) is being
-    /// cancelled: Record and Change recording wait until its outcome is known.
+    /// cancelled: Record waits until its outcome is known.
     /// The chosen airing waits (C-R #353: other airings, another day of a Test, stay recordable).
     private var cancelling: Bool { airing.map { model.cancellingEarlier(request, airing: $0) } ?? false }
 
     @ViewBuilder
-    private func actionButtons(stacked: Bool) -> some View {
+    private func primaryButton(stretched: Bool) -> some View {
         if cancelling {
             Button {} label: {
-                Label(PageWords.cancelling, systemImage: "hourglass").lineLimit(1).frame(maxWidth: stacked ? .infinity : nil)
+                Label(PageWords.cancelling, systemImage: "hourglass").lineLimit(1).frame(maxWidth: stretched ? .infinity : nil)
             }
             .pigSecondaryButton()
             .disabled(true)
@@ -896,51 +1173,48 @@ struct RecordPage: View {
             .accessibilityLabel(PageWords.cancellingLabel)
             .accessibilityIdentifier("record.cancelling")
         } else {
-            primaryButton(stacked: stacked)
+            Button { Task { await primary() } } label: {
+                Label(RecordPlan.primaryTitle(what, request: request), systemImage: changing ? "checkmark.circle" : "record.circle")
+                    .lineLimit(1)
+                    .frame(maxWidth: stretched ? .infinity : nil)
+            }
+            .pigPrimaryButton()
+            .disabled(primaryOff)
+            #if os(tvOS)
+            // The tvOS primary style draws no disabled look of its own; the iOS glass button dims itself.
+            .opacity(primaryOff ? 0.45 : 1)
+            #endif
+            .focused($focus, equals: .primary)
+            .accessibilityIdentifier("record.schedule")
         }
-        secondaryButtons(stacked: stacked)
     }
 
     @ViewBuilder
-    private func primaryButton(stacked: Bool) -> some View {
-        Button { Task { await primary() } } label: {
-            Label(RecordPlan.primaryTitle(what, request: request), systemImage: changing ? "checkmark.circle" : "record.circle")
-                .lineLimit(1)
-                .frame(maxWidth: stacked ? .infinity : nil)
-        }
-        .pigPrimaryButton()
-        .disabled(saveOff)
-        #if os(tvOS)
-        // The tvOS primary style draws no disabled look of its own; the iOS glass button dims itself.
-        .opacity(saveOff ? 0.45 : 1)
-        #endif
-        .focused($focus, equals: .primary)
-        .accessibilityIdentifier("record.schedule")
-    }
-
-    @ViewBuilder
-    private func secondaryButtons(stacked: Bool) -> some View {
+    private func secondaryButton(stretched: Bool) -> some View {
         if changing {
-            Button {
+            let button = Button {
                 guard let live else { return }
                 if model.stillBinds(live, request) { cancel(live) } else { error = PageWords.bindingChangedText }
             } label: {
-                Label(live?.status == "recording" ? "Stop recording" : "Cancel recording", systemImage: "xmark.circle")
+                Text(live?.status == "recording" ? "Stop recording" : "Cancel recording")
                     .lineLimit(1)
-                    .frame(maxWidth: stacked ? .infinity : nil)
+                    .frame(maxWidth: stretched ? .infinity : nil)
             }
             .foregroundStyle(Color.pigDanger)
             .disabled(busy || gone)
             .opacity(gone ? 0.45 : 1)
             .focused($focus, equals: .cancel)
             .accessibilityIdentifier("record.cancelRecording")
+            if compact { button.buttonStyle(PigPressStyle()).pigTouchTarget() } else { button }
+        } else {
+            let button = Button { close() } label: {
+                Text("Cancel").lineLimit(1).frame(maxWidth: stretched ? .infinity : nil)
+            }
+            .disabled(busy)
+            .focused($focus, equals: .cancel)
+            .accessibilityIdentifier("record.close")
+            if compact { button.buttonStyle(PigPressStyle()).foregroundStyle(Color.pigAccentText).pigTouchTarget() } else { button }
         }
-        Button { close() } label: {
-            Text(changing ? "Close" : "Cancel").lineLimit(1).frame(maxWidth: stacked ? .infinity : nil)
-        }
-        .disabled(busy)
-        .accessibilityIdentifier("record.close")
-        if busy { ProgressView() }
     }
 
     private func primary() async {
@@ -948,9 +1222,12 @@ struct RecordPage: View {
         error = nil
         defer { busy = false }
         if changing {
-            guard let schedule = live else { error = RecordPlan.goneText; return }
+            // Done: the change, when there is one; else (or once the schedule has gone) it only closes.
+            guard let schedule = live, let change = RecordPlan.change(schedule, before: before, after: after) else {
+                close()
+                return
+            }
             guard model.stillBinds(schedule, request) else { error = PageWords.bindingChangedText; return }
-            guard let change = RecordPlan.change(schedule, before: before, after: after) else { return }
             if await model.changeSchedule(schedule, change) { close() } else { error = model.actionError ?? "The recording could not be changed." }
             return
         }
@@ -992,58 +1269,119 @@ struct RecordPage: View {
         model.cancelWithUndo(schedule, presenter: presenter)
     }
 
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text).font(Metrics.section).foregroundStyle(Color.pigSecondary).accessibilityAddTraits(.isHeader)
-    }
-
-    /// The selection (D-44 brand): a 14 % pink fill alone (no line), never a tick.
-    private struct Selected: ViewModifier {
-        let on: Bool
+    /// iPhone (#358, Mark's iPhone design): a half-height sheet for the main and Extra time pages, the full height for the
+    /// Channel page; iPad: the centred form sheet. The television's cover is the whole screen.
+    private struct SheetSize: ViewModifier {
+        let screen: Screen
+        let compact: Bool
         func body(content: Content) -> some View {
+            #if os(tvOS)
             content
-                .background(on ? Color.pigSelection : .clear,
-                            in: RoundedRectangle(cornerRadius: PigRadius.card, style: .continuous))
+            #else
+            if compact {
+                content
+                    .presentationDetents(Set<PresentationDetent>([screen == .channel ? .large : .medium]))
+                    .presentationDragIndicator(.visible)
+            } else if #available(iOS 18.0, *) {
+                content.presentationSizing(.form)
+            } else {
+                content
+            }
+            #endif
         }
     }
 
     private enum Metrics {
         #if os(tvOS)
-        static let cardWidth: CGFloat = 1180
+        static let centred = true
+        static let cardFill = Color.pigSurface
+        static let cardWidth: CGFloat = 1120
         static let outer: CGFloat = 36
-        static let padding = EdgeInsets(top: 34, leading: 52, bottom: 34, trailing: 52)
-        static let gap: CGFloat = 18
-        static let section: Font = .system(size: PigType.secondary, weight: .bold)
-        static let headerGap: CGFloat = 26
-        static let badge: CGFloat = 64
+        static let padding = EdgeInsets(top: 56, leading: 72, bottom: 52, trailing: 72)
+        static let gap: CGFloat = 32
+        static let headerGap: CGFloat = 30
+        static let badge: CGFloat = 96
+        static let logo = DetailMetrics.smallLogo
         static let kicker: Font = .system(size: PigType.kicker, weight: .bold)
-        static let title: Font = .system(size: PigType.display, weight: .heavy)
-        static let meta: Font = .system(size: PigType.secondary)
-        static let choice: Font = .system(size: PigType.body, weight: .bold)
-        static let choiceDetail: Font = .system(size: PigType.caption)
-        static let choiceHeight: CGFloat = 68
-        static let rowLabel: Font = .system(size: PigType.secondary, weight: .semibold)
+        static let title: Font = .system(size: PigType.pageTitle, weight: .heavy)
+        static let meta: Font = .system(size: PigType.cardTitle)
+        static let state: Font = .system(size: PigType.sectionTitle, weight: .bold)
+        static let dot: CGFloat = 24
+        static let segment: Font = .system(size: PigType.cardTitle, weight: .semibold)
+        static let segmentOn: Font = .system(size: PigType.cardTitle, weight: .bold)
+        static let segmentPad: CGFloat = 18
+        static let segmentTrack = Color.pigCanvas
+        static let segmentOnFill = Color.pigText
+        static let segmentOnText = Color.pigCanvas
+        static let groupFill = Color.pigRaised
+        static let groupBorder = false
+        static let listFill = Color.clear
+        static let listDividers = false
+        static let rowInsets = EdgeInsets(top: 24, leading: 32, bottom: 24, trailing: 32)
+        static let rowGap: CGFloat = 24
+        static let rowName: Font = .system(size: PigType.cardTitle)
+        static let rowNameWidth: CGFloat = 200
+        static let rowValue: Font = .system(size: PigType.cardTitle, weight: .semibold)
+        static let chevron: Font = .system(size: PigType.cardTitle, weight: .semibold)
+        static let back: Font = .system(size: PigType.secondary, weight: .semibold)
+        static let pageTitle: Font = .system(size: PigType.pageTitle, weight: .heavy)
+        static let channelGap: CGFloat = 12
+        static let channelName: Font = .system(size: PigType.sectionTitle, weight: .semibold)
+        static let tick: Font = .system(size: PigType.cardTitle, weight: .bold)
+        static let tickWidth: CGFloat = 32
+        static let best: Font = .system(size: PigType.caption, weight: .bold)
+        static let stepperGap: CGFloat = 18
+        static let stepperValue: Font = .system(size: PigType.display, weight: .heavy)
+        static let stepperValueWidth: CGFloat = 150
+        static let sign: Font = .system(size: PigType.cardTitle, weight: .bold)
+        static let signDisc: CGFloat = 64
         static let note: Font = .system(size: PigType.caption)
-        static let radio: CGFloat = 26
         static let badgeFont: Font = .system(size: PigType.caption, weight: .heavy)
         #else
-        static let cardWidth: CGFloat = 760
+        static let centred = false
+        static let cardFill = Color.clear
+        static let cardWidth: CGFloat = 600
         static let outer: CGFloat = 16
         static let padding = EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20)
         static let gap: CGFloat = 16
-        static let section: Font = .subheadline.weight(.bold)
-        static let headerGap: CGFloat = 14
-        static let badge: CGFloat = 40
+        static let headerGap: CGFloat = 12
+        static let badge: CGFloat = 44
+        static let logo = DetailMetrics.smallLogo
         static let kicker: Font = .caption.weight(.bold)
-        static let title: Font = .title2.weight(.heavy)
+        static let title: Font = .title3.weight(.heavy)
         static let meta: Font = .subheadline
-        static let choice: Font = .subheadline.weight(.bold)
-        static let choiceDetail: Font = .caption
-        static let choiceHeight: CGFloat = 54
-        static let rowLabel: Font = .caption.weight(.semibold)
+        static let state: Font = .headline
+        static let dot: CGFloat = 12
+        static let segment: Font = .subheadline.weight(.medium)
+        static let segmentOn: Font = .subheadline.weight(.bold)
+        static let segmentPad: CGFloat = 9
+        static let segmentTrack = Color.pigRaised
+        static let segmentOnFill = Color.pigSurface
+        static let segmentOnText = Color.pigText
+        static let groupFill = Color.pigSurface
+        static let groupBorder = true
+        static let listFill = Color.pigSurface
+        static let listDividers = true
+        static let rowInsets = EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
+        static let rowGap: CGFloat = 12
+        static let rowName: Font = .body
+        static let rowNameWidth: CGFloat = 92
+        static let rowValue: Font = .body.weight(.semibold)
+        static let chevron: Font = .footnote.weight(.semibold)
+        static let back: Font = .body.weight(.semibold)
+        static let pageTitle: Font = .title2.weight(.heavy)
+        static let channelGap: CGFloat = 0
+        static let channelName: Font = .body.weight(.semibold)
+        static let tick: Font = .body.weight(.bold)
+        static let tickWidth: CGFloat = 20
+        static let best: Font = .caption2.weight(.bold)
+        static let stepperGap: CGFloat = 12
+        static let stepperValue: Font = .title3.weight(.heavy)
+        static let stepperValueWidth: CGFloat = 80
+        static let sign: Font = .body.weight(.bold)
+        static let signDisc: CGFloat = 40
         static let note: Font = .footnote
-        static let radio: CGFloat = 20
         static let badgeFont: Font = .caption2.weight(.heavy)
         #endif
     }
-
 }

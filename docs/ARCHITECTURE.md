@@ -95,32 +95,39 @@ controls are not used for live play.
   caller supplies what each does (`ProgrammeMenuActions`). The iPhone's On now rows use the system context menu with a
   preview, built from the same items; the iPad strip's … opens the card.
   **The record page (Apple 114, `RecordPage.swift`, R5-Record-*)** replaces `RecordSheet` and every Sport recording
-  dialog ("Record on which channel?", "Record every game of"): one centred card on the page canvas, presented through
-  `AppPresenter.record(RecordRequest)`. A `RecordRequest`
+  dialog ("Record on which channel?", "Record every game of"), presented through `AppPresenter.record(RecordRequest)`.
+  Since #358 (Mark's final design, as the web's Record window) it is a centred card on Apple TV, a form sheet on iPad and
+  a half-height sheet on iPhone (the Channel page full height). A `RecordRequest`
   is a guide programme on its channel (`BrowseModel.recordRequest(channel:programme:)`) or a Sport event with its card
   (`recordRequest(event:game:)`: every channel not yet ended, best first, each on its own airing; the card's `id` as
-  `gameId`, its two teams and cached logos, the followed side, the league's sport). What, When it stops and Record on
-  are pure (`RecordPlan`, `RecordPageTests`): What is this one, then the rules (every new episode / every episode; every
-  <team> game as a `team` rule, else a keyword rule; every <league> game); padding chips start on "Usual" (left out, so
-  the server's defaults apply); When it stops reads "When the game ends (ESPN)" when a `gameId` is sent (or the schedule
-  says `endsWith: "event"`), else the guide end; Record on is drawn only for Sport with several channels. A scheduled
-  programme opens it as **Change recording**: its own padding (`pre_buffer_min`/`post_buffer_min`, decoded leniently
-  with `endsWith`), Save changes sends only what changed (`PUT recordings/scheduled/:id`, C-M since
-  0444; Start early not once it records), the server's words for a refused value are shown (APIClient passes the 400
-  and 409 `error` of that route), an older server's 404/405 reads "This server can't change recordings yet"; Cancel
-  recording closes the page and offers the 10 s Undo (`cancelCommitted`). Sport screens reach it through
+  `gameId`, its two teams and cached logos, the followed side, the league's sport). The main page: the header (the date
+  and time once), What as a switch (this one, then the rules: every new episode / every episode; every <team> game as a
+  `team` rule, else a keyword rule; every <league> game), then two rows: **Channel** (opens a page inside the sheet, one
+  row per channel name with a tick, BEST on the first, the quality chips; times only when the airings differ; not
+  pressable with one airing, nor for a rule) and **Extra time** (opens a page with Start early and Finish late as
+  − value + steppers, one minute per press, 0-60 and 0-180; on Apple TV left and right on the focused row). The row says
+  "Usual" until a value differs from the usual (Settings' padding, the server's shipped 1 and 5 since the client does not
+  read Settings; Finish late 0 for a game ESPN follows, C-M since #358); an untouched value is left out, and a value
+  stepped back to the usual is left out again. All of it is pure (`RecordPlan`; `RecordPageTests`, `RecordSheetTests`).
+  A scheduled programme opens it as **Set to record** (its state where What is): its own padding
+  (`pre_buffer_min`/`post_buffer_min`, decoded leniently with `endsWith`), Done sends only what changed (`PUT
+  recordings/scheduled/:id`, C-M since 0444; Start early shows "Started" once it records) and otherwise closes, the
+  server's words for a refused value are shown (APIClient passes the 400 and 409 `error` of that route), an older
+  server's 404/405 reads "This server can't change recordings yet"; Cancel recording closes the page and offers the 10 s
+  Undo (`cancelCommitted`). Sport screens reach it through
   `SportRecordFlow` (attached to the app); a Sport game card's long press (Apple 115, `SportRecordMenu`) puts the menu's
   RECORD items in its system context menu (the TV Guide's card overlay needs the grid's focus restore, which the
   sport rails do not have). A game the guide does not list yet (#234) opens it with no airings (`RecordRequest.listing`):
   "This game" is Record when it's listed (a C-M `game` rule) or Don't record it, the team and league rules as usual. The event page's and its channel rows' Record close that page first, then open the record
-  page. Fixtures `record`, `record-sport`, `record-change` (`DesignTestScreen`, with the Undo toast); tests
-  `RecordPageUITests`, `GuidePagesUITests`, `SportFrontUITests`.
+  page. Fixtures `record`, `record-sport`, `record-change` (`DesignTestScreen`, with the Undo toast;
+  `PIGTV_UI_TEST_RECORD_PAGE=channel|extra` opens a page of the sheet); tests `RecordPageUITests`, `GuidePagesUITests`,
+  `SportFrontUITests`, `TouchLayoutUITests`.
   **Airings, guide bounds and Cancelling… (#347, D-72; C-R `slots`, `recordingCancelling`, `guideEnd` since server
   0862, all optional).** A card's Record offers its `slots` when sent (a Test's day two on day one's channel), else its
   channels; an airing is its channel plus guide start (`RecordRequest.Airing.id`), and a channel with several airings
-  is a Record on row per airing with its day. Change recording binds a schedule by the server's channel identity and
+  is a Channel page row per airing with its day. Change recording binds a schedule by the server's channel identity and
   start (`activeSchedule`; a name-only row from an older server only once the guide's whole channel list has loaded,
-  and the page checks the binding again before Save changes or Cancel recording); the page opens on the bound airing
+  and the page checks the binding again before Done or Cancel recording); the page opens on the bound airing
   (`RecordPlan.openingAiring`). Schedules and cancellations match airings by guide bounds on both sides (the airing's
   start and `guideEnd`, else its end; a schedule's `program_end_original`, else `program_end`), never the end rolled on
   for an overrun, which Record still sends as `programEnd`. While a recording's cancellation is in progress (its Undo

@@ -38,7 +38,7 @@ final class RecordPageTests: XCTestCase {
         var changing = game()
         changing.schedule = try? schedule(#"{"id":4,"title":"Liverpool v Man City","program_start":1,"program_end":2,"status":"scheduled"}"#)
         XCTAssertEqual(RecordPlan.whats(changing), [], "Change recording is one schedule")
-        XCTAssertEqual(RecordPlan.label(.everyLeague("EPL"), request: game(), leagueLabel: "Premier League", now: now).title,
+        XCTAssertEqual(RecordPlan.title(.everyLeague("EPL"), request: game(), leagueLabel: "Premier League"),
                        "Every Premier League game")
         XCTAssertEqual(RecordPlan.primaryTitle(.this, request: game()), "Record game")
         XCTAssertEqual(RecordPlan.primaryTitle(.this, request: guide), "Record programme")
@@ -64,8 +64,8 @@ final class RecordPageTests: XCTestCase {
     }
 
     func testWhenItStopsFollowsTheGameOrTheGuide() throws {
-        XCTAssertEqual(RecordPlan.stopTitle(game()), "When the game ends (ESPN)")
-        XCTAssertEqual(RecordPlan.stopTitle(game(gameId: nil)), "When the guide says it ends")
+        XCTAssertTrue(RecordPlan.stopsWithGame(game()))
+        XCTAssertFalse(RecordPlan.stopsWithGame(game(gameId: nil)))
         var changing = game(gameId: nil)
         changing.schedule = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"scheduled","endsWith":"event"}"#)
         XCTAssertTrue(RecordPlan.stopsWithGame(changing), "a schedule the server links to its game")
@@ -74,8 +74,6 @@ final class RecordPageTests: XCTestCase {
     func testChangeRecordingSendsOnlyWhatChangedAndNeverStartEarlyOnceItRecords() throws {
         let scheduled = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"scheduled","pre_buffer_min":3,"post_buffer_min":5}"#)
         XCTAssertEqual(scheduled.startEarly, 3)
-        XCTAssertEqual(RecordPlan.chips(RecordPlan.startEarly, current: 3, changing: true), [0, 1, 2, 3, 5, 10],
-                       "its own value, and no Usual")
         XCTAssertNil(RecordPlan.change(scheduled, before: 3, after: 5), "nothing changed")
         XCTAssertEqual(RecordPlan.change(scheduled, before: 3, after: 15), ScheduleChangeBody(postBufferMin: 15))
         XCTAssertEqual(RecordPlan.change(scheduled, before: 10, after: 5), ScheduleChangeBody(preBufferMin: 10))

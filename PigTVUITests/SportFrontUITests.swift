@@ -99,20 +99,26 @@ final class SportFrontUITests: XCTestCase {
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(app.descendants(matching: .any)["record.page"].waitForExistence(timeout: 5), "the record page")
         XCTAssertFalse(app.staticTexts["Record on which channel?"].exists, "no channel dialog")
-        let best = app.buttons["record.on.0"], other = app.buttons["record.on.1"]
-        XCTAssertTrue(best.waitForExistence(timeout: 5), "Record on lists the best channel")
-        XCTAssertTrue(best.label.hasPrefix("ESPN HD, "), best.label) // #341: no "Best channel" words; first in the list
-        XCTAssertTrue(other.label.hasPrefix("Fox Footy, "), other.label)
-        XCTAssertLessThan(best.frame.minY, other.frame.minY, "best first")
-        XCTAssertTrue(best.isSelected, "the best channel is chosen to start with")
-        XCTAssertTrue(app.descendants(matching: .any)["record.stop"].label.hasPrefix("When the game ends (ESPN)"),
-                      "the card's game: it stops when the game ends")
+        // #358: the Channel row names the best channel; its page lists them, best first.
+        let channelRow = app.buttons["record.row.channel"]
+        XCTAssertTrue(channelRow.waitForExistence(timeout: 5), "the Channel row")
+        XCTAssertTrue(channelRow.label.hasPrefix("Channel, ESPN HD"), channelRow.label)
+        XCTAssertTrue(app.buttons["record.row.extra"].label.hasSuffix("Usual"), "the card's game: Finish late at ESPN's end")
         XCTAssertTrue(waitUntil { self.focused(app).identifier == "record.schedule" }, "focus on Record game: \(focused(app).identifier)")
         attach(app, "sport-front-record-page")
-        for _ in 0..<12 where !other.hasFocus { XCUIRemote.shared.press(.up) }
+        for _ in 0..<12 where !channelRow.hasFocus { XCUIRemote.shared.press(.up) }
+        XCTAssertTrue(channelRow.hasFocus, "Channel: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        let best = app.buttons["record.on.0"], other = app.buttons["record.on.1"]
+        XCTAssertTrue(best.waitForExistence(timeout: 5), "the Channel page lists the best channel")
+        XCTAssertTrue(best.label.hasPrefix("ESPN HD, "), best.label)
+        XCTAssertTrue(other.label.hasPrefix("Fox Footy"), other.label)
+        XCTAssertLessThan(best.frame.minY, other.frame.minY, "best first")
+        XCTAssertTrue(best.isSelected, "the best channel is chosen to start with")
+        for _ in 0..<4 where !other.hasFocus { XCUIRemote.shared.press(.down) }
         XCTAssertTrue(other.hasFocus, "Fox Footy: \(focused(app).identifier)")
         XCUIRemote.shared.press(.select)
-        XCTAssertTrue(waitUntil { other.isSelected && !best.isSelected }, "Fox Footy is chosen")
+        XCTAssertTrue(waitUntil { channelRow.exists && channelRow.label.hasPrefix("Channel, Fox Footy") }, "Fox Footy is chosen")
         attach(app, "sport-front-record-page-second-channel")
     }
 
@@ -158,7 +164,7 @@ final class SportFrontUITests: XCTestCase {
         XCUIRemote.shared.press(.down)
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(any["record.page"].waitForExistence(timeout: 5), "More options… did not open the record page")
-        XCTAssertTrue(app.buttons["record.on.1"].exists, "both channels, on the record page")
+        XCTAssertTrue(app.buttons["record.row.channel"].exists, "both channels: Channel opens their page")
         attach(app, "sport-card-record-page")
     }
 

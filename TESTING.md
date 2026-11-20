@@ -68,8 +68,9 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   build 33: moving right past 24 h reaches real next-day programmes instead of stalling (`GuideFixtures.forwardHorizon`, 26 h
   of offline fixture data, no server needed).
 - `RecordPageUITests` (Apple 114, push tier): the record page on the `record`, `record-sport` and `record-change`
-  fixtures (What, When it stops, Record on best first, Change recording's Save changes and Cancel recording with Undo).
-  `RecordPageTests` (unit) covers its choices and the requests it sends on a `LocalHTTPServer` (`gameId`; the
+  fixtures (#358: What, the Channel page best first, Extra time's left/right steppers, Set to record's Done and Cancel
+  recording with Undo); `TouchLayoutUITests` draws each page on iPhone and iPad. `RecordPageTests` and `RecordSheetTests`
+  (unit) cover its choices (Extra time's words, usual values and bounds) and the requests it sends on a `LocalHTTPServer` (`gameId`; the
   `PUT recordings/scheduled/:id` and its 404/405/409 answers). #347: `SportPageCardTests` (sport page items' `card`,
   Cancelling… and the lost-cancel reconciliation against a local server, binding by channel identity, a name-only row only
   once the guide has loaded), `CardSlotsCancellingTests` (`slots`, `recordingCancelling`, `guideEnd`, the bound airing),

@@ -40,10 +40,10 @@ final class AiringChoiceTests: XCTestCase {
         XCTAssertEqual(RecordPlan.openingAiring(opened), 1, "opens on day two, set to record")
         let dayTwo = RecordPlan.forAiring(opened, 1), dayOne = RecordPlan.forAiring(opened, 0)
         XCTAssertEqual(dayTwo.schedule?.id, 31, "day two: Change recording")
-        XCTAssertEqual(RecordPlan.primaryTitle(.this, request: dayTwo), "Save changes")
+        XCTAssertEqual(RecordPlan.primaryTitle(.this, request: dayTwo), "Done")
         XCTAssertNil(dayOne.schedule, "day one chosen: Record")
         XCTAssertFalse(RecordPlan.whats(dayOne).isEmpty, "with its choices")
-        XCTAssertNotEqual(RecordPlan.primaryTitle(.this, request: dayOne), "Save changes")
+        XCTAssertNotEqual(RecordPlan.primaryTitle(.this, request: dayOne), "Done")
         // Record day one: a new schedule, day two's kept.
         let airing = dayOne.airings[0]
         let made = await browse.schedule(channel: airing.channel, programme: airing.programme, before: nil, after: nil,

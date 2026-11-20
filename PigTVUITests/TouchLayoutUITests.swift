@@ -56,11 +56,11 @@ final class TouchLayoutUITests: XCTestCase {
         XCTAssertFalse(app.buttons["player.guide"].exists, "the player still has a TV Guide button")
     }
 
-    /// Apple 118 (Mark's check of 5a): on an upright iPhone Change recording's actions wrapped (Save changes clipped,
-    /// "Cancel recording" on two lines), its eyebrow was cut and the chosen Finish late sat off screen. The actions are
-    /// stacked full width, and the chosen chip is in view.
+    /// Apple 118 (Mark's check of 5a), remade for #358 (Mark's iPhone design): on an upright iPhone the record page is a
+    /// half-height sheet: the primary full width, the second action a line under it; the Extra time row says its value
+    /// on one line inside the sheet.
     @MainActor
-    func testPhoneRecordPageStacksItsActionsAndShowsTheChosenChip() throws {
+    func testPhoneRecordSheetStacksItsActionsAndSaysItsExtraTime() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone layout only") }
         XCUIDevice.shared.orientation = .portrait
         for screen in ["record-change", "record"] {
@@ -71,27 +71,81 @@ final class TouchLayoutUITests: XCTestCase {
             XCTAssertTrue(primary.waitForExistence(timeout: 15), "\(screen): no record page")
             let width = app.windows.firstMatch.frame.width
             XCTAssertGreaterThan(primary.frame.width, width * 0.7, "\(screen): the primary is \(primary.frame.width) wide of \(width)")
-            let close = app.buttons["record.close"]
-            XCTAssertGreaterThan(close.frame.minY, primary.frame.maxY - 1, "\(screen): the actions are not stacked")
+            let second = app.buttons[screen == "record-change" ? "record.cancelRecording" : "record.close"]
+            XCTAssertTrue(second.exists, "\(screen): no second action")
+            XCTAssertGreaterThan(second.frame.minY, primary.frame.maxY - 1, "\(screen): the actions are not stacked")
+            XCTAssertLessThan(second.frame.height, primary.frame.height * 1.5, "\(screen): the second action wraps")
+            let extra = app.buttons["record.row.extra"]
+            XCTAssertTrue(extra.exists, "\(screen): no Extra time row")
+            XCTAssertLessThanOrEqual(extra.frame.maxX, width + 1, "\(screen): Extra time runs off the sheet: \(extra.frame)")
             if screen == "record-change" {
-                let cancel = app.buttons["record.cancelRecording"]
-                XCTAssertGreaterThan(cancel.frame.width, width * 0.7, "Cancel recording is not full width")
-                XCTAssertLessThan(cancel.frame.height, primary.frame.height * 1.5, "Cancel recording wraps")
-                let chosen = app.buttons["record.after"]
-                XCTAssertTrue(chosen.exists)
-                XCTAssertTrue(chosen.label.contains("15 min"), "the chosen Finish late is shown: \(chosen.label)")
+                XCTAssertTrue(extra.label.hasSuffix("2 min early, 15 min late"), extra.label)
+            } else {
+                XCTAssertTrue(extra.label.hasSuffix("Usual"), extra.label)
             }
-            // #253: Start early / Finish late are one line each, a menu on the right inside the card (chips ran past its edge).
-            for id in ["record.before", "record.after"] {
-                let menu = app.buttons[id]
-                XCTAssertTrue(menu.exists, "\(screen): no \(id) menu")
-                XCTAssertLessThanOrEqual(menu.frame.maxX, width - 8, "\(screen): \(id) runs off the card: \(menu.frame)")
-            }
-            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'record.after.'")).count, 0, "\(screen): no chips")
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "iphone-\(screen)"
             shot.lifetime = .keepAlways
             add(shot)
+            app.terminate()
+        }
+    }
+
+    /// #358 (T3): each page of the record sheet on iPhone and iPad (Mark's designs): the main page, Channel, Extra time,
+    /// Set to record, and Extra time once it records (Start early "Started"). On Extra time, + and − step one minute.
+    @MainActor
+    func testTouchRecordSheetPages() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let device = UIDevice.current.userInterfaceIdiom == .phone ? "iphone" : "ipad"
+        let pages: [(name: String, screen: String, page: String?, flip: String?)] = [
+            ("sheet", "record-sport", nil, nil), ("channel", "record-sport", "channel", nil), ("extra", "record-sport", "extra", nil),
+            ("set", "record-change", nil, nil), ("extrarec", "record-change", "extra", "recording"), ("programme", "record", nil, nil),
+        ]
+        for item in pages {
+            let app = XCUIApplication()
+            app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = item.screen
+            if let page = item.page { app.launchEnvironment["PIGTV_UI_TEST_RECORD_PAGE"] = page }
+            if let flip = item.flip { app.launchEnvironment["PIGTV_UI_TEST_RECORD_FLIP"] = flip }
+            app.launch()
+            let any = app.descendants(matching: .any)
+            XCTAssertTrue(any["record.page"].waitForExistence(timeout: 15), "\(item.name): no record page")
+            switch item.name {
+            case "channel":
+                XCTAssertTrue(app.buttons["record.on.2"].waitForExistence(timeout: 5), "three channels")
+                XCTAssertTrue(app.buttons["record.on.0"].isSelected)
+                XCTAssertTrue(app.buttons["record.back"].exists)
+            case "extra":
+                let value = any["record.after.value"]
+                XCTAssertTrue(value.waitForExistence(timeout: 5))
+                XCTAssertEqual(value.label, "0 min", "a game ESPN follows: Finish late 0")
+                XCTAssertFalse(app.buttons["record.after.less"].isEnabled, "no − under 0")
+                app.buttons["record.after.more"].tap()
+                app.buttons["record.after.more"].tap()
+                XCTAssertTrue(waitUntil { value.label == "2 min" }, value.label)
+            case "extrarec":
+                XCTAssertTrue(waitUntil(12) { any["record.before.value"].label == "Started" }, "Start early once it records")
+                XCTAssertFalse(app.buttons["record.before.more"].exists, "no + once it records")
+                XCTAssertTrue(app.buttons["record.after.more"].exists, "Finish late still changes")
+            case "set":
+                XCTAssertTrue(any["record.state"].waitForExistence(timeout: 5))
+                XCTAssertEqual(app.buttons["record.schedule"].label, "Done")
+            default:
+                XCTAssertTrue(app.buttons["record.row.extra"].waitForExistence(timeout: 5))
+            }
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "\(device)-record-\(item.name)"
+            shot.lifetime = .keepAlways
+            add(shot)
+            if item.name == "extra" {
+                app.buttons["record.back"].tap()
+                let row = app.buttons["record.row.extra"]
+                XCTAssertTrue(row.waitForExistence(timeout: 5))
+                XCTAssertTrue(row.label.hasSuffix("1 min early, 2 min late"), row.label)
+                let back = XCTAttachment(screenshot: app.screenshot())
+                back.name = "\(device)-record-extra-chosen"
+                back.lifetime = .keepAlways
+                add(back)
+            }
             app.terminate()
         }
     }

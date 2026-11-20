@@ -687,7 +687,7 @@ final class BrandRulesTests: XCTestCase {
         ("SportMotorViews.swift", "Text(points)", 1), ("SportMotorViews.swift", "Text(String(row.pos))", 1),
         ("DetailComponents.swift", "Text(verbatim: number)", 1), ("OnNowList.swift", "Text(programme.timeRange)", 1),
         ("ContentView.swift", "RetryCountdown.text(", 2), ("PageStateViews.swift", "Text(countdown(", 2),
-        ("RecordPage.swift", "Text(RecordPlan.chipTitle(selection", 1), ("RecordPage.swift", "chipTitle(minutes)).lineLimit", 1),
+        ("RecordPage.swift", "let valueText = Text(words)", 1), ("RecordPage.swift", "Text(when).font(Metrics.meta)", 1),
         ("GuideChrome.swift", "Text(times)", 1), ("SportFollowSettingsView.swift", "Text(seconds.map(ScoreDelay.text)", 1),
         ("ScheduledPage.swift", "Text(item.start.formatted(", 4), ("DetailScreens.swift", "Text(programme.durationText)", 1),
         ("SignInView.swift", "Text(\"\\(number)\")", 1),

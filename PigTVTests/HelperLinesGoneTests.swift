@@ -16,6 +16,9 @@ final class HelperLinesGoneTests: XCTestCase {
         "Still recording: watch it from the start", "Playback is available once", "Plays once it has finished",
         "You can cancel and try again", "Undo for 10 seconds", "Long press for options", "Touch and hold for options",
         "Select a programme on now", "Choices: System, Light, Dark", "Hide scores and your sport", "Scores are \\(",
+        // #358 (Mark's final record page: no descriptive text; Start early shows "Started" once it records)
+        "When it stops", "When the game ends (ESPN)", "Repeats as well", "Changes apply to this recording only.",
+        "It is recording: only Finish late can change.",
     ]
 
     func testTheHelperLinesAreGone() throws {
@@ -32,8 +35,7 @@ final class HelperLinesGoneTests: XCTestCase {
 
     func testTheKeptLinesStay() throws {
         let record = try String(contentsOf: Self.sources.appendingPathComponent("RecordPage.swift"), encoding: .utf8)
-        for kept in ["Repeats as well", "It has started: only the rest of it is recorded.", "Changes apply to this recording only.",
-                     "It is recording: only Finish late can change."] {
+        for kept in ["It has started: only the rest of it is recorded."] {
             XCTAssertTrue(record.contains(kept), kept)
         }
     }

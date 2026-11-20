@@ -115,7 +115,7 @@ final class GuidePagesUITests: XCTestCase {
         XCUIRemote.shared.press(.select)
         let page = app.descendants(matching: .any)["record.page"]
         XCTAssertTrue(page.waitForExistence(timeout: 5), "no record page")
-        XCTAssertTrue(app.buttons["record.what.this"].exists && app.descendants(matching: .any)["record.stop"].exists)
+        XCTAssertTrue(app.buttons["record.what.this"].exists && app.buttons["record.row.extra"].exists)
         XCTAssertTrue(waitUntil { app.buttons["record.schedule"].hasFocus }, "focus: \(focusedLabel(app))")
         attach(app, "Guide record page")
         XCUIRemote.shared.press(.menu)
