@@ -56,8 +56,8 @@ default because the release workflow's Test actions can only "Use scheme setting
 machine and runs `test-without-building` on another that has only the build products, so it leaves out the static source scans
 (`BrandRulesTests`, `HelperLinesGoneTests`, `SelectionFlatTests`, `SportHideScoresWriterTests`, `LaunchImageTests`,
 `TestPlanTests`, two `PolishTests` colour-catalogue reads, two `SportSpoilersTests` source scans), which run on the Mac and in
-GitHub CI, and three timing probes that failed on its runners (`TabSwitchUITests`' thousand-channel switch, `OutsidePlayUITests`,
-`TouchLayoutUITests`' Watch on menu). `TestPlanTests` pins both lists. What tests read ships in their bundles: the JSON fixtures
+GitHub CI, and four timing probes that failed on its runners (`TabSwitchUITests`' thousand-channel switch, `OutsidePlayUITests`,
+`TouchLayoutUITests`' Watch on menu, `PlayerSlowStartUITests`' fixed 4.5 s wait). `TestPlanTests` pins both lists. What tests read ships in their bundles: the JSON fixtures
 are also members of `PigTVUITests` (read through `UIFixture`), the Debug app carries `sport-front-0381.json` for the offline
 Home (Release excludes it), and the PigTVTests "Golden answers" build phase copies `../PigTV/test/golden` (or
 `PIGTV_GOLDEN_DIR`) into the bundle as `golden/` (`ci_scripts/ci_post_clone.sh` fetches it on Xcode Cloud's build machine).
