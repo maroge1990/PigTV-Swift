@@ -220,15 +220,36 @@ nonisolated enum RecordPlan {
     /// One press of − or + (`delta` ±1): the new value, within 0 and `limit`. A new recording's value that comes back to
     /// the usual is nil again, so nothing is sent and a later switch to a rule with another usual follows that rule
     /// (Codex on the web window, #358); Change recording keeps the number (it is compared with the schedule's).
-    static func stepped(_ value: Int?, by delta: Int, usual: Int, limit: Int, keepsValue: Bool) -> Int? {
-        let next = min(limit, max(0, (value ?? usual) + delta))
+    /// `shown`: the value the stepper shows (nil while none is known: nothing changes).
+    static func stepped(_ shown: Int?, by delta: Int, usual: Int?, limit: Int, keepsValue: Bool) -> Int? {
+        guard let shown else { return nil }
+        let next = min(limit, max(0, shown + delta))
         return !keepsValue && next == usual ? nil : next
     }
 
-    /// Whether − (`delta` < 0) or + can still move the value shown.
-    static func canStep(_ value: Int?, by delta: Int, usual: Int, limit: Int) -> Bool {
-        let shown = value ?? usual
+    /// Whether − (`delta` < 0) or + can still move the value shown (never while it is not known).
+    static func canStep(_ shown: Int?, by delta: Int, limit: Int) -> Bool {
+        guard let shown else { return false }
         return delta < 0 ? shown > 0 : shown < limit
+    }
+
+    /// The Extra time draft: what the person changed, per field (nil: untouched). Codex review of 366 (high): Set to
+    /// record's draft was seeded from the schedule as the page opened, so once the list refreshed (another device changed
+    /// Finish late) every difference counted as an edit and Done sent the old value back. Now nothing is seeded: an
+    /// untouched field shows the schedule as the list has it now and is never sent.
+    struct PadDraft: Equatable, Sendable {
+        var before: Int? = nil
+        var after: Int? = nil
+
+        /// The draft a page opens with, a new recording and Set to record alike: nothing changed.
+        static func opening(_ request: RecordRequest) -> PadDraft { PadDraft() }
+
+        /// A stepper's value: the person's edit, else the schedule's as the list has it now (Set to record), else the
+        /// usual; nil while none is known.
+        static func shown(_ edit: Int?, schedule: Int?, usual: Int?) -> Int? { edit ?? schedule ?? usual }
+
+        /// What Done sends: only the fields the person changed, and of those only what differs from the schedule now.
+        func change(_ live: ScheduledRecording) -> ScheduleChangeBody? { RecordPlan.change(live, before: before, after: after) }
     }
 
     /// Start early can change only before it records.
@@ -518,9 +539,8 @@ struct RecordPage: View {
 
     @State private var screen: Screen = .main
     @State private var what: RecordPlan.What = .this
-    /// A new recording: the minutes chosen, nil for the usual (nothing is sent). Set to record: the schedule's.
-    @State private var before: Int?
-    @State private var after: Int?
+    /// What the person changed in Extra time, per field (nil: untouched, never sent).
+    @State private var draft: RecordPlan.PadDraft
     @State private var airingIndex = 0
     @State private var error: String?
     @State private var busy = false
@@ -534,8 +554,7 @@ struct RecordPage: View {
         self.presenter = presenter
         self.opened = request
         self.close = close
-        _before = State(initialValue: request.schedule?.startEarly)
-        _after = State(initialValue: request.schedule?.finishLate)
+        _draft = State(initialValue: .opening(request))
         _error = State(initialValue: request.error)
         _airingIndex = State(initialValue: RecordPlan.openingAiring(request))
         #if DEBUG
@@ -560,6 +579,10 @@ struct RecordPage: View {
     /// #345: "Don't record it" (a game set to record once listed): nothing to pad.
     private var stopsWaiting: Bool { what == .this && request.listing?.offer != nil && request.listing?.offer != .record }
     private var usual: RecordPlan.Usual { RecordPlan.usual(what, request: request) }
+    /// The schedule as the list has it now (Set to record), else as it opened.
+    private var scheduleNow: ScheduledRecording? { live ?? request.schedule }
+    private var shownBefore: Int? { RecordPlan.PadDraft.shown(draft.before, schedule: scheduleNow?.startEarly, usual: usual.before) }
+    private var shownAfter: Int? { RecordPlan.PadDraft.shown(draft.after, schedule: scheduleNow?.finishLate, usual: usual.after) }
     /// Start early cannot change once it records, nor anything once the schedule has gone.
     private var startLocked: Bool { changing && (live.map { !RecordPlan.canChangeStartEarly($0) } ?? true) }
     private var started: Bool { changing && live?.status == "recording" }
@@ -606,13 +629,9 @@ struct RecordPage: View {
         // accepted read is published to it, even one with the same rows.
         .onAppear { if opened.serverCancelling != nil { store.readWaiters += 1 } }
         .onDisappear { if opened.serverCancelling != nil { store.readWaiters = max(0, store.readWaiters - 1) } }
-        .onChange(of: live?.status) { _, status in
-            if status == "recording" { before = live?.startEarly }
-        }
-        // Another airing chosen: its own schedule's padding (Change recording), else the usual, and "This game".
+        // Another airing chosen: nothing changed on it yet (its own schedule's padding, else the usual), and "This game".
         .onChange(of: airingIndex) {
-            before = request.schedule?.startEarly
-            after = request.schedule?.finishLate
+            draft = .opening(request)
             what = .this
         }
         .task(id: changing) {
@@ -809,7 +828,7 @@ struct RecordPage: View {
                 }
                 if showsChannel && !stopsWaiting { divider }
                 if !stopsWaiting {
-                    let words = RecordPlan.extraWords(before: before, after: after, usual: usual)
+                    let words = RecordPlan.extraWords(before: shownBefore, after: shownAfter, usual: usual)
                     row("Extra time", id: "extra", opens: !gone, focus: .extraRow, label: "Extra time, \(words)") {
                         Text(words).font(Metrics.rowValue).lineLimit(1).pigFigures()
                     } action: { show(.extra) }
@@ -1013,10 +1032,10 @@ struct RecordPage: View {
     private var extraPage: some View {
         subHeader("Extra time")
         VStack(spacing: Metrics.stepperGap) {
-            stepper("Start early", id: "before", value: $before, usual: usual.before, limit: RecordPlan.maxStartEarly,
-                    locked: startLocked, lockedWords: started ? "Started" : nil, target: .before)
-            stepper("Finish late", id: "after", value: $after, usual: usual.after, limit: RecordPlan.maxFinishLate,
-                    locked: gone, lockedWords: nil, target: .after)
+            stepper("Start early", id: "before", value: $draft.before, base: shownBefore, usual: usual.before,
+                    limit: RecordPlan.maxStartEarly, locked: startLocked, lockedWords: started ? "Started" : nil, target: .before)
+            stepper("Finish late", id: "after", value: $draft.after, base: shownAfter, usual: usual.after,
+                    limit: RecordPlan.maxFinishLate, locked: gone, lockedWords: nil, target: .after)
         }
         errorText
     }
@@ -1025,15 +1044,16 @@ struct RecordPage: View {
     /// besides (Mark's design). On the television the row is one focusable item: left and right change it, select
     /// does nothing. Locked (Start early once it records, both once it has gone): the value alone ("Started"), dimmed.
     @ViewBuilder
-    private func stepper(_ name: String, id: String, value: Binding<Int?>, usual base: Int, limit: Int, locked: Bool,
+    /// `value`: the person's edit (nil: untouched); `base`: the value shown (the edit, the schedule's now, or the usual);
+    /// `usual`: what a new recording's edit clears back to.
+    private func stepper(_ name: String, id: String, value: Binding<Int?>, base: Int?, usual: Int?, limit: Int, locked: Bool,
                          lockedWords: String?, target: Focus) -> some View {
-        let shown = value.wrappedValue ?? base
-        let words = lockedWords ?? RecordPlan.minutes(shown)
-        let less = !locked && RecordPlan.canStep(value.wrappedValue, by: -1, usual: base, limit: limit)
-        let more = !locked && RecordPlan.canStep(value.wrappedValue, by: 1, usual: base, limit: limit)
+        let words = lockedWords ?? base.map(RecordPlan.minutes) ?? "—"
+        let less = !locked && RecordPlan.canStep(base, by: -1, limit: limit)
+        let more = !locked && RecordPlan.canStep(base, by: 1, limit: limit)
         let step = { (delta: Int) in
-            guard !locked, RecordPlan.canStep(value.wrappedValue, by: delta, usual: base, limit: limit) else { return }
-            value.wrappedValue = RecordPlan.stepped(value.wrappedValue, by: delta, usual: base, limit: limit, keepsValue: changing)
+            guard !locked, RecordPlan.canStep(base, by: delta, limit: limit) else { return }
+            value.wrappedValue = RecordPlan.stepped(base, by: delta, usual: usual, limit: limit, keepsValue: changing)
         }
         let valueText = Text(words).font(Metrics.stepperValue).pigFigures().lineLimit(1)
             .frame(minWidth: Metrics.stepperValueWidth)
@@ -1223,7 +1243,7 @@ struct RecordPage: View {
         defer { busy = false }
         if changing {
             // Done: the change, when there is one; else (or once the schedule has gone) it only closes.
-            guard let schedule = live, let change = RecordPlan.change(schedule, before: before, after: after) else {
+            guard let schedule = live, let change = draft.change(schedule) else {
                 close()
                 return
             }
@@ -1231,7 +1251,7 @@ struct RecordPage: View {
             if await model.changeSchedule(schedule, change) { close() } else { error = model.actionError ?? "The recording could not be changed." }
             return
         }
-        if let rule = RecordPlan.rule(what, request: request, before: before, after: after) {
+        if let rule = RecordPlan.rule(what, request: request, before: draft.before, after: draft.after) {
             if await model.addRule(rule) { close() } else { error = model.actionError ?? "The rule could not be added." }
             return
         }
@@ -1239,7 +1259,7 @@ struct RecordPage: View {
             // #345 (#234): the game's `game` rule, added or removed; the cards say so at once.
             switch listing.offer {
             case .record:
-                guard let rule = await model.addGameRule(listing.game, before: before, after: after) else {
+                guard let rule = await model.addGameRule(listing.game, before: draft.before, after: draft.after) else {
                     error = model.actionError ?? PageWords.recordWhenListedFailed
                     return
                 }
@@ -1253,7 +1273,7 @@ struct RecordPage: View {
         }
         guard let airing else { return }
         // Codex review and sign-off of #347: the scheduled list read fresh, the page's per-airing check, then the write.
-        if await model.record(request, airing: airing, before: before, after: after) {
+        if await model.record(request, airing: airing, before: draft.before, after: draft.after) {
             close()
         } else {
             error = model.actionError ?? "The recording could not be scheduled."

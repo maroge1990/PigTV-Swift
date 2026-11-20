@@ -74,27 +74,27 @@ final class RecordSheetTests: XCTestCase {
         XCTAssertEqual(RecordPlan.maxStartEarly, 60)
         XCTAssertEqual(RecordPlan.maxFinishLate, 180)
         // From the usual: the first press is one minute from it.
-        XCTAssertEqual(RecordPlan.stepped(nil, by: 1, usual: 1, limit: 60, keepsValue: false), 2)
-        XCTAssertEqual(RecordPlan.stepped(nil, by: -1, usual: 1, limit: 60, keepsValue: false), 0)
+        XCTAssertEqual(RecordPlan.stepped(1, by: 1, usual: 1, limit: 60, keepsValue: false), 2)
+        XCTAssertEqual(RecordPlan.stepped(1, by: -1, usual: 1, limit: 60, keepsValue: false), 0)
         // Never under 0 nor over the limit.
         XCTAssertEqual(RecordPlan.stepped(0, by: -1, usual: 5, limit: 180, keepsValue: false), 0)
         XCTAssertEqual(RecordPlan.stepped(180, by: 1, usual: 5, limit: 180, keepsValue: false), 180)
         XCTAssertEqual(RecordPlan.stepped(60, by: 1, usual: 1, limit: 60, keepsValue: true), 60)
-        XCTAssertFalse(RecordPlan.canStep(0, by: -1, usual: 5, limit: 180))
-        XCTAssertFalse(RecordPlan.canStep(nil, by: -1, usual: 0, limit: 180), "a game's usual 0: no −")
-        XCTAssertTrue(RecordPlan.canStep(nil, by: 1, usual: 0, limit: 180))
-        XCTAssertFalse(RecordPlan.canStep(180, by: 1, usual: 5, limit: 180))
-        XCTAssertFalse(RecordPlan.canStep(nil, by: 1, usual: 60, limit: 60))
-        XCTAssertTrue(RecordPlan.canStep(59, by: 1, usual: 1, limit: 60))
+        XCTAssertFalse(RecordPlan.canStep(0, by: -1, limit: 180))
+        XCTAssertFalse(RecordPlan.canStep(0, by: -1, limit: 180), "a game's usual 0: no −")
+        XCTAssertTrue(RecordPlan.canStep(0, by: 1, limit: 180))
+        XCTAssertFalse(RecordPlan.canStep(180, by: 1, limit: 180))
+        XCTAssertFalse(RecordPlan.canStep(60, by: 1, limit: 60))
+        XCTAssertTrue(RecordPlan.canStep(59, by: 1, limit: 60))
     }
 
     /// Codex on the web window (#358, medium): + then − came back to the usual but stored an explicit value, which a later
     /// switch to a rule with another usual then sent. A new recording's value back at the usual is nothing again; Change
     /// recording keeps the number (it is compared with the schedule's own).
     func testAValueSteppedBackToTheUsualIsNotSent() throws {
-        let up = RecordPlan.stepped(nil, by: 1, usual: 0, limit: 180, keepsValue: false)
+        let up = RecordPlan.stepped(0, by: 1, usual: 0, limit: 180, keepsValue: false)
         XCTAssertEqual(up, 1)
-        let back = RecordPlan.stepped(up, by: -1, usual: 0, limit: 180, keepsValue: false)
+        let back = RecordPlan.stepped(up ?? 0, by: -1, usual: 0, limit: 180, keepsValue: false)
         XCTAssertNil(back, "back at the usual: nothing to send")
         // Untouched: nothing is sent with the rule either (the server applies the usual).
         let rule = try XCTUnwrap(RecordPlan.rule(.everyLeague("EPL"), request: game(), before: back, after: back))
@@ -125,6 +125,26 @@ final class RecordSheetTests: XCTestCase {
         XCTAssertNil(RecordPlan.change(scheduled, before: 1, after: 0), "nothing changed: Done only closes")
         XCTAssertEqual(RecordPlan.change(recording, before: 4, after: 8), ScheduleChangeBody(postBufferMin: 8),
                        "while it records only Finish late goes")
+    }
+
+    /// Codex review of 366 (high): Set to record's draft was seeded from the schedule as the page opened. Another device
+    /// then extended Finish late from 5 to 30; the open page's list refreshed, and Done with nothing touched sent 5 back
+    /// (the server would cut the recording 25 minutes early). Now the draft holds only what the person changed.
+    func testDoneSendsOnlyTheFieldsThePersonChanged() throws {
+        let opened = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"scheduled","pre_buffer_min":1,"post_buffer_min":5}"#)
+        let refreshed = try schedule(#"{"id":4,"title":"x","program_start":1,"program_end":2,"status":"scheduled","pre_buffer_min":1,"post_buffer_min":30}"#)
+        var set = guideProgramme()
+        set.schedule = opened
+        var draft = RecordPlan.PadDraft.opening(set)
+        XCTAssertNil(draft.change(refreshed), "nothing touched: Done sends nothing after another device's change")
+        XCTAssertEqual(RecordPlan.PadDraft.shown(draft.after, schedule: refreshed.finishLate, usual: 5), 30,
+                       "an untouched field shows the schedule as the list has it now")
+        // Start early edited here while another device changed Finish late: only Start early goes.
+        draft.before = RecordPlan.stepped(RecordPlan.PadDraft.shown(draft.before, schedule: refreshed.startEarly, usual: 1),
+                                          by: 1, usual: 1, limit: RecordPlan.maxStartEarly, keepsValue: true)
+        XCTAssertEqual(draft.change(refreshed), ScheduleChangeBody(preBufferMin: 2))
+        // A new recording opens with nothing changed either.
+        XCTAssertEqual(RecordPlan.PadDraft.opening(game()), RecordPlan.PadDraft())
     }
 
     // MARK: Channel
