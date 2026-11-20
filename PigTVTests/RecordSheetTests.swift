@@ -245,6 +245,26 @@ final class RecordSheetTests: XCTestCase {
                       "Codex review of #347: another airing stays recordable while one is set to record")
     }
 
+    /// Codex review of 366 (medium): two copies of one channel name on different airings (UHD at the guide's time, the
+    /// best; HD later, the bound schedule). The ticked row shows the HD airing, and selecting it keeps that copy; before,
+    /// it selected the row's best (UHD) and the page turned to Record on another airing.
+    func testSelectingTheTickedRowKeepsTheCopyItShows() {
+        let request = RecordRequest(title: "Liverpool v Man City", league: "EPL",
+                                    airings: [.init(channel: channel("Optus Sport 1 UHD", id: "os1u"), programme: programme("Liverpool v Man City"), quality: .uhd),
+                                              .init(channel: channel("Optus Sport 1 HD", id: "os1h"),
+                                                    programme: programme("Liverpool v Man City", start: 9000, end: 15000), quality: .hd)],
+                                    gameId: "g", isGame: true)
+        let groups = RecordPlan.channelGroups(request)
+        XCTAssertEqual(groups.count, 1, "one name, two copies")
+        let group = groups[0]
+        XCTAssertEqual(group.best.copy, 0, "UHD is the row's best")
+        XCTAssertTrue(group.choosesQuality)
+        XCTAssertEqual(RecordPlan.rowCopy(group, chosen: 1), 1, "the bound HD airing is what the row shows and selects")
+        XCTAssertEqual(RecordPlan.rowCopy(group, chosen: 0), 0)
+        let other = RecordPlan.channelGroups(game())
+        XCTAssertEqual(RecordPlan.rowCopy(other[1], chosen: 0), other[1].best.copy, "a row not chosen selects its best")
+    }
+
     func testTheChannelPageShowsTimesOnlyWhenTheAiringsDiffer() {
         let same = game()
         XCTAssertFalse(RecordPlan.channelsTimed(same))

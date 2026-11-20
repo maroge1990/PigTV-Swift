@@ -316,6 +316,13 @@ nonisolated enum RecordPlan {
         timed ? "\(DetailText.day(airing.programme.start, now: now)) \(airing.programme.timeRange)" : nil
     }
 
+    /// The copy a Channel page row shows and selects: the chosen one when it is in the row, else the row's best. Codex
+    /// review of 366 (medium): the row showed the chosen copy (a later HD airing, the bound schedule) but selected the
+    /// row's best (an earlier UHD airing), so pressing the ticked row switched airing and turned Set to record into Record.
+    static func rowCopy(_ group: ChannelNameGroup<Int>, chosen: Int) -> Int {
+        group.indices.contains(chosen) ? chosen : group.best.copy
+    }
+
     /// D-65 (#266): the Channel page's rows: one per channel name, its copies' qualities as chips (best first; copies with
     /// the same name and quality fold into one chip). Each copy is its index in `request.airings`; a chip selects its first.
     static func channelGroups(_ request: RecordRequest) -> [ChannelNameGroup<Int>] {
@@ -962,13 +969,13 @@ struct RecordPage: View {
     @ViewBuilder
     private func channelRow(_ group: ChannelNameGroup<Int>, index: Int, last: Bool, timed: Bool, now: Date) -> some View {
         let on = group.indices.contains(airingIndex)
-        // The row's words follow the copy chosen in it, else its best.
-        let copy = on ? airingIndex : group.best.copy
+        // The row's words and its action follow the copy chosen in it, else its best; other airings stay their chips.
+        let copy = RecordPlan.rowCopy(group, chosen: airingIndex)
         let option = request.airings[copy]
         let detail = RecordPlan.channelDetail(option, timed: timed, now: now)
         let name = group.choosesQuality ? group.name : option.channel.name
         VStack(alignment: .leading, spacing: PigSpacing.xs) {
-            Button { choose(group.best.copy) } label: {
+            Button { choose(copy) } label: {
                 HStack(spacing: Metrics.rowGap) {
                     Image(systemName: "checkmark").font(Metrics.tick).foregroundStyle(Color.pigAccentText)
                         .opacity(on ? 1 : 0)
