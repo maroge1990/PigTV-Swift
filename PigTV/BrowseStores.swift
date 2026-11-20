@@ -103,8 +103,9 @@ final class RecordingsStore: ObservableObject {
     /// #357 (Codex review of 359-360): Records the server refused 409 "cancelling", by the cancellation key of the
     /// schedule it named, with the airing tried: that airing waits (Cancelling…) until an accepted scheduled-list read
     /// asked for after the refusal lists the schedule not "cancelling", or not at all, whether or not the list on show
-    /// has its row.
-    @Published var refusedAirings: [String: RefusedAiring] = [:]
+    /// has its row. Every distinct airing refused for a schedule is kept, each settled by a read asked for after its own
+    /// refusal (Codex sign-off of 359-364: a second refusal replaced the first's airing). Never an empty list.
+    @Published var refusedAirings: [String: [RefusedAiring]] = [:]
 }
 
 /// A Record refused 409 "cancelling" (#357): the schedule the server named, the airing tried (its game, channel identity
@@ -119,6 +120,12 @@ nonisolated struct RefusedAiring: Equatable, Sendable {
     let start: Double
     let end: Double
     let since: Date
+
+    /// The same airing tried (whenever it was refused).
+    func sameAiring(_ other: RefusedAiring) -> Bool {
+        scheduleId == other.scheduleId && gameId == other.gameId && sourceId == other.sourceId && rawID == other.rawID
+            && stableId == other.stableId && channelName == other.channelName && start == other.start && end == other.end
+    }
 
     /// An airing that overlaps this one and is the same game or on the same channel (by identity, as
     /// `BrowseModel.sameChannel`) waits with it.

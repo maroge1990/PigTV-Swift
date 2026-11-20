@@ -783,10 +783,16 @@ final class BrowseModel: ObservableObject {
             // refusal shows that schedule not "cancelling", or gone (`publishSchedules`, `reconcileLostRemoval`).
             if code == "cancelling", let refusedBy {
                 let key = PendingRemoval.key(.cancelSchedule, refusedBy)
-                recordingStore.refusedAirings[key] = RefusedAiring(
+                let refusal = RefusedAiring(
                     scheduleId: refusedBy, gameId: gameId, sourceId: channel.sourceId, rawID: channel.rawID,
                     stableId: channel.stableId, channelName: channel.name, start: programme.startTime,
                     end: guideEnd ?? programme.endTime, since: Date())
+                // Codex sign-off of 359-364 (medium): added to the schedule's other refused airings, never over them (a
+                // Sport attempt on one channel and a Guide attempt on another both wait); the same airing again is
+                // held from this, the later refusal.
+                var held = (recordingStore.refusedAirings[key] ?? []).filter { !$0.sameAiring(refusal) }
+                held.append(refusal)
+                recordingStore.refusedAirings[key] = held
                 startReconciling(key)
             }
             await loadRecordings(startedAfter: Date())
@@ -863,8 +869,13 @@ final class BrowseModel: ObservableObject {
         noteScheduleRead(read.askedAt)
         let unsure = recordingStore.uncertainRemovals.filter { $0.value >= read.askedAt || read.cancelling.contains($0.key) }
         if unsure.count != recordingStore.uncertainRemovals.count { recordingStore.uncertainRemovals = unsure }
-        let refused = recordingStore.refusedAirings.filter { $0.value.since >= read.askedAt || read.cancelling.contains($0.key) }
-        if refused.count != recordingStore.refusedAirings.count { recordingStore.refusedAirings = refused }
+        // Each refused airing by its own refusal: one made after this read was asked for still waits.
+        var refused: [String: [RefusedAiring]] = [:]
+        for (key, airings) in recordingStore.refusedAirings {
+            let held = read.cancelling.contains(key) ? airings : airings.filter { $0.since >= read.askedAt }
+            if !held.isEmpty { refused[key] = held }
+        }
+        if refused != recordingStore.refusedAirings { recordingStore.refusedAirings = refused }
     }
 
     func cancel(_ item: ScheduledRecording) async {
@@ -1003,7 +1014,7 @@ final class BrowseModel: ObservableObject {
     /// A Record the server refused 409 "cancelling" (#357) waits too, by the airing it tried, whatever the list on show.
     func cancellingEarlier(gameId: String?, channel: GuideChannel, start: Double, end: Double,
                            onlyHere: Bool = false, slots: [RecordRequest.Airing] = []) -> Bool {
-        if recordingStore.refusedAirings.values.contains(where: { $0.covers(gameId: gameId, channel: channel, start: start, end: end) }) {
+        if recordingStore.refusedAirings.values.joined().contains(where: { $0.covers(gameId: gameId, channel: channel, start: start, end: end) }) {
             return true
         }
         return schedules.contains { schedule in
