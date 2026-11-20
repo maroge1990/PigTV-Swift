@@ -53,13 +53,13 @@ password in chat or store it. Devices by name: `iPad`, `PiGPhone`, `Downstairs L
 `Mark Office`; on, awake, on the home network. Quote the `~` (else the local shell expands it). On the free team a
 build stops opening after 7 days; installing again renews it.
 
-TestFlight is the normal route. `Tools/testflight.sh` refuses to upload unless the git-ignored marker `.ui-full-passed`
-equals HEAD and the tree is clean (D-49). So run `sh Tools/test.sh all` and then the script from the Mac's real clone
-(`/Users/markrogers/Documents/GitHub/PigTV-Swift`), never from an rsync copy without `.git`. It runs over plain SSH
-(`ssh mac 'cd ~/Documents/GitHub/PigTV-Swift && sh Tools/testflight.sh both'`), with no keychain: the archive is unsigned
-and the export is cloud-signed by Apple through the Admin-role API key in `~/.pigtv-testflight.env` (names in
-`.env.example`; an App Manager key fails with "Cloud signing permission error"). `--export` cloud-signs without uploading.
-Success ends with "Upload succeeded" and "EXPORT SUCCEEDED"; processing then takes 10-30 minutes (D-64).
+TestFlight builds come only from Xcode Cloud (server D-75): once Mark says the current set of Apple builds is complete,
+push an annotated `tf/<build>` tag on a CI-green commit; the "TestFlight release" workflow tests with
+`XcodeCloud.xctestplan` (the scheme's default; the Mac and GitHub CI pass `-testPlan PigTV`), archives both apps and
+uploads them. Watch its four check runs on the commit (`gh api repos/maroge1990/PigTV-Swift/commits/<sha>/check-runs`);
+the upload is a post-action only App Store Connect shows. Xcode Cloud numbers builds itself, so a release note gives
+both (Apple 365 = TestFlight 322). One run per finished set (about an hour of the 25 free hours a month), never per
+push. `Tools/testflight.sh` (Mac upload, D-64) is no longer used: its numbers would collide with the cloud's.
 
 ## How changes ship
 
