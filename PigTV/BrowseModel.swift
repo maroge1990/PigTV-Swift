@@ -79,6 +79,9 @@ final class BrowseModel: ObservableObject {
     /// Sign-out or a server/account switch: delete this account's guide cache
     /// and drop any save still in flight.
     func retirePrivateCaches() {
+        // #357 (Codex sign-off of 359-364, high): retired for good, before its workers are cancelled, so a press-time read
+        // or a late answer that returns afterwards sends nothing on this session's token.
+        isRetired = true
         guideCache.retire()
         // #357 (Codex review of 359-360): an old session's scheduled-list reads stop with it (never sent on its token).
         for worker in reconcilers.values { worker.cancel() }
@@ -720,6 +723,8 @@ final class BrowseModel: ObservableObject {
             return false
         }
         guard !mutationBusy else { return false }
+        // #357 (Codex sign-off of 359-364, high): never on a retired session's token.
+        guard !isRetired else { return false }
         mutationBusy = true
         actionError = nil
         actionMessage = nil
@@ -753,6 +758,7 @@ final class BrowseModel: ObservableObject {
             PigHaptic.play(.record)
             return true
         } catch PigTVError.scheduleRefused(let code, let refusedBy) {
+            guard !isRetired else { return false } // answered after sign-out: nothing more on its token (#357)
             // The server's refusal (0876+): the lists are read again, so the page shows why (Cancelling…, or the slot's
             // own schedule), and nothing was made.
             // #347 finding 2 (Codex sign-off, medium): a "cancelling" refusal names the schedule being cancelled. The
@@ -786,9 +792,15 @@ final class BrowseModel: ObservableObject {
     /// #347 finding 1 (Codex sign-off, high): only the press-time read's own answer authorizes the write. One that loses
     /// its ticket check to a newer list (a poll answered first) is discarded, and the list on show is then not what the
     /// press read: it is read once more, and if that is superseded too (or any read fails) nothing is sent.
+    /// Signed out or switched while a read was out (#357, Codex sign-off of 359-364, high): nothing is sent and nothing
+    /// is said (the session has gone).
     func record(_ request: RecordRequest, airing: RecordRequest.Airing, before: Int?, after: Int?) async -> Bool {
         var outcome = await readSchedulesOnce()
-        if outcome == .superseded { outcome = await readSchedulesOnce() }
+        guard !isRetired else { return false }
+        if outcome == .superseded {
+            outcome = await readSchedulesOnce()
+            guard !isRetired else { return false }
+        }
         guard outcome == .published else {
             actionError = PageWords.scheduleCheckFailed
             return false
@@ -1069,6 +1081,9 @@ final class BrowseModel: ObservableObject {
         return min(doubled, max(reconcileMaxRetry, reconcileRetry))
     }
 
+    /// Signed out, or replaced by another server or account (`retirePrivateCaches`): for good.
+    private(set) var isRetired = false
+
     /// The reads settling each unresolved cancellation, by its key (#357, Codex review of 359-360): one worker per
     /// schedule (a new one replaces it), all cancelled when the session is retired (`retirePrivateCaches`).
     private var reconcilers: [String: Task<Void, Never>] = [:]
@@ -1076,6 +1091,8 @@ final class BrowseModel: ObservableObject {
     /// Starts the reads that settle `key` (replacing any still running for it); the task ends when they do.
     @discardableResult
     private func startReconciling(_ key: String) -> Task<Void, Never> {
+        // A late answer (a 409, a lost cancel) on a retired session starts nothing (Codex sign-off of 359-364, medium).
+        guard !isRetired else { return Task {} }
         reconcilers[key]?.cancel()
         let worker = Task { [weak self] in
             await self?.reconcileLostRemoval(key)

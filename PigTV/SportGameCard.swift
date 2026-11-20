@@ -105,6 +105,8 @@ final class SportRecordFlow: ObservableObject {
             // press (a superseded read once more), and nothing is sent without a usable answer.
             Task {
                 guard await browse.record(request, airing: first, before: nil, after: nil) else {
+                    // Signed out or switched meanwhile (#357): no page for a session that has gone.
+                    guard !browse.isRetired, app.browse === browse else { return }
                     app.record(event, game: game, error: browse.actionError ?? "The recording could not be scheduled.", card: card)
                     return
                 }
