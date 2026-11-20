@@ -1099,7 +1099,8 @@ final class BrowseModel: ObservableObject {
     private(set) var isRetired = false
 
     /// The reads settling each unresolved cancellation, by its key (#357, Codex review of 359-360): one worker per
-    /// schedule (a new one replaces it), all cancelled when the session is retired (`retirePrivateCaches`).
+    /// schedule (a new mark replaces it, so its first read is at once), running while any mark of that schedule is
+    /// set, all cancelled when the session is retired (`retirePrivateCaches`).
     private var reconcilers: [String: Task<Void, Never>] = [:]
 
     /// Starts the reads that settle `key` (replacing any still running for it); the task ends when they do.
@@ -1118,39 +1119,33 @@ final class BrowseModel: ObservableObject {
     }
 
     /// What keeps a cancellation in progress: no answer to it (`uncertainRemovals`), or a Record refused for it
-    /// (`refusedAirings`), each with when.
-    private struct CancellationMark: Equatable {
-        let uncertain: Date?
-        let refused: Date?
-        var isSet: Bool { uncertain != nil || refused != nil }
-    }
-
-    private func cancellationMark(_ key: String) -> CancellationMark {
-        CancellationMark(uncertain: recordingStore.uncertainRemovals[key], refused: recordingStore.refusedAirings[key]?.since)
+    /// (`refusedAirings`). Either one keeps its reads going; each is cleared only by an accepted read asked for after it
+    /// was set (`publishSchedules`).
+    private func cancellationPending(_ key: String) -> Bool {
+        recordingStore.uncertainRemovals[key] != nil || recordingStore.refusedAirings[key] != nil
     }
 
     private func reconcileLostRemoval(_ key: String) async {
-        // This attempt's uncertainty: a refresh that answered it, or a later attempt at the same item, ends these reads.
-        let uncertainSince = cancellationMark(key)
-        guard uncertainSince.isSet else { return }
+        // #357 (Codex sign-off of 359-364, medium): the worker is the schedule's, not one marker pair's. An accepted read
+        // asked for between a refusal and a later lost cancel clears the refusal and keeps the cancel; the reads go on
+        // while either is set (they ended when the pair changed, and the cancel was left with nothing to settle it).
         var attempt = 0
-        while true {
+        while cancellationPending(key) {
             // Cancelled (signed out, switched account, or replaced): no more reads, and nothing it has read is published.
             let wait = reconcileWait(before: attempt)
             attempt += 1
             if wait > .zero { do { try await Task.sleep(for: wait) } catch { return } }
             guard !Task.isCancelled else { return }
-            guard cancellationMark(key) == uncertainSince else { return } // a refresh after it has answered
+            guard cancellationPending(key) else { return } // a read asked for after both marks has answered
             guard let read = try? await readSchedules() else { continue }
             guard !Task.isCancelled else { return }
             // Codex check of 320 (high): checked again after the answer, which can arrive after a newer list (a refresh,
             // a new schedule or cancel) has been published: then it is older than what is shown and decides nothing.
-            // Its owner is checked before its ticket (Codex sign-off of #347, medium): an answer this attempt no longer
-            // owns is dropped without taking the watermark, which would have refused a valid older-ticket answer.
-            guard cancellationMark(key) == uncertainSince else { return }
+            // Its owner is checked before its ticket (Codex sign-off of #347, medium): an answer for a cancellation
+            // already settled is dropped without taking the watermark, which would have refused a valid older-ticket answer.
+            guard cancellationPending(key) else { return }
             guard scheduleTickets.publish(read.ticket) else { continue }
-            publishSchedules(read) // settles it unless the server still lists it "cancelling"
-            if cancellationMark(key) != uncertainSince { return }
+            publishSchedules(read) // settles each mark set before it was asked for, unless the server still lists it "cancelling"
         }
     }
 
