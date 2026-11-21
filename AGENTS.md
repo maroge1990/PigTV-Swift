@@ -25,7 +25,7 @@ system setting). Simulators are named, not UDIDs (they differ per Mac); the 26.5
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
 sh Tools/test.sh fast      # contract checks, then the unit tests: while developing (~1 min after the build)
-sh Tools/test.sh push      # fast, then the regression UI tests: once per batch on the Mac, before the push (D-49)
+sh Tools/test.sh push      # fast, then the regression UI tests: on the MacBook before every push (D-77)
 sh Tools/test.sh visual    # screenshot/appearance UI tests: before a release or a brand change
 sh Tools/test.sh all       # fast, regression and visual; a pass on a clean tree writes .ui-full-passed (the commit)
 
@@ -54,9 +54,9 @@ password in chat or store it. Devices by name: `iPad`, `PiGPhone`, `Downstairs L
 build stops opening after 7 days; installing again renews it.
 
 TestFlight builds come only from Xcode Cloud (server D-75): once Mark says the current set of Apple builds is complete,
-push an annotated `tf/<build>` tag on a CI-green commit; the "TestFlight release" workflow tests with
+push an annotated `tf/<build>` tag on a commit that passed the MacBook gate; the "TestFlight release" workflow tests with
 `XcodeCloud.xctestplan` (the scheme's default; the Mac and GitHub CI pass `-testPlan PigTV`), archives both apps and
-uploads them. Watch its four check runs on the commit (`gh api repos/maroge1990/PigTV-Swift/commits/<sha>/check-runs`);
+uploads them. Watch the workflow's check runs on the commit (`gh api repos/maroge1990/PigTV-Swift/commits/<sha>/check-runs`);
 the upload is a post-action only App Store Connect shows. Xcode Cloud numbers builds itself, so a release note gives
 both (Apple 365 = TestFlight 322). One run per finished set (about an hour of the 25 free hours a month), never per
 push. `Tools/testflight.sh` (Mac upload, D-64) is no longer used: its numbers would collide with the cloud's.
@@ -64,23 +64,24 @@ push. `Tools/testflight.sh` (Mac upload, D-64) is no longer used: its numbers wo
 ## How changes ship
 
 **Commit to `main`; push once the batch has passed its reviews** (server D-34, D-51). Work on `main`; `git pull --rebase`
-first, push with `git push origin main` after the tests and Codex review, then watch CI. Never force-push. Work in
+first, push with `git push origin main` after the MacBook gate and Codex review (GitHub's Apple CI is not waited for). Never force-push. Work in
 batches by area (server D-35, its `AGENTS.md` › Work in batches): a batch is Swift-only where possible, each fix its own
-commit and build number, `Tools/test.sh push` once, before the push. Session start and end follow the
+commit and build number; the MacBook gate before every push (D-77). Session start and end follow the
 server's `AGENTS.md` › Session checklist (issues first; the end-of-session docs check; ask Mark about pushed-but-open issues).
 
-1. Before every commit: `sh Tools/test.sh fast` passes, plus the iOS build when shared code changed; `push` runs once
-   per batch before the push, and a TestFlight upload needs `all` for that commit (D-49). If something can't be
-   run, say so in the commit message and to Mark.
+1. Before every commit: `sh Tools/test.sh fast` passes, plus the iOS build when shared code changed. Before every
+   push the MacBook gate runs (`ssh mac`, tree rsynced to `~/pigtv-build/`, never git in the Mac's checkouts): unit
+   tests for Apple TV, iPad and iPhone, the interface tests and the speed tests (D-77). If it can't run, say so; if the
+   MacBook can't be reached, ask Mark and do not push ungated.
 2. A commit that changes app code runs `sh Tools/bump-build.sh` (`CURRENT_PROJECT_VERSION`, both app targets) and its
    subject starts with the build number (`63: what changed`); Settings → Version identifies the installed copy.
 3. Commits write `Refs maroge1990/PigTV#n`, never `Fixes`/`Closes`; issues close as the server's `AGENTS.md` › Work
-   tracking says (on T1–T3 evidence; device-check ones after Mark's report, D-38).
-4. CI (`.github/workflows/ci.yml`) builds for iOS, runs the contract checks, the unit tests and the playback tests on every
-   push and PR, with the server's `test/golden` checked out so the golden checks run; the UI tests are not in CI (D-49). A
-   docs-only push skips it (D-38); a red run is fixed or reverted at once.
-5. Device-dependent work ends with numbered T5 steps for Mark; nothing is *Verified* until he reports it. A simulator pass
-   is not a device pass.
+   tracking says (once the build is on TestFlight, D-78).
+4. GitHub CI (`.github/workflows/ci.yml`) builds, runs the contract, unit and playback tests on every push and PR, with the
+   server's `test/golden` checked out. It is a backstop after the push: not blocking, not watched (D-77). A docs-only push
+   skips it (D-38).
+5. Device-dependent work ends with numbered device steps for Mark, a guide to what changed, not a gate (D-78). A
+   simulator pass is not a device pass.
 
 ## Rules
 
@@ -117,7 +118,7 @@ server's `AGENTS.md` › Session checklist (issues first; the end-of-session doc
   dependency and embed entries (the iOS build fails without it). Xcode also re-saves it with reordered lines after test runs:
   restore it, but not over an uncommitted build bump (re-run `bump-build.sh <n>`).
 - `PIGTV_SYNTHETIC_TESTS=1` is listed in the scheme but not applied (the Run action's environment overrides it), and the test plans set nothing: don't rely on it to stop the test host restoring a saved real-server session.
-- The simulators can overload the MacBook; then timing tests (e.g. `ChannelWarmerTests`) fail spuriously: rerun them
+- The simulators can overload the MacBook (one simulator job at a time; clean build folders after each run); then timing tests (e.g. `ChannelWarmerTests`) fail spuriously: rerun them
   alone, shut simulators down after a run, and don't run the server suite at the same time. `xcodebuild` can sit idle
   after a UI run while it collects diagnostics; the results are already in the log.
 - In zsh, a `$VAR` holding several `-skip-testing:` arguments is not word-split.
