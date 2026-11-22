@@ -114,10 +114,30 @@ final class GuidePerfUITests: XCTestCase {
         if let failure { throw failure }
     }
 
+    /// #360 (C2, C3): figures the app measures on the production fixture (PIGTV_UI_TEST_GUIDE_FIGURES=1,
+    /// `ProductionGuideFigures`): printed as one line `GUIDE-LOAD {…}`, recorded only.
+    @MainActor
+    func testGuideLoadingFigures() throws {
+        launch(figures: true)
+        var json = try probe()
+        let deadline = Date().addingTimeInterval(120)
+        while number(json, "secondGuideMB") == nil && Date() < deadline {
+            Thread.sleep(forTimeInterval: 1)
+            json = try probe()
+        }
+        let keys = ["secondGuideMB", "guideJSONMB", "guideChannels", "guideProgrammes", "mergeOldMs", "mergeNewMs", "mergeMainMs",
+                    "mergeSame"]
+        let figures = json.filter { keys.contains($0.key) }
+        let body = (try? JSONSerialization.data(withJSONObject: figures, options: [.sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        print("GUIDE-LOAD " + body)
+        add(XCTAttachment(string: "GUIDE-LOAD " + body))
+        XCTAssertNotNil(number(json, "secondGuideMB"), "the app measured no figures")
+    }
+
     // MARK: Driving the app
 
     @MainActor
-    private func launch(paged: Bool = false) {
+    private func launch(paged: Bool = false, figures: Bool = false) {
         let app = XCUIApplication()
         app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "guide"
         app.launchEnvironment["PIGTV_UI_TEST_GUIDE_SHAPE"] = "production"
@@ -133,6 +153,7 @@ final class GuidePerfUITests: XCTestCase {
             // Pages 2 and 3 arrive about 7 s and 14 s after the first (which is not delayed): inside the presses that follow.
             app.launchEnvironment["PIGTV_UI_TEST_GUIDE_PAGE_DELAY_MS"] = "7000"
         }
+        if figures { app.launchEnvironment["PIGTV_UI_TEST_GUIDE_FIGURES"] = "1" }
         app.launch()
         self.app = app
     }

@@ -207,6 +207,39 @@ nonisolated enum ProductionGuideFixture {
     }
 }
 
+/// #360 (C2, C3): figures about guide loading measured in the app on the production fixture (DEBUG, launch variable
+/// PIGTV_UI_TEST_GUIDE_FIGURES=1, read by GuidePerfUITests through the probe's JSON): what a second guide costs while a
+/// refresh holds the old one on screen (C2's swap), in MB of heap in use.
+nonisolated enum ProductionGuideFigures {
+    static var requested: Bool { ProcessInfo.processInfo.environment["PIGTV_UI_TEST_GUIDE_FIGURES"] == "1" }
+
+    static func measure(channels count: Int = defaultCount) -> [String: Double] {
+        let window = ProductionGuideFixture.window()
+        guard let json = try? JSONEncoder().encode(ProductionGuideFixture.channels(count: count, window: window)),
+              let first = try? JSONDecoder().decode([GuideChannel].self, from: json) else { return [:] }
+        let before = footprint()
+        let second = (try? JSONDecoder().decode([GuideChannel].self, from: json)) ?? []
+        let after = footprint()
+        var figures: [String: Double] = [
+            "secondGuideMB": (Double(after) - Double(before)) / 1_048_576,
+            "guideJSONMB": Double(json.count) / 1_048_576,
+            "guideChannels": Double(second.count),
+            "guideProgrammes": Double(second.reduce(0) { $0 + $1.programmes.count }),
+        ]
+        figures["firstGuideChannels"] = Double(first.count)
+        return figures
+    }
+
+    static let defaultCount = ProductionGuideFixture.defaultChannels
+
+    /// Heap bytes in use in every malloc zone (no mach globals: the app builds in Swift 6 mode).
+    static func footprint() -> UInt64 {
+        var stats = malloc_statistics_t()
+        malloc_zone_statistics(nil, &stats)
+        return UInt64(stats.size_in_use)
+    }
+}
+
 /// #362: the fixture's server, inside the app's URL loading (DEBUG only). `library/guide` and its version, the
 /// channels' logos and an empty favourites list; anything else is a 404 at once, so nothing reaches the network.
 nonisolated final class ProductionGuideServer: URLProtocol, @unchecked Sendable {

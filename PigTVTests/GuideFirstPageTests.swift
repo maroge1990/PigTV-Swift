@@ -46,6 +46,12 @@ final class GuideFirstPageTests: XCTestCase {
         (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
     }
 
+    /// The saved guide once it is complete on disk (an atomic write's temporary file is not it).
+    private func saved(_ directory: URL) -> GuideCache? {
+        cacheFiles(directory).lazy.filter { $0.lastPathComponent.hasPrefix("guide-v") && $0.pathExtension == "json" }
+            .compactMap { try? JSONDecoder().decode(GuideCache.self, from: Data(contentsOf: $0)) }.first
+    }
+
     func testAColdLaunchAsksFirstForFiftyChannelsAndSixHoursAndShowsThem() async throws {
         FirstPageServer.holdFullPages = true
         let m = try model()
@@ -110,9 +116,8 @@ final class GuideFirstPageTests: XCTestCase {
         XCTAssertNil(fresh.guideError)
         XCTAssertNotNil(fresh.guideLoadedAt)
         // The saved guide: the same day, channels and committed version.
-        try await eventually { self.cacheFiles(directoryNew).count == 1 && self.cacheFiles(directoryOld).count == 1 }
-        let savedNew = try JSONDecoder().decode(GuideCache.self, from: Data(contentsOf: XCTUnwrap(cacheFiles(directoryNew).first)))
-        let savedOld = try JSONDecoder().decode(GuideCache.self, from: Data(contentsOf: XCTUnwrap(cacheFiles(directoryOld).first)))
+        try await eventually { self.saved(directoryNew) != nil && self.saved(directoryOld) != nil }
+        let savedNew = try XCTUnwrap(saved(directoryNew)), savedOld = try XCTUnwrap(saved(directoryOld))
         XCTAssertEqual(try encoder.encode(savedNew.channels), try encoder.encode(savedOld.channels))
         XCTAssertEqual(savedNew.window, savedOld.window)
         XCTAssertEqual(savedNew.version, "first-page-1")
@@ -172,7 +177,7 @@ final class GuideFirstPageTests: XCTestCase {
     func testASavedGuideIsShownWithoutTheSmallPage() async throws {
         let first = try model()
         await first.loadInitialGuide()
-        try await eventually { !first.guidePagingActive && !first.guideHasMore && self.cacheFiles(self.cacheDirectory).count == 1 }
+        try await eventually { !first.guidePagingActive && !first.guideHasMore && self.saved(self.cacheDirectory)?.channels.count == 620 }
         FirstPageServer.reset()
         FirstPageServer.version = "first-page-2" // changed: the saved guide is shown, then reloaded behind it
         let second = try model()

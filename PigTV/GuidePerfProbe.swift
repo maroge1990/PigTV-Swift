@@ -45,6 +45,9 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     var firstScreenMs: Double?
     /// #360/#361 (C1): the bytes of the first guide page put on screen (`GuidePerf.firstGuidePage`).
     var firstPageBytes: Int?
+    /// #360 (C2, C3; DEBUG, PIGTV_UI_TEST_GUIDE_FIGURES=1): figures measured once in the app (`ProductionGuideFigures`),
+    /// kept across resets.
+    var figures: [String: Double] = [:]
     var resets = 0
     /// The grid's rows when the window began (the last reset), and after its latest apply.
     var rowsStart: Int?
@@ -78,7 +81,7 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     /// Zero for the next window (the reset count goes on, so a test can see its reset arrive; the rows and the focused row
     /// carry over).
     mutating func reset() {
-        self = GuidePerfStats(resets: resets + 1, rowsStart: rowsEnd, rowsEnd: rowsEnd, focusRow: focusRow)
+        self = GuidePerfStats(figures: figures, resets: resets + 1, rowsStart: rowsEnd, rowsEnd: rowsEnd, focusRow: focusRow)
     }
 
     static func median(_ values: [Double]) -> Double? {
@@ -136,6 +139,7 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
         if let focusRow { object["focusRow"] = focusRow }
         if let firstScreenMs { object["firstScreenMs"] = Self.rounded(firstScreenMs) }
         if let firstPageBytes { object["firstPageBytes"] = firstPageBytes }
+        for (key, value) in figures { object[key] = Self.rounded(value) }
         if let value = Self.median(focusMs) { object["focusMedianMs"] = Self.rounded(value) }
         if let value = Self.percentile(focusMs, 95) { object["focusP95Ms"] = Self.rounded(value) }
         if let value = focusMs.max() { object["focusMaxMs"] = Self.rounded(value) }
@@ -227,6 +231,12 @@ final class GuidePerfProbe: NSObject {
         }
         #if DEBUG
         if Self.testHooks { Self.observeResets() }
+        if Self.testHooks, ProductionGuideFigures.requested {
+            Task.detached(priority: .utility) {
+                let figures = ProductionGuideFigures.measure()
+                await MainActor.run { GuidePerfProbe.shared?.stats.figures = figures }
+            }
+        }
         #endif
     }
 

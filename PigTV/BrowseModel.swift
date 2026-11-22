@@ -67,6 +67,10 @@ final class BrowseModel: ObservableObject {
     /// #360/#361 (C1): the rows on screen are the small first page (`fetchGuidePreview`), not a guide: the full guide's
     /// first page replaces them, and they are never saved, never commit a version and never set `guideLoadedUntil`.
     private var guideIsPreview = false
+    /// #360 (G6, C2): a refresh that keeps the rows on screen (`loadGuide(swap: true)`) collects its pages here and swaps
+    /// the whole new guide in once its last page has arrived (one change of `guide`); nil otherwise.
+    private var stagedGuide: [GuideChannel]?
+    private var stagedLoadedAt: Date?
     private var guideExtending = false
     // Private to this server and account (R14); retired on sign-out.
     private let guideCache: GuideCacheStore
@@ -115,7 +119,9 @@ final class BrowseModel: ObservableObject {
     // until every channel is present. Filters and search then work locally,
     // and a full day of programme data per channel is already in memory.
     // `preview` (#360/#361, C1; the launch load): with nothing on screen, a small page first (`fetchGuidePreview`).
-    func loadGuide(reset: Bool = true, keepVisible: Bool = false, preview: Bool = false) async {
+    // `swap` (#360 G6, C2; the stale-guide refresh and Try again on a guide on screen): the rows on screen stay until the
+    // whole new guide has arrived, then it replaces them at once (never page 1's 500 rows first, then the rest).
+    func loadGuide(reset: Bool = true, keepVisible: Bool = false, preview: Bool = false, swap: Bool = false) async {
         let sp = PigTVSignpost.begin("GuideLoad"); defer { PigTVSignpost.end("GuideLoad", sp) }
         if reset {
             guidePrefetch?.cancel()
@@ -125,7 +131,10 @@ final class BrowseModel: ObservableObject {
             guideCursor = nil
             loadedGuideIds = []
             replacePending = keepVisible && !guide.isEmpty
+            stagedGuide = swap && replacePending ? [] : nil
+            stagedLoadedAt = nil
             if !replacePending { guide = []; guideIsPreview = false }
+            if stagedGuide != nil { replacePending = false }
             guideTotal = 0
             guideHasMore = false
             // Build 33: a fresh load/reload always starts a new one-day
@@ -203,7 +212,13 @@ final class BrowseModel: ObservableObject {
             let (page, bytes) = try await requestGuidePage(query, generation: generation)
             guard generation == guideGeneration else { return }
             if isFirstPage && guide.isEmpty { GuidePerf.firstGuidePage(bytes: bytes) }
-            if replacePending {
+            let staged = stagedGuide != nil
+            if staged {
+                // C2: collected off screen (in place, one copy of the array) against the same id set as an append.
+                let additions = page.channels.filter { loadedGuideIds.insert($0.id).inserted }
+                stagedGuide?.append(contentsOf: additions)
+                if isFirstPage { stagedLoadedAt = Date() }
+            } else if replacePending {
                 replacePending = false
                 guide = page.channels
                 loadedGuideIds = Set(page.channels.map(\.id))
@@ -221,16 +236,28 @@ final class BrowseModel: ObservableObject {
             }
             if guideError != nil { guideError = nil }
             guideTotal = page.total
-            fromCache = false
+            if !staged { fromCache = false }
             guideCursor = page.nextCursor
             guideHasMore = page.nextCursor != nil
-            if isFirstPage { guideLoadedAt = Date() }
+            if isFirstPage && !staged { guideLoadedAt = Date() }
+            if !guideHasMore, let complete = stagedGuide {
+                // C2: the swap. One change of `guide`; told as a programme change too, because the new guide usually has
+                // the same channels (count, first and last id) and the Guide would otherwise keep its old rows.
+                stagedGuide = nil
+                guide = complete
+                guideIsPreview = false
+                fromCache = false
+                guideLoadedAt = stagedLoadedAt ?? Date()
+                stagedLoadedAt = nil
+                guideProgrammesVersion += 1
+            }
             if !guideHasMore {
                 guideCacheVersion = loadingVersion
                 saveCache()
             }
-            // A4.1: the Top Shelf snapshot (first rows / favourites' now-next).
-            if isFirstPage || !guideHasMore { exportTopShelf() }
+            // A4.1: the Top Shelf snapshot (first rows / favourites' now-next). C2: a swap exports once, at the swap (until
+            // then the guide on screen is the one already exported).
+            if (isFirstPage && !staged) || !guideHasMore { exportTopShelf() }
         } catch {
             // A cancelled request (the task that asked went away, URLError's own "cancelled" too) is not a failure.
             guard generation == guideGeneration, !UserMessage.isCancellation(error) else { return }
@@ -288,7 +315,7 @@ final class BrowseModel: ObservableObject {
         if fixtureHoldsGuide { return }
         #endif
         if guide.isEmpty || !guideHasMore {
-            await loadGuide(reset: true, keepVisible: true)
+            await loadGuide(reset: true, keepVisible: true, swap: true)
         } else {
             await loadGuide(reset: false)
         }
@@ -430,7 +457,7 @@ final class BrowseModel: ObservableObject {
         guard fromCache || Date().timeIntervalSince(loaded) > maxAge, !guideBusy else { return }
         if await tryMarkFreshByVersion() { return }
         window = GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn)
-        await loadGuide(reset: true, keepVisible: true)
+        await loadGuide(reset: true, keepVisible: true, swap: true)
     }
 
     func guideChannel(id: String) -> GuideChannel? {

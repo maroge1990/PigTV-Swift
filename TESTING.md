@@ -29,6 +29,9 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 - `GuideFirstPageTests` (maroge1990/PigTV#360, #361): a launch with no usable saved guide asks first for 50 channels and 6 hours,
   shows them, then loads the full guide exactly as before (the same end state, cache and version); the small page is never saved
   and never outlives a failed load.
+- `GuideRefreshSwapTests` (maroge1990/PigTV#360, G6): a stale-guide refresh keeps every row on screen until the whole new guide
+  has arrived, then swaps it in with one change of `guide`; a failed refresh page leaves the old guide whole and Try again
+  finishes the swap.
 - `GuideQuietTests` (maroge1990/PigTV#360): the Guide's quiet paths on the real views in a window: a focus move does not
   re-evaluate `GuideView.body` (only the focus strip observes the focus); the 30 s clock tick reconfigures only the grid
   cells whose drawing changed (on air: the progress bar; a roll-over), not every visible cell; a long-press menu left open
@@ -101,7 +104,9 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   fixture (1,250 channels, a day of programmes with 150–300-character descriptions, a logo each through the real artwork path, 40
   categories). (a) first screen, (b) 40 single presses down at about 3 a second, each waiting for its move to land, (c) 40 up,
   (d) 10 right, (e) a held scroll of about 100 rows, (f) 35 s idle (the 30 s clock tick), (g) 45 presses down from the moment
-  the first page's rows show while pages 2–3 arrive (7 s apart; the window starts after the move that entered the grid; fewer than 2 applies in it fails as a test-setup fault); (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` (GuideFocusMove).
+  the first page's rows show while pages 2–3 arrive (7 s apart; the window starts after the move that entered the grid; fewer than 2 applies in it fails as a test-setup fault); (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` (GuideFocusMove). `testGuideLoadingFigures` prints one `GUIDE-LOAD {…}` line of figures the app measures on the fixture
+  (PIGTV_UI_TEST_GUIDE_FIGURES=1, `ProductionGuideFigures`): `secondGuideMB`, the heap a second whole guide takes (a refresh holds
+  two at its swap).
   A signpost interval can only end at the frame callback, up to a frame before the probe's frame-due time, so Xcode's
   GuideFocusMove figure is callback timing: each of its runs prints the probe's figures for the same presses
   (`GUIDE-SIGNPOST run n: …`), and each completed GuideFocusMove/GuideFirstScreen signpost's end message carries the
