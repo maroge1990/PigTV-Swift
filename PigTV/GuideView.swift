@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// D-44 (Apple 107): what the long-press menu is open on, and where (window coordinates).
@@ -15,6 +16,17 @@ struct GuideMenuTarget {
 private struct GuideFocus: Hashable {
     let channel: String
     let start: Double?
+}
+
+/// maroge1990/PigTV#360 (G1): what changes on every press in the grid, held where GuideView.body does not observe it.
+/// GuideView keeps this in `@State` (a reference: SwiftUI does not subscribe to it there), so a focus move or a sideways
+/// scroll re-evaluates nothing of the page. Only the focus strip observes `focus` (`GuideFocusedStrip`), and the header
+/// draws the viewport's day from GuideView's own `shownDay`, which changes only when the day does.
+@MainActor private final class GuideMoment: ObservableObject {
+    /// The UIKit grid's focus (it reports it; nothing here assigns it).
+    @Published var focus: GuideFocus?
+    /// The committed half-hour the grid shows (not published: read when it is needed, the header's day apart).
+    var viewport = GuideNavigation.rounded(Date())
 }
 
 private struct FilterStripMetrics: Equatable {
@@ -78,8 +90,10 @@ struct GuideView: View {
     @ObservedObject private var library: LibraryStore
     @ObservedObject private var marks: ScheduleMarks
     @AppStorage("pigtv.guide.filter") private var filter = "all"
-    @AppStorage("pigtv.guide.channel") private var lastChannel = ""
-    @State private var viewport = GuideNavigation.rounded(Date())
+    /// #360 (G1): the focus and the viewport, not observed here (`GuideMoment`).
+    @State private var moment = GuideMoment()
+    /// The viewport's day, the one part of it the page draws (the header's date): changes only when the day does.
+    @State private var shownDay = Calendar.current.startOfDay(for: Date())
     @State private var clock = Date()
     /// Jump to's Show guide: the time to show once the Guide is back on screen (the page has popped).
     @State private var pendingJump: Date?
@@ -92,6 +106,7 @@ struct GuideView: View {
     /// the loaded hours, a channel not paged in yet).
     @State private var searchFound = SearchFound()
     @State private var filterStripMetrics = FilterStripMetrics()
+    private var viewport: Date { moment.viewport }
     // Filtered rows are cached: filtering hundreds of channels inside `body`
     // on every focus change or clock tick is what made scrolling stutter.
     @State private var rows: [GuideChannel] = []
@@ -104,8 +119,7 @@ struct GuideView: View {
     @State private var filterResetPending = false
     @State private var scrollToTop = 0
     // tvOS: the UIKit grid (GuideGridView, A2.1) is the only grid since
-    // build 27. The UIKit grid's focus (it reports it; nothing here assigns it).
-    @State private var gridFocus: GuideFocus?
+    // build 27. Its focus is `moment.focus` (#360).
     @State private var gridRequest: GuideGridRequest?
     @State private var rowsVersion = 0
     @State private var gridReady = false
@@ -123,8 +137,6 @@ struct GuideView: View {
     @State private var watchOn: SportEvent?
     /// #219: what failed in the iPhone's On now menu (the system menu has closed, so it cannot show it).
     @State private var onNowError: String?
-    /// iPad: where the strip's More button is (the card opens beside it).
-    @State private var stripMoreFrame: CGRect = .zero
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     init(app: AppModel, model: BrowseModel) {
@@ -150,16 +162,6 @@ struct GuideView: View {
     /// Favourite membership by identity (review F5): a list with the same
     /// count but different channels must still refresh the rows.
     private var favouriteKeys: [String] { model.favourites.map(\.identityKey) }
-    // The focused grid element.
-    private var currentFocus: GuideFocus? { gridFocus }
-    private var focusedChannel: GuideChannel? {
-        guard let key = currentFocus else { return nil }
-        return model.guideChannel(id: key.channel)
-    }
-    private var focusedProgramme: GuideProgramme? {
-        guard let start = currentFocus?.start else { return nil }
-        return focusedChannel?.programmes.first { $0.startTime == start }
-    }
 
     var body: some View {
         let _ = GuidePerf.bodyEvaluated() // #362: counted, never changed
@@ -262,7 +264,7 @@ struct GuideView: View {
             .task {
                 // The guide always opens at the current half-hour; restoring a
                 // later browsing position stranded the grid hours ahead.
-                viewport = GuideNavigation.rounded(Date())
+                moveViewport(to: GuideNavigation.rounded(Date()))
                 // D-66: unless Jump to on the app-level Search page sent the viewer here for another time.
                 if let jump = app.presenter.guideJump {
                     app.presenter.guideJump = nil
@@ -297,7 +299,7 @@ struct GuideView: View {
             // reappeared. Coalesced (R18); the grid returns to the top row and
             // the live baseline once taps settle.
             .onChange(of: filter) {
-                gridFocus = nil
+                moment.focus = nil
                 filterResetPending = true
                 scheduleRowsRefresh(after: .milliseconds(250))
             }
@@ -418,10 +420,10 @@ struct GuideView: View {
                             else { open(channel, programme) }
                         },
                         play: { play($0) },
+                        // #360 (G1): only the strip observes this; the body is not re-evaluated by a move.
                         focusChanged: { channel, start in
                             let value = GuideFocus(channel: channel, start: start)
-                            gridFocus = value
-                            lastChannel = model.guideChannel(id: channel)?.identityKey ?? channel
+                            if moment.focus != value { moment.focus = value }
                         },
                         viewportChanged: { setViewport($0) },
                         leaveUp: { headerNowFocused = true },
@@ -442,39 +444,10 @@ struct GuideView: View {
         .padding(.horizontal, PigSpacing.l)
     }
 
-    /// What the strip says: the focused programme (or tile) from the loaded guide and the schedule marks.
-    private var stripText: GuideStripText {
-        let channel = focusedChannel
-        let programme = focusedProgramme
-        let scheduled = channel.flatMap { c in programme.map { marks.scheduledKeys.contains(ScheduledRecording.key(channel: c.name, start: $0.startTime)) } } ?? false
-        return GuideStripText.make(channel: channel?.name, number: channel.flatMap { model.number(for: $0) },
-                                   programme: programme,
-                                   current: programme == nil ? channel.flatMap { OnNowRow.make(programmes: $0.programmes, now: clock).current } : nil,
-                                   scheduled: scheduled, recordingNow: channel.map { marks.recordingChannels.contains($0.name) } ?? false,
-                                   now: clock)
-    }
-
+    /// The focus strip, which alone observes the focus (#360, G1).
     private var focusStrip: some View {
-        GuideFocusStrip(text: stripText) {
-            if model.guideHasMore && model.guideError == nil {
-                ProgressView()
-                Text("\(model.guide.count) of \(model.guideTotal) channels")
-                    .font(GuideTypography.small).foregroundStyle(Color.pigSecondary).pigFigures()
-            }
-            if let programme = focusedProgramme, let channel = focusedChannel {
-                Button("Details", systemImage: "info.circle") { open(channel, programme) }
-                .pigSecondaryButton()
-                .accessibilityIdentifier("guide.strip.details")
-                #if os(iOS)
-                // D-44 (Apple 107): touch has no long press on the strip; its … opens the same menu.
-                Button { openMenu(channel, programme, anchor: stripMoreFrame) } label: {
-                    Image(systemName: "ellipsis").frame(minWidth: 28, minHeight: 28)
-                }
-                .accessibilityLabel("More for this programme")
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { stripMoreFrame = $0 }
-                #endif
-            }
-        }
+        GuideFocusedStrip(moment: moment, guideStore: guideStore, marks: marks, model: model, clock: clock,
+                          details: { open($0, $1) }, more: { openMenu($0, $1, anchor: $2) })
     }
 
     private func header(compact: Bool) -> some View {
@@ -501,7 +474,7 @@ struct GuideView: View {
     private var regularHeader: some View {
         // D-44 (Apple 106): the tools moved beside the chips (`tools`).
         PigPageHeader(title: "TV Guide",
-                      subtitle: PigHeaderDate.text(viewport))
+                      subtitle: PigHeaderDate.text(shownDay))
     }
 
     /// Now, Earlier, Later, Search and Jump to… at the end of the chip row (R5-Guide-TV). Up from the grid's top row
@@ -523,7 +496,7 @@ struct GuideView: View {
     private var slimBar: some View {
         HStack(spacing: PigSpacing.s) {
             Text("TV Guide").font(.headline)
-            Text(viewport, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
+            Text(shownDay, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
                 .font(.caption).foregroundStyle(.secondary)
             Spacer()
             filterMenu
@@ -555,7 +528,7 @@ struct GuideView: View {
         VStack(alignment: .leading, spacing: PigSpacing.s) {
             // The shared header (16 Oct); the controls go icon-only so nothing wraps.
             PigPageHeader(title: "TV Guide",
-                          subtitle: PigHeaderDate.text(viewport)) {
+                          subtitle: PigHeaderDate.text(shownDay)) {
                 // The On now list (A4.4) has no time axis to move.
                 if !usesOnNowList {
                     Button("Earlier", systemImage: "chevron.left") { shift(-GuideNavigation.step) }
@@ -670,7 +643,7 @@ struct GuideView: View {
         rowsRefresh = nil
         if filterResetPending {
             filterResetPending = false
-            viewport = GuideNavigation.rounded(Date())
+            moveViewport(to: GuideNavigation.rounded(Date()))
             scrollToTop += 1
         }
         let input = rowsInput
@@ -718,7 +691,7 @@ struct GuideView: View {
     // a genuine jump outside the loaded range (Jump to…) still reloads, and
     // keeps the grid visible while it does.
     private func setViewport(_ date: Date) {
-        if viewport != date { viewport = date }
+        moveViewport(to: date)
         if GuideNavigation.needsExtension(viewport: viewport, loadedUntil: model.guideLoadedUntil) {
             Task { await model.extendGuideForward() }
         }
@@ -726,6 +699,12 @@ struct GuideView: View {
             model.window = viewport.addingTimeInterval(-GuideNavigation.leadIn)
             Task { await model.loadGuide(keepVisible: true) }
         }
+    }
+    /// #360 (G1): the viewport changes without re-evaluating the page; only a new day redraws the header's date.
+    private func moveViewport(to date: Date) {
+        moment.viewport = date
+        let day = Calendar.current.startOfDay(for: date)
+        if day != shownDay { shownDay = day }
     }
     private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds), focusGrid: false) }
     /// Moves SwiftUI focus into the UIKit grid; the grid then focuses the
@@ -888,6 +867,64 @@ struct GuideView: View {
         return nil
     }
 
+}
+
+/// #360 (G1): the slim focus strip on its own view. It observes the focus (and the guide store and schedule marks it reads),
+/// so a focus move redraws this strip alone: a title, a line of detail and a button, not GuideView's page.
+private struct GuideFocusedStrip: View {
+    @ObservedObject var moment: GuideMoment
+    @ObservedObject var guideStore: GuideStore
+    @ObservedObject var marks: ScheduleMarks
+    let model: BrowseModel
+    let clock: Date
+    let details: (GuideChannel, GuideProgramme) -> Void
+    let more: (GuideChannel, GuideProgramme, CGRect) -> Void
+    /// iPad: where the strip's More button is (the card opens beside it).
+    @State private var moreFrame: CGRect = .zero
+
+    private var focusedChannel: GuideChannel? {
+        guard let key = moment.focus else { return nil }
+        return model.guideChannel(id: key.channel)
+    }
+    private var focusedProgramme: GuideProgramme? {
+        guard let start = moment.focus?.start else { return nil }
+        return focusedChannel?.programmes.first { $0.startTime == start }
+    }
+
+    /// What the strip says: the focused programme (or tile) from the loaded guide and the schedule marks.
+    private var text: GuideStripText {
+        let channel = focusedChannel
+        let programme = focusedProgramme
+        let scheduled = channel.flatMap { c in programme.map { marks.scheduledKeys.contains(ScheduledRecording.key(channel: c.name, start: $0.startTime)) } } ?? false
+        return GuideStripText.make(channel: channel?.name, number: channel.flatMap { model.number(for: $0) },
+                                   programme: programme,
+                                   current: programme == nil ? channel.flatMap { OnNowRow.make(programmes: $0.programmes, now: clock).current } : nil,
+                                   scheduled: scheduled, recordingNow: channel.map { marks.recordingChannels.contains($0.name) } ?? false,
+                                   now: clock)
+    }
+
+    var body: some View {
+        GuideFocusStrip(text: text) {
+            if model.guideHasMore && model.guideError == nil {
+                ProgressView()
+                Text("\(model.guide.count) of \(model.guideTotal) channels")
+                    .font(GuideTypography.small).foregroundStyle(Color.pigSecondary).pigFigures()
+            }
+            if let programme = focusedProgramme, let channel = focusedChannel {
+                Button("Details", systemImage: "info.circle") { details(channel, programme) }
+                .pigSecondaryButton()
+                .accessibilityIdentifier("guide.strip.details")
+                #if os(iOS)
+                // D-44 (Apple 107): touch has no long press on the strip; its … opens the same menu.
+                Button { more(channel, programme, moreFrame) } label: {
+                    Image(systemName: "ellipsis").frame(minWidth: 28, minHeight: 28)
+                }
+                .accessibilityLabel("More for this programme")
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { moreFrame = $0 }
+                #endif
+            }
+        }
+    }
 }
 
 // Fade the rendered chips, not the scrolling/focus container. No coloured

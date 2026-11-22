@@ -57,7 +57,15 @@ enum GuidePerf {
 
     // MARK: GuideView
 
+    #if DEBUG
+    /// Tests: every `GuideView.body` evaluation, probe or not.
+    static var bodyEvaluationsForTesting = 0
+    #endif
+
     static func bodyEvaluated() {
+        #if DEBUG
+        bodyEvaluationsForTesting += 1
+        #endif
         signposter.emitEvent("GuideBodyEval")
         GuidePerfProbe.shared?.bodyEvaluated()
     }

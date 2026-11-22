@@ -11,8 +11,8 @@ import XCTest
 /// the TEST_RUNNER_ prefix): FOCUS_MS (the worst focus move in a press scenario), GAP_MS (the longest frame gap in any
 /// scenario), FIRST_MS (the first screen), BODY_PER_PRESS (body evaluations per press), CELLS_PER_VERTICAL_PRESS (cell
 /// configurations per up/down press), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), APPLY_MS
-/// (all applies' ms in a scenario). Unset, a scenario only records (batch 1 takes the baseline; the fixes set the
-/// numbers). Absent probe figures always fail.
+/// (all applies' ms in a scenario). Unset, a scenario only records, except where a fix has earned a count budget (#360,
+/// `budget(_:_:)` in `record`). Absent probe figures always fail.
 final class GuidePerfUITests: XCTestCase {
     private var app: XCUIApplication!
 
@@ -285,6 +285,9 @@ final class GuidePerfUITests: XCTestCase {
             }
         }
         let env = ProcessInfo.processInfo.environment
+        /// A set budget, else the count budget the fixes have earned (#360): counts are the machine's, not the clock's,
+        /// so these hold on any Mac; nil: record only.
+        func budget(_ name: String, _ earned: Double? = nil) -> Double? { env["PIGTV_GUIDEPERF_" + name].flatMap(Double.init) ?? earned }
         if presses > 0, let budget = env["PIGTV_GUIDEPERF_FOCUS_MS"].flatMap(Double.init), let worst = number(json, "focusMaxMs") {
             XCTAssertLessThanOrEqual(worst, budget, "\(scenario): a focus move took \(worst) ms (budget \(budget) ms)")
         }
@@ -294,7 +297,10 @@ final class GuidePerfUITests: XCTestCase {
         if let budget = env["PIGTV_GUIDEPERF_FIRST_MS"].flatMap(Double.init), let firstScreen = number(json, "firstScreenMs") {
             XCTAssertLessThanOrEqual(firstScreen, budget, "\(scenario): the first screen took \(firstScreen) ms (budget \(budget) ms)")
         }
-        if presses > 0, let budget = env["PIGTV_GUIDEPERF_BODY_PER_PRESS"].flatMap(Double.init), let value = number(json, "bodyEvalsPerPress") {
+        // #360 (G1, Apple 376): a focus move no longer re-evaluates GuideView.body (1.0 per press before). Not earned in
+        // the paged scenario, whose arriving pages re-evaluate it by design (a later batch's work).
+        let paged = scenario.hasPrefix("g")
+        if presses > 0, let budget = budget("BODY_PER_PRESS", paged ? nil : 0.05), let value = number(json, "bodyEvalsPerPress") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) body evaluations per press (budget \(budget))")
         }
         if vertical, let budget = env["PIGTV_GUIDEPERF_CELLS_PER_VERTICAL_PRESS"].flatMap(Double.init),

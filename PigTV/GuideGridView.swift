@@ -469,6 +469,18 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     /// Tests: apply rows as the SwiftUI update does, under an explicit store revision.
     func applyForTesting(rows: [GuideChannel], revision: GuideGridRevision) { applyNow(rows: rows, revision: revision) }
 
+    /// Tests: the rows in the grid's store.
+    var rowCountForTesting: Int { store.rows.count }
+
+    /// Tests: what the grid tells GuideView when focus lands on `section`'s first programme (as `didUpdateFocusIn` does).
+    func reportFocusForTesting(section: Int) {
+        guard store.rows.indices.contains(section) else { return }
+        let id = store.rows[section].id
+        let start = store.programme(at: IndexPath(item: 1, section: section))?.startTime
+        focusIdentity = (id, start)
+        DispatchQueue.main.async { [weak self] in self?.actions?.focusChanged(id, start) }
+    }
+
     /// Tests: what the visible programme cells show, and where.
     func visibleProgrammesForTesting() -> [(section: Int, item: Int, title: String?, frame: CGRect, cell: UICollectionViewCell)] {
         collectionView.indexPathsForVisibleItems.sorted().compactMap { indexPath in
