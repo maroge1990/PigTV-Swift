@@ -39,6 +39,10 @@ final class GuideQuietTests: XCTestCase {
 
     /// The Guide (the offline fixture) in a window, its grid filled.
     private func hostGuide() async throws -> (AppModel, GuideGridViewController) {
+        #if os(iOS)
+        // The iPhone upright shows the On now list, not the grid (GuideLayout.usesOnNowList).
+        if UIDevice.current.userInterfaceIdiom == .phone { throw XCTSkip("the iPhone's Guide has no grid") }
+        #endif
         let app = AppModel()
         app.injectGuideFixture()
         let model = try XCTUnwrap(app.browse)
