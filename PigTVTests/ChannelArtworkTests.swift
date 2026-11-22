@@ -175,10 +175,14 @@ final class ChannelArtworkTests: XCTestCase {
         let (controller, rows) = try await hostHeldGrid()
         let grid = try XCTUnwrap(controller.collectionView)
         func requests(_ paths: [String], _ section: Int) -> Int { paths.filter { $0 == rows[section].logo! }.count }
-        let visible = grid.indexPathsForVisibleItems.filter { $0.item == 0 }.sorted()
-        let at = try XCTUnwrap(visible.first {
-            requests(HeldLogoServer.startedPaths, $0.section) > requests(HeldLogoServer.stoppedPaths, $0.section)
-        }, "a visible tile is loading its logo")
+        // Polled, not assumed after the fixed waits: the iPhone simulator can start the tiles' fetches later.
+        func loading() -> IndexPath? {
+            grid.indexPathsForVisibleItems.filter { $0.item == 0 }.sorted().first {
+                requests(HeldLogoServer.startedPaths, $0.section) > requests(HeldLogoServer.stoppedPaths, $0.section)
+            }
+        }
+        try await until("a visible tile is loading its logo", timeout: 10) { loading() != nil }
+        let at = try XCTUnwrap(loading(), "a visible tile is loading its logo")
         let tile = try XCTUnwrap(grid.cellForItem(at: at) as? GuideGridTileCell)
         XCTAssertTrue(tile.artworkLifetime.isDisplayed)
         let stops = requests(HeldLogoServer.stoppedPaths, at.section)
@@ -186,7 +190,7 @@ final class ChannelArtworkTests: XCTestCase {
         controller.collectionView(grid, willDisplay: tile, forItemAt: at)
         controller.collectionView(grid, didEndDisplaying: tile, forItemAt: elsewhere)
         controller.collectionView(grid, didEndDisplaying: tile, forItemAt: at) // the same item, still on screen
-        try await spin(0.5)
+        try await spin(1) // nothing may stop it meanwhile
         XCTAssertTrue(tile.artworkLifetime.isDisplayed, "a tile on screen is marked off screen")
         XCTAssertEqual(requests(HeldLogoServer.stoppedPaths, at.section), stops, "a tile on screen stopped loading its logo")
     }

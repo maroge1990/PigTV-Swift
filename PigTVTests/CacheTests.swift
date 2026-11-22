@@ -7,9 +7,18 @@ private final class LogoProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var requests: [URL] = []
     nonisolated(unsafe) static var body = Data("logo".utf8)
     nonisolated(unsafe) static var declareLength = true
+    /// While set, answers wait for `release()` instead of a fixed beat: the sharing tests then hold the one fetch open
+    /// for as long as they need (the iPhone simulator's slower start made a 0.1 s overlap a race).
+    nonisolated(unsafe) static var holding = false
+    nonisolated(unsafe) private static var held: [() -> Void] = []
     private static let lock = NSLock()
     static func reset(body: Data = Data("logo".utf8), declareLength: Bool = true) {
-        lock.lock(); requests = []; self.body = body; self.declareLength = declareLength; lock.unlock()
+        lock.lock(); requests = []; self.body = body; self.declareLength = declareLength; holding = false; held = []; lock.unlock()
+    }
+    /// Answers every held request, and stops holding.
+    static func release() {
+        lock.lock(); let answers = held; held = []; holding = false; lock.unlock()
+        answers.forEach { $0() }
     }
     static var count: Int { lock.lock(); defer { lock.unlock() }; return requests.count }
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -19,12 +28,17 @@ private final class LogoProtocol: URLProtocol, @unchecked Sendable {
         var headers = ["Content-Type": "image/png"]
         if declare { headers["Content-Length"] = String(body.count) }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!
-        // Deliver after a beat so concurrent callers overlap.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [self] in
+        let answer = { [self] in
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: body)
             client?.urlProtocolDidFinishLoading(self)
         }
+        Self.lock.lock()
+        let hold = Self.holding
+        if hold { Self.held.append(answer) }
+        Self.lock.unlock()
+        // Deliver after a beat so concurrent callers overlap (or when released, while holding).
+        if !hold { DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { answer() } }
     }
     override func stopLoading() {}
 }
@@ -107,8 +121,11 @@ final class CacheTests: XCTestCase {
 
     func testConcurrentRequestsForOneLogoMakeOneFetch() async throws {
         let client = try client()
+        LogoProtocol.holding = true
         let results = try await withThrowingTaskGroup(of: Data?.self) { group in
             for _ in 0..<6 { group.addTask { @MainActor in try await client.artworkData("/api/logo/1?token=x") } }
+            // The fetch is held open until all six have certainly asked (a second fetch would have started by then).
+            try await holdOpen()
             var all: [Data?] = []
             for try await value in group { all.append(value) }
             return all
@@ -121,12 +138,25 @@ final class CacheTests: XCTestCase {
 
     func testCancellingOneAwaiterDoesNotCancelTheSharedFetch() async throws {
         let client = try client()
+        LogoProtocol.holding = true
         let first = Task { @MainActor in try await client.artworkData("/api/logo/2") }
         let second = Task { @MainActor in try await client.artworkData("/api/logo/2") }
         first.cancel()
+        // The cancellation lands while the one fetch is still open.
+        try await holdOpen()
         let data = try await second.value
         XCTAssertEqual(data, Data("logo".utf8))
         XCTAssertEqual(LogoProtocol.count, 1)
+    }
+
+    /// Waits (polling, up to 10 s) for the held fetch to reach the protocol, gives any second fetch a full second to
+    /// show itself, then answers.
+    private func holdOpen() async throws {
+        let end = Date().addingTimeInterval(10)
+        while LogoProtocol.count == 0 && Date() < end { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertGreaterThan(LogoProtocol.count, 0, "the shared fetch reached the network")
+        try await Task.sleep(for: .seconds(1))
+        LogoProtocol.release()
     }
 
     func testOversizedResponsesAreRejectedWithAndWithoutContentLength() async throws {
@@ -185,6 +215,10 @@ final class CacheTests: XCTestCase {
     func testWritesPastTheCapArePrunedWithoutANewStoreAndPrunesAreCoalesced() async throws {
         let store = ArtworkDiskStore(directory: temp.appendingPathComponent("budget"), limit: 10_000)
         let release = DispatchSemaphore(value: 0)
+        // The hook is global: the app's own store prunes in the background once it is first used (any client made
+        // without a store, as in an earlier test), and a pass of it arriving here would take the hook's one hold. That
+        // prune finishes first (on a loaded simulator it ran late: this test failed on the iPad).
+        try await appStorePruned()
         let once = OnceFlag()
         ArtworkBudget.afterPass = { if once.take() { release.wait() } }
         defer { ArtworkBudget.afterPass = nil }
@@ -195,6 +229,14 @@ final class CacheTests: XCTestCase {
         XCTAssertNotNil(store.read(key: "logo39"), "the newest is kept")
         XCTAssertLessThanOrEqual(store.budget.prunes, 3, "the folder is listed per prune, not per image (\(store.budget.prunes))")
         XCTAssertEqual(store.budget.counted, folderBytes(store), "the running count matches the disk")
+    }
+
+    /// The app's own store's launch prune has run its pass and finished (polled: it starts in the background).
+    private func appStorePruned() async throws {
+        let shared = ArtworkDiskStore.shared
+        let end = Date().addingTimeInterval(10)
+        while shared.budget.prunes == 0 && Date() < end { try await Task.sleep(for: .milliseconds(20)) }
+        await shared.budget.idle()
     }
 
     func testConcurrentWritesStayBoundedAndARecentlyReadLogoSurvives() async throws {
@@ -315,6 +357,10 @@ final class CacheTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data(repeating: 1, count: 1_000).write(to: store.fileURL(forKey: "first")) // left by the previous launch
         let arrived = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
+        // The hook is global: the app's own store prunes in the background once it is first used (any client made
+        // without a store, as in an earlier test), and a pass of it arriving here would take the hook's one hold. That
+        // prune finishes first (on a loaded simulator it ran late: this test failed on the iPad).
+        try await appStorePruned()
         let once = OnceFlag()
         ArtworkBudget.afterPass = { if once.take() { arrived.signal(); resume.wait() } }
         defer { ArtworkBudget.afterPass = nil }

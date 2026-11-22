@@ -353,6 +353,11 @@ final class GuideQuietTests: XCTestCase {
     /// Now no cell is sized to fit, whether the grid fills or scrolls, and the grid draws as laid out (tiles pinned,
     /// programmes clipped at the channel column, the now line). Fails on 389 (cells sized on every display).
     func testCellsComingOnScreenAreNeverSizedToFit() throws {
+        #if os(iOS)
+        // As `hostGuide`: the upright iPhone's Guide is the On now list, not this 1920-wide grid (it failed there on 391's
+        // ios tier, once in three runs; the iPad runs it).
+        if UIDevice.current.userInterfaceIdiom == .phone { throw XCTSkip("the iPhone's Guide has no grid") }
+        #endif
         let now = Date()
         let controller = GuideGridViewController()
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
