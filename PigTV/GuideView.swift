@@ -825,10 +825,13 @@ struct GuideView: View {
     static var menuItemsForTesting: [ProgrammeMenuItem]?
     #endif
 
-    /// Whether choosing `item` still means anything at `now`: a RECORD item only while the menu would still offer it (its
-    /// programme has not ended); the others always.
+    /// Whether choosing `item` still means anything at `now`: a RECORD item only while the programme the menu was opened on
+    /// has not ended (Codex sign-off of 380: by its end alone, never by comparing the rebuilt item, whose status words a
+    /// schedule refresh can change while it is on air); the others always.
     static func stillOffered(_ item: ProgrammeMenuItem, _ subject: ProgrammeMenuSubject, now: Date) -> Bool {
-        !item.isRecordSection || ProgrammeMenu.items(subject, now: now).contains(item)
+        guard item.isRecordSection else { return true }
+        guard let programme = subject.programme else { return false }
+        return programme.end > now
     }
 
     /// The items the menu card is drawn with at `now` (kept for the tests in DEBUG).
@@ -879,7 +882,7 @@ struct GuideView: View {
         let channel = target.channel
         // Review of 377: a RECORD item chosen after its programme ended (between two ticks) does nothing; the card is
         // redrawn at once without it.
-        guard Self.stillOffered(item, target.subject, now: Date()) else {
+        guard Self.stillOffered(item, target.subject, now: max(clock.now, Date())) else {
             clock.now = Date()
             return nil
         }

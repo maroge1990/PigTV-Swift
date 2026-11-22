@@ -103,6 +103,21 @@ final class GuideQuietTests: XCTestCase {
         XCTAssertTrue(GuideView.stillOffered(.schedule, subject, now: programme.end.addingTimeInterval(1)))
     }
 
+    /// Codex sign-off of 380: the iPhone's On now menu shows "Change recording" with the status it had when it opened; the
+    /// Guide rebuilds the subject when it is chosen, and a schedule refresh may have moved "Recording scheduled" to
+    /// "Recording now" meanwhile. The programme is still on air, so the choice must run: only its end can take it away.
+    func testAChangeRecordingChosenAfterTheStatusChangedStillRuns() {
+        let now = Date()
+        let programme = GuideProgramme(title: "On air", description: nil, startTime: (now - 600).timeIntervalSince1970 * 1000,
+                                       endTime: (now + 1800).timeIntervalSince1970 * 1000)
+        let shown = ProgrammeMenuItem.changeRecording(status: "Recording scheduled")
+        let rebuilt = ProgrammeMenuSubject(channelName: "Channel", programme: programme, recordingStatus: "Recording now")
+        XCTAssertTrue(GuideView.stillOffered(shown, rebuilt, now: now),
+                      "a Change recording chosen on a programme still on air did nothing (its status changed meanwhile)")
+        XCTAssertTrue(GuideView.stillOffered(.recordThis(), rebuilt, now: now), "an action on a programme that has not ended always runs")
+        XCTAssertFalse(GuideView.stillOffered(shown, rebuilt, now: programme.end.addingTimeInterval(1)), "ended: nothing runs")
+    }
+
     private func channel(_ id: String, _ programmes: [(start: Date, end: Date)]) -> GuideChannel {
         GuideChannel(rawID: id, sourceId: 1, name: "Channel \(id)", logo: nil, category: "News", programmes: programmes.enumerated().map {
             GuideProgramme(title: "\(id) \($0.offset)", description: nil, startTime: $0.element.start.timeIntervalSince1970 * 1000,
