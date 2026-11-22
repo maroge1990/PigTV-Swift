@@ -10,7 +10,7 @@ import XCTest
 /// Budgets come from the test environment as PIGTV_GUIDEPERF_* (Tools/test.sh and Tools/mac-gate.sh pass them on with
 /// the TEST_RUNNER_ prefix): FOCUS_MS (the worst focus move in a press scenario), GAP_MS (the longest frame gap in any
 /// scenario), FIRST_MS (the first screen), BODY_PER_PRESS (body evaluations per press), CELLS_PER_VERTICAL_PRESS (cell
-/// configurations per up/down press), LAYOUT_PER_VERTICAL_PRESS (full grid layout passes per up/down press), LOGO_LATE (logos drawn a frame late in a vertical
+/// configurations per up/down press), LAYOUT_PER_VERTICAL_PRESS (the grid layout's element queries per up/down press), LOGO_LATE (logos drawn a frame late in a vertical
 /// or held scenario), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there), APPLY_MS
 /// (all applies' ms in a scenario). Unset, a scenario only records, except where a fix has earned a count budget (#360,
 /// `budget(_:_:)` in `record`). Absent probe figures always fail.
@@ -123,6 +123,11 @@ final class GuidePerfUITests: XCTestCase {
         app.launchEnvironment["PIGTV_UI_TEST_GUIDE_SHAPE"] = "production"
         app.launchEnvironment["PIGTV_UI_TEST_CHANNELS"] = "1250"
         app.launchEnvironment["PIGTV_UI_TEST_GUIDEPROBE"] = "1"
+        // Review of 378: the comparison run (PIGTV_GUIDEPERF_OLD_LAYOUT=1): the grid redoes its whole layout on every scroll
+        // step, as before Apple 378 (set it with PIGTV_GUIDEPERF_LAYOUT_PER_VERTICAL_PRESS high, or that budget fails).
+        if ProcessInfo.processInfo.environment["PIGTV_GUIDEPERF_OLD_LAYOUT"] == "1" {
+            app.launchEnvironment["PIGTV_UI_TEST_GUIDE_LAYOUT_377"] = "1"
+        }
         if paged {
             app.launchEnvironment["PIGTV_UI_TEST_GUIDE_PAGED"] = "1"
             // Pages 2 and 3 arrive about 7 s and 14 s after the first (which is not delayed): inside the presses that follow.
@@ -191,22 +196,23 @@ final class GuidePerfUITests: XCTestCase {
     /// `count` single presses about a third of a second apart, each after the previous one's move has landed (the app's
     /// focus notification, so the wait costs the app nothing; the probe's count if notifications never arrive).
     /// `landedPresses` (review of 374): the presses whose move landed, at most one each, so extra focus events (a
-    /// redirected move, a restore) never stand in for a press that moved nothing.
+    /// redirected move, a restore) never stand in for a press that moved nothing. Review of 379: each press needs a landing
+    /// of its own, counted from just before it: the notifications' count, or (once they have stopped) the probe's
+    /// `focusMoves` read just before the press, which must rise after it. Surplus events from earlier presses never count.
+    /// The press during which the notifications stopped has no count from before it, so it is not counted as landed.
     private func presses(_ button: XCUIRemote.Button, _ count: Int) throws -> [String: Any] {
         var landedBy = "notification"
         var landed = 0
-        for index in 0..<count {
+        func focusMoves() -> Double? { (try? self.probe()).flatMap { self.number($0, "focusMoves") } }
+        for _ in 0..<count {
             let started = Date()
             let target = GuideProbeLanding.count + 1
+            let before = landedBy == "probe" ? focusMoves() : nil
             XCUIRemote.shared.press(button)
-            if GuideProbeLanding.wait(for: target, timeout: landedBy == "notification" ? 3 : 0) {
+            if landedBy == "notification" {
+                if GuideProbeLanding.wait(for: target, timeout: 3) { landed += 1 } else { landedBy = "probe" }
+            } else if let before, waitUntil(5, { (focusMoves() ?? 0) > before }) {
                 landed += 1
-            } else {
-                landedBy = "probe"
-                let base = index + 1
-                if waitUntil(5, { ((try? self.probe()).flatMap { self.number($0, "focusMoves") } ?? 0) >= Double(base) }) {
-                    landed += 1
-                }
             }
             let rest = 1.0 / 3 - Date().timeIntervalSince(started)
             if rest > 0 { GuideProbeLanding.spin(rest) }
@@ -247,7 +253,8 @@ final class GuidePerfUITests: XCTestCase {
         let moves = number(json, "focusMoves") ?? 0
         if presses > 0 {
             json["presses"] = presses
-            for key in ["bodyEvals", "cellConfigs", "layoutPrepares", "logoFetches", "applies"] where moves > 0 {
+            for key in ["bodyEvals", "cellConfigs", "layoutPrepares", "layoutPrepareRuns", "layoutQueries", "layoutMs",
+                        "logoFetches", "applies"] where moves > 0 {
                 if let value = number(json, key) { json[key + "PerPress"] = (value / moves * 10).rounded() / 10 }
             }
         }
@@ -301,18 +308,30 @@ final class GuidePerfUITests: XCTestCase {
         // #360 (G1, Apple 376): a focus move no longer re-evaluates GuideView.body (1.0 per press before). Not earned in
         // the paged scenario, whose arriving pages re-evaluate it by design (a later batch's work).
         let paged = scenario.hasPrefix("g")
-        if presses > 0, let budget = budget("BODY_PER_PRESS", paged ? nil : 0.05), let value = number(json, "bodyEvalsPerPress") {
+        let sideways = presses > 0 && !vertical && !paged
+        if presses > 0, !sideways, let budget = budget("BODY_PER_PRESS", paged ? nil : 0.05), let value = number(json, "bodyEvalsPerPress") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) body evaluations per press (budget \(budget))")
+        }
+        // Review of 378: a sideways scenario moves the viewport through time, and a new day redraws the header's date (one
+        // body evaluation each, `dayChanges`); nothing else may re-evaluate the body. Set: the per-press budget instead.
+        if sideways, let value = number(json, "bodyEvals") {
+            if let budget = env["PIGTV_GUIDEPERF_BODY_PER_PRESS"].flatMap(Double.init), let perPress = number(json, "bodyEvalsPerPress") {
+                XCTAssertLessThanOrEqual(perPress, budget, "\(scenario): \(perPress) body evaluations per press (budget \(budget))")
+            } else {
+                let days = number(json, "dayChanges") ?? 0
+                XCTAssertLessThanOrEqual(value, days, "\(scenario): \(Int(value)) body evaluations, \(Int(days)) day changes crossed")
+            }
         }
         if vertical, let budget = env["PIGTV_GUIDEPERF_CELLS_PER_VERTICAL_PRESS"].flatMap(Double.init),
            let value = number(json, "cellConfigsPerPress") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) cell configurations per press (budget \(budget))")
         }
-        // #360 (G8, Apple 378): a vertical move no longer redoes the whole grid layout (every scroll step of every press did:
-        // 18.7 per press down before), only the now line. Not earned in the paged scenario, whose arriving pages insert
-        // rows (a full layout by design).
-        if vertical, let budget = budget("LAYOUT_PER_VERTICAL_PRESS", paged ? nil : 0.1), let value = number(json, "layoutPreparesPerPress") {
-            XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) full layout passes per press (budget \(budget))")
+        // #360 (G8, Apple 378; counted as real work since the review of 378): a vertical move no longer has the grid layout
+        // rebuild every visible element's attributes on each scroll frame (`layoutQueries`, its `layoutAttributesForElements`
+        // calls: 19.8 per press down with the old layout, 2.6 after), only for rows coming on screen. Not earned in the
+        // paged scenario, whose arriving pages insert rows (a full layout by design).
+        if vertical, let budget = budget("LAYOUT_PER_VERTICAL_PRESS", paged ? nil : 5), let value = number(json, "layoutQueriesPerPress") {
+            XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) layout queries per press (budget \(budget))")
         }
         // #360 (G4, Apple 379): a channel logo already in memory is drawn on its tile's first frame, never by the view's task a
         // frame later (c-up-40 drew 36 that way, e-held-down-100 199, before).

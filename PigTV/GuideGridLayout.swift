@@ -142,6 +142,17 @@ final class GuideGridLayout: UICollectionViewLayout {
 
     override class var invalidationContextClass: AnyClass { GuideGridInvalidationContext.self }
 
+    #if DEBUG
+    /// The perf tier's comparison run (PIGTV_UI_TEST_GUIDE_LAYOUT_377=1, UI tests only) and the unit test's check of its
+    /// own measure: every scroll step invalidates the whole layout, as before Apple 378, so the same build measures both.
+    static var wholeLayoutOnScroll = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_GUIDE_LAYOUT_377"] == "1"
+    #endif
+
+    /// Review of 378: calls of `layoutAttributesForElements(in:)`, the layout's real work (each builds the attributes of
+    /// every element in its rect; `prepare()` does almost nothing). UIKit makes one per frame after a full invalidation,
+    /// and only for newly exposed rows after a vertical-only one.
+    private(set) var elementQueries = 0
+
     override func invalidateLayout(with context: UICollectionViewLayoutInvalidationContext) {
         let targeted = (context as? GuideGridInvalidationContext)?.verticalScrollOnly == true
             && !context.invalidateEverything && !context.invalidateDataSourceCounts
@@ -150,6 +161,7 @@ final class GuideGridLayout: UICollectionViewLayout {
     }
 
     override func prepare() {
+        let began = GuidePerf.layoutWorkBegan(); defer { GuidePerf.layoutWorkEnded(began, prepare: true) } // #362
         super.prepare()
         if fullPending {
             fullPending = false
@@ -174,6 +186,9 @@ final class GuideGridLayout: UICollectionViewLayout {
 
     override func invalidationContext(forBoundsChange newBounds: CGRect) -> UICollectionViewLayoutInvalidationContext {
         let context = super.invalidationContext(forBoundsChange: newBounds)
+        #if DEBUG
+        if Self.wholeLayoutOnScroll { return context }
+        #endif
         guard let collectionView, let context = context as? GuideGridInvalidationContext else { return context }
         let old = collectionView.bounds
         guard newBounds.size == old.size, newBounds.origin.x == old.origin.x, sectionCount > 0 else { return context }
@@ -183,6 +198,8 @@ final class GuideGridLayout: UICollectionViewLayout {
     }
 
     override func layoutAttributesForElements(in rect: CGRect) -> [UICollectionViewLayoutAttributes]? {
+        let began = GuidePerf.layoutWorkBegan(); defer { GuidePerf.layoutWorkEnded(began, prepare: false) } // #362
+        elementQueries += 1
         guard let collectionView else { return nil }
         var result: [UICollectionViewLayoutAttributes] = []
         let fromTime = GuideGridMath.viewport(forOffsetX: rect.minX - metrics.channelWidth, origin: origin, metrics: metrics)

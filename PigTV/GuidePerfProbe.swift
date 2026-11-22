@@ -27,6 +27,13 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     /// #360 (G8): full layout passes of the grid (a `prepare` after an invalidation of everything; a scroll that only
     /// moves the now line is a targeted one and is not counted).
     var layoutPrepares = 0
+    /// Review of 378: the grid layout's own main-thread work: `prepare()` calls, `layoutAttributesForElements(in:)` calls,
+    /// and the milliseconds spent in both (a monotonic clock, read only while the probe is on).
+    var layoutPrepareRuns = 0
+    var layoutQueries = 0
+    var layoutMs: Double = 0
+    /// Review of 378: the header's day changed (the viewport crossed midnight): one GuideView body evaluation each.
+    var dayChanges = 0
     /// #360 (G4): channel logo fetches started (a logo not in memory), cancelled (no view waited for it any more), logos
     /// drawn from memory on a view's first frame, and logos found in memory only by the view's task (drawn a frame late).
     var logoFetches = 0
@@ -117,6 +124,8 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
             "focusSuperseded": focusSuperseded, "frames": frames, "maxGapMs": Self.rounded(maxGapMs),
             "gapsOver50": gapsOver50, "gapsOver100": gapsOver100, "bodyEvals": bodyEvaluations,
             "cellConfigs": cellConfigurations, "layoutPrepares": layoutPrepares,
+            "layoutPrepareRuns": layoutPrepareRuns, "layoutQueries": layoutQueries, "layoutMs": Self.rounded(layoutMs),
+            "dayChanges": dayChanges,
             "logoFetches": logoFetches, "logoCancels": logoCancels, "logoSyncHits": logoSyncHits, "logoLateHits": logoLateHits, "applies": applies, "applyMs": Self.rounded(applyMs),
             "resets": resets, "windowMs": Self.rounded(windowMs),
         ]
@@ -276,6 +285,11 @@ final class GuidePerfProbe: NSObject {
     func focusRow(_ row: Int) { if guideVisible { stats.focusRow = row } }
     func cellConfigured() { if guideVisible { stats.cellConfigurations += 1 } }
     func layoutPrepared() { if guideVisible { stats.layoutPrepares += 1 } }
+    func layoutWorked(ms: Double, prepare: Bool) {
+        guard guideVisible else { return }
+        stats.layoutMs += ms
+        if prepare { stats.layoutPrepareRuns += 1 } else { stats.layoutQueries += 1 }
+    }
     func count(_ figure: WritableKeyPath<GuidePerfStats, Int>) { if guideVisible { stats[keyPath: figure] += 1 } }
     func bodyEvaluated() { if guideVisible { stats.bodyEvaluations += 1 } }
     func focusSuperseded() { if guideVisible { stats.focusSuperseded += 1 } }

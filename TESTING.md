@@ -28,7 +28,10 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
   - **Real-playback harness (build 28, `PigTVTests/RealPlaybackTests.swift`, `PigTVTests/Support/`).** Two crashes reached the TV because no test played a stream through the app's own code. `LocalHTTPServer` is an in-process HTTP/1.1 server (Network.framework `NWListener` on 127.0.0.1, random port; one request per connection, `Range` → 206, every request recorded). `FakePigTVServer` puts a minimal PigTV API on it: `POST playback/resolve` (a configurable decision; by default session `s<n>` → `/api/transcode/s<n>/master.m3u8` with `info.fps = 25/1`), the HLS fixture under `/api/transcode/<session>/…` (a session named `pq…` serves a `VIDEO-RANGE=PQ` master), `GET playback/conflict` → `null`, `client-event`/`conflict/decline`/`DELETE playback/<id>` → success; `client()` returns an `APIClient` with `clientEvents` advertised. The fixture (`PigTVTests/Fixtures/HLS`, ~280 KB, command in `fixture-README.txt`) is 6 s of ffmpeg `testsrc2` + sine, H.264 Main 320×180 25 fps + AAC-LC, three 2 s fMP4 segments, `stream.m3u8`, and `master.m3u8` mirroring the server's `buildMasterPlaylist` (FRAME-RATE, VIDEO-RANGE=SDR). Tests: a real start reaches `ready` within 3 s, AVPlayer `.playing` with `.readyToPlay` and a moving clock, the play-start event (from the `timeControlStatus` KVO observer), release on stop; a decision without fps (background asset criteria); **-11868 for real**: the tvOS simulator refuses the PQ variant, the item-status KVO observer reports it and the model plays the same session's `stream.m3u8` with no new resolve (skips itself if a simulator ever plays PQ); the 'fmt?' fallback (synthetic failure, then a real release, second resolve with `audioEncode: true` and real playback); channel switching releases before the next resolve; a recording (C-E HLS answer, fake markers) plays in `RecordingPlayerModel` and its periodic time observer sees the 1–2 s break. **New playback code gets a harness test.**
 - `GuideQuietTests` (maroge1990/PigTV#360): the Guide's quiet paths on the real views in a window: a focus move does not
   re-evaluate `GuideView.body` (only the focus strip observes the focus); the 30 s clock tick reconfigures only the grid
-  cells whose drawing changed (on air: the progress bar; a roll-over), not every visible cell.
+  cells whose drawing changed (on air: the progress bar; a roll-over), not every visible cell; a long-press menu left open
+  past its programme's end loses its RECORD items at the next tick. `ChannelArtworkTests`: a logo in memory draws on the
+  first frame and stays drawn if the cache evicts it; fetches stop when no view waits; a stale end of display (on a
+  reload) leaves a visible Guide tile loading its logo.
 - `ChannelWarmerTests` (audit R11, predictive warming): the player's warm policy with a hand-moved clock (off by default, dwell, one in
   flight, cancel on background/real play start, the player's previous-or-next choice, the 60 s refresh); `RealPlaybackTests` warm cases use
   the fake server's `/api/playback/warm` (the player's next channel warms with resolve's body, a zap there adopts it and play-start carries
@@ -109,12 +112,16 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   fetches started, and cancelled because no tile waited any more), `logoSyncHits`/`logoLateHits` (logos drawn from memory on
   the tile's first frame, or found only by the view's task, a frame late),
   `applies`, `applyMs` (and per press: per focus move that landed), `presses` (sent), `focusMoves` (focus events that
-  landed), `landedPresses` (presses whose move landed, at most one each), `focusRow` (the focused row's index; the held
+  landed), `landedPresses` (presses whose move landed, at most one each, each counted from just before its press),
+  `layoutPrepareRuns`/`layoutQueries`/`layoutMs` (the grid layout's `prepare()` and `layoutAttributesForElements(in:)` calls
+  and the main-thread ms in both), `dayChanges` (the header's day changed: one body evaluation each), `focusRow` (the focused row's index; the held
   scroll adds `rowsMoved`, its change), `rowsStart`/`rowsEnd`,
   `firstScreenMs` (the Guide's first appearance since launch → the frame after its first rows were configured, timed the same
   way; none if it leaves the screen or has no rows within 30 s). A single-press scenario fails unless at least 90 % of its
   presses landed (`landedPresses`, not focus events), the held scroll unless the focused row moved at least 50 rows down
-  (`rowsMoved`); budgets apply only after that. Count budgets a fix has earned apply by default (#360: body evaluations per press 0.05 outside the paged scenario, 0 body evaluations and 0 cell configurations at the idle tick, whose grid shows later programmes; 0.1 full layout passes per up/down press outside the paged scenario, 18.7 before Apple 378; 0 logos drawn a frame late in the up/down and held scenarios, 36 and 199 before Apple 379); the rest record only unless set: `PIGTV_GUIDEPERF_FOCUS_MS`,
+  (`rowsMoved`); budgets apply only after that. Count budgets a fix has earned apply by default (#360: body evaluations per press 0.05 in the up/down scenarios, and in the sideways one no more than the day changes it
+  crossed, 0 body evaluations and 0 cell configurations at the idle tick, whose grid shows later programmes; 5 layout element queries per up/down press outside the paged scenario, 19.8 with the layout before Apple 378 and 2.6
+  after (`PIGTV_GUIDEPERF_OLD_LAYOUT=1` runs the old layout in the same build, with `_LAYOUT_PER_VERTICAL_PRESS` set high); 0 logos drawn a frame late in the up/down and held scenarios, 36 and 199 before Apple 379); the rest record only unless set: `PIGTV_GUIDEPERF_FOCUS_MS`,
   `_GAP_MS`, `_FIRST_MS`, `_BODY_PER_PRESS`, `_CELLS_PER_VERTICAL_PRESS`, `_LAYOUT_PER_VERTICAL_PRESS`, `_LOGO_LATE`, `_CELLS_AT_TICK`, `_BODY_AT_TICK`, `_APPLY_MS` (`Tools/test.sh` and
   `Tools/mac-gate.sh` pass them to the test runner). Each perf run keeps its result bundle and full output in its own
   `build/perf-<UTC time>/` (printed; `Tools/mac-gate.sh perf` copies the output back next to its log from that exact folder, and if the copy fails it
@@ -198,9 +205,9 @@ subsystem = the bundle id, category **Responsiveness**) so Instruments shows eac
    - Live play: events `LiveResolveRequest` → `LiveResolveResponse` → `LiveItemCreated` → `LiveReadyToPlay` → `LivePlaying`;
      recording: `RecordingPlaybackRequest` → `RecordingItemCreated` → `RecordingReadyToPlay` → `RecordingPlaying`. The gaps between
      them say whether the wait is the server, the player or the app.
-   - `LogoDecoded` (artwork, the file name only), and **Hangs** over 100 ms (the main-thread call tree in Time Profiler for the same
+   - `LogoDecoded` (artwork, no metadata), and **Hangs** over 100 ms (the main-thread call tree in Time Profiler for the same
      time range names the culprit).
-   Signposts carry only fixed names, tab names and a logo file name, never tokens, URLs or provider names.
+   Signposts carry only fixed names and tab names, never tokens, URLs or provider names.
 
 **Guide speed readout (#362, no Mac needed).** Settings › About › Guide speed readout (off by default; leave it off otherwise).
 Turn it on, use the TV Guide, then come back to About: moves (focus moves in the Guide), typical/slowest (ms from the remote

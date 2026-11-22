@@ -82,6 +82,9 @@ struct ChannelArtwork: View {
 
     /// Tests: forget every decoded logo.
     static func clearCacheForTesting() { cache.removeAllObjects() }
+
+    /// Tests: per logo string, whether its view's latest body drew the logo (false: the placeholder).
+    @MainActor static var drawnForTesting: [String: Bool] = [:]
     #endif
 
     /// The cache key for `logo` on `client`'s server, remembered per logo string (the guide redraws the same few hundred
@@ -95,17 +98,36 @@ struct ChannelArtwork: View {
         return key
     }
 
-    /// What to draw now: what this view fetched, else the memory cache (no placeholder frame for a logo already decoded).
+    /// Review of 379: the logo this view drew from the memory cache, kept by the view (the cache may evict it while it is
+    /// shown). A reference, so keeping it from `body` invalidates nothing.
+    private final class Held {
+        var logo: String?
+        var key: String?
+        var image: DecodedLogo?
+    }
+    @State private var held = Held()
+
+    /// What to draw now: what this view fetched, else what it drew from memory for this logo, else the memory cache (no
+    /// placeholder frame for a logo already decoded). Each is for this logo string (and server) only, so a reused view
+    /// never draws another channel's logo.
     private var shown: DecodedLogo? {
         guard let logo else { return nil }
         if let fetched, fetched.logo == logo { return fetched.image }
-        guard let client, let key = Self.key(logo, client), let hit = Self.cache.object(forKey: key as NSString) else { return nil }
+        guard let client, let key = Self.key(logo, client) else { return nil }
+        if held.logo == logo, held.key == key, let image = held.image { return image }
+        guard let hit = Self.cache.object(forKey: key as NSString) else { return nil }
         GuidePerf.logoSyncHit()
+        held.logo = logo
+        held.key = key
+        held.image = hit.value
         return hit.value
     }
 
     var body: some View {
         let decoded = shown
+        #if DEBUG
+        let _ = logo.map { Self.drawnForTesting[$0] = decoded != nil }
+        #endif
         ZStack {
             if let decoded {
                 if fill {
@@ -155,7 +177,7 @@ struct ChannelArtwork: View {
                 }.value
                 guard let result else { return nil }
                 cache.setObject(LogoBox(result), forKey: key as NSString, cost: result.cost)
-                PigTVSignpost.event("LogoDecoded", String(logo.split(separator: "/").last?.prefix(40) ?? ""))
+                PigTVSignpost.event("LogoDecoded") // no metadata
                 return result
             }
         }

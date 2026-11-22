@@ -234,10 +234,22 @@ struct GuideView: View {
             }
             .overlay {
                 if let menu {
-                    ProgrammeMenuOverlay(subject: menu.subject, anchor: menu.anchor, now: Date(),
-                                         actions: ProgrammeMenuActions { await runMenu($0, menu) }, close: closeMenu)
+                    // Review of 377: the card reads the clock, so the tick after its programme ends takes the RECORD items
+                    // away (GuideView.body, which it used to take the time from, no longer runs at a tick). Never earlier
+                    // than now: the clock can be up to a tick old when the card opens.
+                    GuideClockReader(clock: clock) { tick in
+                        let now = max(tick, Date())
+                        let _ = Self.noteMenuItems(menu.subject, now: now)
+                        ProgrammeMenuOverlay(subject: menu.subject, anchor: menu.anchor, now: now,
+                                             actions: ProgrammeMenuActions { await runMenu($0, menu) }, close: closeMenu)
+                    }
                 }
             }
+            #if DEBUG
+            .onReceive(NotificationCenter.default.publisher(for: Self.clockTickForTesting)) { note in
+                if let date = note.object as? Date { clock.now = date }
+            }
+            #endif
             // #257: the channels carrying the live event, best first; choosing one plays it there.
             .confirmationDialog("Watch on", isPresented: Binding(get: { watchOn != nil }, set: { if !$0 { watchOn = nil } }),
                                 titleVisibility: .visible, presenting: watchOn) { event in
@@ -724,7 +736,10 @@ struct GuideView: View {
     private func moveViewport(to date: Date) {
         moment.viewport = date
         let day = Calendar.current.startOfDay(for: date)
-        if day != shownDay { shownDay = day }
+        if day != shownDay {
+            shownDay = day
+            GuidePerf.dayChanged() // #362: the one body evaluation a move may cause (the header's date)
+        }
     }
     private func shift(_ seconds: Double) { goTo(viewport.addingTimeInterval(seconds), focusGrid: false) }
     /// Moves SwiftUI focus into the UIKit grid; the grid then focuses the
@@ -803,6 +818,26 @@ struct GuideView: View {
 
     // MARK: The long-press menu (D-44, Apple 107)
 
+    #if DEBUG
+    /// Tests: the Guide's clock ticks to the posted date (the notification's object), as its 30 s timer does.
+    static let clockTickForTesting = Notification.Name("au.markrogers.PigTV.guideClockTickForTesting")
+    /// Tests: the items the open menu card was last drawn with.
+    static var menuItemsForTesting: [ProgrammeMenuItem]?
+    #endif
+
+    /// Whether choosing `item` still means anything at `now`: a RECORD item only while the menu would still offer it (its
+    /// programme has not ended); the others always.
+    static func stillOffered(_ item: ProgrammeMenuItem, _ subject: ProgrammeMenuSubject, now: Date) -> Bool {
+        !item.isRecordSection || ProgrammeMenu.items(subject, now: now).contains(item)
+    }
+
+    /// The items the menu card is drawn with at `now` (kept for the tests in DEBUG).
+    private static func noteMenuItems(_ subject: ProgrammeMenuSubject, now: Date) {
+        #if DEBUG
+        menuItemsForTesting = ProgrammeMenu.items(subject, now: now)
+        #endif
+    }
+
     private func menuSubject(_ channel: GuideChannel, _ programme: GuideProgramme?) -> ProgrammeMenuSubject {
         ProgrammeMenuSubject(channelName: channel.name, programme: programme,
                              recordingStatus: programme.flatMap { model.activeSchedule(channel: channel, programme: $0)?.statusWord },
@@ -842,6 +877,12 @@ struct GuideView: View {
     /// What a menu item does on the Guide; nil when it worked (the card closes), else the error to show in the card.
     private func runMenu(_ item: ProgrammeMenuItem, _ target: GuideMenuTarget) async -> String? {
         let channel = target.channel
+        // Review of 377: a RECORD item chosen after its programme ended (between two ticks) does nothing; the card is
+        // redrawn at once without it.
+        guard Self.stillOffered(item, target.subject, now: Date()) else {
+            clock.now = Date()
+            return nil
+        }
         switch item {
         case .recordThis:
             guard let programme = target.programme else { return nil }

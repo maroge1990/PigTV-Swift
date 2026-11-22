@@ -66,7 +66,9 @@ START=$(date +%s)
     echo "== run on the Mac: ${ONLY:+only $ONLY, else }Tools/test.sh ${TIER%%+*}"
     # Numbers only, so they need no quoting on the way.
     BUDGETS="$(env | grep -E '^PIGTV_GUIDEPERF_[A-Z_]+=[0-9.]+$' | tr '\n' ' ')"
-    mac "$BUDGETS REPO_G=$G ONLY='$ONLY' T='${TIER%%+*}' sh -s" <<'REMOTE'
+    # The script goes over first as a file, then runs with its stdin from /dev/null: fed on ssh's stdin, anything in a tier
+    # that reads stdin (ffmpeg in the visual tier did) ate the rest of the script after the tests had passed.
+    mac "cat > $G/gate-run.sh" <<'REMOTE' || exit 1
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 for v in $(env | sed -n 's/^\(PIGTV_GUIDEPERF_[A-Z_]*\)=[0-9.]*$/\1/p'); do eval "export TEST_RUNNER_$v=\"\$$v\""; done
 export PATH=/opt/homebrew/bin:$PATH
@@ -84,6 +86,7 @@ fi
 [ $RC = 0 ] && echo "GATE-RESULT PASS" || echo "GATE-RESULT FAIL"
 exit $RC
 REMOTE
+    mac "$BUDGETS REPO_G=$G ONLY='$ONLY' T='${TIER%%+*}' sh $G/gate-run.sh </dev/null" </dev/null
 } >"$LOG" 2>&1
 RC=$?
 SECS=$(( $(date +%s) - START ))

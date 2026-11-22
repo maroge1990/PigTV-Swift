@@ -79,6 +79,30 @@ final class GuideQuietTests: XCTestCase {
 
     // MARK: G5
 
+    /// Review of 377: the long-press menu card drew its items from a time taken when GuideView.body last ran, and since
+    /// 377 the 30 s tick no longer runs it, so a card left open past its programme's end kept offering to record a
+    /// programme that had finished. The card now reads the clock: the tick after the end takes the RECORD items away.
+    func testAMenuLeftOpenPastItsProgrammesEndDropsTheRecordItemsAtTheTick() async throws {
+        let (_, grid) = try await hostGuide()
+        GuideView.menuItemsForTesting = nil
+        let programme = try XCTUnwrap(grid.openMenuForTesting(section: 0), "row 0 has a programme on now or later")
+        try await until("the menu card is drawn with its RECORD items") {
+            GuideView.menuItemsForTesting?.contains(where: \.isRecordSection) == true
+        }
+        NotificationCenter.default.post(name: GuideView.clockTickForTesting, object: programme.end.addingTimeInterval(1))
+        try await spin(0.5)
+        let items = try XCTUnwrap(GuideView.menuItemsForTesting)
+        XCTAssertEqual(items.filter(\.isRecordSection), [],
+                       "the card still offers to record a programme that finished before the tick: \(items.map(\.id))")
+        XCTAssertTrue(items.contains(.schedule), "the rest of the card stays")
+        // Chosen between two ticks, after the end: a RECORD item does nothing (the card is redrawn without it).
+        let subject = ProgrammeMenuSubject(channelName: "Channel", programme: programme)
+        XCTAssertTrue(GuideView.stillOffered(.recordThis(), subject, now: programme.end.addingTimeInterval(-1)))
+        XCTAssertFalse(GuideView.stillOffered(.recordThis(), subject, now: programme.end.addingTimeInterval(1)))
+        XCTAssertFalse(GuideView.stillOffered(.recordEvery(title: "Record every new episode"), subject, now: programme.end))
+        XCTAssertTrue(GuideView.stillOffered(.schedule, subject, now: programme.end.addingTimeInterval(1)))
+    }
+
     private func channel(_ id: String, _ programmes: [(start: Date, end: Date)]) -> GuideChannel {
         GuideChannel(rawID: id, sourceId: 1, name: "Channel \(id)", logo: nil, category: "News", programmes: programmes.enumerated().map {
             GuideProgramme(title: "\(id) \($0.offset)", description: nil, startTime: $0.element.start.timeIntervalSince1970 * 1000,
@@ -166,18 +190,34 @@ final class GuideQuietTests: XCTestCase {
     /// Every scroll step used to invalidate the whole layout (`shouldInvalidateLayout(forBoundsChange:)` true, the default
     /// context), so UIKit redid every visible element's attributes on each frame of a vertical scroll. Only the now line
     /// follows the vertical offset (the tiles and the clipping follow the horizontal one), so a vertical step now
-    /// invalidates the now line alone: no full layout pass, and the grid draws exactly as before.
+    /// invalidates the now line alone, and the grid draws exactly as before. Review of 378: counted as the layout's real
+    /// work, its `layoutAttributesForElements(in:)` calls (`prepare()` does almost nothing), not as an invalidation flag.
     func testAVerticalScrollDoesNotRedoTheWholeLayout() throws {
         // The clock an hour after the grid's origin: the now line is inside the timeline before and after the sideways step.
         let (controller, layout) = try hostGrid(rows: 80, now: Date() + 3600)
         let grid = try XCTUnwrap(controller.collectionView)
         assertDrawnAsLaidOut(grid, layout, "at the top")
-        let before = layout.fullPrepares
+        let steps = 20
+        /// The layout's element queries over `steps` small vertical steps (a twentieth of a row each, about a press's scroll frames).
+        func queries(from start: CGFloat) -> Int {
+            let before = layout.elementQueries
+            for step in 1...steps {
+                grid.contentOffset.y = start + CGFloat(step) * layout.metrics.rowHeight / 20
+                grid.layoutIfNeeded()
+            }
+            return layout.elementQueries - before
+        }
+        // The measure itself: with the old whole-layout invalidation (as before Apple 378), every step is a query.
+        GuideGridLayout.wholeLayoutOnScroll = true
+        let old = queries(from: 0)
+        GuideGridLayout.wholeLayoutOnScroll = false
+        XCTAssertGreaterThanOrEqual(old, steps, "the old layout is re-queried on every step")
+        let now = queries(from: grid.contentOffset.y)
+        XCTAssertLessThanOrEqual(now, steps / 4, "vertical scroll steps redid the layout's work: \(now) queries in \(steps) steps")
         for step in 1...8 {
             grid.contentOffset.y = CGFloat(step) * layout.metrics.rowHeight * 2.5
             grid.layoutIfNeeded()
         }
-        XCTAssertEqual(layout.fullPrepares - before, 0, "vertical scroll steps redid the whole layout")
         assertDrawnAsLaidOut(grid, layout, "after scrolling down")
         // Back up past where it started, then sideways: a horizontal step still redoes everything (the tiles follow it).
         grid.contentOffset.y = layout.metrics.rowHeight / 2

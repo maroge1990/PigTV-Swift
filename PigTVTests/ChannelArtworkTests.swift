@@ -71,6 +71,27 @@ final class ChannelArtworkTests: XCTestCase {
         XCTAssertEqual(HeldLogoServer.startedCount, 0, "a logo in memory is not fetched")
     }
 
+    /// Review of 379: a logo drawn from the shared memory cache was not kept by the view, so once the cache evicted it the
+    /// view's next body drew the placeholder (and fetched the logo again). The view keeps what it drew for that logo.
+    func testALogoDrawnFromMemoryStaysWhenTheCacheEvictsIt() async throws {
+        let client = try client()
+        let logo = "/api/logo/held-evicted-\(UUID().uuidString)" // a fetch of it never answers
+        let green = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { context in
+            UIColor(red: 0, green: 1, blue: 0, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        }
+        ChannelArtwork.preload(green, for: logo, address: client.address)
+        let host = show(ChannelArtwork(logo: logo, client: client).frame(width: 64, height: 64))
+        XCTAssertEqual(ChannelArtwork.drawnForTesting[logo], true, "drawn from memory at first")
+        try await spin(0.2)
+        ChannelArtwork.clearCacheForTesting() // NSCache let it go
+        host.rootView = ChannelArtwork(logo: logo, client: client, fill: true).frame(width: 64, height: 64) // the same view, again
+        host.view.layoutIfNeeded()
+        XCTAssertEqual(ChannelArtwork.drawnForTesting[logo], true, "the view drew its placeholder once the cache evicted the logo")
+        try await spin(0.3)
+        XCTAssertFalse(HeldLogoServer.startedPaths.contains(logo), "the view fetched a logo it had already drawn")
+    }
+
     // MARK: (ii) fetches stop when nothing waits
 
     /// A view reused for another logo (as a guide tile is), then taken away: each fetch it started is cancelled, and the
@@ -130,6 +151,63 @@ final class ChannelArtworkTests: XCTestCase {
     /// The TV Guide: tiles whose logos are still loading scroll off screen; their fetches stop (the grid tells each tile's
     /// cell it ended display), and nothing is left loading for a row that is not on screen.
     func testGuideTilesThatLeaveTheScreenCancelTheirLogoFetches() async throws {
+        let (controller, rows) = try await hostHeldGrid()
+        let grid = try XCTUnwrap(controller.collectionView)
+        for step in 1...6 {
+            grid.contentOffset.y = CGFloat(step) * 1200
+            grid.layoutIfNeeded()
+            try await spin(0.2)
+        }
+        let shown = Set(grid.indexPathsForVisibleItems.map(\.section))
+        let left = rows.indices.filter { !shown.contains($0) && HeldLogoServer.startedPaths.contains(rows[$0].logo!) }
+        XCTAssertFalse(left.isEmpty, "rows whose logos were loading left the screen")
+        try await until("every row that left the screen stopped loading its logo", timeout: 3) {
+            left.allSatisfy { HeldLogoServer.stoppedPaths.contains(rows[$0].logo!) }
+        }
+        let stillLoading = left.filter { !HeldLogoServer.stoppedPaths.contains(rows[$0].logo!) }
+        XCTAssertEqual(stillLoading, [], "rows off screen still loading their logos")
+    }
+
+    /// Review of 379: on a reload UIKit can end the display of a reused cell's old item after it began displaying the new
+    /// one (willDisplay, then didEndDisplaying for the old index path, or for the same one while the cell stays). The tile
+    /// was then marked off screen while on screen, and its logo never loaded. A stale end is ignored.
+    func testAStaleEndOfDisplayLeavesAVisibleTileLoadingItsLogo() async throws {
+        let (controller, rows) = try await hostHeldGrid()
+        let grid = try XCTUnwrap(controller.collectionView)
+        func requests(_ paths: [String], _ section: Int) -> Int { paths.filter { $0 == rows[section].logo! }.count }
+        let visible = grid.indexPathsForVisibleItems.filter { $0.item == 0 }.sorted()
+        let at = try XCTUnwrap(visible.first {
+            requests(HeldLogoServer.startedPaths, $0.section) > requests(HeldLogoServer.stoppedPaths, $0.section)
+        }, "a visible tile is loading its logo")
+        let tile = try XCTUnwrap(grid.cellForItem(at: at) as? GuideGridTileCell)
+        XCTAssertTrue(tile.artworkLifetime.isDisplayed)
+        let stops = requests(HeldLogoServer.stoppedPaths, at.section)
+        let elsewhere = IndexPath(item: 0, section: (at.section + 60) % rows.count) // the item it showed before a reload
+        controller.collectionView(grid, willDisplay: tile, forItemAt: at)
+        controller.collectionView(grid, didEndDisplaying: tile, forItemAt: elsewhere)
+        controller.collectionView(grid, didEndDisplaying: tile, forItemAt: at) // the same item, still on screen
+        try await spin(0.5)
+        XCTAssertTrue(tile.artworkLifetime.isDisplayed, "a tile on screen is marked off screen")
+        XCTAssertEqual(requests(HeldLogoServer.stoppedPaths, at.section), stops, "a tile on screen stopped loading its logo")
+    }
+
+    /// The same on a real reload: every tile on screen afterwards is marked on screen.
+    func testAfterAReloadEveryTileOnScreenIsMarkedOnScreen() async throws {
+        let (controller, _) = try await hostHeldGrid()
+        let grid = try XCTUnwrap(controller.collectionView)
+        XCTAssertFalse(grid.indexPathsForVisibleItems.isEmpty, "tiles on screen before the reload")
+        grid.reloadData()
+        grid.layoutIfNeeded()
+        try await spin(0.3)
+        XCTAssertFalse(grid.indexPathsForVisibleItems.isEmpty, "tiles on screen after the reload")
+        for indexPath in grid.indexPathsForVisibleItems where indexPath.item == 0 {
+            XCTAssertEqual((grid.cellForItem(at: indexPath) as? GuideGridTileCell)?.artworkLifetime.isDisplayed, true,
+                           "after a reload, the tile at \(indexPath) is marked off screen")
+        }
+    }
+
+    /// 120 rows whose logos never answer, in a grid in a window, laid out.
+    private func hostHeldGrid() async throws -> (GuideGridViewController, [GuideChannel]) {
         let client = try client()
         let model = BrowseModel(client: client, guideCacheDirectory: FileManager.default.temporaryDirectory
             .appendingPathComponent("ChannelArtworkTests-guide-\(UUID().uuidString)"))
@@ -154,20 +232,10 @@ final class ChannelArtworkTests: XCTestCase {
                                                                         focusChanged: { _, _ in }, viewportChanged: { _ in })))
         controller.view.layoutIfNeeded()
         try await spin(0.5)
-        let grid = try XCTUnwrap(controller.collectionView)
-        for step in 1...6 {
-            grid.contentOffset.y = CGFloat(step) * 1200
-            grid.layoutIfNeeded()
-            try await spin(0.2)
-        }
-        let shown = Set(grid.indexPathsForVisibleItems.map(\.section))
-        let left = rows.indices.filter { !shown.contains($0) && HeldLogoServer.startedPaths.contains(rows[$0].logo!) }
-        XCTAssertFalse(left.isEmpty, "rows whose logos were loading left the screen")
-        try await until("every row that left the screen stopped loading its logo", timeout: 3) {
-            left.allSatisfy { HeldLogoServer.stoppedPaths.contains(rows[$0].logo!) }
-        }
-        let stillLoading = left.filter { !HeldLogoServer.stoppedPaths.contains(rows[$0].logo!) }
-        XCTAssertEqual(stillLoading, [], "rows off screen still loading their logos")
+        // A window with no scene gets no layout pass of its own: lay the rows out (the first fill arrived meanwhile).
+        controller.collectionView.layoutIfNeeded()
+        try await spin(0.3)
+        return (controller, rows)
     }
 
     // MARK: (iii) no blocking read on the main thread

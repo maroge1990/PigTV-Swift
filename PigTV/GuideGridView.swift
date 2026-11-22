@@ -487,6 +487,16 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         DispatchQueue.main.async { [weak self] in self?.actions?.focusChanged(id, start) }
     }
 
+    /// Tests: what a long press on `section`'s programme on now (or next) does: GuideView opens its menu card.
+    /// Answers that programme.
+    @discardableResult
+    func openMenuForTesting(section: Int) -> GuideProgramme? {
+        guard store.rows.indices.contains(section) else { return nil }
+        let programme = store.programmes(in: section).first { $0.end > Date() }
+        actions?.menu(store.rows[section], programme, CGRect(x: 400, y: 400, width: 300, height: 80))
+        return programme
+    }
+
     /// Tests: what the visible programme cells show, and where.
     func visibleProgrammesForTesting() -> [(section: Int, item: Int, title: String?, frame: CGRect, cell: UICollectionViewCell)] {
         collectionView.indexPathsForVisibleItems.sorted().compactMap { indexPath in
@@ -751,9 +761,16 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         (cell as? GuideGridTileCell)?.setDisplayed(true)
     }
 
+    // Review of 379: on a reload UIKit can end a reused cell's old display after its new one began (for the old item, or
+    // for the same item while the cell stays on screen). So an end is decided once the pass is over: a tile that is still
+    // one of the visible cells then keeps loading its logo.
     func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
                         forItemAt indexPath: IndexPath) {
-        (cell as? GuideGridTileCell)?.setDisplayed(false)
+        guard let tile = cell as? GuideGridTileCell else { return }
+        DispatchQueue.main.async { [weak collectionView, weak tile] in
+            guard let tile, let collectionView, !collectionView.visibleCells.contains(tile) else { return }
+            tile.setDisplayed(false)
+        }
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {

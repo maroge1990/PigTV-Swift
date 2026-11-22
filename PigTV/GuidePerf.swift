@@ -61,6 +61,19 @@ enum GuidePerf {
     /// #360 (G8): the grid's layout ran a full `prepare` (GuideGridLayout). One nil check while the probe is off.
     static func layoutPrepared() { GuidePerfProbe.shared?.layoutPrepared() }
 
+    /// Review of 378: the start of the layout's own work (`prepare()`, `layoutAttributesForElements(in:)`): 0, with no
+    /// clock read, unless the probe is on.
+    static func layoutWorkBegan() -> CFTimeInterval { probeClock() }
+
+    /// The end of that work: the probe adds its milliseconds and counts the call. One check while the probe is off.
+    static func layoutWorkEnded(_ began: CFTimeInterval, prepare: Bool) {
+        guard began > 0, let probe = GuidePerfProbe.shared else { return }
+        probe.layoutWorked(ms: (CACurrentMediaTime() - began) * 1000, prepare: prepare)
+    }
+
+    /// Review of 378: the header's day changed (GuideView's `shownDay`), which re-evaluates GuideView.body once.
+    static func dayChanged() { GuidePerfProbe.shared?.count(\.dayChanges) }
+
     // MARK: Channel logos (#360 G4)
 
     #if DEBUG
