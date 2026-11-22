@@ -27,6 +27,12 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     /// #360 (G8): full layout passes of the grid (a `prepare` after an invalidation of everything; a scroll that only
     /// moves the now line is a targeted one and is not counted).
     var layoutPrepares = 0
+    /// #360 (G4): channel logo fetches started (a logo not in memory), cancelled (no view waited for it any more), logos
+    /// drawn from memory on a view's first frame, and logos found in memory only by the view's task (drawn a frame late).
+    var logoFetches = 0
+    var logoCancels = 0
+    var logoSyncHits = 0
+    var logoLateHits = 0
     var applies = 0
     var applyMs: Double = 0
     var firstScreenMs: Double?
@@ -110,7 +116,8 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
             "focusMoves": moves, "focusMs": focusMs.map(Self.rounded), "pressMs": pressMs.map(Self.rounded),
             "focusSuperseded": focusSuperseded, "frames": frames, "maxGapMs": Self.rounded(maxGapMs),
             "gapsOver50": gapsOver50, "gapsOver100": gapsOver100, "bodyEvals": bodyEvaluations,
-            "cellConfigs": cellConfigurations, "layoutPrepares": layoutPrepares, "applies": applies, "applyMs": Self.rounded(applyMs),
+            "cellConfigs": cellConfigurations, "layoutPrepares": layoutPrepares,
+            "logoFetches": logoFetches, "logoCancels": logoCancels, "logoSyncHits": logoSyncHits, "logoLateHits": logoLateHits, "applies": applies, "applyMs": Self.rounded(applyMs),
             "resets": resets, "windowMs": Self.rounded(windowMs),
         ]
         if let rowsStart { object["rowsStart"] = rowsStart }
@@ -269,6 +276,7 @@ final class GuidePerfProbe: NSObject {
     func focusRow(_ row: Int) { if guideVisible { stats.focusRow = row } }
     func cellConfigured() { if guideVisible { stats.cellConfigurations += 1 } }
     func layoutPrepared() { if guideVisible { stats.layoutPrepares += 1 } }
+    func count(_ figure: WritableKeyPath<GuidePerfStats, Int>) { if guideVisible { stats[keyPath: figure] += 1 } }
     func bodyEvaluated() { if guideVisible { stats.bodyEvaluations += 1 } }
     func focusSuperseded() { if guideVisible { stats.focusSuperseded += 1 } }
     func firstScreen(ms: Double) { if stats.firstScreenMs == nil { stats.firstScreenMs = ms } }

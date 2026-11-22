@@ -242,6 +242,13 @@ final class GuideGridTileCell: UICollectionViewCell {
     }
     var channel: GuideChannel?
     var client: APIClient?
+    /// #360 (G4): whether the tile is on screen (the grid's willDisplay / didEndDisplaying). Its logo loads only while it
+    /// is: a tile that leaves before its logo arrives cancels the fetch (ChannelArtwork reads this from the environment).
+    let artworkLifetime = ArtworkLifetime()
+
+    func setDisplayed(_ displayed: Bool) {
+        if artworkLifetime.isDisplayed != displayed { artworkLifetime.isDisplayed = displayed }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -253,11 +260,12 @@ final class GuideGridTileCell: UICollectionViewCell {
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info, let channel else { contentConfiguration = nil; return }
         let measured = GuidePerf.cellBegan(); defer { GuidePerf.cellEnded(measured) } // #362
-        let client = client
+        let client = client, lifetime = artworkLifetime
         contentConfiguration = UIHostingConfiguration {
             GuideGridTileView(channel: channel, logo: info.logo, client: client,
                               flaky: info.flaky, recording: info.recording, focused: state.isFocused || state.isHighlighted,
                               quality: info.quality)
+                .environment(lifetime)
         }
         .margins(.all, 0)
         accessibilityLabel = info.number.map { "\($0) \(channel.name)" } ?? channel.name

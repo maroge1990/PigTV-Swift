@@ -61,6 +61,44 @@ enum GuidePerf {
     /// #360 (G8): the grid's layout ran a full `prepare` (GuideGridLayout). One nil check while the probe is off.
     static func layoutPrepared() { GuidePerfProbe.shared?.layoutPrepared() }
 
+    // MARK: Channel logos (#360 G4)
+
+    #if DEBUG
+    /// Tests: logo fetches started and cancelled, and logos drawn from memory at once or a frame late, probe or not.
+    static var logoFetchesForTesting = 0
+    static var logoCancelsForTesting = 0
+    static var logoSyncHitsForTesting = 0
+    static var logoLateHitsForTesting = 0
+    #endif
+
+    static func logoFetchStarted() {
+        #if DEBUG
+        logoFetchesForTesting += 1
+        #endif
+        GuidePerfProbe.shared?.count(\.logoFetches)
+    }
+
+    static func logoFetchCancelled() {
+        #if DEBUG
+        logoCancelsForTesting += 1
+        #endif
+        GuidePerfProbe.shared?.count(\.logoCancels)
+    }
+
+    static func logoSyncHit() {
+        #if DEBUG
+        logoSyncHitsForTesting += 1
+        #endif
+        GuidePerfProbe.shared?.count(\.logoSyncHits)
+    }
+
+    static func logoLateHit() {
+        #if DEBUG
+        logoLateHitsForTesting += 1
+        #endif
+        GuidePerfProbe.shared?.count(\.logoLateHits)
+    }
+
     // MARK: GuideView
 
     #if DEBUG
@@ -222,6 +260,10 @@ enum GuidePerf {
         firstScreenTick = nil
         guideHasAppeared = false
         lastFrameDueMs = [:]
+        logoFetchesForTesting = 0
+        logoCancelsForTesting = 0
+        logoSyncHitsForTesting = 0
+        logoLateHitsForTesting = 0
     }
     #endif
 }

@@ -745,6 +745,17 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
 
     // MARK: Selection and menus
 
+    // #360 (G4): a tile's logo loads only while the tile is on screen (ChannelArtwork, ArtworkLifetime); one leaving the
+    // screen before its logo arrived cancels that fetch.
+    func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+        (cell as? GuideGridTileCell)?.setDisplayed(true)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
+                        forItemAt indexPath: IndexPath) {
+        (cell as? GuideGridTileCell)?.setDisplayed(false)
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         // Touch leaves a selection behind; nothing is drawn for it.
         collectionView.deselectItem(at: indexPath, animated: false)

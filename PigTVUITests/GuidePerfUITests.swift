@@ -10,7 +10,8 @@ import XCTest
 /// Budgets come from the test environment as PIGTV_GUIDEPERF_* (Tools/test.sh and Tools/mac-gate.sh pass them on with
 /// the TEST_RUNNER_ prefix): FOCUS_MS (the worst focus move in a press scenario), GAP_MS (the longest frame gap in any
 /// scenario), FIRST_MS (the first screen), BODY_PER_PRESS (body evaluations per press), CELLS_PER_VERTICAL_PRESS (cell
-/// configurations per up/down press), LAYOUT_PER_VERTICAL_PRESS (full grid layout passes per up/down press), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there), APPLY_MS
+/// configurations per up/down press), LAYOUT_PER_VERTICAL_PRESS (full grid layout passes per up/down press), LOGO_LATE (logos drawn a frame late in a vertical
+/// or held scenario), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there), APPLY_MS
 /// (all applies' ms in a scenario). Unset, a scenario only records, except where a fix has earned a count budget (#360,
 /// `budget(_:_:)` in `record`). Absent probe figures always fail.
 final class GuidePerfUITests: XCTestCase {
@@ -246,7 +247,7 @@ final class GuidePerfUITests: XCTestCase {
         let moves = number(json, "focusMoves") ?? 0
         if presses > 0 {
             json["presses"] = presses
-            for key in ["bodyEvals", "cellConfigs", "layoutPrepares", "applies"] where moves > 0 {
+            for key in ["bodyEvals", "cellConfigs", "layoutPrepares", "logoFetches", "applies"] where moves > 0 {
                 if let value = number(json, key) { json[key + "PerPress"] = (value / moves * 10).rounded() / 10 }
             }
         }
@@ -312,6 +313,11 @@ final class GuidePerfUITests: XCTestCase {
         // rows (a full layout by design).
         if vertical, let budget = budget("LAYOUT_PER_VERTICAL_PRESS", paged ? nil : 0.1), let value = number(json, "layoutPreparesPerPress") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) full layout passes per press (budget \(budget))")
+        }
+        // #360 (G4, Apple 379): a channel logo already in memory is drawn on its tile's first frame, never by the view's task a
+        // frame later (c-up-40 drew 36 that way, e-held-down-100 199, before).
+        if vertical || heldMinimum != nil, let budget = budget("LOGO_LATE", 0), let value = number(json, "logoLateHits") {
+            XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) logos drawn a frame late (budget \(budget))")
         }
         // #360 (G5, Apple 377): the 30 s tick no longer re-evaluates GuideView.body (1 per tick before).
         if tick, let budget = budget("BODY_AT_TICK", 0), let value = number(json, "bodyEvals") {

@@ -21,22 +21,42 @@ nonisolated struct DecodedLogo: Sendable {
 
 /// Channel logo drawn as large as its frame allows. The guide owns the single
 /// full-tile backing so this view never adds an artwork-sized nested box.
+///
+/// #360 (G4): a logo already in memory is drawn on the view's first frame (read in `body`, not in `.task`, so a reused
+/// guide tile never draws its placeholder first and the logo a frame later), and a fetch is cancelled, down to its
+/// URLSession task, once no view waits for it: the cell was reused for another channel, the view went away, or the guide
+/// tile left the screen (`ArtworkLifetime`).
 struct ChannelArtwork: View {
     let logo: String?
     let client: APIClient?
-    @State private var decoded: DecodedLogo?
+    /// The logo this view fetched (a cache entry can be evicted while it is shown).
+    @State private var fetched: Fetched?
+    /// The guide tile's cell, when there is one: whether it is on screen.
+    @Environment(ArtworkLifetime.self) private var lifetime: ArtworkLifetime?
+
+    private struct Fetched {
+        let logo: String
+        let image: DecodedLogo
+    }
+
+    /// What the view's task waits for: a fetch only while nothing is drawn and the view is on screen.
+    private struct FetchID: Equatable {
+        let logo: String?
+        let wanted: Bool
+    }
 
     // Keyed by `ArtworkKey` (the server-qualified absolute URL, no token), so
     // two servers' relative `/api/logo/1` never share an entry. Bounded by
-    // decoded bytes, not count: a 320 px thumbnail is ~230 KB.
+    // decoded bytes, not count: a 320 px thumbnail is ~230 KB, so the budget holds about 140 of them, well over the
+    // guide's visible tiles (about 12 rows) and the rows a fast scroll passes through before the first ones are reused.
     static let decodedByteBudget = 32 * 1024 * 1024
     @MainActor private static let cache: NSCache<NSString, LogoBox> = {
         let cache = NSCache<NSString, LogoBox>()
         cache.totalCostLimit = decodedByteBudget
         return cache
     }()
-    // One fetch + decode per key; every cell showing that logo awaits it.
-    @MainActor private static var inflight: [String: Task<DecodedLogo?, Never>] = [:]
+    // One fetch + decode per key; every view showing that logo awaits it (#360: cancelled when none waits).
+    private static let inflight = SharedFetches<DecodedLogo?>(onCancel: { Task { @MainActor in GuidePerf.logoFetchCancelled() } })
     final class LogoBox: Sendable {
         let value: DecodedLogo
         init(_ value: DecodedLogo) { self.value = value }
@@ -59,9 +79,33 @@ struct ChannelArtwork: View {
         let value = DecodedLogo(image: image)
         cache.setObject(LogoBox(value), forKey: key as NSString, cost: value.cost)
     }
+
+    /// Tests: forget every decoded logo.
+    static func clearCacheForTesting() { cache.removeAllObjects() }
     #endif
 
+    /// The cache key for `logo` on `client`'s server, remembered per logo string (the guide redraws the same few hundred
+    /// tiles; working the key out parses the URL).
+    @MainActor private static var keys: [String: (address: ServerAddress, key: String)] = [:]
+    @MainActor private static func key(_ logo: String, _ client: APIClient) -> String? {
+        if let known = keys[logo], known.address == client.address { return known.key }
+        guard let key = client.artworkKey(logo) else { return nil }
+        if keys.count >= 4096 { keys.removeAll(keepingCapacity: true) }
+        keys[logo] = (client.address, key)
+        return key
+    }
+
+    /// What to draw now: what this view fetched, else the memory cache (no placeholder frame for a logo already decoded).
+    private var shown: DecodedLogo? {
+        guard let logo else { return nil }
+        if let fetched, fetched.logo == logo { return fetched.image }
+        guard let client, let key = Self.key(logo, client), let hit = Self.cache.object(forKey: key as NSString) else { return nil }
+        GuidePerf.logoSyncHit()
+        return hit.value
+    }
+
     var body: some View {
+        let decoded = shown
         ZStack {
             if let decoded {
                 if fill {
@@ -77,41 +121,52 @@ struct ChannelArtwork: View {
             }
         }
         .accessibilityHidden(true)
-        .task(id: logo) {
-            guard let logo, let client, let key = client.artworkKey(logo) else { decoded = nil; return }
-            if let cached = Self.cache.object(forKey: key as NSString) { decoded = cached.value; return }
-            decoded = nil
-            let result = await Self.decodedLogo(key: key, logo: logo, client: client)
+        // The lifetime is read only while nothing is drawn, so a tile with its logo is not updated when it leaves the screen.
+        .task(id: FetchID(logo: logo, wanted: decoded == nil && (lifetime?.isDisplayed ?? true))) {
+            guard decoded == nil, lifetime?.isDisplayed ?? true, let logo, let client, let key = Self.key(logo, client) else { return }
+            // Decoded meanwhile by another view: drawn from the cache from now on (counted: drawn a frame late).
+            if let cached = Self.cache.object(forKey: key as NSString) {
+                GuidePerf.logoLateHit()
+                fetched = Fetched(logo: logo, image: cached.value)
+                return
+            }
+            let result = await Self.decodedLogo(key: key, logo: logo, client: client, cancellable: true)
             guard !Task.isCancelled, let result else { return }
-            decoded = result
+            fetched = Fetched(logo: logo, image: result)
         }
     }
 
-    /// Fetch and decode once per key. The shared task is unstructured, so a
-    /// cell scrolling away (cancelling its own `.task`) does not cancel the
-    /// work the other cells are waiting on.
+    /// Fetch and decode once per key. `cancellable`: the fetch stops (its URLSession task too) once every cancellable
+    /// caller has been cancelled and no other caller waits; other callers (the Sport front's marks) keep it going.
     @MainActor
-    static func decodedLogo(key: String, logo: String, client: APIClient) async -> DecodedLogo? {
+    static func decodedLogo(key: String, logo: String, client: APIClient, cancellable: Bool = false) async -> DecodedLogo? {
         if let cached = cache.object(forKey: key as NSString) { return cached.value }
-        if let pending = inflight[key] { return await pending.value }
-        let task = Task<DecodedLogo?, Never> {
-            defer { inflight[key] = nil }
-            guard let data = try? await client.artworkData(logo) else { return nil }
-            let result: DecodedLogo? = await Task.detached(priority: .utility) {
-                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                      let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                        kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceThumbnailMaxPixelSize: 320,
-                        kCGImageSourceCreateThumbnailWithTransform: true
-                      ] as CFDictionary) else { return nil }
-                return DecodedLogo.analyse(cgImage)
-            }.value
-            guard let result else { return nil }
-            cache.setObject(LogoBox(result), forKey: key as NSString, cost: result.cost)
-            PigTVSignpost.event("LogoDecoded", String(logo.split(separator: "/").last?.prefix(40) ?? ""))
-            return result
+        let joined = inflight.join(key, cancellable: cancellable) {
+            Task<DecodedLogo?, any Error> {
+                guard let data = try? await client.artworkData(logo, cancellable: true), !Task.isCancelled else { return nil }
+                let result: DecodedLogo? = await Task.detached(priority: .utility) {
+                    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                          let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                            kCGImageSourceCreateThumbnailFromImageAlways: true,
+                            kCGImageSourceThumbnailMaxPixelSize: 320,
+                            kCGImageSourceCreateThumbnailWithTransform: true
+                          ] as CFDictionary) else { return nil }
+                    return DecodedLogo.analyse(cgImage)
+                }.value
+                guard let result else { return nil }
+                cache.setObject(LogoBox(result), forKey: key as NSString, cost: result.cost)
+                PigTVSignpost.event("LogoDecoded", String(logo.split(separator: "/").last?.prefix(40) ?? ""))
+                return result
+            }
         }
-        inflight[key] = task
-        return await task.value
+        if joined.started { GuidePerf.logoFetchStarted() }
+        return (try? await inflight.wait(for: joined.entry, key: key, cancellable: cancellable)) ?? nil
     }
+}
+
+/// #360 (G4): whether a guide tile's cell is on screen (the grid sets it as cells start and end being displayed). A logo
+/// fetch runs only while it is: a tile that leaves the screen before its logo arrives cancels the fetch, and starts it
+/// again if it comes back. Views outside the guide have none and fetch while they exist.
+@MainActor @Observable final class ArtworkLifetime {
+    var isDisplayed = true
 }

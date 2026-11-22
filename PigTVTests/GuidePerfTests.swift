@@ -87,6 +87,8 @@ final class GuidePerfTests: XCTestCase {
         stats.frame(gapMs: 120.04)
         stats.cellConfigurations = 14
         stats.layoutPrepares = 3
+        stats.logoFetches = 5
+        stats.logoSyncHits = 7
         stats.applies = 2
         stats.applyMs = 33.333
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(stats.json(windowMs: 1000).utf8)) as? [String: Any])
@@ -99,6 +101,10 @@ final class GuidePerfTests: XCTestCase {
         XCTAssertEqual(json["gapsOver100"] as? Int, 1)
         XCTAssertEqual(json["cellConfigs"] as? Int, 14)
         XCTAssertEqual(json["layoutPrepares"] as? Int, 3)
+        XCTAssertEqual(json["logoFetches"] as? Int, 5)
+        XCTAssertEqual(json["logoSyncHits"] as? Int, 7)
+        XCTAssertEqual(json["logoCancels"] as? Int, 0)
+        XCTAssertEqual(json["logoLateHits"] as? Int, 0)
         XCTAssertEqual(json["applyMs"] as? Double, 33.3)
         XCTAssertNil(json["firstScreenMs"], "absent until the first screen has been drawn")
     }

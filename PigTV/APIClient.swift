@@ -113,9 +113,9 @@ final class APIClient {
     var artworkMaxBytes = 4 * 1024 * 1024
     private let artworkStore: ArtworkDiskStore
     private let artworkProtocols: [AnyClass]?
-    // One task per logo: several cells asking for it share one fetch. The
-    // task is unstructured, so one awaiter being cancelled leaves the rest.
-    private var artworkFetches: [String: Task<Data?, any Error>] = [:]
+    // One task per logo: several cells asking for it share one fetch. #360 (G4): cancelled, down to its URLSession task,
+    // once every caller that may cancel (`cancellable`) has been and no other caller waits.
+    private let artworkFetches = SharedFetches<Data?>()
     private lazy var artworkSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         if let artworkProtocols { configuration.protocolClasses = artworkProtocols }
@@ -382,22 +382,25 @@ final class APIClient {
     // Logos persist on disk between launches (bounded: see ArtworkDiskStore),
     // so the guide does not re-download every channel's artwork each cold
     // start (only decoding is repeated).
-    func artworkData(_ logo: String) async throws -> Data? {
+    /// `cancellable` (#360 G4, the channel logos): cancelling the caller stops the fetch when no other caller waits.
+    /// Other callers (the Top Shelf, Sport banners) leave it running to the end, as before.
+    func artworkData(_ logo: String, cancellable: Bool = false) async throws -> Data? {
         guard let request = artworkRequest(logo), let url = request.url else { return nil }
         let key = ArtworkKey.canonical(url)
         if let cached = artworkCache.object(forKey: key as NSString) { return cached as Data }
-        if let pending = artworkFetches[key] { return try await pending.value }
         let session = artworkSession, store = artworkStore, limit = artworkMaxBytes
-        let task = Task<Data?, any Error> {
-            defer { artworkFetches[key] = nil }
-            let data = try await Task.detached(priority: .utility) {
-                try await Self.loadArtwork(request, key: key, session: session, store: store, limit: limit)
-            }.value
-            if let data { artworkCache.setObject(data as NSData, forKey: key as NSString, cost: data.count) }
-            return data
+        let joined = artworkFetches.join(key, cancellable: cancellable) {
+            Task<Data?, any Error> {
+                // Off the main actor; the detached load is cancelled with this task (it does not inherit it).
+                let load = Task.detached(priority: .utility) {
+                    try await Self.loadArtwork(request, key: key, session: session, store: store, limit: limit)
+                }
+                let data = try await withTaskCancellationHandler { try await load.value } onCancel: { load.cancel() }
+                if let data { artworkCache.setObject(data as NSData, forKey: key as NSString, cost: data.count) }
+                return data
+            }
         }
-        artworkFetches[key] = task
-        return try await task.value
+        return try await artworkFetches.wait(for: joined.entry, key: key, cancellable: cancellable)
     }
 
     /// Disk first, else the network. Runs off the main actor: the body is
@@ -406,6 +409,9 @@ final class APIClient {
     /// here, not on the caller.
     private nonisolated static func loadArtwork(_ request: URLRequest, key: String, session: URLSession,
                                                store: ArtworkDiskStore, limit: Int) async throws -> Data? {
+        #if DEBUG
+        artworkReadObserver?(onMainThread()) // #360 (G4): tests check these reads never run on the main thread
+        #endif
         if let data = store.read(key: key) { return data }
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -422,6 +428,12 @@ final class APIClient {
         store.write(data, key: key)
         return data
     }
+
+    #if DEBUG
+    /// Tests: told, before each logo's disk and network read, whether it runs on the main thread.
+    nonisolated(unsafe) static var artworkReadObserver: (@Sendable (_ onMainThread: Bool) -> Void)?
+    private nonisolated static func onMainThread() -> Bool { Thread.isMainThread }
+    #endif
 
     func guidePage(query: [URLQueryItem]) async throws -> GuidePage {
         let data = try await send("library/guide", method: "GET", query: query)
@@ -492,5 +504,70 @@ final class APIClient {
         parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         guard let result = parts.url else { throw PigTVError.invalidServerURL }
         return result
+    }
+}
+
+/// #360 (G4): one fetch per key shared by everyone asking for it, cancelled (the task, and so the URLSession task under
+/// it) once every caller that may cancel has been cancelled and none that may not is waiting. A finished or cancelled
+/// fetch is forgotten, so the next caller starts a new one. Lock-protected, so cancellation (on any thread) takes effect
+/// at once.
+nonisolated final class SharedFetches<Value: Sendable>: @unchecked Sendable {
+    final class Entry: @unchecked Sendable {
+        fileprivate let task: Task<Value, any Error>
+        // Guarded by the owner's lock.
+        fileprivate var waiters = 0
+        fileprivate var pinned = false
+        fileprivate init(task: Task<Value, any Error>) { self.task = task }
+    }
+    private let lock = NSLock()
+    private var entries: [String: Entry] = [:]
+    /// Told (on any thread) when a fetch is cancelled.
+    private let onCancel: (@Sendable () -> Void)?
+
+    init(onCancel: (@Sendable () -> Void)? = nil) { self.onCancel = onCancel }
+
+    /// The fetch running for `key`, else a new one from `start` (`started`); then `wait` for it.
+    func join(_ key: String, cancellable: Bool, start: () -> Task<Value, any Error>) -> (entry: Entry, started: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        var started = false
+        let entry: Entry
+        if let running = entries[key] {
+            entry = running
+        } else {
+            entry = Entry(task: start())
+            entries[key] = entry
+            started = true
+        }
+        if cancellable { entry.waiters += 1 } else { entry.pinned = true }
+        return (entry, started)
+    }
+
+    /// The fetch's result. Cancelling a cancellable caller leaves it; the last one out (with no other caller waiting)
+    /// cancels the fetch.
+    func wait(for entry: Entry, key: String, cancellable: Bool) async throws -> Value {
+        // Returning means the fetch has finished (or was cancelled): the next caller starts a new one.
+        defer { forget(key, entry) }
+        return try await withTaskCancellationHandler {
+            try await entry.task.value
+        } onCancel: {
+            if cancellable { self.leave(key, entry) }
+        }
+    }
+
+    private func forget(_ key: String, _ entry: Entry) {
+        lock.withLock { if entries[key] === entry { entries[key] = nil } }
+    }
+
+    private func leave(_ key: String, _ entry: Entry) {
+        let cancel: Bool = lock.withLock {
+            entry.waiters -= 1
+            guard entry.waiters <= 0, !entry.pinned, entries[key] === entry else { return false }
+            entries[key] = nil
+            return true
+        }
+        guard cancel else { return }
+        entry.task.cancel()
+        onCancel?()
     }
 }
