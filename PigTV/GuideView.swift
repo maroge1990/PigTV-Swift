@@ -29,6 +29,20 @@ private struct GuideFocus: Hashable {
     var viewport = GuideNavigation.rounded(Date())
 }
 
+/// #360 (G5): the Guide's clock, ticked every 30 s while it is on screen. GuideView holds it without observing it, so a
+/// tick re-evaluates only what draws the time: the grid's update (`GuideClockReader`, then only the cells whose drawing
+/// changed), the focus strip and the iPhone's On now list.
+@MainActor private final class GuideClock: ObservableObject {
+    @Published var now = Date()
+}
+
+/// Reads the clock for `content`, so its tick re-evaluates `content` alone.
+private struct GuideClockReader<Content: View>: View {
+    @ObservedObject var clock: GuideClock
+    @ViewBuilder let content: (Date) -> Content
+    var body: some View { content(clock.now) }
+}
+
 private struct FilterStripMetrics: Equatable {
     var offset: CGFloat = 0
     var viewportWidth: CGFloat = 0
@@ -94,7 +108,8 @@ struct GuideView: View {
     @State private var moment = GuideMoment()
     /// The viewport's day, the one part of it the page draws (the header's date): changes only when the day does.
     @State private var shownDay = Calendar.current.startOfDay(for: Date())
-    @State private var clock = Date()
+    /// #360 (G5): the 30 s clock, not observed here (`GuideClock`).
+    @State private var clock = GuideClock()
     /// Jump to's Show guide: the time to show once the Guide is back on screen (the page has popped).
     @State private var pendingJump: Date?
     /// The tool that opened the Search page, where a pop puts focus back (Show guide then moves the grid).
@@ -252,11 +267,11 @@ struct GuideView: View {
                 GuidePerf.guideVisible(true)
                 defer { GuidePerf.guideVisible(false) }
                 // Back on screen after a while: the clock is stale at once.
-                clock = Date()
+                clock.now = Date()
                 if model.sportEnabled { await model.sport.loadIfStale() }
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
-                    clock = Date()
+                    clock.now = Date()
                     // Audit F6: the long-press menu's Watch on… reads these; at most ~5 minutes old while the Guide is up.
                     if model.sportEnabled { await model.sport.loadIfStale() }
                 }
@@ -374,7 +389,8 @@ struct GuideView: View {
         } else if state.showsEmpty {
             ScrollView { guideEmpty.pigStateFillsPage() }
         } else {
-            OnNowList(rows: rows, model: model, clock: clock, play: { play($0) }, info: { openChannel($0) },
+            GuideClockReader(clock: clock) { now in
+            OnNowList(rows: rows, model: model, clock: now, play: { play($0) }, info: { openChannel($0) },
                       menu: { channel in menuSubject(channel, OnNowRow.make(programmes: channel.programmes, now: Date()).current) },
                       choose: { channel, programme, item in
                           let target = GuideMenuTarget(channel: channel, programme: programme,
@@ -386,6 +402,7 @@ struct GuideView: View {
                               onNowError = error
                           }
                       })
+            }
             .alert("That didn\u{2019}t work", isPresented: Binding(get: { onNowError != nil }, set: { if !$0 { onNowError = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -409,8 +426,10 @@ struct GuideView: View {
             // shown first, then the grid, so the first visit is several short
             // frames instead of one long stall.
             if gridReady {
+                // #360 (G5): the clock's reader re-runs only this (the grid's update) at a tick, not GuideView.body.
+                GuideClockReader(clock: clock) { now in
                 GuideGridView(rows: rows, rowsVersion: rowsVersion, model: model, origin: model.window,
-                    loadedDuration: model.guideLoadedUntil.timeIntervalSince(model.window), clock: clock,
+                    loadedDuration: model.guideLoadedUntil.timeIntervalSince(model.window), clock: now,
                     scheduled: model.scheduledKeys, recording: model.recordingChannels,
                     request: gridRequest, resetToken: scrollToTop, focusRestoreToken: gridFocusRestore,
                     menuOpen: menu != nil,
@@ -428,6 +447,7 @@ struct GuideView: View {
                         viewportChanged: { setViewport($0) },
                         leaveUp: { headerNowFocused = true },
                         menu: { openMenu($0, $1, anchor: $2) }))
+                }
                     .focused($gridHasFocus)
                     // #280: kept (it is built once) but not drawn while its shape stands in for it.
                     .opacity(state == .loading ? 0 : 1)
@@ -876,7 +896,8 @@ private struct GuideFocusedStrip: View {
     @ObservedObject var guideStore: GuideStore
     @ObservedObject var marks: ScheduleMarks
     let model: BrowseModel
-    let clock: Date
+    /// What the strip says about the tile (on now) and a programme's day moves with the clock.
+    @ObservedObject var clock: GuideClock
     let details: (GuideChannel, GuideProgramme) -> Void
     let more: (GuideChannel, GuideProgramme, CGRect) -> Void
     /// iPad: where the strip's More button is (the card opens beside it).
@@ -898,9 +919,9 @@ private struct GuideFocusedStrip: View {
         let scheduled = channel.flatMap { c in programme.map { marks.scheduledKeys.contains(ScheduledRecording.key(channel: c.name, start: $0.startTime)) } } ?? false
         return GuideStripText.make(channel: channel?.name, number: channel.flatMap { model.number(for: $0) },
                                    programme: programme,
-                                   current: programme == nil ? channel.flatMap { OnNowRow.make(programmes: $0.programmes, now: clock).current } : nil,
+                                   current: programme == nil ? channel.flatMap { OnNowRow.make(programmes: $0.programmes, now: clock.now).current } : nil,
                                    scheduled: scheduled, recordingNow: channel.map { marks.recordingChannels.contains($0.name) } ?? false,
-                                   now: clock)
+                                   now: clock.now)
     }
 
     var body: some View {

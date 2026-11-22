@@ -229,10 +229,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             apply(rows: view.rows)
         }
         if view.clock != clock {
-            clock = view.clock
-            layout.now = view.clock
+            clockChanged(to: view.clock)
             needsLayout = true
-            reconfigureVisible()
         }
         if view.scheduled != scheduled || view.recording != recording {
             scheduled = view.scheduled
@@ -469,6 +467,14 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     /// Tests: apply rows as the SwiftUI update does, under an explicit store revision.
     func applyForTesting(rows: [GuideChannel], revision: GuideGridRevision) { applyNow(rows: rows, revision: revision) }
 
+    /// Tests: the clock ticks to `now`, as GuideView's update does; the layout and the cells' configurations are done at once.
+    func setClockForTesting(_ now: Date) {
+        clockChanged(to: now)
+        layout.invalidateLayout()
+        collectionView.layoutIfNeeded()
+        collectionView.visibleCells.forEach { $0.layoutIfNeeded() } // a pending configuration update runs here
+    }
+
     /// Tests: the rows in the grid's store.
     var rowCountForTesting: Int { store.rows.count }
 
@@ -489,6 +495,14 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         }
     }
     #endif
+
+    /// The Guide's clock ticked (every 30 s on screen): the now line moves (the caller redoes the layout) and the visible
+    /// cells are given their info again; a cell redraws only if what it draws changed (`GuideGridProgrammeInfo`).
+    private func clockChanged(to now: Date) {
+        clock = now
+        layout.now = now
+        reconfigureVisible()
+    }
 
     private func reconfigureVisible() {
         for indexPath in collectionView.indexPathsForVisibleItems {
@@ -783,7 +797,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
                 channelName: channel.name, programme: programme,
                 caption: live && logo != nil ? channel.name : nil,
                 scheduled: programme.map { scheduled.contains(ScheduledRecording.key(channel: channel.name, start: $0.startTime)) } ?? false,
-                clock: clock)
+                finished: programme.map { $0.end <= clock } ?? false,
+                progress: programme.flatMap { GuideGridProgrammeInfo.progress(of: $0, at: clock) })
         }
     }
 }

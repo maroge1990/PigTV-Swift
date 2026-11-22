@@ -72,4 +72,47 @@ final class GuideQuietTests: XCTestCase {
         try await spin(0.3)
         XCTAssertEqual(GuidePerf.bodyEvaluationsForTesting - before, 0, "focus moves re-evaluated GuideView.body")
     }
+
+    // MARK: G5
+
+    private func channel(_ id: String, _ programmes: [(start: Date, end: Date)]) -> GuideChannel {
+        GuideChannel(rawID: id, sourceId: 1, name: "Channel \(id)", logo: nil, category: "News", programmes: programmes.enumerated().map {
+            GuideProgramme(title: "\(id) \($0.offset)", description: nil, startTime: $0.element.start.timeIntervalSince1970 * 1000,
+                           endTime: $0.element.end.timeIntervalSince1970 * 1000)
+        })
+    }
+
+    /// The 30 s tick used to give every visible programme cell a new `clock`, so all of them rebuilt their SwiftUI content.
+    /// Now only cells whose drawing depends on the time and changed are configured again: the on-air programmes (their
+    /// progress bar) and a roll-over (the one that finished dims, the next goes on air).
+    func testTheClockTickReconfiguresOnlyTheCellsWhoseDrawingChanged() throws {
+        let controller = GuideGridViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        let now = Date()
+        var rows = (0..<5).map { channel("c\($0)", [(now - 600, now + 3000), (now + 3000, now + 6600)]) }
+        // Its programme ends 10 s from now: at the tick it has finished and the next one is on air.
+        rows.append(channel("roll", [(now - 1200, now + 10), (now + 10, now + 3600)]))
+        controller.applyForTesting(rows: rows, revision: GuideGridRevision(programmes: 1, loadedAt: nil))
+        controller.setClockForTesting(now)
+        let tick = now + 30
+        let visible = controller.visibleProgrammesForTesting()
+        let rowsShown = Set(visible.map(\.section))
+        XCTAssertEqual(rowsShown.count, rows.count, "every row is on screen")
+        func onAir(_ cell: (section: Int, item: Int, title: String?, frame: CGRect, cell: UICollectionViewCell), at time: Date) -> Bool {
+            guard let title = cell.title, let p = rows[cell.section].programmes.first(where: { $0.title == title }) else { return false }
+            return p.isLive(at: time)
+        }
+        // Drawn differently at the tick: on air then (the bar moved, or it went on air), or on air before and finished now.
+        let changed = visible.filter { onAir($0, at: tick) || onAir($0, at: now) }.count
+        XCTAssertGreaterThan(visible.count, changed, "some visible cells do not depend on the time (later programmes)")
+        let before = GuidePerf.cellConfigurationsForTesting
+        controller.setClockForTesting(tick)
+        XCTAssertEqual(GuidePerf.cellConfigurationsForTesting - before, changed,
+                       "the tick reconfigured \(GuidePerf.cellConfigurationsForTesting - before) cells; \(changed) changed what they draw")
+    }
 }

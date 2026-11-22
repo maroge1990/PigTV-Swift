@@ -13,7 +13,19 @@ struct GuideGridProgrammeInfo: Equatable {
     /// Channel name on the now-playing cell when the tile shows a logo.
     var caption: String?
     var scheduled: Bool
-    var clock: Date
+    /// maroge1990/PigTV#360 (G5): what the time changes in the drawing, not the time itself (a new clock in every cell's
+    /// info rebuilt every visible cell at each 30 s tick). Finished: dimmed.
+    var finished: Bool
+    /// On air: the progress bar's fill (0...1, to the thousandth); nil otherwise.
+    var progress: Double?
+
+    /// The on-air programme's progress at `now`, rounded to the thousandth (a step of 30 s for any programme up to 8 h).
+    static func progress(of programme: GuideProgramme, at now: Date) -> Double? {
+        guard programme.isLive(at: now) else { return nil }
+        let length = programme.end.timeIntervalSince(programme.start)
+        guard length > 0 else { return 0 }
+        return (min(1, max(0, now.timeIntervalSince(programme.start) / length)) * 1000).rounded() / 1000
+    }
 }
 
 struct GuideGridProgrammeView: View {
@@ -28,7 +40,7 @@ struct GuideGridProgrammeView: View {
         let shape = UnevenRoundedRectangle(topLeadingRadius: clippedLeading ? 0 : PigRadius.compact,
                                            bottomLeadingRadius: clippedLeading ? 0 : PigRadius.compact,
                                            bottomTrailingRadius: PigRadius.compact, topTrailingRadius: PigRadius.compact)
-        let finished = info.programme.map { $0.end <= info.clock } ?? false
+        let finished = info.finished
         // Keep the title on screen while a long programme is clipped on the
         // left, until the visible part gets narrower than the text needs;
         // then it slides under the channel column like the cell does
@@ -75,9 +87,8 @@ struct GuideGridProgrammeView: View {
                 Text(programme.title).font(GuideTypography.body).lineLimit(GuideGridMetrics.titleLines(caption: info.caption != nil))
                     .truncationMode(.tail)
                     .foregroundStyle(.primary)
-                if programme.isLive(at: info.clock) {
-                    ProgressView(value: min(1, max(0, info.clock.timeIntervalSince(programme.start)
-                                                  / programme.end.timeIntervalSince(programme.start))))
+                if let progress = info.progress {
+                    ProgressView(value: progress)
                         .tint(.pigAccent).scaleEffect(x: 1, y: 0.4).frame(height: 4)
                         .accessibilityHidden(true)
                 }

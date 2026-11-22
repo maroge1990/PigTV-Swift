@@ -45,6 +45,9 @@ enum GuidePerf {
 
     /// nil unless someone is watching (as `applyBegan`).
     static func cellBegan() -> Interval? {
+        #if DEBUG
+        cellConfigurationsForTesting += 1
+        #endif
         guard watching else { return nil }
         return Interval(state: signposter.beginInterval("GuideCellConfigure", id: signposter.makeSignpostID()), began: 0)
     }
@@ -60,6 +63,8 @@ enum GuidePerf {
     #if DEBUG
     /// Tests: every `GuideView.body` evaluation, probe or not.
     static var bodyEvaluationsForTesting = 0
+    /// Tests: every grid cell configuration (programme or tile), probe or not.
+    static var cellConfigurationsForTesting = 0
     #endif
 
     static func bodyEvaluated() {

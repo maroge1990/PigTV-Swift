@@ -10,7 +10,7 @@ import XCTest
 /// Budgets come from the test environment as PIGTV_GUIDEPERF_* (Tools/test.sh and Tools/mac-gate.sh pass them on with
 /// the TEST_RUNNER_ prefix): FOCUS_MS (the worst focus move in a press scenario), GAP_MS (the longest frame gap in any
 /// scenario), FIRST_MS (the first screen), BODY_PER_PRESS (body evaluations per press), CELLS_PER_VERTICAL_PRESS (cell
-/// configurations per up/down press), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), APPLY_MS
+/// configurations per up/down press), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there), APPLY_MS
 /// (all applies' ms in a scenario). Unset, a scenario only records, except where a fix has earned a count budget (#360,
 /// `budget(_:_:)` in `record`). Absent probe figures always fail.
 final class GuidePerfUITests: XCTestCase {
@@ -307,7 +307,13 @@ final class GuidePerfUITests: XCTestCase {
            let value = number(json, "cellConfigsPerPress") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) cell configurations per press (budget \(budget))")
         }
-        if tick, let budget = env["PIGTV_GUIDEPERF_CELLS_AT_TICK"].flatMap(Double.init), let value = number(json, "cellConfigs") {
+        // #360 (G5, Apple 377): the 30 s tick no longer re-evaluates GuideView.body (1 per tick before).
+        if tick, let budget = budget("BODY_AT_TICK", 0), let value = number(json, "bodyEvals") {
+            XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) body evaluations in the idle window (budget \(budget))")
+        }
+        // #360 (G5, Apple 377): only cells whose drawing changed are configured again at the tick (20 in this window before:
+        // every visible cell). After d-right-10 the grid shows programmes hours ahead, none on air, so none changes: 0.
+        if tick, let budget = budget("CELLS_AT_TICK", 0), let value = number(json, "cellConfigs") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) cell configurations in the idle window (budget \(budget))")
         }
         if let budget = env["PIGTV_GUIDEPERF_APPLY_MS"].flatMap(Double.init), let value = number(json, "applyMs") {
