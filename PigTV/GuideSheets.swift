@@ -101,7 +101,7 @@ struct GuideSearchPage: View {
     /// The page reads the guide once per search and the logos; it observes the guide's store only for its state (#280:
     /// still loading, failed, or loaded), and searches again when a load finishes.
     let model: BrowseModel
-    @ObservedObject private var guideStore: GuideStore
+    private let guideStore: GuideStore
     /// The grid can be moved (not the iPhone's upright On now list).
     let canJump: Bool
     /// Jump to… opened the page: focus starts on the selected day, not the search field.
@@ -133,7 +133,7 @@ struct GuideSearchPage: View {
          openChannel: @escaping (GuideChannel) -> Void, openProgramme: @escaping (GuideChannel, GuideProgramme) -> Void,
          showGuide: @escaping (Date) -> Void, pushedFrom: String? = nil, actions: SearchActions = .none) {
         self.model = model
-        _guideStore = ObservedObject(wrappedValue: model.guideStore)
+        self.guideStore = model.guideStore
         _date = State(initialValue: date)
         self.canJump = canJump
         self.startWithJump = startWithJump

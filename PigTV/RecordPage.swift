@@ -552,9 +552,9 @@ extension AppModel {
 struct RecordPage: View {
     /// Not observed (audit R05): the page draws the action state and the logos.
     let model: BrowseModel
-    @ObservedObject private var actions: ActionState
+    private let actions: ActionState
     /// The schedules, so Change recording follows its schedule while open (it starts recording, or ends).
-    @ObservedObject private var store: RecordingsStore
+    private let store: RecordingsStore
     let presenter: AppPresenter
     /// The request as opened; `request` is it for the chosen airing (`RecordPlan.forAiring`).
     let opened: RecordRequest
@@ -579,8 +579,8 @@ struct RecordPage: View {
 
     init(model: BrowseModel, presenter: AppPresenter, request: RecordRequest, close: @escaping () -> Void) {
         self.model = model
-        _actions = ObservedObject(wrappedValue: model.actions)
-        _store = ObservedObject(wrappedValue: model.recordingStore)
+        self.actions = model.actions
+        self.store = model.recordingStore
         self.presenter = presenter
         self.opened = request
         self.close = close

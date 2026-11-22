@@ -9,7 +9,7 @@ import XCTest
 @MainActor
 final class GuideRefreshSwapTests: XCTestCase {
     private var cacheDirectory: URL!
-    private var watching: AnyCancellable?
+    private var watching: Invalidations?
 
     override func setUp() {
         super.setUp()
@@ -18,7 +18,7 @@ final class GuideRefreshSwapTests: XCTestCase {
     }
 
     override func tearDown() {
-        watching = nil
+        watching?.stop(); watching = nil
         SwapServer.reset()
         BrowseModel.guidePageRetryDelaysOverride = nil
         try? FileManager.default.removeItem(at: cacheDirectory)
@@ -52,9 +52,12 @@ final class GuideRefreshSwapTests: XCTestCase {
     }
 
     /// Every change of the guide the Guide would see (the store's `guide`), as row counts.
+    /// #51: each change is counted as it happens (`Invalidations`); its row count is read just after it has been made.
     private func watch(_ m: BrowseModel) -> () -> [Int] {
         var counts: [Int] = []
-        watching = m.guideStore.$guide.dropFirst().sink { counts.append($0.count) }
+        let watching = Invalidations(reads: { _ = m.guideStore.guide })
+        watching.afterEachChange = { counts.append(m.guide.count) }
+        self.watching = watching
         return { counts }
     }
 

@@ -564,13 +564,13 @@ private struct SportSuggestionRow: View {
 struct SportFollowScreen: View {
     @ObservedObject var model: SportFollowSettingsModel
     /// #278: the recording rules' store (Scheduled's too), so a rule changed or removed there redraws the switches.
-    @ObservedObject private var ruleStore: RecordingsStore
+    private let ruleStore: RecordingsStore
     let sport: String
     let me: String?
 
     init(model: SportFollowSettingsModel, sport: String, me: String?) {
         self.model = model
-        _ruleStore = ObservedObject(wrappedValue: model.ruleStore)
+        self.ruleStore = model.ruleStore
         self.sport = sport
         self.me = me
     }

@@ -102,8 +102,8 @@ struct ScheduledPage: View {
     let presenter: AppPresenter
     /// #280: the empty Coming up's one action, Open the TV Guide.
     var openGuide: () -> Void = {}
-    @ObservedObject private var store: RecordingsStore
-    @ObservedObject private var actions: ActionState
+    private let store: RecordingsStore
+    private let actions: ActionState
     /// #12 (D-42): the losing schedule whose "Record this one instead" is being confirmed.
     @State private var choosing: ScheduledRecording?
     #if os(iOS)
@@ -114,8 +114,8 @@ struct ScheduledPage: View {
         self.model = model
         self.presenter = presenter
         self.openGuide = openGuide
-        _store = ObservedObject(wrappedValue: model.recordingStore)
-        _actions = ObservedObject(wrappedValue: model.actions)
+        self.store = model.recordingStore
+        self.actions = model.actions
     }
 
     /// #280: what Coming up shows, from the schedules' answer (never "Nothing scheduled" before it has come).
@@ -384,15 +384,15 @@ struct ScheduledRulesList: View {
     let model: BrowseModel
     let rules: [RecordingRule]
     let remove: (RecordingRule) -> Void
-    @ObservedObject private var actions: ActionState
-    @ObservedObject private var store: RecordingsStore
+    private let actions: ActionState
+    private let store: RecordingsStore
 
     init(model: BrowseModel, rules: [RecordingRule], remove: @escaping (RecordingRule) -> Void) {
         self.model = model
         self.rules = rules
         self.remove = remove
-        _actions = ObservedObject(wrappedValue: model.actions)
-        _store = ObservedObject(wrappedValue: model.recordingStore)
+        self.actions = model.actions
+        self.store = model.recordingStore
     }
 
     var body: some View {
@@ -542,15 +542,15 @@ struct ScheduledSubpage: View {
     let model: BrowseModel
     let presenter: AppPresenter
     let route: RecordingsRoute
-    @ObservedObject private var store: RecordingsStore
-    @ObservedObject private var actions: ActionState
+    private let store: RecordingsStore
+    private let actions: ActionState
 
     init(model: BrowseModel, presenter: AppPresenter, route: RecordingsRoute) {
         self.model = model
         self.presenter = presenter
         self.route = route
-        _store = ObservedObject(wrappedValue: model.recordingStore)
-        _actions = ObservedObject(wrappedValue: model.actions)
+        self.store = model.recordingStore
+        self.actions = model.actions
     }
 
     var body: some View {

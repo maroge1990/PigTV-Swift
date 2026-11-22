@@ -357,14 +357,14 @@ struct DetailActions<Content: View>: View {
 /// favourites (so the guide's Favourites filter and Home agree at once).
 struct FavouriteButton: View {
     let model: BrowseModel
-    @ObservedObject private var library: LibraryStore
+    private let library: LibraryStore
     let channel: Channel
     @State private var busy = false
     @State private var failed = false
 
     init(model: BrowseModel, channel: Channel) {
         self.model = model
-        _library = ObservedObject(wrappedValue: model.library)
+        self.library = model.library
         self.channel = channel
     }
 

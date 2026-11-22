@@ -495,12 +495,14 @@ From the 3 Oct audit (`../PigTV/docs/archive/audit-2026-10-03/ROADMAP.md`) and t
   from `SIMULATOR_MODEL_IDENTIFIER`). The server keeps it on the paired device for Status and Settings → Devices; media
   and artwork requests do not send it, and the server keeps the last value it had.
 
-- **Screens observe only what they show (R05).** `BrowseModel` publishes nothing itself; its state lives in small stores
-  (`BrowseStores.swift`): `GuideStore` (channels, window, paging), `RecordingsStore`, `LibraryStore` (favourites),
-  `ScheduleMarks` (republished only when the sets change) and `ActionState`. The old `BrowseModel` properties
-  forward to them, so **each view lists the stores it observes in its `init`**: a view that reads `model.guide` without
-  observing `guideStore` never updates. Home draws from `HomeModel`, which publishes only a different `HomeContent`.
-  `.whileVisible` (`WhileVisible.swift`) runs Home's minute loop and the Guide's clocks and refresh only while on screen. Background recordings refreshes are `quietly:`. `ObservationTests` counts publishes per screen.
+- **Screens observe only what they show (R05, #51).** `BrowseModel` publishes nothing itself; its state lives in small
+  `@Observable` stores (`BrowseStores.swift`): `GuideStore` (channels, window, paging), `RecordingsStore`, `LibraryStore`
+  (favourites), `ScheduleMarks` (changed only when the sets change; the recordings store tells it of each schedules or
+  hidden-removals change) and `ActionState`. The old `BrowseModel` properties forward to them, and a view is re-evaluated
+  only by the store properties its body reads (through the forwarding too); a view holds a store as a plain `let`.
+  Properties no view must be redrawn by (`updatedAt`, `favouritesBusy`, …) are `@ObservationIgnored`; equal values are
+  not assigned (`change(_:to:)`).
+  `.whileVisible` (`WhileVisible.swift`) runs Home's minute loop and the Guide's clocks and refresh only while on screen. Background recordings refreshes are `quietly:`. `ObservationTests` counts invalidations per screen and `StoreObservationTests` that a view reading one property is not re-evaluated by another.
 - **The first TV Guide visit doesn't stall (R03).** The shell shows first and the grid is made a frame later (`gridReady`,
   `NextFrame`); programme lists are ordered off the main actor (`GuideGridStore.orderedLists`); rows are revealed 0–2, 0–5,
   then all (`GuideGridLayout.revealedRows`); tvOS skips the header's `ViewThatFits`. `GuideGridStore` keys its lists by

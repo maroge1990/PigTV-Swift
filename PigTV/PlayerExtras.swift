@@ -205,7 +205,7 @@ struct TouchPlayerChrome: View {
     let browse: BrowseModel
     /// Starts Picture in Picture (nil: no button).
     let pip: PiPHandle?
-    @ObservedObject private var library: LibraryStore
+    private let library: LibraryStore
     let close: () -> Void
     let openChannels: () -> Void
     let enterNumber: () -> Void
@@ -228,7 +228,7 @@ struct TouchPlayerChrome: View {
         self.app = app
         self.browse = browse
         self.pip = pip
-        _library = ObservedObject(wrappedValue: browse.library)
+        self.library = browse.library
         self.close = close
         self.openChannels = openChannels
         self.enterNumber = enterNumber

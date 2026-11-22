@@ -71,7 +71,7 @@ struct CricketPageView: View {
     /// Observed for the bells (a pending "watch when it starts").
     @ObservedObject private var appState: AppModel
     /// #347: the recordings, for a finished match's Play recording (found by its `card`).
-    @ObservedObject private var recordingStore: RecordingsStore
+    private let recordingStore: RecordingsStore
     @Environment(\.sportPresenter) private var presenter
     /// #345: the other competitions' cards' hold menu (RECORD).
     @StateObject private var flow = SportRecordFlow()
@@ -98,7 +98,7 @@ struct CricketPageView: View {
         self.model = browse.cricketPage
         self.preferences = browse.f1Page
         _appState = ObservedObject(wrappedValue: app)
-        _recordingStore = ObservedObject(wrappedValue: browse.recordingStore)
+        self.recordingStore = browse.recordingStore
     }
 
     private var wide: Bool {

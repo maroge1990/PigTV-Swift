@@ -81,8 +81,8 @@ struct RecordingsView: View {
     let presenter: AppPresenter
     /// #280: the empty pages' one action, Open the TV Guide (the tab bar's Guide tab).
     var openGuide: () -> Void = {}
-    @ObservedObject private var store: RecordingsStore
-    @ObservedObject private var actions: ActionState
+    private let store: RecordingsStore
+    private let actions: ActionState
     @State private var path: [RecordingsRoute] = RecordingsView.initialPath
     @State private var playing: RecordingPlay?
     /// The iPhone's card stack: the recording shown.
@@ -95,8 +95,8 @@ struct RecordingsView: View {
         self.model = model
         self.presenter = presenter
         self.openGuide = openGuide
-        _store = ObservedObject(wrappedValue: model.recordingStore)
-        _actions = ObservedObject(wrappedValue: model.actions)
+        self.store = model.recordingStore
+        self.actions = model.actions
     }
 
     /// The offline fixture can open on Scheduled (PIGTV_UI_TEST_RECORDINGS_SECTION=scheduled, DEBUG only).

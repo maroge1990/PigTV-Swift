@@ -100,9 +100,9 @@ struct GuideView: View {
     /// BrowseModel holds, so a recordings refresh or a busy flag elsewhere
     /// does not re-render it.
     let model: BrowseModel
-    @ObservedObject private var guideStore: GuideStore
-    @ObservedObject private var library: LibraryStore
-    @ObservedObject private var marks: ScheduleMarks
+    private let guideStore: GuideStore
+    private let library: LibraryStore
+    private let marks: ScheduleMarks
     @AppStorage("pigtv.guide.filter") private var filter = "all"
     /// #360 (G1): the focus and the viewport, not observed here (`GuideMoment`).
     @State private var moment = GuideMoment()
@@ -157,9 +157,9 @@ struct GuideView: View {
     init(app: AppModel, model: BrowseModel) {
         self.app = app
         self.model = model
-        _guideStore = ObservedObject(wrappedValue: model.guideStore)
-        _library = ObservedObject(wrappedValue: model.library)
-        _marks = ObservedObject(wrappedValue: model.marks)
+        self.guideStore = model.guideStore
+        self.library = model.library
+        self.marks = model.marks
     }
 
     /// iPhone in landscape (compact height): one slim bar replaces the header,
@@ -956,8 +956,8 @@ struct GuideView: View {
 /// so a focus move redraws this strip alone: a title, a line of detail and a button, not GuideView's page.
 private struct GuideFocusedStrip: View {
     @ObservedObject var moment: GuideMoment
-    @ObservedObject var guideStore: GuideStore
-    @ObservedObject var marks: ScheduleMarks
+    let guideStore: GuideStore
+    let marks: ScheduleMarks
     let model: BrowseModel
     /// What the strip says about the tile (on now) and a programme's day moves with the clock.
     @ObservedObject var clock: GuideClock

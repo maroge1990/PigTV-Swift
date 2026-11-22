@@ -241,7 +241,7 @@ struct SportChannelList: View {
     /// Not observed (audit R05): the list marks scheduled recordings and
     /// draws the EPG logo fallback.
     let browse: BrowseModel
-    @ObservedObject private var marks: ScheduleMarks
+    private let marks: ScheduleMarks
     let clock: Date
     /// Closes the covering page, then runs the action (playback or a wait).
     let play: (@escaping () -> Void) -> Void
@@ -254,7 +254,7 @@ struct SportChannelList: View {
         self.event = event
         self.app = app
         self.browse = browse
-        _marks = ObservedObject(wrappedValue: browse.marks)
+        self.marks = browse.marks
         self.clock = clock
         self.play = play
         self.gameID = gameID
@@ -585,8 +585,8 @@ struct SportEventDetails: View {
     /// Not observed (audit R05): the page draws the schedule marks, the
     /// action state and the EPG logo fallback.
     let browse: BrowseModel
-    @ObservedObject private var marks: ScheduleMarks
-    @ObservedObject private var actions: ActionState
+    private let marks: ScheduleMarks
+    private let actions: ActionState
     /// Closes the page, then runs the action (playback).
     let play: (@escaping () -> Void) -> Void
 
@@ -599,8 +599,8 @@ struct SportEventDetails: View {
         self.event = event
         self.app = app
         self.browse = browse
-        _marks = ObservedObject(wrappedValue: browse.marks)
-        _actions = ObservedObject(wrappedValue: browse.actions)
+        self.marks = browse.marks
+        self.actions = browse.actions
         self.play = play
     }
     private enum Control: Hashable { case watch }

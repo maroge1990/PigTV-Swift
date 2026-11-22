@@ -93,7 +93,6 @@ server's `AGENTS.md` › Session checklist (issues first; the end-of-session doc
 - Every AVFoundation/KVO/notification callback is `@Sendable`/nonisolated and hops to the main actor (Swift 6). Keep pure
   helpers `nonisolated` so the Swift 5 test targets can call them.
 - **New playback code gets a test in the real-playback harness** (`PigTVTests/RealPlaybackTests.swift`).
-- A view that reads a `BrowseModel` property must observe the store that holds it ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) › Performance).
 - Never send `force: true` automatically: a takeover needs an explicit choice. Browsing and focus must never acquire a provider
   stream. Preserve same-origin auth, media URL allow-listing and capability negotiation. Release-before-switch is being
   removed (server D-27, [#36](https://github.com/maroge1990/PigTV/issues/36)): the server already ends a device's previous

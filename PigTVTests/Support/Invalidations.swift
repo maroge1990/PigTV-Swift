@@ -15,6 +15,8 @@ final class Invalidations {
     private var publishers: [AnyCancellable] = []
     private let reads: @MainActor () -> Void
     private var stopped = false
+    /// Run on the main queue just after each counted property change has been made (it is counted as it is about to be).
+    var afterEachChange: (@MainActor () -> Void)?
 
     init(observing objects: [AnyObject] = [], reads: @escaping @MainActor () -> Void) {
         self.reads = reads
@@ -44,6 +46,7 @@ final class Invalidations {
                 guard let self, !self.stopped else { return }
                 self.count += 1
                 self.track()
+                if let after = self.afterEachChange { DispatchQueue.main.async { after() } }
             }
         }
     }

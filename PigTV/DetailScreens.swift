@@ -11,9 +11,9 @@ struct ProgrammeDetails: View {
     /// Not observed (audit R05): the page draws the recordings and schedules,
     /// the action state and the EPG logo fallback.
     let model: BrowseModel
-    @ObservedObject private var store: RecordingsStore
-    @ObservedObject private var actions: ActionState
-    @ObservedObject private var library: LibraryStore
+    private let store: RecordingsStore
+    private let actions: ActionState
+    private let library: LibraryStore
     /// The app's presentation layer: the record page, Watch from start, Undo (#49).
     let presenter: AppPresenter
     let channel: GuideChannel
@@ -30,9 +30,9 @@ struct ProgrammeDetails: View {
          watch: @escaping () -> Void, openSchedule: (() -> Void)? = nil,
          openProgramme: ((GuideProgramme) -> Void)? = nil, pushedFrom: String? = nil) {
         self.model = model
-        _store = ObservedObject(wrappedValue: model.recordingStore)
-        _actions = ObservedObject(wrappedValue: model.actions)
-        _library = ObservedObject(wrappedValue: model.library)
+        self.store = model.recordingStore
+        self.actions = model.actions
+        self.library = model.library
         self.presenter = presenter
         self.channel = channel
         self.programme = programme
@@ -259,8 +259,8 @@ nonisolated enum ScheduleDays {
 struct ChannelPageView: View {
     /// Not observed (audit R05): the page marks scheduled programmes and the favourite.
     let model: BrowseModel
-    @ObservedObject private var marks: ScheduleMarks
-    @ObservedObject private var store: RecordingsStore
+    private let marks: ScheduleMarks
+    private let store: RecordingsStore
     let presenter: AppPresenter
     let channel: GuideChannel
     let watch: () -> Void
@@ -272,8 +272,8 @@ struct ChannelPageView: View {
     init(model: BrowseModel, presenter: AppPresenter, channel: GuideChannel, watch: @escaping () -> Void,
          openProgramme: ((GuideProgramme) -> Void)? = nil, pushedFrom: String? = nil) {
         self.model = model
-        _marks = ObservedObject(wrappedValue: model.marks)
-        _store = ObservedObject(wrappedValue: model.recordingStore)
+        self.marks = model.marks
+        self.store = model.recordingStore
         self.presenter = presenter
         self.channel = channel
         self.watch = watch

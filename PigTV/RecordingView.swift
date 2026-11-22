@@ -85,8 +85,8 @@ struct RecordingView: View {
     let model: BrowseModel
     /// The app's presentation layer: its Undo toast (Apple 122).
     let presenter: AppPresenter
-    @ObservedObject private var store: RecordingsStore
-    @ObservedObject private var actions: ActionState
+    private let store: RecordingsStore
+    private let actions: ActionState
     let original: Recording
     @State private var playing: RecordingPlay?
     @Environment(\.dismiss) private var dismiss
@@ -99,8 +99,8 @@ struct RecordingView: View {
         self.model = model
         self.presenter = presenter
         self.original = original
-        _store = ObservedObject(wrappedValue: model.recordingStore)
-        _actions = ObservedObject(wrappedValue: model.actions)
+        self.store = model.recordingStore
+        self.actions = model.actions
     }
 
     private var item: Recording { model.recordings.first { $0.id == original.id } ?? original }
