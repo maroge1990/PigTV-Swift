@@ -108,10 +108,10 @@ struct ContentView: View {
                 links.cleanupStarted()
                 Task { @MainActor in
                     await cleanup.value
-                    for url in links.cleanupFinished() { model.open(url) }
+                    links.cleanupFinished(into: model)
                 }
             }
-            for url in links.sceneChanged(active: phase == .active) { model.open(url) }
+            links.sceneChanged(active: phase == .active, into: model)
         }
         // #46, #216: while active and signed in, the guide is kept current and the Top Shelf exported, now and every
         // minute, whichever tab shows (returning to the foreground restarts it, so a stale guide is fixed at once).
@@ -125,7 +125,7 @@ struct ContentView: View {
         }
         // A4.1: Top Shelf items open pigtv://play: at once while the scene is active; one that arrives before it is active
         // waits for it and for the trip to the background's clean-up, which would otherwise cancel it (LinkGate).
-        .onOpenURL { url in if links.arrived(url) { model.open(url) } }
+        .onOpenURL { url in links.receive(url, into: model) }
         .alert("PigTV", isPresented: Binding(
             // Not while the player is up: an alert under a full-screen cover can't take
             // the tvOS focus, so it could not be dismissed. It shows once the player closes.

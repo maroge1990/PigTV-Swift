@@ -10,34 +10,55 @@ nonisolated struct LinkGate: Sendable {
     private(set) var active = false
     /// Background clean-ups started and not finished yet.
     private(set) var cleanups = 0
+    /// Links waiting, in order, each with the sign-in session it arrived in (`AppModel.sessionGeneration`).
+    private var waiting: [(url: URL, session: Int)] = []
     /// Links waiting, in order.
-    private(set) var held: [URL] = []
+    var held: [URL] { waiting.map { $0.url } }
 
-    /// A link arrived: true to open it now; false when it is held.
-    mutating func arrived(_ url: URL) -> Bool {
+    /// A link arrived (in `session`): true to open it now; false when it is held.
+    mutating func arrived(_ url: URL, session: Int = 0) -> Bool {
         if active && cleanups == 0 { return true }
-        held.append(url)
+        waiting.append((url, session))
         return false
     }
 
-    /// The scene phase changed: the held links to open now (none unless active with no clean-up running).
-    mutating func sceneChanged(active: Bool) -> [URL] {
+    /// The scene phase changed: the held links to open now (none unless active with no clean-up running). #54: only
+    /// those that arrived in `session`: a link held while a session ended (Sign out, a refused sign-in) is dropped.
+    mutating func sceneChanged(active: Bool, session: Int = 0) -> [URL] {
         self.active = active
-        return release()
+        return release(session: session)
     }
 
     /// The app went to the background and its clean-up started.
     mutating func cleanupStarted() { cleanups += 1 }
 
     /// That clean-up has run: the held links to open now, if the scene is active.
-    mutating func cleanupFinished() -> [URL] {
+    mutating func cleanupFinished(session: Int = 0) -> [URL] {
         cleanups = max(0, cleanups - 1)
-        return release()
+        return release(session: session)
     }
 
-    private mutating func release() -> [URL] {
-        guard active, cleanups == 0, !held.isEmpty else { return [] }
-        defer { held = [] }
-        return held
+    private mutating func release(session: Int) -> [URL] {
+        guard active, cleanups == 0, !waiting.isEmpty else { return [] }
+        defer { waiting = [] }
+        return waiting.filter { $0.session == session }.map { $0.url }
+    }
+}
+
+/// ContentView's links (#54, Codex sign-off of 395): through the gate, into the model. A link that arrives while a refused
+/// session is ending is dropped at once; one held across a session's end is dropped when released.
+@MainActor
+extension LinkGate {
+    mutating func receive(_ url: URL, into model: AppModel) {
+        guard !model.sessionEnding else { return }
+        if arrived(url, session: model.sessionGeneration) { model.open(url) }
+    }
+
+    mutating func sceneChanged(active: Bool, into model: AppModel) {
+        for url in sceneChanged(active: active, session: model.sessionGeneration) { model.open(url) }
+    }
+
+    mutating func cleanupFinished(into model: AppModel) {
+        for url in cleanupFinished(session: model.sessionGeneration) { model.open(url) }
     }
 }

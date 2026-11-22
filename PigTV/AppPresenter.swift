@@ -93,6 +93,7 @@ final class AppPresenter {
     /// The host's onDismiss: the page has gone.
     func didDismiss() {
         closing = false
+        guard !refusing else { return } // #54: nothing waiting runs, nothing queued opens, while a session ends
         finish()
     }
 
@@ -103,6 +104,7 @@ final class AppPresenter {
     }
 
     private func finish() {
+        guard !refusing else { return }
         let actions = afterClose
         afterClose = []
         for action in actions { action() }

@@ -344,6 +344,7 @@ final class AppModel: ChangeSuppressing {
 
     /// The signed-in session's client tells this model of each 401 its token is answered.
     private func watchRefusals(_ client: APIClient) {
+        silencedPlaybacks = [] // a new session: the last one's plays are done with
         client.unauthorisedHandler = { [weak self] refused in self?.sessionRefused(by: refused) }
     }
 
@@ -370,6 +371,12 @@ final class AppModel: ChangeSuppressing {
     /// session), no play waiting for pages to close, no new page (`AppPresenter.refusing`), and its 401s are not checked
     /// again.
     @ObservationIgnored private(set) var sessionEnding = false
+    /// #54 (Codex sign-off of 395): counts the sessions that have ended (every `clearSession`): a link held across one is
+    /// dropped (`LinkGate`).
+    @ObservationIgnored private(set) var sessionGeneration = 0
+    /// #54: plays of a session whose refusal is being torn down: a release they fail is not shown, whichever caller's
+    /// stop (the teardown's, or the trip to the background's, sharing it) finishes first. Kept until the next sign-in.
+    @ObservationIgnored private var silencedPlaybacks: [PlaybackModel] = []
 
     /// The state a 401 at launch leaves: signed out of this session, the saved sign-in kept (never removed here) and
     /// offered again (Sign in's "Your saved sign-in wasn’t accepted", Retry). A play is ended first, as Sign out ends it,
@@ -378,7 +385,10 @@ final class AppModel: ChangeSuppressing {
     private func endRefusedSession(_ refused: APIClient) async {
         guard refused === client, loggedIn, !sessionEnding else { return }
         sessionEnding = true
+        // Its pages, queue and waiting actions go at once, and none runs or opens until the teardown is done.
+        presenter.endSession()
         presenter.refusing = true
+        if let currentPlayback { silencedPlaybacks.append(currentPlayback) }
         defer {
             sessionEnding = false
             presenter.refusing = false
@@ -388,6 +398,7 @@ final class AppModel: ChangeSuppressing {
         cancelPendingWatch()
         var ended = 0
         while let playing = currentPlayback, ended < 4 {
+            if !silencedPlaybacks.contains(where: { $0 === playing }) { silencedPlaybacks.append(playing) }
             await endPlayback(playing, reportingFailure: false)
             ended += 1
         }
@@ -412,6 +423,7 @@ final class AppModel: ChangeSuppressing {
         cancelPendingWatch()
         cancelHandoff()
         pendingLink = nil
+        sessionGeneration &+= 1
         // #54 (Codex review of 394): the page open, the one queued and the actions waiting for them belong to this
         // session: dropped before its browse model goes, so none reopens or runs in the next one.
         presenter.endSession()
@@ -817,7 +829,8 @@ final class AppModel: ChangeSuppressing {
             zapList = []
             sportPlay = nil // #334: and lists channels unless it starts from Sport
             warmer.playerClosed()
-            if let message, reportingFailure { error = message }
+            // #54: decided now, not by the caller: a play of a refused session's teardown never shows its release's failure.
+            if let message, reportingFailure, !silencedPlaybacks.contains(where: { $0 === model }) { error = message }
         }
     }
 

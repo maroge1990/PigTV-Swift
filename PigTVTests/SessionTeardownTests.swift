@@ -188,4 +188,79 @@ final class SessionTeardownTests: XCTestCase {
         XCTAssertNil(model.playback)
         XCTAssertEqual(server.http.requests(path: "/api/auth/me").count, 2, "the restore's and one confirming call")
     }
+
+    // MARK: Codex sign-off of 395
+
+    /// A refused play whose release is answered 401 after `delay`, its stop then suspended for that long.
+    private func refusedPlayWithSlowRelease(_ delay: TimeInterval = 1.5) async throws -> (AppModel, FakePigTVServer, Locked<Bool>) {
+        let refused = Locked(false)
+        let (model, server) = try await playing(release: {
+            guard refused.value else { return nil }
+            var answer = LocalHTTPServer.Response.json(#"{"error":"Invalid token"}"#, status: 401)
+            answer.delay = delay
+            return answer
+        }, refused: refused)
+        return (model, server, refused)
+    }
+
+    private func releaseAsked(_ server: FakePigTVServer) async throws {
+        try await eventually("the stop is releasing the stream") {
+            server.http.requests(path: "/api/playback/s1", method: "DELETE").count >= 1
+        }
+    }
+
+    /// A link that arrives while the scene is inactive and the refused session is ending is never played, not even after
+    /// a Retry within a minute (it was held by the link gate, delivered after the teardown, kept as pending, played).
+    func testALinkHeldWhileTheRefusedSessionEndsIsNotPlayedAfterRetry() async throws {
+        let (model, server, refused) = try await refusedPlayWithSlowRelease()
+        var gate = LinkGate()
+        gate.sceneChanged(active: true, into: model)
+        gate.sceneChanged(active: false, into: model) // the scene goes inactive
+        refused.value = true
+        await model.browse?.loadFavourites()
+        try await releaseAsked(server)
+        gate.receive(try XCTUnwrap(URL(string: "pigtv://play?sourceId=1&id=harness-b")), into: model)
+        try await eventually("the session ends") { !model.loggedIn }
+        gate.sceneChanged(active: true, into: model) // active again: the gate releases what it holds
+        refused.value = false
+        await model.restore() // Retry
+        XCTAssertTrue(model.loggedIn)
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertNil(model.playback, "the link is not played")
+        XCTAssertEqual(server.resolves.count, 1)
+    }
+
+    /// The trip to the background joins the refused teardown's stop (one shared stop task) and may finish first: its
+    /// release failure must not become an alert over Sign in either.
+    func testTheBackgroundsStopJoiningARefusedReleaseShowsNoAlert() async throws {
+        let (model, server, refused) = try await refusedPlayWithSlowRelease()
+        refused.value = true
+        await model.browse?.loadFavourites() // the refusal, confirmed: the teardown's stop releases the stream
+        try await releaseAsked(server)
+        await model.background() // the trip to the background joins the same stop, and finishes first
+        try await eventually("Sign in") { !model.loggedIn }
+        XCTAssertNil(model.error, "no alert over Sign in")
+        XCTAssertEqual(model.signInError?.title, "Your saved sign-in wasn’t accepted")
+    }
+
+    /// A page's dismissal reported while the teardown waits for the stop runs nothing and opens nothing.
+    func testADismissalDuringTheSuspendedStopRunsNothingAndPresentsNothing() async throws {
+        let (model, server, refused) = try await refusedPlayWithSlowRelease()
+        let decode = { (id: Int) in
+            try JSONDecoder().decode(Recording.self, from: Data(#"{"id":\#(id),"title":"News","status":"completed","channel_name":"A"}"#.utf8))
+        }
+        let ran = Locked(false)
+        model.presenter.present(.recording(try decode(1)))
+        model.presenter.dismiss { ran.value = true }
+        model.presenter.present(.recording(try decode(2)))
+        refused.value = true
+        await model.browse?.loadFavourites()
+        try await releaseAsked(server)
+        model.presenter.didDismiss() // the host's onDismiss, during the stop
+        XCTAssertFalse(ran.value, "an action of the ending session ran")
+        XCTAssertNil(model.presenter.presented, "a page opened while the session ends")
+        try await eventually("Sign in") { !model.loggedIn }
+        XCTAssertFalse(ran.value)
+        XCTAssertNil(model.presenter.presented)
+    }
 }
