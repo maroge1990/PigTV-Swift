@@ -1,7 +1,7 @@
 #!/bin/sh
 # Push gate for the Apple client (D-77), run on the MacBook from here: Tools/test.sh <tier> there, then clean up.
 #
-#   sh Tools/mac-gate.sh [tier]              tier = fast | push (default) | visual | all | perf | ios; tests the commit (HEAD, via git archive)
+#   sh Tools/mac-gate.sh [tier]              tier = fast | push (default) | visual | all | perf | profile | ios; tests the commit (HEAD, via git archive)
 #   sh Tools/mac-gate.sh [tier] --worktree   test the working tree (tracked + untracked) for a pre-commit run
 #   sh Tools/mac-gate.sh push --only "PigTVTests/CacheTests"   rerun just those tests (xcodebuild -only-testing ids)
 #
@@ -16,8 +16,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --worktree) MODE=worktree ;;
         --only) ONLY="${2:-}"; shift ;;
-        fast|push|visual|all|perf|ios) TIER="$1" ;;
-        *) echo "usage: sh Tools/mac-gate.sh [fast|push|visual|all|perf|ios] [--worktree] [--only \"Target/Suite ...\"]" >&2; exit 2 ;;
+        fast|push|visual|all|perf|profile|ios) TIER="$1" ;;
+        *) echo "usage: sh Tools/mac-gate.sh [fast|push|visual|all|perf|profile|ios] [--worktree] [--only \"Target/Suite ...\"]" >&2; exit 2 ;;
     esac
     shift
 done

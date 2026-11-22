@@ -11,6 +11,9 @@
 #                             to have passed for the exact commit it uploads (see the marker below)
 #   sh Tools/test.sh perf     the speed tests only (#362): GuidePerfUITests and the 1,000-channel tab switch; prints their
 #                             GUIDE-SCROLL / TABSWITCH lines and the host's facts. In no other tier.
+#   sh Tools/test.sh profile  #360 (E1): a Time Profiler trace of the app while GuidePerfUITests.testProfileScenarios presses
+#                             down, up and right, summarised by Tools/profile-summary.py (main-thread ms per press by
+#                             phase and symbol). The trace is deleted after the summary. In no other tier.
 #
 # PIGTV_TEST_DESTINATION overrides the simulator. The simulator is shut down at the end: a booted tvOS simulator left
 # running crash-loops its system daemons and loads the Mac.
@@ -113,6 +116,53 @@ perf_ui() {
     if [ "$RC" != 0 ]; then tail -40 "$RUN/perf-output.log"; exit "$RC"; fi
 }
 
+# #360 (E1): the profile tier. The UI test launches the app and waits before its presses; xctrace attaches to the app's
+# process as soon as it exists and records until the app quits (the test's end).
+profile_ui() {
+    echo "== profile UI test"
+    RUN="build/profile-$(date -u +%Y%m%dT%H%M%SZ)"
+    mkdir -p "$RUN"
+    perf_facts before
+    export TEST_RUNNER_PIGTV_GUIDEPERF_PROFILE=1
+    xcodebuild -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "$DEST" -resultBundlePath "$RUN/profile.xcresult" \
+        test-without-building -only-testing:PigTVUITests/GuidePerfUITests/testProfileScenarios > "$RUN/profile-output.log" 2>&1 &
+    XPID=$!
+    APP=""
+    i=0
+    while [ -z "$APP" ] && [ $i -lt 600 ]; do
+        APP="$(pgrep -n -x PigTV || true)"
+        [ -n "$APP" ] || { sleep 0.2; i=$((i + 1)); }
+    done
+    SIM="$(xcrun simctl list devices booted 2>/dev/null | grep -i "apple tv" | grep -oE '[0-9A-F-]{36}' | head -1)"
+    echo "-- profile app pid: ${APP:-none}, simulator: ${SIM:-none}"
+    if [ -n "$APP" ] && [ -n "$SIM" ]; then
+        # A simulator app is attached through its simulator device (a host-side attach does not find it).
+        xcrun xctrace record --template 'Time Profiler' --instrument os_signpost --device "$SIM" --attach "$APP" --time-limit 240s \
+            --no-prompt --output "$RUN/guide.trace" > "$RUN/xctrace.log" 2>&1 || echo "-- xctrace record exited $?"
+        tail -5 "$RUN/xctrace.log"
+    fi
+    RC=0
+    wait $XPID || RC=$?
+    grep -E "GUIDE-SCROLL|PROFILE-|error:|Test Case .*(passed|failed|skipped)" "$RUN/profile-output.log" || true
+    if [ -d "$RUN/guide.trace" ]; then
+        xcrun xctrace export --input "$RUN/guide.trace" --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' \
+            --output "$RUN/time-profile.xml" > /dev/null 2>&1 || echo "-- time-profile export failed"
+        xcrun xctrace export --input "$RUN/guide.trace" --xpath '/trace-toc/run[@number="1"]/data/table[@schema="os-signpost"]' \
+            --output "$RUN/signposts.xml" > /dev/null 2>&1 || echo "-- signpost export failed"
+        PRESSES="$(sed -n 's/.*PROFILE-PRESSES \([0-9,]*\).*/\1/p' "$RUN/profile-output.log" | tail -1)"
+        /usr/bin/python3 Tools/profile-summary.py "$RUN/time-profile.xml" "$RUN/signposts.xml" "$PRESSES" "$RUN/samples.json.gz" \
+            || echo "-- summary failed"
+        # The main thread's samples (time, weight, stack), compressed, for summarising again off the Mac.
+        if [ -s "$RUN/samples.json.gz" ]; then echo "PROFILE-DATA-BEGIN"; base64 < "$RUN/samples.json.gz"; echo "PROFILE-DATA-END"; fi
+        du -sh "$RUN/guide.trace" "$RUN"/*.xml 2>/dev/null | sed 's/^/-- size /'
+        rm -rf "$RUN/guide.trace" "$RUN/time-profile.xml" "$RUN/signposts.xml" "$RUN/samples.json.gz"
+    else
+        echo "-- no trace recorded"; cat "$RUN/xctrace.log"
+    fi
+    perf_facts after
+    if [ "$RC" != 0 ]; then tail -40 "$RUN/profile-output.log"; exit "$RC"; fi
+}
+
 if [ "$TIER" = ios ]; then ios_unit; echo "== ios: passed"; exit 0; fi
 echo "== build for testing"
 xc build-for-testing
@@ -122,7 +172,8 @@ case "$TIER" in
     visual) visual_ui ;;
     all)    fast; regression_ui; visual_ui ;;
     perf)   perf_ui ;;
-    *)      echo "usage: sh Tools/test.sh fast|push|visual|all|perf|ios" >&2; exit 2 ;;
+    profile) profile_ui ;;
+    *)      echo "usage: sh Tools/test.sh fast|push|visual|all|perf|profile|ios" >&2; exit 2 ;;
 esac
 # The full UI run counts for TestFlight only on a clean, committed tree (tracked files; build/ is ignored).
 if [ "$TIER" = all ] && command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1 \

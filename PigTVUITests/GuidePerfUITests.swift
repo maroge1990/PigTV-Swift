@@ -85,6 +85,31 @@ final class GuidePerfUITests: XCTestCase {
             + "\(json["rowsStart"] ?? "?") → \(json["rowsEnd"] ?? "?")); not a failure of the app.")
     }
 
+    /// #360 (E1): the profile tier only (PIGTV_GUIDEPERF_PROFILE=1, `sh Tools/test.sh profile`, which attaches Time Profiler
+    /// to the app): after a pause for the profiler, 40 presses down, 40 up and 10 right, 4 s apart, so the trace's
+    /// GuideFocusMove signposts fall in three clusters. Prints `PROFILE-PRESSES down,up,right` (presses that landed).
+    @MainActor
+    func testProfileScenarios() throws {
+        guard ProcessInfo.processInfo.environment["PIGTV_GUIDEPERF_PROFILE"] == "1" else {
+            throw XCTSkip("the profile tier only (sh Tools/test.sh profile)")
+        }
+        launch()
+        _ = try waitForFirstScreen()
+        try enterGrid()
+        GuideProbeLanding.spin(8) // the profiler attaches meanwhile
+        var landed: [Int] = []
+        for (button, count) in [(XCUIRemote.Button.down, 40), (.up, 40), (.right, 10)] {
+            reset()
+            GuideProbeLanding.spin(4)
+            let json = try presses(button, count)
+            landed.append(Int(number(json, "landedPresses") ?? 0))
+            record("profile-\(button == .down ? "down" : button == .up ? "up" : "right")", json, presses: count,
+                   vertical: button != .right)
+        }
+        print("PROFILE-PRESSES " + landed.map(String.init).joined(separator: ","))
+        GuideProbeLanding.spin(2)
+    }
+
     /// (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` for the GuideFocusMove signpost (three runs of 40
     /// presses down). The signpost interval can only end at the frame callback, up to a frame before that frame is due on
     /// screen, so Xcode's figure is callback timing; each run also prints the probe's own figures for the same presses
