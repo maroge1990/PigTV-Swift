@@ -123,9 +123,12 @@ extension BrowseModel {
     }
 
     private func topShelfChannels(now: Date) -> TopShelfSnapshot? {
+        // Review of 383-385 (medium): the small first page (6 hours of 50 channels, BrowseModel.guideIsPreview) is never
+        // exported: with it on screen the snapshot is built as with no guide at all.
+        let rows = guideIsPreview ? [] : guide
         if !favourites.isEmpty {
             let entries = favourites.prefix(TopShelfSnapshot.limit).map { favourite -> TopShelfSnapshot.Entry in
-                if let row = guideChannel(id: favourite.id) { return topShelfEntry(row, now: now) }
+                if !guideIsPreview, let row = guideChannel(id: favourite.id) { return topShelfEntry(row, now: now) }
                 // Guide not loaded (or the channel is outside it): the
                 // favourites list's own now/next.
                 let slots = [favourite.now, favourite.next].compactMap { $0 }
@@ -137,8 +140,8 @@ extension BrowseModel {
             }
             return TopShelfSnapshot(kind: "favourites", channels: Array(entries), savedAt: now)
         }
-        guard !guide.isEmpty else { return nil }
-        let entries = guide.prefix(TopShelfSnapshot.limit).map { topShelfEntry($0, now: now) }
+        guard !rows.isEmpty else { return nil }
+        let entries = rows.prefix(TopShelfSnapshot.limit).map { topShelfEntry($0, now: now) }
         return TopShelfSnapshot(kind: "channels", channels: Array(entries), savedAt: now)
     }
 

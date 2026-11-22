@@ -58,7 +58,7 @@ final class BrowseModel: ObservableObject {
     // currently held in `guide`/on disk. Captured once before a full load
     // starts and committed only when that load completes, so a change to the
     // guide mid-load is never masked by a stale "still fresh" version.
-    private var guideCacheVersion: String?
+    private(set) var guideCacheVersion: String?
     private var loadingVersion: String?
     private var guidePrefetch: Task<Void, Never>?
     // Set during a refresh: the visible guide is kept until the first new page
@@ -66,11 +66,15 @@ final class BrowseModel: ObservableObject {
     private var replacePending = false
     /// #360/#361 (C1): the rows on screen are the small first page (`fetchGuidePreview`), not a guide: the full guide's
     /// first page replaces them, and they are never saved, never commit a version and never set `guideLoadedUntil`.
-    private var guideIsPreview = false
+    private(set) var guideIsPreview = false
     /// #360 (G6, C2): a refresh that keeps the rows on screen (`loadGuide(swap: true)`) collects its pages here and swaps
     /// the whole new guide in once its last page has arrived (one change of `guide`); nil otherwise.
     private var stagedGuide: [GuideChannel]?
     private var stagedLoadedAt: Date?
+    /// Review of 383-385 (high): the day a staged load asks for. `window`, `guideLoadedUntil`, the version, the total and
+    /// the rows on screen stay the old guide's until its last page, and change together then; a staged load that fails
+    /// leaves every one of them as it was, so the next freshness pass sees the old guide's real age and coverage.
+    private var stagedWindow: Date?
     private var guideExtending = false
     // Private to this server and account (R14); retired on sign-out.
     private let guideCache: GuideCacheStore
@@ -121,34 +125,50 @@ final class BrowseModel: ObservableObject {
     // `preview` (#360/#361, C1; the launch load): with nothing on screen, a small page first (`fetchGuidePreview`).
     // `swap` (#360 G6, C2; the stale-guide refresh and Try again on a guide on screen): the rows on screen stay until the
     // whole new guide has arrived, then it replaces them at once (never page 1's 500 rows first, then the rest).
-    func loadGuide(reset: Bool = true, keepVisible: Bool = false, preview: Bool = false, swap: Bool = false) async {
+    // `day` (a staged refresh): the window the new guide is for; it becomes `window` only when that guide is swapped in.
+    func loadGuide(reset: Bool = true, keepVisible: Bool = false, preview: Bool = false, swap: Bool = false,
+                   day: Date? = nil) async {
         let sp = PigTVSignpost.begin("GuideLoad"); defer { PigTVSignpost.end("GuideLoad", sp) }
+        let generation: UUID
         if reset {
             guidePrefetch?.cancel()
             guidePrefetch = nil
             guidePaging = false
             guideGeneration = UUID()
+            // Review of 383-385 (medium): this load is claimed before its first await; an overlapping reset (a second
+            // Try again) takes the generation from it, and this one stops after its version answer.
+            generation = guideGeneration
             guideCursor = nil
             loadedGuideIds = []
             replacePending = keepVisible && !guide.isEmpty
             stagedGuide = swap && replacePending ? [] : nil
             stagedLoadedAt = nil
             if !replacePending { guide = []; guideIsPreview = false }
-            if stagedGuide != nil { replacePending = false }
-            guideTotal = 0
+            if stagedGuide != nil {
+                replacePending = false
+                stagedWindow = day ?? window
+            } else {
+                stagedWindow = nil
+                if let day { window = day }
+                guideTotal = 0
+                // Build 33: a fresh load/reload always starts a new one-day
+                // window; any in-flight forward extension is stale (the
+                // generation bump above makes its result a no-op if it lands).
+                guideLoadedUntil = window.addingTimeInterval(GuideNavigation.loadedDuration)
+                guideEnded = false
+            }
             guideHasMore = false
-            // Build 33: a fresh load/reload always starts a new one-day
-            // window; any in-flight forward extension is stale (the
-            // generation bump above makes its result a no-op if it lands).
-            guideLoadedUntil = window.addingTimeInterval(GuideNavigation.loadedDuration)
-            guideEnded = false
+            guideBusy = true
             // A1.1: captured once before the load starts and committed only on
             // completion, so a version change mid-load is never masked.
-            loadingVersion = try? await client.guideVersion()
+            let version = try? await client.guideVersion()
+            guard generation == guideGeneration else { return }
+            loadingVersion = version
         } else if guideBusy || guidePaging || !guideHasMore {
             return // a page in flight, or the paging already running, has this cursor
+        } else {
+            generation = guideGeneration
         }
-        let generation = guideGeneration
         guideBusy = true
         // #280 (review of 205, H2): the last failure stays until an attempt succeeds (fetchGuidePage clears it), so a
         // retry never swaps the error, or the stale notice, for the loading placeholders while it waits for its answer.
@@ -201,7 +221,7 @@ final class BrowseModel: ObservableObject {
         let sp = PigTVSignpost.begin("GuidePage"); defer { PigTVSignpost.end("GuidePage", sp) }
         // A1.1: cursor paging, 500 at a time.
         let isFirstPage = guideCursor == nil
-        let start = window.timeIntervalSince1970 * 1000
+        let start = (stagedWindow ?? window).timeIntervalSince1970 * 1000
         var query = [
             URLQueryItem(name: "start", value: String(Int64(start))),
             URLQueryItem(name: "end", value: String(Int64(start + GuideNavigation.loadedDuration * 1000)))
@@ -235,8 +255,7 @@ final class BrowseModel: ObservableObject {
                 guideStore.guide.append(contentsOf: additions)
             }
             if guideError != nil { guideError = nil }
-            guideTotal = page.total
-            if !staged { fromCache = false }
+            if !staged { guideTotal = page.total; fromCache = false }
             guideCursor = page.nextCursor
             guideHasMore = page.nextCursor != nil
             if isFirstPage && !staged { guideLoadedAt = Date() }
@@ -244,6 +263,12 @@ final class BrowseModel: ObservableObject {
                 // C2: the swap. One change of `guide`; told as a programme change too, because the new guide usually has
                 // the same channels (count, first and last id) and the Guide would otherwise keep its old rows.
                 stagedGuide = nil
+                // Review of 383-385 (high): the new day, its loaded edge, its total and its rows, together.
+                if let day = stagedWindow { window = day }
+                stagedWindow = nil
+                guideLoadedUntil = window.addingTimeInterval(GuideNavigation.loadedDuration)
+                guideEnded = false
+                guideTotal = page.total
                 guide = complete
                 guideIsPreview = false
                 fromCache = false
@@ -319,7 +344,8 @@ final class BrowseModel: ObservableObject {
         if fixtureHoldsGuide { return }
         #endif
         if guide.isEmpty || !guideHasMore {
-            await loadGuide(reset: true, keepVisible: true, swap: true)
+            // A refresh that failed before its first page asks again for the day it was for (review of 383-385).
+            await loadGuide(reset: true, keepVisible: true, swap: true, day: stagedWindow)
         } else {
             await loadGuide(reset: false)
         }
@@ -459,12 +485,19 @@ final class BrowseModel: ObservableObject {
     }
 
     // Refresh in place when the loaded day is getting stale.
+    // Review of 383-385 (medium): a load still paging (a staged refresh on a slow connection) is joined, never restarted;
+    // a staged refresh whose paging stopped on a failure resumes from its cursor (the same day and limit: the server's
+    // cursor is an offset into that query), and is committed only when its last page arrives.
     func refreshGuideIfStale(maxAge: TimeInterval = 4 * 3600) async {
         let loaded = guideLoadedAt ?? .distantPast
-        guard fromCache || Date().timeIntervalSince(loaded) > maxAge, !guideBusy else { return }
+        guard fromCache || Date().timeIntervalSince(loaded) > maxAge, !guideBusy, !guidePaging else { return }
+        if stagedGuide != nil, guideHasMore {
+            await loadGuide(reset: false)
+            return
+        }
         if await tryMarkFreshByVersion() { return }
-        window = GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn)
-        await loadGuide(reset: true, keepVisible: true, swap: true)
+        await loadGuide(reset: true, keepVisible: true, swap: true,
+                        day: GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn))
     }
 
     func guideChannel(id: String) -> GuideChannel? {

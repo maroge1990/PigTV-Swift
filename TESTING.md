@@ -34,6 +34,10 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
   finishes the swap.
 - `GuideExtendOffMainTests` (maroge1990/PigTV#360, G7): a forward extension's merge and trim run off the main actor and equal the old
   main-actor merge on the 1,250-channel fixture (duplicate starts, the 24 h trim); a sign-out during the merge wins.
+- `GuideLoadReviewTests` (Codex review of Apple 383-385): a staged refresh changes the day, its loaded edge, the version and the
+  rows together (a failed one leaves them all, and the next pass loads); a freshness pass joins a staged refresh still paging and
+  resumes one stopped on a failed page from its cursor; of two overlapping resets only the newest proceeds, with its own version;
+  the Top Shelf snapshot is never built from the small first page.
 - `GuideQuietTests` (maroge1990/PigTV#360): the Guide's quiet paths on the real views in a window: a focus move does not
   re-evaluate `GuideView.body` (only the focus strip observes the focus); the 30 s clock tick reconfigures only the grid
   cells whose drawing changed (on air: the progress bar; a roll-over), not every visible cell; a long-press menu left open
