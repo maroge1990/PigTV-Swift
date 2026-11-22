@@ -102,6 +102,7 @@ struct LibraryView: View {
         #if DEBUG
         .overlay(alignment: .bottomTrailing) {
             if TabSwitchProbe.enabled { TabSwitchProbeLabel() }
+            if GuidePerfProbe.testHooks { GuidePerfProbeLabel().frame(width: 8, height: 8) } // #362
         }
         // Deciding the opening tab (nil → a tab) is not a switch.
         .onChange(of: tab) { old, _ in if old != nil && TabSwitchProbe.enabled { TabSwitchProbe.shared.tabChanged() } }

@@ -46,7 +46,8 @@ appearance: `BrandDepthUITests`, `TabFlashUITests`, `BrandSplashUITests`, `TopSh
 `PigTVUITestsLaunchTests`). `BrandDepthUITests`' two player checks need `Tools/generate-brand-review-media.sh` (ffmpeg); the
 visual tier runs it when ffmpeg is installed, and they skip otherwise.
 CI runs none of the UI tiers (D-49). `Tools/test.sh` tiers: `fast` (build, the contract script once, the unit tests), `push` (fast and
-the regression UI tests), `visual` (the screenshot suites), `all` (fast, regression and visual). A pass of `all` on a clean tree
+the regression UI tests), `visual` (the screenshot suites), `all` (fast, regression and visual), `perf` (only the speed suites,
+below; in no other tier). A pass of `all` on a clean tree
 writes the git-ignored marker `.ui-full-passed` (the commit), which `Tools/testflight.sh` requires to equal HEAD, so an upload
 runs from the Mac's real clone, not an rsync copy. CI checks out the server's `test/golden`, so `GoldenChecks` runs there.
 
@@ -57,7 +58,7 @@ machine and runs `test-without-building` on another that has only the build prod
 (`BrandRulesTests`, `HelperLinesGoneTests`, `SelectionFlatTests`, `SportHideScoresWriterTests`, `LaunchImageTests`,
 `TestPlanTests`, two `PolishTests` colour-catalogue reads, two `SportSpoilersTests` source scans), which run on the Mac and in
 GitHub CI, and four timing probes that failed on its runners (`TabSwitchUITests`' thousand-channel switch, `OutsidePlayUITests`,
-`TouchLayoutUITests`' Watch on menu, `PlayerSlowStartUITests`' fixed 4.5 s wait). `TestPlanTests` pins both lists. What tests read ships in their bundles: the JSON fixtures
+`TouchLayoutUITests`' Watch on menu, `PlayerSlowStartUITests`' fixed 4.5 s wait) and the Guide's speed suite (`GuidePerfUITests`). `TestPlanTests` pins both lists. What tests read ships in their bundles: the JSON fixtures
 are also members of `PigTVUITests` (read through `UIFixture`), the Debug app carries `sport-front-0381.json` for the offline
 Home (Release excludes it), and the PigTVTests "Golden answers" build phase copies `../PigTV/test/golden` (or
 `PIGTV_GOLDEN_DIR`) into the bundle as `golden/` (`ci_scripts/ci_post_clone.sh` fetches it on Xcode Cloud's build machine).
@@ -87,6 +88,18 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
 - `TouchLayoutUITests` (build 46, iOS only, skips on tvOS): the iPhone Guide's Search is icon-only; the touch player has no
   TV Guide button (needs the review movie from `Tools/generate-brand-review-media.sh`).
 - `TabSwitchUITests` (audit R03): walks all five tabs twice on 1,000 channels and the 215-event Sport feed; the tab probe must report for every switch, no switch may stall over `PIGTV_TABSWITCH_BUDGET_MS` (default 500 ms) on both laps (a one-lap spike of a loaded simulator is reported, not failed; 26 Oct), and after each switch Down must move focus into the tab's content.
+- **`GuidePerfUITests` (#362, `perf` tier only: `sh Tools/mac-gate.sh perf`)**: the Guide's responsiveness on the production-shaped
+  fixture (1,250 channels, a day of programmes with 150–300-character descriptions, a logo each through the real artwork path, 40
+  categories). (a) first screen, (b) 40 single presses down at about 3 a second, each waiting for its move to land, (c) 40 up,
+  (d) 10 right, (e) a held scroll of about 100 rows, (f) 35 s idle (the 30 s clock tick), (g) 45 presses down from the moment
+  the first page's rows show while pages 2–3 arrive (7 s apart; fewer than 2 applies in the window fails as a test-setup fault); (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` (GuideFocusMove). Each scenario prints and
+  attaches one line `GUIDE-SCROLL {"scenario":…, <probe JSON>}`: `focusMs` (each move: the grid's focus update → the first frame
+  after GuideView handled it) with median/p95/max, `pressMs` (an arrow press under 1 s before the move → that frame), `maxGapMs`, `gapsOver50`/`gapsOver100`
+  and `frames` (a display-link monitor), `bodyEvals`, `cellConfigs`, `applies`, `applyMs` (and per press), `rowsStart`/`rowsEnd`,
+  `firstScreenMs` (the Guide's first appearance since launch → the first frame with rows; none if it leaves the screen or has no rows within 30 s). Record only unless a budget is set: `PIGTV_GUIDEPERF_FOCUS_MS`,
+  `_GAP_MS`, `_FIRST_MS`, `_BODY_PER_PRESS`, `_CELLS_PER_VERTICAL_PRESS`, `_CELLS_AT_TICK`, `_APPLY_MS` (`Tools/test.sh` and
+  `Tools/mac-gate.sh` pass them to the test runner). The perf tier also prints the Mac's model, CPUs, memory, load and the booted simulator: the figures
+  are the MacBook simulator's, never the Apple TV's.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
 - `BrandRulesTests` (unit): no typed-in colours, system red/yellow, greys, sub-82 % playback panels or literal radii in `PigTV/`
   (allowlist: files of a build under review, each with its reason), and the kit's lockups in the catalog (#190).
@@ -130,6 +143,10 @@ data, not the real feed.
 | `PIGTV_UI_TEST_CLASH` | `1`: the Recordings fixture adds two schedules that clash; one loses (`beatenBy`) and offers "Record this one instead" (#12) |
 | `PIGTV_UI_TEST_FRONT_F1` | `1` (with `front`): the Motorsport page embeds the F1 fixture's weekend |
 | `PIGTV_UI_TEST_TABPROBE` | `1`: measure the longest stall after each tab switch (`debug.tabSwitch`) |
+| `PIGTV_UI_TEST_GUIDE_SHAPE` | `production` (with `guide`): the speed tests' guide, 1,250 channels unless `PIGTV_UI_TEST_CHANNELS` says otherwise, served by an in-app fake server (`ProductionGuideServer`) through the app's own client |
+| `PIGTV_UI_TEST_GUIDE_PAGED` | `1` (with `production`): the guide arrives through the app's own paging, 3 pages of 500 |
+| `PIGTV_UI_TEST_GUIDE_PAGE_DELAY_MS` | The fake server's delay before each guide page after the first (default 1000; the paged test uses 7000) |
+| `PIGTV_UI_TEST_GUIDEPROBE` | `1`: the Guide's probe (`debug.guidePerf`, JSON; reset by the Darwin notification `au.markrogers.PigTV.guideProbe.reset`) |
 | `TEST_RUNNER_PIGTV_SCREENSHOT_DIR` | Passed to `xcodebuild test`: `TopShelfCardsUITests` saves its screenshots there |
 
 `Tools/analyse-tab-flash.py` measures a `simctl io recordVideo` capture frame by frame (how the build 32 flash was found).
@@ -145,7 +162,8 @@ What to note for a device run, and on-device diagnostics, are in the server's
 The simulator cannot say how the tabs and playback feel; the device can. Audit R03 added signposts (`PigTV/PigTVSignpost.swift`,
 subsystem = the bundle id, category **Responsiveness**) so Instruments shows each stage.
 - **Measurement (R03).** `PigTVSignpost` (subsystem = bundle id, category "Responsiveness"): `TabSwitch`, `TabFirstFrame`,
-  `GuideLoad`/`GuidePage`/`GuideExtend`, `SportLoad`, `HomeRebuild`, `RecordingsLoad`, `Live*` and
+  `GuideLoad`/`GuidePage`/`GuideExtend`, #362's `GuideApplyRows`, `GuideCellConfigure`, `GuideFocusMove`, `GuideBodyEval`
+  (event), `GuideFirstScreen` (`PigTV/GuidePerf.swift`), `SportLoad`, `HomeRebuild`, `RecordingsLoad`, `Live*` and
   `Recording*` playback stages, `LogoDecoded`. Device profiling: `TESTING.md` → "Measuring on the Apple TV".
 
 1. Build **Release** to the Apple TV from Xcode (Product → Profile, or Run with the Release configuration).
@@ -163,6 +181,11 @@ subsystem = the bundle id, category **Responsiveness**) so Instruments shows eac
    - `LogoDecoded` (artwork, the file name only), and **Hangs** over 100 ms (the main-thread call tree in Time Profiler for the same
      time range names the culprit).
    Signposts carry only fixed names, tab names and a logo file name, never tokens, URLs or provider names.
+
+**Guide speed readout (#362, no Mac needed).** Settings › About › Guide speed readout (off by default; leave it off otherwise).
+Turn it on, use the TV Guide, then come back to About: moves (focus moves in the Guide), typical/slowest (ms from the remote
+press to the first frame drawn after the move), slow frames (gaps over 100 ms while the Guide was on screen), longest stall, first
+screen (opening the Guide after launch → rows drawn; only when the readout was already on at launch) and the Apple build. Reset starts a new count; note the line with what you felt.
 
 Stricter tab test on the simulator (the budget defaults to 500 ms because simulators on a busy Mac are noisy; the device target is 250 ms):
 

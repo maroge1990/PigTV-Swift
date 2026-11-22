@@ -162,6 +162,7 @@ struct GuideView: View {
     }
 
     var body: some View {
+        let _ = GuidePerf.bodyEvaluated() // #362: counted, never changed
         NavigationStack(path: $path) {
             GeometryReader { geometry in
                 #if os(tvOS)
@@ -245,6 +246,9 @@ struct GuideView: View {
             // shows its blurred system backdrop in dark mode.
             .pigPageBackdrop()
             .whileVisible {
+                // #362: the speed probe records only while the Guide is on screen (measurement only).
+                GuidePerf.guideVisible(true)
+                defer { GuidePerf.guideVisible(false) }
                 // Back on screen after a while: the clock is stale at once.
                 clock = Date()
                 if model.sportEnabled { await model.sport.loadIfStale() }
@@ -273,6 +277,7 @@ struct GuideView: View {
                 if model.sportEnabled { await model.sport.loadIfStale() }
             }
             .onAppear {
+                GuidePerf.screenAppeared(rowsShown: gridReady && !rows.isEmpty) // #362
                 refreshRows()
                 if !gridReady { NextFrame.run { gridReady = true } }
             }

@@ -196,6 +196,7 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
 
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info else { contentConfiguration = nil; return }
+        let measured = GuidePerf.cellBegan(); defer { GuidePerf.cellEnded(measured) } // #362
         #if os(tvOS)
         // Brand 1.8: only the focused cell stops clipping, so its ring (outside the cell) shows; its content still clips
         // itself (GuideGridProgrammeView's clipShape), so a title sliding under the channel column never draws over it.
@@ -240,6 +241,7 @@ final class GuideGridTileCell: UICollectionViewCell {
 
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info, let channel else { contentConfiguration = nil; return }
+        let measured = GuidePerf.cellBegan(); defer { GuidePerf.cellEnded(measured) } // #362
         let client = client
         contentConfiguration = UIHostingConfiguration {
             GuideGridTileView(channel: channel, logo: info.logo, client: client,

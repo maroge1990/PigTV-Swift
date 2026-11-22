@@ -383,6 +383,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     }
 
     private func applyNow(rows: [GuideChannel], revision: GuideGridRevision) {
+        // #362: measured (GuidePerf), never changed by the measurement.
+        let measured = GuidePerf.applyBegan()
+        var kind = "reload"
+        defer { GuidePerf.applyEnded(measured, rows: rows.count, kind: kind) }
         let old = store.rows
         // Background paging appends channels; keep the existing cells (and
         // focus) then. Anything else reloads and restores focus by identity.
@@ -395,6 +399,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         // (and focus) stay, but nothing waits for the next clock tick to show the correction.
         let corrected = IndexSet(old.indices.filter { $0 < rows.count && !Self.sameContent(old[$0], rows[$0]) })
         if appendOnly {
+            kind = rows.count > old.count ? "append" : "same"
             if rows.count > old.count {
                 collectionView.performBatchUpdates {
                     store.setRows(rows, revision: revision)
@@ -416,6 +421,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             a.id == b.id && a.programmes.first?.startTime == b.programmes.first?.startTime
         }
         if extendedOnly {
+            kind = "extend"
             let changedSections = IndexSet(rows.indices.filter { rows[$0].programmes.count != old[$0].programmes.count })
             store.setRows(rows, revision: revision)
             refresh(corrected.subtracting(changedSections)) // A4: same count, corrected content
@@ -672,6 +678,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
                         with coordinator: UIFocusAnimationCoordinator) {
         let previous = context.previouslyFocusedIndexPath
         focused = context.nextFocusedIndexPath
+        // #362: a move within or into the grid begins; focus leaving it (filter bar, tab bar) drops the open move.
+        if context.nextFocusedIndexPath == nil { GuidePerf.focusLeftGrid() } else { GuidePerf.focusMoved() }
         // The planned row is spent once focus lands; from here the scroll keeps `focused` in view. 18 Oct (test team:
         // a fast scroll pulled back to where it started): a fast swipe drops focus, scrolls on its own and lands focus
         // on a row on screen without asking shouldUpdateFocus, so a row planned before the swipe clamped the landing
@@ -703,7 +711,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         }
         plannedViewport = nil
         let id = channel.id
-        DispatchQueue.main.async { [weak self] in self?.actions?.focusChanged(id, start) }
+        DispatchQueue.main.async { [weak self] in
+            self?.actions?.focusChanged(id, start)
+            GuidePerf.focusHandled() // #362: the move ends on the frame after GuideView has handled it
+        }
     }
 
     // MARK: Selection and menus
@@ -744,6 +755,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
 
     private func configure(_ cell: UICollectionViewCell, at indexPath: IndexPath) {
         guard store.rows.indices.contains(indexPath.section) else { return }
+        GuidePerf.rowsOnScreen() // #362: ends a pending first-screen measurement on the next frame
         let channel = store.rows[indexPath.section]
         let logo = model?.logo(for: channel)
         if let tile = cell as? GuideGridTileCell {

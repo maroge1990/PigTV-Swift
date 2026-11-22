@@ -4,7 +4,8 @@ import XCTest
 // nothing, as the scheme's test action did. XcodeCloud.xctestplan is the scheme's default, because Xcode Cloud's workflow
 // Test actions offer only "Use scheme settings" (Xcode 27); it leaves out only the static source
 // scans, which read the source tree that Xcode Cloud's test runner does not have (they run on the Mac and in GitHub CI),
-// and four timing probes that failed on its runners; every behavioural test stays in. A source scan itself, so the
+// four timing probes that failed on its runners, and the Guide's speed suite (#362, the MacBook's perf tier only); every
+// behavioural test stays in. A source scan itself, so the
 // cloud plan leaves it out too. (No test plans: fails on Apple 335.)
 final class TestPlanTests: XCTestCase {
     private static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -44,7 +45,7 @@ final class TestPlanTests: XCTestCase {
                                 "PolishTests/testIncreasedContrastGivesTheStrongerRoles()",
                                 "SportSpoilersTests/testEveryDecisionCallsTheOneFunction()",
                                 "SportSpoilersTests/testNoScreenCombinesTheInputsItself()"]
-        let timingProbes: Set = ["OutsidePlayUITests/testAPlayLinkClosesAnOpenGuidePageAndThePlayerAppears()",
+        let timingProbes: Set = ["GuidePerfUITests", "OutsidePlayUITests/testAPlayLinkClosesAnOpenGuidePageAndThePlayerAppears()",
                                  "PlayerSlowStartUITests/testTheTuningCardKeepsItsIdentityWhenThePlayerIsInstalled()",
                                  "TabSwitchUITests/testSwitchingTabsOnAThousandChannelsIsQuick()",
                                  "TouchLayoutUITests/testPhoneGuideMenuOffersWatchOnForALiveEventOnSeveralChannels()"]

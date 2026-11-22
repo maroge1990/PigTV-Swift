@@ -1,11 +1,12 @@
 #!/bin/sh
 # Push gate for the Apple client (D-77), run on the MacBook from here: Tools/test.sh <tier> there, then clean up.
 #
-#   sh Tools/mac-gate.sh [tier]              tier = fast | push (default) | visual | all; tests the commit (HEAD, via git archive)
+#   sh Tools/mac-gate.sh [tier]              tier = fast | push (default) | visual | all | perf; tests the commit (HEAD, via git archive)
 #   sh Tools/mac-gate.sh [tier] --worktree   test the working tree (tracked + untracked) for a pre-commit run
 #   sh Tools/mac-gate.sh push --only "PigTVTests/CacheTests"   rerun just those tests (xcodebuild -only-testing ids)
 #
 # PIGTV_MAC_HOST (default mac) and PIGTV_MAC_SSH_OPTS (e.g. "-o HostName=<ip>") say how to reach the Mac.
+# PIGTV_GUIDEPERF_* (numeric Guide speed budgets, #362) are passed on to the tests there (unset: record only).
 # Output goes to .gate-logs/; one record line per run is appended to .gate-log. Exit 0 only on PASS, 3 if the Mac is unreachable.
 # The build folders and DerivedData the run created are deleted at the end, and the simulators are shut down.
 set -u
@@ -15,8 +16,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --worktree) MODE=worktree ;;
         --only) ONLY="${2:-}"; shift ;;
-        fast|push|visual|all) TIER="$1" ;;
-        *) echo "usage: sh Tools/mac-gate.sh [fast|push|visual|all] [--worktree] [--only \"Target/Suite ...\"]" >&2; exit 2 ;;
+        fast|push|visual|all|perf) TIER="$1" ;;
+        *) echo "usage: sh Tools/mac-gate.sh [fast|push|visual|all|perf] [--worktree] [--only \"Target/Suite ...\"]" >&2; exit 2 ;;
     esac
     shift
 done
@@ -60,8 +61,11 @@ START=$(date +%s)
         git archive HEAD | mac "tar -x -C $G/src"
     fi
     echo "== run on the Mac: ${ONLY:+only $ONLY, else }Tools/test.sh ${TIER%%+*}"
-    mac "REPO_G=$G ONLY='$ONLY' T='${TIER%%+*}' sh -s" <<'REMOTE'
+    # Numbers only, so they need no quoting on the way.
+    BUDGETS="$(env | grep -E '^PIGTV_GUIDEPERF_[A-Z_]+=[0-9.]+$' | tr '\n' ' ')"
+    mac "$BUDGETS REPO_G=$G ONLY='$ONLY' T='${TIER%%+*}' sh -s" <<'REMOTE'
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+for v in $(env | sed -n 's/^\(PIGTV_GUIDEPERF_[A-Z_]*\)=[0-9.]*$/\1/p'); do eval "export TEST_RUNNER_$v=\"\$$v\""; done
 export PATH=/opt/homebrew/bin:$PATH
 cd "$REPO_G/src" || exit 1
 RC=0

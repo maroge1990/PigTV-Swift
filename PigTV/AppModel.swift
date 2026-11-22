@@ -882,6 +882,8 @@ final class AppModel: ObservableObject {
 
     // Offline guide fixture for UI iteration (PIGTV_UI_TEST_SCREEN=guide).
     func injectGuideFixture() {
+        // #362: PIGTV_UI_TEST_GUIDE_SHAPE=production is the speed tests' guide; without it nothing below changes.
+        if ProductionGuideFixture.requested { injectProductionGuideFixture(); return }
         guard let address = try? ServerAddress("http://127.0.0.1:3000") else { return }
         // #257: PIGTV_UI_TEST_WATCH_ON=1: the server has sport events, and one live event is on the first three channels.
         let watchOn = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_WATCH_ON"] == "1"
@@ -910,6 +912,33 @@ final class AppModel: ObservableObject {
         model.setGuideLoadedUntilForFixture(Date().addingTimeInterval(GuideFixtures.forwardHorizon))
         browse = model
         categories = GuideFixtures.categories()
+        user = GuideFixtures.user()
+    }
+
+    /// #362 (GuideFixturesProduction.swift): 1,250 channels (PIGTV_UI_TEST_CHANNELS), a day of programmes, a logo each
+    /// and 40 categories, served by `ProductionGuideServer` through the app's own client. Static: the rows in place as a
+    /// finished load leaves them. PIGTV_UI_TEST_GUIDE_PAGED=1: nothing in place; the Guide's own first load pages it in.
+    /// A fresh scratch folder per launch for the guide cache and the logos' disk store, so every launch starts cold.
+    private func injectProductionGuideFixture() {
+        guard let address = try? ServerAddress(ProductionGuideFixture.address) else { return }
+        let count = ProductionGuideFixture.channelCount
+        ProductionGuideServer.channelCount = count
+        ProductionGuideServer.pageDelay = ProductionGuideFixture.pageDelay
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("pigtv-guide-perf-\(UUID().uuidString)", isDirectory: true)
+        let client = APIClient(address: address, token: "fixture", session: ProductionGuideFixture.session(),
+                               artworkStore: ArtworkDiskStore(directory: scratch.appendingPathComponent("artwork", isDirectory: true)))
+        let model = BrowseModel(client: client, guideCacheDirectory: scratch.appendingPathComponent("guide", isDirectory: true))
+        model.recordingStore.loaded = true
+        model.recordingStore.rulesLoaded = true
+        if !ProductionGuideFixture.paged {
+            let window = ProductionGuideFixture.window()
+            model.window = window
+            model.guide = ProductionGuideFixture.channels(count: count, window: window)
+            model.setGuideLoadedUntilForFixture(window.addingTimeInterval(GuideNavigation.loadedDuration))
+        }
+        UserDefaults.standard.set("all", forKey: "pigtv.guide.filter")
+        browse = model
+        categories = ProductionGuideFixture.categories(count: count)
         user = GuideFixtures.user()
     }
     #endif

@@ -28,6 +28,7 @@ sh Tools/test.sh fast      # contract checks, then the unit tests: while develop
 sh Tools/test.sh push      # fast, then the regression UI tests: on the MacBook before every push (D-77)
 sh Tools/test.sh visual    # screenshot/appearance UI tests: before a release or a brand change
 sh Tools/test.sh all       # fast, regression and visual; a pass on a clean tree writes .ui-full-passed (the commit)
+sh Tools/test.sh perf      # only the speed suites (GuidePerfUITests' GUIDE-SCROLL lines, the 1,000-channel tab switch; TESTING.md)
 
 xcodebuild test -project PigTV.xcodeproj -scheme PigTV \
   -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0' \

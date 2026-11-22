@@ -68,8 +68,8 @@ enum PigTVSignpost {
         }
     }
 
-    /// One display-link callback, then gone.
-    @MainActor private final class FrameTick: NSObject {
+    /// One display-link callback, then gone (also the Guide's measurements, GuidePerf.swift).
+    @MainActor final class FrameTick: NSObject {
         private var link: CADisplayLink?
         private let done: @MainActor () -> Void
         init(_ done: @escaping @MainActor () -> Void) {

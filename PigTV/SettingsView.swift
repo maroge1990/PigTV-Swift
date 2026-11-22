@@ -419,6 +419,7 @@ struct LibrarySettings: View {
                 Section {
                     SettingsRow("App", value: "\(Self.appVersion) (\(Self.appBuild))")
                     SettingsRow("Server", value: model.serverInfo?.identity ?? "Unknown")
+                    GuideSpeedReadoutRows() // #362
                 }
                 if !isTab {
                     Section { Button("Done") { dismiss() } }
@@ -903,9 +904,11 @@ struct SettingsRow: View {
     let value: String
     var wraps = false
     var monospaced = false
+    /// The value's most lines (default: 2 when it wraps, else 1).
+    var lines: Int?
     @Environment(\.colorScheme) private var scheme
-    init(_ title: String, value: String, wraps: Bool = false, monospaced: Bool = false) {
-        self.title = title; self.value = value; self.wraps = wraps; self.monospaced = monospaced
+    init(_ title: String, value: String, wraps: Bool = false, monospaced: Bool = false, lines: Int? = nil) {
+        self.title = title; self.value = value; self.wraps = wraps; self.monospaced = monospaced; self.lines = lines
     }
     var body: some View {
         #if os(tvOS)
@@ -913,7 +916,7 @@ struct SettingsRow: View {
             Text(title).foregroundStyle(.secondary).fixedSize()
             Spacer()
             Text(value).fontWeight(.semibold).fontDesign(monospaced ? .monospaced : nil)
-                .lineLimit(wraps ? 2 : 1).multilineTextAlignment(.trailing)
+                .lineLimit(lines ?? (wraps ? 2 : 1)).multilineTextAlignment(.trailing)
         }
         .font(.system(size: PigType.body))
         .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.l)

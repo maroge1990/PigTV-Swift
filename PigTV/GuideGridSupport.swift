@@ -24,6 +24,15 @@ final class GuideGridCollectionView: UICollectionView {
             super.bounds = bounds
         }
     }
+
+    /// #362: an arrow press's own time, for the probe's press-to-frame figure (only while the probe is on; else one nil
+    /// check). Other presses (select, menu, play/pause) move no focus and are not kept.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if let probe = GuidePerfProbe.shared, let press = presses.first(where: { GuidePerfProbe.movesFocus($0.type) }) {
+            probe.pressBegan(press.timestamp)
+        }
+        super.pressesBegan(presses, with: event)
+    }
 }
 
 /// Animates the grid's horizontal offset frame by frame (so the pinned

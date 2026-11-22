@@ -6,6 +6,8 @@
 #   sh Tools/test.sh visual   the screenshot and appearance UI tests (before a release or a brand change, ~18 min with the review media)
 #   sh Tools/test.sh all      push, then visual: the full UI run. CI does not run it (D-49); Tools/testflight.sh requires it
 #                             to have passed for the exact commit it uploads (see the marker below)
+#   sh Tools/test.sh perf     the speed tests only (#362): GuidePerfUITests and the 1,000-channel tab switch; prints their
+#                             GUIDE-SCROLL / TABSWITCH lines and the host's facts. In no other tier.
 #
 # PIGTV_TEST_DESTINATION overrides the simulator. The simulator is shut down at the end: a booted tvOS simulator left
 # running crash-loops its system daemons and loads the Mac.
@@ -13,11 +15,18 @@ set -eu
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 TIER="${1:-push}"
+# #362: the Guide speed budgets (PIGTV_GUIDEPERF_*, numbers; unset = record only) reach the UI test runner, which takes
+# the variables xcodebuild passes on with the TEST_RUNNER_ prefix.
+for v in $(env | sed -n 's/^\(PIGTV_GUIDEPERF_[A-Z_]*\)=[0-9.]*$/\1/p'); do
+    eval "export TEST_RUNNER_$v=\"\$$v\""
+done
 DEST="${PIGTV_TEST_DESTINATION:-platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0}"
 
 # Screenshot/appearance suites. Every other UI suite is a regression test and runs before a push, so a new suite
 # is in the push tier unless it is added here.
 VISUAL="GuideScreensUITests BrandDepthUITests TabFlashUITests BrandSplashUITests TopShelfCardsUITests PigTVUITests PigTVUITestsLaunchTests"
+# Speed suites (#362): minutes long and a record, not a gate; only the perf tier runs them.
+PERF="GuidePerfUITests"
 
 # The contract checks run once, in the standalone step below; the unit-test wrapper that runs them again is skipped.
 UNIT="-only-testing:PigTVTests -skip-testing:PigTVTests/PigTVTests/testServerContracts"
@@ -41,7 +50,7 @@ fast() {
 regression_ui() {
     echo "== regression UI tests"
     set --
-    for s in $VISUAL; do set -- "$@" "-skip-testing:PigTVUITests/$s"; done
+    for s in $VISUAL $PERF; do set -- "$@" "-skip-testing:PigTVUITests/$s"; done
     xc test-without-building -only-testing:PigTVUITests "$@"
 }
 visual_ui() {
@@ -55,6 +64,27 @@ visual_ui() {
     xc test-without-building "$@"
 }
 
+perf_facts() {
+    echo "-- perf $1: $(sysctl -n hw.model 2>/dev/null) macOS $(sw_vers -productVersion 2>/dev/null)," \
+        "$(sysctl -n hw.ncpu 2>/dev/null) CPUs, $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )) GB," \
+        "load $(sysctl -n vm.loadavg 2>/dev/null), $(memory_pressure 2>/dev/null | grep -i 'free percentage' | sed 's/.*: //') free"
+}
+perf_ui() {
+    # Not -quiet: the tests' printed lines are the point. The full output stays in build/; the lines that matter are shown.
+    echo "== perf UI tests"
+    echo "-- perf simulator: $DEST"
+    perf_facts before
+    mkdir -p build
+    RC=0
+    xcodebuild -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "$DEST" -resultBundlePath build/perf.xcresult \
+        test-without-building -only-testing:PigTVUITests/GuidePerfUITests \
+        -only-testing:PigTVUITests/TabSwitchUITests/testSwitchingTabsOnAThousandChannelsIsQuick > build/perf-output.log 2>&1 || RC=$?
+    xcrun simctl list devices booted 2>/dev/null | grep -i "apple tv" | sed 's/^ */-- perf booted: /'
+    perf_facts after
+    grep -E "GUIDE-SCROLL|TABSWITCH|measured \[|error:|Test Case .*(passed|failed)" build/perf-output.log || true
+    if [ "$RC" != 0 ]; then tail -40 build/perf-output.log; exit "$RC"; fi
+}
+
 echo "== build for testing"
 xc build-for-testing
 case "$TIER" in
@@ -62,7 +92,8 @@ case "$TIER" in
     push)   fast; regression_ui ;;
     visual) visual_ui ;;
     all)    fast; regression_ui; visual_ui ;;
-    *)      echo "usage: sh Tools/test.sh fast|push|visual|all" >&2; exit 2 ;;
+    perf)   perf_ui ;;
+    *)      echo "usage: sh Tools/test.sh fast|push|visual|all|perf" >&2; exit 2 ;;
 esac
 # The full UI run counts for TestFlight only on a clean, committed tree (tracked files; build/ is ignored).
 if [ "$TIER" = all ] && command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1 \

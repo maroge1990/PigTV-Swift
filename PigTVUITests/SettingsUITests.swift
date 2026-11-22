@@ -174,6 +174,30 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(waitUntil(5) { delayRow.hasFocus }, "Menu returns to the Score delay row: \(focused(app).identifier)")
     }
 
+    /// #362: About's "Guide speed readout" switch shows the readout line (and Reset) while on, and hides it when off.
+    @MainActor
+    func testTheGuideSpeedReadoutShowsItsLineWhileOn() throws {
+        continueAfterFailure = false
+        let app = launch(page: "about")
+        let toggle = app.buttons["settings.guideReadout"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10), app.debugDescription)
+        let summary = app.descendants(matching: .any)["settings.guideReadout.summary"]
+        if toggle.value as? String == "On" { // left on by an earlier run: start from off
+            XCTAssertTrue(reach(toggle, in: app, from: .right) || reach(toggle, in: app), "focus never reached the switch")
+            XCUIRemote.shared.press(.select)
+            XCTAssertTrue(waitUntil(5) { !summary.exists })
+        }
+        XCTAssertFalse(summary.exists, "no readout while the switch is off")
+        XCTAssertTrue(reach(toggle, in: app, from: .right) || reach(toggle, in: app), "focus never reached the switch: \(focused(app).identifier)")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(summary.waitForExistence(timeout: 5), "switching on showed no readout")
+        XCTAssertTrue(summary.label.contains("Apple "), summary.label)
+        XCTAssertTrue(app.buttons["settings.guideReadout.reset"].exists)
+        XCTAssertEqual(toggle.value as? String, "On")
+        XCUIRemote.shared.press(.select) // off again, as the next run expects
+        XCTAssertTrue(waitUntil(5) { !summary.exists }, "switching off left the readout")
+    }
+
     @MainActor
     func testAFixtureCanOpenAPage() throws {
         let app = launch(page: "appearance")
