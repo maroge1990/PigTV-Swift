@@ -527,6 +527,19 @@ nonisolated enum GuideNavigation {
     static func trimmed(_ programmes: [GuideProgramme], keepFrom: Date) -> [GuideProgramme] {
         programmes.filter { $0.end > keepFrom }
     }
+    /// #360 (G7, C3): a forward extension's slice (programmes by channel id) merged into every row and the past trimmed,
+    /// as one pure step on value copies, so `BrowseModel.extendGuideForward` runs it off the main actor.
+    static func extended(_ guide: [GuideChannel], with slice: [String: [GuideProgramme]], keepFrom: Date) -> [GuideChannel] {
+        var updated = guide
+        for index in updated.indices {
+            var programmes = updated[index].programmes
+            if let additions = slice[updated[index].id] {
+                programmes = mergeProgrammes(programmes, adding: additions)
+            }
+            updated[index] = updated[index].withProgrammes(trimmed(programmes, keepFrom: keepFrom))
+        }
+        return updated
+    }
     // A failed guide page (initial load or a forward extension) is retried
     // with backoff before the caller gives up: 3 attempts (the original plus
     // these 2 waits) across roughly 20 s.

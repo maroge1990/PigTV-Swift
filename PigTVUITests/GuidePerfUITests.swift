@@ -125,8 +125,7 @@ final class GuidePerfUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 1)
             json = try probe()
         }
-        let keys = ["secondGuideMB", "guideJSONMB", "guideChannels", "guideProgrammes", "mergeOldMs", "mergeNewMs", "mergeMainMs",
-                    "mergeSame"]
+        let keys = ["secondGuideMB", "guideJSONMB", "guideChannels", "guideProgrammes", "mergeMs"]
         let figures = json.filter { keys.contains($0.key) }
         let body = (try? JSONSerialization.data(withJSONObject: figures, options: [.sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         print("GUIDE-LOAD " + body)

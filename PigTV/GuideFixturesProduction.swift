@@ -227,6 +227,22 @@ nonisolated enum ProductionGuideFigures {
             "guideProgrammes": Double(second.reduce(0) { $0 + $1.programmes.count }),
         ]
         figures["firstGuideChannels"] = Double(first.count)
+        // C3: a forward extension's merge and trim on this guide (the next day merged in), the work that ran on the main
+        // actor before Apple 385 and runs off it since: three runs, the median.
+        let from = window.addingTimeInterval(GuideNavigation.loadedDuration).timeIntervalSince1970 * 1000
+        var slice: [String: [GuideProgramme]] = [:]
+        for (index, channel) in first.enumerated() {
+            slice[channel.id] = ProductionGuideFixture.programmes(channel: index, from: from, to: from + GuideNavigation.loadedDuration * 1000)
+        }
+        let keepFrom = Date().addingTimeInterval(-GuideNavigation.pastTrimMargin)
+        var runs: [Double] = []
+        for _ in 0..<3 {
+            let began = CFAbsoluteTimeGetCurrent()
+            let extended = GuideNavigation.extended(first, with: slice, keepFrom: keepFrom)
+            runs.append((CFAbsoluteTimeGetCurrent() - began) * 1000)
+            if extended.count != first.count { runs.append(-1) }
+        }
+        figures["mergeMs"] = runs.sorted()[runs.count / 2]
         return figures
     }
 

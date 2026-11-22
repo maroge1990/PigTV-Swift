@@ -298,6 +298,10 @@ final class BrowseModel: ObservableObject {
     }
 
     #if DEBUG
+    /// Tests (C3): told, as each forward extension's merge runs, whether it runs on the main thread.
+    nonisolated(unsafe) static var extendMergeObserver: (@Sendable (_ onMainThread: Bool) -> Void)?
+    nonisolated static func noteExtendMerge() { extendMergeObserver?(Thread.isMainThread) }
+
     // Test seam: shrinks (or removes) the retry backoff so tests can
     // exercise `requestGuidePage`'s retry behaviour without waiting ~20 s in
     // real time. Never read outside DEBUG builds.
@@ -367,14 +371,17 @@ final class BrowseModel: ObservableObject {
         guard generation == guideGeneration else { return }
         guard anyProgrammes else { guideEnded = true; return }
         let keepFrom = Date().addingTimeInterval(-GuideNavigation.pastTrimMargin)
-        var updated = guide
-        for index in updated.indices {
-            var programmes = updated[index].programmes
-            if let additions = merged[updated[index].id] {
-                programmes = GuideNavigation.mergeProgrammes(programmes, adding: additions)
-            }
-            updated[index] = updated[index].withProgrammes(GuideNavigation.trimmed(programmes, keepFrom: keepFrom))
-        }
+        // #360 (G7, C3): the merge and trim (every channel) run off the main actor on value copies; the result comes back
+        // in one assignment. A reload or a refresh (a new generation) or a sign-out meanwhile wins: the result is dropped.
+        let current = guide
+        let slice = merged
+        let updated = await Task.detached(priority: .userInitiated) {
+            #if DEBUG
+            BrowseModel.noteExtendMerge()
+            #endif
+            return GuideNavigation.extended(current, with: slice, keepFrom: keepFrom)
+        }.value
+        guard generation == guideGeneration, !isRetired else { return }
         guide = updated
         guideLoadedUntil = sliceEnd
         guideProgrammesVersion += 1

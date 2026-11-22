@@ -32,6 +32,8 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 - `GuideRefreshSwapTests` (maroge1990/PigTV#360, G6): a stale-guide refresh keeps every row on screen until the whole new guide
   has arrived, then swaps it in with one change of `guide`; a failed refresh page leaves the old guide whole and Try again
   finishes the swap.
+- `GuideExtendOffMainTests` (maroge1990/PigTV#360, G7): a forward extension's merge and trim run off the main actor and equal the old
+  main-actor merge on the 1,250-channel fixture (duplicate starts, the 24 h trim); a sign-out during the merge wins.
 - `GuideQuietTests` (maroge1990/PigTV#360): the Guide's quiet paths on the real views in a window: a focus move does not
   re-evaluate `GuideView.body` (only the focus strip observes the focus); the 30 s clock tick reconfigures only the grid
   cells whose drawing changed (on air: the progress bar; a roll-over), not every visible cell; a long-press menu left open
@@ -106,7 +108,7 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   (d) 10 right, (e) a held scroll of about 100 rows, (f) 35 s idle (the 30 s clock tick), (g) 45 presses down from the moment
   the first page's rows show while pages 2–3 arrive (7 s apart; the window starts after the move that entered the grid; fewer than 2 applies in it fails as a test-setup fault); (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` (GuideFocusMove). `testGuideLoadingFigures` prints one `GUIDE-LOAD {…}` line of figures the app measures on the fixture
   (PIGTV_UI_TEST_GUIDE_FIGURES=1, `ProductionGuideFigures`): `secondGuideMB`, the heap a second whole guide takes (a refresh holds
-  two at its swap).
+  two at its swap), and `mergeMs`, a forward extension's merge and trim on it (off the main actor since Apple 385).
   A signpost interval can only end at the frame callback, up to a frame before the probe's frame-due time, so Xcode's
   GuideFocusMove figure is callback timing: each of its runs prints the probe's figures for the same presses
   (`GUIDE-SIGNPOST run n: …`), and each completed GuideFocusMove/GuideFirstScreen signpost's end message carries the
