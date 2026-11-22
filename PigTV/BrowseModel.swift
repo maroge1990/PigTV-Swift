@@ -474,9 +474,12 @@ final class BrowseModel: ObservableObject {
     // full guide download when nothing has changed and the loaded window
     // still covers the near future. Updates freshness state and returns true
     // when it did so; a failed fetch falls back to the normal reload.
+    /// Review of 386 (medium): the answer counts only for the guide it was asked about. A load started while it was in flight
+    /// (Jump to…, a reload) owns the guide now: the answer changes nothing (false; the caller revalidates too).
     private func tryMarkFreshByVersion(now: Date = Date()) async -> Bool {
         guard !guide.isEmpty else { return false }
-        guard let serverVersion = try? await client.guideVersion() else { return false }
+        let generation = guideGeneration
+        guard let serverVersion = try? await client.guideVersion(), generation == guideGeneration else { return false }
         guard GuideNavigation.guideStillCovers(cachedVersion: guideCacheVersion, serverVersion: serverVersion,
                                                 window: window, now: now) else { return false }
         fromCache = false
@@ -495,7 +498,11 @@ final class BrowseModel: ObservableObject {
             await loadGuide(reset: false)
             return
         }
+        // Review of 386 (medium): a load started while the version answer was awaited (Jump to…'s day) is newer than this
+        // pass: its paging is never cancelled for the day this pass was about.
+        let generation = guideGeneration
         if await tryMarkFreshByVersion() { return }
+        guard generation == guideGeneration, !guideBusy, !guidePaging else { return }
         await loadGuide(reset: true, keepVisible: true, swap: true,
                         day: GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn))
     }

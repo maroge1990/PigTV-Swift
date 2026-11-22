@@ -168,6 +168,64 @@ final class GuideLoadReviewTests: XCTestCase {
         XCTAssertEqual(built.channels.first?.id, m.guide.first?.rawID)
         XCTAssertFalse(built.channels.first?.programmes.isEmpty ?? true)
     }
+
+    // MARK: Review of 386 (mediums)
+
+    /// A freshness pass awaiting its version answer while the user jumps to another day: the late answer must not start a
+    /// reset that cancels the jump's paging (the viewport on the jumped-to day with rows of today). Fails on 386.
+    func testAFreshnessAnswerArrivingAfterAJumpLeavesTheJumpsLoadAlone() async throws {
+        let m = try await loadedOldGuide() // version request 0
+        ReviewServer.version = "review-2" // changed: the old pass will want a reload
+        ReviewServer.holdVersionIndex = 1
+        let pass = Task { await m.refreshGuideIfStale(maxAge: 0) }
+        try await eventually { ReviewServer.versionRequests == 2 && ReviewServer.held }
+        // Jump to… tomorrow (GuideView's needsReload): its own reset, with its page 2 held so it is still paging.
+        let jumpDay = today.addingTimeInterval(24 * 3600)
+        ReviewServer.holdCursor = "500"
+        m.window = jumpDay
+        let jump = Task { await m.loadGuide(keepVisible: true) }
+        try await eventually { ReviewServer.versionRequests == 3 && ReviewServer.guideRequests == 3 + 2 }
+        ReviewServer.holdVersionIndex = nil // the freshness pass's answer arrives now, late, while the jump pages
+        try await Task.sleep(for: .milliseconds(300))
+        ReviewServer.holdCursor = nil // (on 386 the pass's own staged load would wait here for its page 2 too)
+        await pass.value
+        await jump.value
+        try await eventually { !m.guidePagingActive && !m.guideHasMore }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(ReviewServer.guideRequests, 3 + 3, "only the jump's load paged after the setup")
+        XCTAssertEqual(m.window, jumpDay, "the jump's day stays")
+        XCTAssertEqual(m.guide.count, 1250)
+        XCTAssertEqual(m.guide[1249].programmes, ProductionGuideFixture.channels(count: 1250, window: jumpDay)[1249].programmes,
+                       "rows of the jumped-to day")
+    }
+
+    /// The Top Shelf's card logos during the launch's small first page: a favourite with a different logo from its preview
+    /// row draws its own (the snapshot already uses its own slots). Fails on 386 (the preview row's logo).
+    func testTopShelfLogosNeverComeFromTheSmallFirstPage() async throws {
+        let m = try model()
+        BrowseModel.guidePageRetryDelaysOverride = []
+        ReviewServer.holdFullPages = true
+        let launch = Task { await m.loadInitialGuide() }
+        try await eventually { !m.guide.isEmpty }
+        XCTAssertTrue(m.guideIsPreview)
+        let row = m.guide[2]
+        let rowLogo = try XCTUnwrap(m.logo(for: row))
+        let mine = Channel(rawID: row.rawID, sourceId: row.sourceId, name: row.name, logo: "/api/logo/favourite-own",
+                           category: nil, now: nil, next: nil, stableId: row.stableId)
+        m.favourites = [mine]
+        let snapshot = try XCTUnwrap(m.topShelfSnapshot())
+        let sources = m.topShelfLogoSources(for: snapshot)
+        XCTAssertNotEqual(sources[mine.id], rowLogo, "the preview row's logo")
+        XCTAssertEqual(sources[mine.id], "/api/logo/favourite-own")
+        // Once the full guide is on screen, the guide row's logo is used again (as before).
+        ReviewServer.holdFullPages = false
+        await launch.value
+        try await eventually { !m.guidePagingActive && !m.guideHasMore }
+        XCTAssertFalse(m.guideIsPreview)
+        let full = try XCTUnwrap(m.topShelfSnapshot())
+        XCTAssertEqual(m.topShelfLogoSources(for: full)[mine.id], m.guideChannel(id: mine.id).flatMap { m.logo(for: $0) })
+        m.favourites = []
+    }
 }
 
 /// `ProductionGuideFixture`'s guide (1,250 channels, pages of 500) with a version that can change (or answer in turn,
@@ -180,6 +238,8 @@ private final class ReviewServer: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var version = "review-1"
     nonisolated(unsafe) static var versions: [String] = []
     nonisolated(unsafe) static var holdFirstVersion = false
+    /// The version request with this index (0 = the first since `reset`) is held until this is nil again.
+    nonisolated(unsafe) static var holdVersionIndex: Int?
     nonisolated(unsafe) static var failCursor: String?
     nonisolated(unsafe) static var holdCursor: String?
     nonisolated(unsafe) static var holdFullPages = false
@@ -190,7 +250,7 @@ private final class ReviewServer: URLProtocol, @unchecked Sendable {
     static var held: Bool { lock.withLock { holding } }
     static func reset() {
         lock.withLock { requests = 0; versionAsks = 0; holding = false }
-        version = "review-1"; versions = []; holdFirstVersion = false; failCursor = nil; holdCursor = nil
+        version = "review-1"; versions = []; holdFirstVersion = false; holdVersionIndex = nil; failCursor = nil; holdCursor = nil
         holdFullPages = false; failFullPages = false
     }
 
@@ -206,6 +266,7 @@ private final class ReviewServer: URLProtocol, @unchecked Sendable {
             let answer = index < Self.versions.count ? Self.versions[index] : Self.version
             body = Data(#"{"version":"\#(answer)"}"#.utf8)
             if index == 0 && !Self.versions.isEmpty { wait = { Self.holdFirstVersion } }
+            if index == Self.holdVersionIndex { wait = { Self.holdVersionIndex != nil } }
         } else if url.path == "/api/library/guide" {
             Self.lock.withLock { Self.requests += 1 }
             var query: [String: String] = [:]

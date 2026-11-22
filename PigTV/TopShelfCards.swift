@@ -486,12 +486,13 @@ private struct LoadedLogo {
 
 extension BrowseModel {
     /// Each snapshot entry's logo as the app knows it ("sourceId:id" →
-    /// relative path, absolute URL or fixture key).
+    /// relative path, absolute URL or fixture key). Review of 386 (medium): never the launch's small first page's rows
+    /// (`guideIsPreview`): a favourite then draws its own logo, as its entry uses its own slots.
     func topShelfLogoSources(for snapshot: TopShelfSnapshot) -> [String: String] {
         var sources: [String: String] = [:]
         for entry in snapshot.channels {
             let key = "\(entry.sourceId):\(entry.id)"
-            if let row = guideChannel(id: key), let logo = logo(for: row) { sources[key] = logo }
+            if !guideIsPreview, let row = guideChannel(id: key), let logo = logo(for: row) { sources[key] = logo }
             else if let favourite = favourites.first(where: { $0.id == key }), let logo = logo(for: favourite) { sources[key] = logo }
         }
         return sources
