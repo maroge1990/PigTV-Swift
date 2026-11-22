@@ -1,12 +1,12 @@
 import XCTest
-import Combine
 @testable import PigTV
 
-// Audit R05: what each screen observes. A screen's body is re-evaluated when
-// an object it observes publishes, so the number of publishes of the objects
-// a screen watches is the (upper bound of the) number of times that screen
-// re-renders for an event. `observedBy` names those objects per screen; keep
-// it in step with the views' initialisers.
+// Audit R05: what each screen observes. A screen's body is re-evaluated when a
+// store it reads changes, so the number of changes to the stores a screen reads
+// is the (upper bound of the) number of times that screen re-renders for an
+// event. `observedBy` names those stores per screen; keep it in step with the
+// views. #51: counted by `Invalidations`, which sees an ObservableObject's
+// publishes and an @Observable store's property changes alike.
 
 private final class RoutedProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var routes: [String: (String) -> String] = [:]
@@ -26,12 +26,14 @@ private final class RoutedProtocol: URLProtocol, @unchecked Sendable {
 
 @MainActor
 private extension BrowseModel {
-    var observedBy: [String: [ObservableObjectPublisher]] {
+    /// Per screen, the stores it reads, and its reads of them (all of each: an upper bound).
+    var observedBy: [String: (stores: [AnyObject], reads: @MainActor () -> Void)] {
         [
-            "Guide": [guideStore.objectWillChange, library.objectWillChange, marks.objectWillChange],
-            "Recordings": [recordingStore.objectWillChange, actions.objectWillChange],
-            "ProgrammeDetails": [recordingStore.objectWillChange, actions.objectWillChange],
-            "SportCards": []
+            "Guide": ([guideStore, library, marks], { [self] in
+                guideStore.readEverything(); library.readEverything(); marks.readEverything() }),
+            "Recordings": ([recordingStore, actions], { [self] in recordingStore.readEverything(); actions.readEverything() }),
+            "ProgrammeDetails": ([recordingStore, actions], { [self] in recordingStore.readEverything(); actions.readEverything() }),
+            "SportCards": ([], {})
         ]
     }
 }
@@ -65,20 +67,13 @@ final class ObservationTests: XCTestCase {
                            guideCacheDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("obs-\(UUID())"))
     }
 
-    /// Publishes seen per screen while `event` runs.
+    /// Invalidations seen per screen while `event` runs.
     private func measure(_ browse: BrowseModel, _ event: () async -> Void) async -> [String: Int] {
-        var counts: [String: Int] = [:]
-        var bag: [AnyCancellable] = []
-        for (screen, publishers) in browse.observedBy {
-            counts[screen] = 0
-            for publisher in publishers {
-                bag.append(publisher.sink { counts[screen, default: 0] += 1 })
-            }
-        }
+        let counters = browse.observedBy.mapValues { Invalidations(observing: $0.stores, reads: $0.reads) }
         await event()
         try? await Task.sleep(for: .milliseconds(50))
-        withExtendedLifetime(bag) {}
-        return counts
+        counters.values.forEach { $0.stop() }
+        return counters.mapValues(\.count)
     }
 
     private func report(_ event: String, _ counts: [String: Int]) {
@@ -107,36 +102,34 @@ final class ObservationTests: XCTestCase {
 
     // MARK: Assertions
 
-    private func publishes(_ publisher: ObservableObjectPublisher, during event: () async -> Void) async -> Int {
-        var count = 0
-        let token = publisher.sink { count += 1 }
-        await event()
-        try? await Task.sleep(for: .milliseconds(50))
-        withExtendedLifetime(token) {}
-        return count
+    /// Changes to anything `store` holds while `event` runs (what re-rendered a view observing the whole store).
+    private func publishes(_ store: AnyObject, _ readEverything: @escaping @MainActor () -> Void,
+                           during event: () async -> Void) async -> Int {
+        await Invalidations.during(observing: [store], reads: readEverything, event)
     }
 
     func testAGuidePageDoesNotPublishTheOtherStores() async throws {
         let browse = try makeBrowse()
-        var others = 0
-        let tokens = [browse.recordingStore.objectWillChange, browse.library.objectWillChange, browse.marks.objectWillChange,
-                      browse.actions.objectWillChange].map { $0.sink { others += 1 } }
-        let guide = await publishes(browse.guideStore.objectWillChange) {
+        let others = Invalidations(observing: [browse.recordingStore, browse.library, browse.marks, browse.actions]) {
+            browse.recordingStore.readEverything(); browse.library.readEverything(); browse.marks.readEverything()
+            browse.actions.readEverything()
+        }
+        let guide = await publishes(browse.guideStore, browse.guideStore.readEverything) {
             await browse.loadGuide()
             // Until every page is in (not a fixed wait: a loaded simulator pages slower).
             try? await eventually { browse.guide.count == 6 }
         }
         XCTAssertGreaterThan(guide, 0)
         XCTAssertEqual(browse.guide.count, 6)
-        XCTAssertEqual(others, 0, "a guide page re-renders nothing that only draws recordings, favourites or actions")
-        withExtendedLifetime(tokens) {}
+        others.stop()
+        XCTAssertEqual(others.count, 0, "a guide page re-renders nothing that only draws recordings, favourites or actions")
     }
 
     func testRecordingsAndFavouritesLoadsDoNotPublishTheGuide() async throws {
         let browse = try makeBrowse()
         await browse.loadGuide()
         try await eventually { browse.guide.count == 6 }
-        let guide = await publishes(browse.guideStore.objectWillChange) {
+        let guide = await publishes(browse.guideStore, browse.guideStore.readEverything) {
             await browse.loadRecordings()
             await browse.loadFavourites()
             _ = await browse.setFavourite(Channel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, now: nil, next: nil), true)
@@ -150,7 +143,7 @@ final class ObservationTests: XCTestCase {
         let browse = try makeBrowse()
         await browse.loadRecordings()
         await browse.loadFavourites()
-        let recordings = await publishes(browse.recordingStore.objectWillChange) {
+        let recordings = await publishes(browse.recordingStore, browse.recordingStore.readEverything) {
             favouritesJSON = #"[{"id":"a","sourceId":1,"name":"A"},{"id":"b","sourceId":1,"name":"B"}]"#
             await browse.loadFavourites()
         }
@@ -162,9 +155,11 @@ final class ObservationTests: XCTestCase {
         let browse = try makeBrowse()
         await browse.loadRecordings()
         await browse.loadFavourites()
-        let recordings = await publishes(browse.recordingStore.objectWillChange) { await browse.loadRecordings(quietly: true) }
-        let marks = await publishes(browse.marks.objectWillChange) { await browse.loadRecordings() }
-        let library = await publishes(browse.library.objectWillChange) { await browse.loadFavourites() }
+        let recordings = await publishes(browse.recordingStore, browse.recordingStore.readEverything) {
+            await browse.loadRecordings(quietly: true)
+        }
+        let marks = await publishes(browse.marks, browse.marks.readEverything) { await browse.loadRecordings() }
+        let library = await publishes(browse.library, browse.library.readEverything) { await browse.loadFavourites() }
         XCTAssertEqual(recordings, 0)
         XCTAssertEqual(marks, 0, "equal schedules leave the marks alone")
         XCTAssertEqual(library, 0, "the busy and error state of the favourites load is not drawn, so it is not published")

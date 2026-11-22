@@ -25,14 +25,14 @@ final class ScheduleReadRevisionTests: XCTestCase {
         request.serverCancelling = [.init(scheduleId: 5, start: Double(start), end: Double(start + 7 * hour))]
         XCTAssertTrue(browse.cancellingEarlier(request, airing: request.airings[0]), "Cancelling… from the card")
         browse.recordingStore.readWaiters += 1 // the page is open (RecordPage.onAppear)
-        var told = 0
-        let watching = browse.recordingStore.objectWillChange.sink { told += 1 }
-        defer { watching.cancel() }
+        // The open page reads the store (#51: `Invalidations` counts a publish or a change to what it reads alike).
+        let watching = Invalidations(observing: [browse.recordingStore]) { browse.recordingStore.readEverything() }
+        defer { watching.stop() }
         // The page's poll: the same (empty) list again.
         try await Task.sleep(for: .milliseconds(20))
         let second = await browse.readSchedulesNow()
         XCTAssertTrue(second)
-        XCTAssertGreaterThan(told, 0, "the open page is told, though the rows did not change")
+        XCTAssertGreaterThan(watching.count, 0, "the open page is told, though the rows did not change")
         XCTAssertFalse(browse.cancellingEarlier(request, airing: request.airings[0]), "and Record is back")
     }
 }
