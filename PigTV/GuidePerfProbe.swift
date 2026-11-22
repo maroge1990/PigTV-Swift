@@ -24,6 +24,9 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     var gapsOver100 = 0
     var bodyEvaluations = 0
     var cellConfigurations = 0
+    /// #360 (G8): full layout passes of the grid (a `prepare` after an invalidation of everything; a scroll that only
+    /// moves the now line is a targeted one and is not counted).
+    var layoutPrepares = 0
     var applies = 0
     var applyMs: Double = 0
     var firstScreenMs: Double?
@@ -107,7 +110,7 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
             "focusMoves": moves, "focusMs": focusMs.map(Self.rounded), "pressMs": pressMs.map(Self.rounded),
             "focusSuperseded": focusSuperseded, "frames": frames, "maxGapMs": Self.rounded(maxGapMs),
             "gapsOver50": gapsOver50, "gapsOver100": gapsOver100, "bodyEvals": bodyEvaluations,
-            "cellConfigs": cellConfigurations, "applies": applies, "applyMs": Self.rounded(applyMs),
+            "cellConfigs": cellConfigurations, "layoutPrepares": layoutPrepares, "applies": applies, "applyMs": Self.rounded(applyMs),
             "resets": resets, "windowMs": Self.rounded(windowMs),
         ]
         if let rowsStart { object["rowsStart"] = rowsStart }
@@ -265,6 +268,7 @@ final class GuidePerfProbe: NSObject {
     }
     func focusRow(_ row: Int) { if guideVisible { stats.focusRow = row } }
     func cellConfigured() { if guideVisible { stats.cellConfigurations += 1 } }
+    func layoutPrepared() { if guideVisible { stats.layoutPrepares += 1 } }
     func bodyEvaluated() { if guideVisible { stats.bodyEvaluations += 1 } }
     func focusSuperseded() { if guideVisible { stats.focusSuperseded += 1 } }
     func firstScreen(ms: Double) { if stats.firstScreenMs == nil { stats.firstScreenMs = ms } }

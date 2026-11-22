@@ -10,7 +10,7 @@ import XCTest
 /// Budgets come from the test environment as PIGTV_GUIDEPERF_* (Tools/test.sh and Tools/mac-gate.sh pass them on with
 /// the TEST_RUNNER_ prefix): FOCUS_MS (the worst focus move in a press scenario), GAP_MS (the longest frame gap in any
 /// scenario), FIRST_MS (the first screen), BODY_PER_PRESS (body evaluations per press), CELLS_PER_VERTICAL_PRESS (cell
-/// configurations per up/down press), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there), APPLY_MS
+/// configurations per up/down press), LAYOUT_PER_VERTICAL_PRESS (full grid layout passes per up/down press), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there), APPLY_MS
 /// (all applies' ms in a scenario). Unset, a scenario only records, except where a fix has earned a count budget (#360,
 /// `budget(_:_:)` in `record`). Absent probe figures always fail.
 final class GuidePerfUITests: XCTestCase {
@@ -246,7 +246,7 @@ final class GuidePerfUITests: XCTestCase {
         let moves = number(json, "focusMoves") ?? 0
         if presses > 0 {
             json["presses"] = presses
-            for key in ["bodyEvals", "cellConfigs", "applies"] where moves > 0 {
+            for key in ["bodyEvals", "cellConfigs", "layoutPrepares", "applies"] where moves > 0 {
                 if let value = number(json, key) { json[key + "PerPress"] = (value / moves * 10).rounded() / 10 }
             }
         }
@@ -306,6 +306,12 @@ final class GuidePerfUITests: XCTestCase {
         if vertical, let budget = env["PIGTV_GUIDEPERF_CELLS_PER_VERTICAL_PRESS"].flatMap(Double.init),
            let value = number(json, "cellConfigsPerPress") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) cell configurations per press (budget \(budget))")
+        }
+        // #360 (G8, Apple 378): a vertical move no longer redoes the whole grid layout (every scroll step of every press did:
+        // 18.7 per press down before), only the now line. Not earned in the paged scenario, whose arriving pages insert
+        // rows (a full layout by design).
+        if vertical, let budget = budget("LAYOUT_PER_VERTICAL_PRESS", paged ? nil : 0.1), let value = number(json, "layoutPreparesPerPress") {
+            XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) full layout passes per press (budget \(budget))")
         }
         // #360 (G5, Apple 377): the 30 s tick no longer re-evaluates GuideView.body (1 per tick before).
         if tick, let budget = budget("BODY_AT_TICK", 0), let value = number(json, "bodyEvals") {

@@ -104,15 +104,16 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   the Guide finished its work, i.e. the display-link callback after the first one following GuideView's handling, timed to when
   that frame is due on screen: a close estimate of what you see, not a camera measurement) with median/p95/max, `pressMs` (an
   arrow press under 1 s before the move → that frame), `maxGapMs`, `gapsOver50`/`gapsOver100`
-  and `frames` (a display-link monitor: a main-thread stall shows here whatever the moves say), `bodyEvals`, `cellConfigs`,
+  and `frames` (a display-link monitor: a main-thread stall shows here whatever the moves say), `bodyEvals`, `cellConfigs`, `layoutPrepares` (full
+  grid layout passes; a vertical scroll step that only moves the now line is not one),
   `applies`, `applyMs` (and per press: per focus move that landed), `presses` (sent), `focusMoves` (focus events that
   landed), `landedPresses` (presses whose move landed, at most one each), `focusRow` (the focused row's index; the held
   scroll adds `rowsMoved`, its change), `rowsStart`/`rowsEnd`,
   `firstScreenMs` (the Guide's first appearance since launch → the frame after its first rows were configured, timed the same
   way; none if it leaves the screen or has no rows within 30 s). A single-press scenario fails unless at least 90 % of its
   presses landed (`landedPresses`, not focus events), the held scroll unless the focused row moved at least 50 rows down
-  (`rowsMoved`); budgets apply only after that. Count budgets a fix has earned apply by default (#360: body evaluations per press 0.05 outside the paged scenario, 0 body evaluations and 0 cell configurations at the idle tick, whose grid shows later programmes); the rest record only unless set: `PIGTV_GUIDEPERF_FOCUS_MS`,
-  `_GAP_MS`, `_FIRST_MS`, `_BODY_PER_PRESS`, `_CELLS_PER_VERTICAL_PRESS`, `_CELLS_AT_TICK`, `_BODY_AT_TICK`, `_APPLY_MS` (`Tools/test.sh` and
+  (`rowsMoved`); budgets apply only after that. Count budgets a fix has earned apply by default (#360: body evaluations per press 0.05 outside the paged scenario, 0 body evaluations and 0 cell configurations at the idle tick, whose grid shows later programmes; 0.1 full layout passes per up/down press outside the paged scenario, 18.7 before Apple 378); the rest record only unless set: `PIGTV_GUIDEPERF_FOCUS_MS`,
+  `_GAP_MS`, `_FIRST_MS`, `_BODY_PER_PRESS`, `_CELLS_PER_VERTICAL_PRESS`, `_LAYOUT_PER_VERTICAL_PRESS`, `_CELLS_AT_TICK`, `_BODY_AT_TICK`, `_APPLY_MS` (`Tools/test.sh` and
   `Tools/mac-gate.sh` pass them to the test runner). Each perf run keeps its result bundle and full output in its own
   `build/perf-<UTC time>/` (printed; `Tools/mac-gate.sh perf` copies the output back next to its log from that exact folder, and if the copy fails it
   says so and leaves the output on the Mac, in `~/pigtv-build/perf-kept/`, with its path). The perf tier also prints the Mac's model, CPUs, memory, load and the booted simulator: the figures

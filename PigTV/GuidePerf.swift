@@ -58,6 +58,9 @@ enum GuidePerf {
         GuidePerfProbe.shared?.cellConfigured()
     }
 
+    /// #360 (G8): the grid's layout ran a full `prepare` (GuideGridLayout). One nil check while the probe is off.
+    static func layoutPrepared() { GuidePerfProbe.shared?.layoutPrepared() }
+
     // MARK: GuideView
 
     #if DEBUG

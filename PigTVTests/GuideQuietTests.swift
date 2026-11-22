@@ -119,4 +119,74 @@ final class GuideQuietTests: XCTestCase {
         XCTAssertEqual(GuidePerf.cellConfigurationsForTesting - before, changed,
                        "the tick reconfigured \(GuidePerf.cellConfigurationsForTesting - before) cells; \(changed) changed what they draw")
     }
+
+    // MARK: G8
+
+    /// A grid of `count` rows in a window, the clock at `now`, laid out.
+    private func hostGrid(rows count: Int, now: Date) throws -> (GuideGridViewController, GuideGridLayout) {
+        let controller = GuideGridViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        let rows = (0..<count).map { channel("v\($0)", [(now - 600, now + 3000), (now + 3000, now + 6600)]) }
+        controller.applyForTesting(rows: rows, revision: GuideGridRevision(programmes: 1, loadedAt: nil))
+        controller.setClockForTesting(now)
+        let layout = try XCTUnwrap(controller.collectionView.collectionViewLayout as? GuideGridLayout)
+        return (controller, layout)
+    }
+
+    /// What a laid-out grid shows must not depend on how it got there: every visible row has its tile pinned at the left
+    /// edge and its programmes clipped at the channel column, and the now line spans the visible rows from the top.
+    private func assertDrawnAsLaidOut(_ grid: UICollectionView, _ layout: GuideGridLayout, _ label: String,
+                                      file: StaticString = #filePath, line: UInt = #line) {
+        let m = layout.metrics
+        let x = grid.contentOffset.x
+        let rows = GuideGridMath.rows(in: grid.bounds.minY, grid.bounds.maxY, count: grid.numberOfSections, metrics: m)
+        XCTAssertFalse(rows.isEmpty, "\(label): rows on screen", file: file, line: line)
+        for row in rows {
+            let tile = grid.cellForItem(at: IndexPath(item: 0, section: row))
+            XCTAssertEqual(tile?.frame, GuideGridMath.tileFrame(row: row, offsetX: x, metrics: m),
+                           "\(label): row \(row)'s tile is pinned", file: file, line: line)
+            let programmes = grid.indexPathsForVisibleItems.filter { $0.section == row && $0.item > 0 }
+            XCTAssertFalse(programmes.isEmpty, "\(label): row \(row) shows its programmes", file: file, line: line)
+            for indexPath in programmes {
+                XCTAssertGreaterThanOrEqual(grid.cellForItem(at: indexPath)?.frame.minX ?? -1, GuideGridMath.clipX(offsetX: x, metrics: m),
+                                            "\(label): \(indexPath) is clipped at the channel column", file: file, line: line)
+            }
+        }
+        let nowLine = grid.subviews.first { $0 is GuideGridNowLine && !$0.isHidden }
+        XCTAssertNotNil(nowLine, "\(label): the now line shows", file: file, line: line)
+        XCTAssertEqual(nowLine?.frame.minY, grid.contentOffset.y, "\(label): the now line starts at the top", file: file, line: line)
+        XCTAssertEqual(nowLine?.frame.height, grid.bounds.height, "\(label): the now line spans the rows", file: file, line: line)
+    }
+
+    /// Every scroll step used to invalidate the whole layout (`shouldInvalidateLayout(forBoundsChange:)` true, the default
+    /// context), so UIKit redid every visible element's attributes on each frame of a vertical scroll. Only the now line
+    /// follows the vertical offset (the tiles and the clipping follow the horizontal one), so a vertical step now
+    /// invalidates the now line alone: no full layout pass, and the grid draws exactly as before.
+    func testAVerticalScrollDoesNotRedoTheWholeLayout() throws {
+        // The clock an hour after the grid's origin: the now line is inside the timeline before and after the sideways step.
+        let (controller, layout) = try hostGrid(rows: 80, now: Date() + 3600)
+        let grid = try XCTUnwrap(controller.collectionView)
+        assertDrawnAsLaidOut(grid, layout, "at the top")
+        let before = layout.fullPrepares
+        for step in 1...8 {
+            grid.contentOffset.y = CGFloat(step) * layout.metrics.rowHeight * 2.5
+            grid.layoutIfNeeded()
+        }
+        XCTAssertEqual(layout.fullPrepares - before, 0, "vertical scroll steps redid the whole layout")
+        assertDrawnAsLaidOut(grid, layout, "after scrolling down")
+        // Back up past where it started, then sideways: a horizontal step still redoes everything (the tiles follow it).
+        grid.contentOffset.y = layout.metrics.rowHeight / 2
+        grid.layoutIfNeeded()
+        assertDrawnAsLaidOut(grid, layout, "after scrolling back up")
+        let sideways = layout.fullPrepares
+        controller.collectionView.setX(grid.contentOffset.x + 300)
+        grid.layoutIfNeeded()
+        XCTAssertGreaterThan(layout.fullPrepares, sideways, "a horizontal step re-lays the pinned column")
+        assertDrawnAsLaidOut(grid, layout, "after scrolling sideways")
+    }
 }

@@ -80,12 +80,15 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
     var measured: MeasuredQuality? = nil
     // D-65 (#266): the server's name key for grouping copies, or nil.
     var nameKey: String? = nil
-    var id: String { "\(sourceId):\(rawID)" }
+    /// "sourceId:rawID", made once when the row is made (#360 G8: the grid, its store and every diff use it as a key, and
+    /// a computed id built a new string on each use). Not encoded: the wire's "id" is `rawID` (CodingKeys).
+    let id: String
     var numberText: String? { number.map { String($0) } }
     var identityKey: String { stableId.map { "\(sourceId):s:\($0)" } ?? id }
     enum CodingKeys: String, CodingKey {
         case rawID = "id", sourceId, name, logo, category, programmes, tvgId, stableId, number, health, quality, measured, nameKey
     }
+    nonisolated static func id(sourceId: Int, rawID: String) -> String { "\(sourceId):\(rawID)" }
     init(rawID: String, sourceId: Int, name: String, logo: String?, category: String?,
          programmes: [GuideProgramme], tvgId: String? = nil, stableId: String? = nil,
          number: Int? = nil, health: String? = nil, quality: String? = nil, measured: MeasuredQuality? = nil,
@@ -93,9 +96,27 @@ nonisolated struct GuideChannel: Codable, Identifiable, Sendable {
         self.rawID = rawID; self.sourceId = sourceId; self.name = name; self.logo = logo
         self.category = category; self.programmes = programmes; self.tvgId = tvgId; self.stableId = stableId
         self.number = number; self.health = health; self.quality = quality; self.measured = measured; self.nameKey = nameKey
+        self.id = Self.id(sourceId: sourceId, rawID: rawID)
     }
-    // Decoding is synthesised from CodingKeys; the server strips the small-caps
-    // badge from names at ingest (0099).
+    /// What the synthesised decoding did (the same keys, required and optional alike), plus the stored `id`. Encoding is
+    /// still synthesised from CodingKeys, so the wire format and the saved guide cache are unchanged.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(rawID: try c.decode(String.self, forKey: .rawID),
+                  sourceId: try c.decode(Int.self, forKey: .sourceId),
+                  name: try c.decode(String.self, forKey: .name),
+                  logo: try c.decodeIfPresent(String.self, forKey: .logo),
+                  category: try c.decodeIfPresent(String.self, forKey: .category),
+                  programmes: try c.decode([GuideProgramme].self, forKey: .programmes),
+                  tvgId: try c.decodeIfPresent(String.self, forKey: .tvgId),
+                  stableId: try c.decodeIfPresent(String.self, forKey: .stableId),
+                  number: try c.decodeIfPresent(Int.self, forKey: .number),
+                  health: try c.decodeIfPresent(String.self, forKey: .health),
+                  quality: try c.decodeIfPresent(String.self, forKey: .quality),
+                  measured: try c.decodeIfPresent(MeasuredQuality.self, forKey: .measured),
+                  nameKey: try c.decodeIfPresent(String.self, forKey: .nameKey))
+    }
+    // The server strips the small-caps badge from names at ingest (0099).
     // Library categories are keyed by ID; guide rows carry the category as the
     // server stored it, which may be the ID or the display name.
     func matches(_ item: Category) -> Bool {

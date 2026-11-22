@@ -101,6 +101,12 @@ final class GuideGridAttributes: UICollectionViewLayoutAttributes {
     }
 }
 
+/// #360 (G8): a bounds change that moved the grid vertically only (same size, same horizontal offset): only the now line
+/// is invalidated, so it is not a full layout pass.
+final class GuideGridInvalidationContext: UICollectionViewLayoutInvalidationContext {
+    var verticalScrollOnly = false
+}
+
 final class GuideGridLayout: UICollectionViewLayout {
     static let nowLineKind = "guide.nowLine"
 
@@ -129,8 +135,27 @@ final class GuideGridLayout: UICollectionViewLayout {
     private var sectionCount: Int { collectionView?.numberOfSections ?? 0 }
     private var offset: CGPoint { collectionView?.contentOffset ?? .zero }
 
+    /// #360 (G8): full layout passes so far (a `prepare` after an invalidation that was not a targeted scroll one), for
+    /// the tests and the probe (`layoutPrepares`).
+    private(set) var fullPrepares = 0
+    private var fullPending = true
+
+    override class var invalidationContextClass: AnyClass { GuideGridInvalidationContext.self }
+
+    override func invalidateLayout(with context: UICollectionViewLayoutInvalidationContext) {
+        let targeted = (context as? GuideGridInvalidationContext)?.verticalScrollOnly == true
+            && !context.invalidateEverything && !context.invalidateDataSourceCounts
+        if !targeted { fullPending = true }
+        super.invalidateLayout(with: context)
+    }
+
     override func prepare() {
         super.prepare()
+        if fullPending {
+            fullPending = false
+            fullPrepares += 1
+            GuidePerf.layoutPrepared()
+        }
         guard let collectionView else { return }
         metrics.timelineWidth = max(300, collectionView.bounds.width - metrics.channelWidth)
     }
@@ -140,10 +165,22 @@ final class GuideGridLayout: UICollectionViewLayout {
                height: GuideGridMath.rowMinY(sectionCount, metrics: metrics))
     }
 
-    // The tile, header and clipping follow the content offset, so every
-    // scroll step re-lays the visible elements (cheap: frames are computed on
-    // demand for the visible rows only).
+    // The tiles and the clipping follow the horizontal offset, the now line the
+    // vertical one. A step sideways (or a new size) re-lays every visible
+    // element; a vertical step (every focus move up or down, every frame of a
+    // held scroll) invalidates the now line alone (#360 G8: it used to redo the
+    // whole layout too). Rows that come on screen are asked for as usual.
     override func shouldInvalidateLayout(forBoundsChange newBounds: CGRect) -> Bool { true }
+
+    override func invalidationContext(forBoundsChange newBounds: CGRect) -> UICollectionViewLayoutInvalidationContext {
+        let context = super.invalidationContext(forBoundsChange: newBounds)
+        guard let collectionView, let context = context as? GuideGridInvalidationContext else { return context }
+        let old = collectionView.bounds
+        guard newBounds.size == old.size, newBounds.origin.x == old.origin.x, sectionCount > 0 else { return context }
+        context.verticalScrollOnly = true
+        context.invalidateDecorationElements(ofKind: Self.nowLineKind, at: [IndexPath(item: 0, section: 0)])
+        return context
+    }
 
     override func layoutAttributesForElements(in rect: CGRect) -> [UICollectionViewLayoutAttributes]? {
         guard let collectionView else { return nil }
