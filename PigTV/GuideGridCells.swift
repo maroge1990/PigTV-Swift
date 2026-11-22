@@ -205,6 +205,22 @@ final class GuideGridProgrammeCell: UICollectionViewCell {
         }
     }
 
+    // #360 (E1): the grid's layout fixes every frame (GuideGridLayout ignores preferred sizes), but UIKit asked each cell
+    // coming on screen for its size: a SwiftUI size-to-fit of its content, text included (4.3 ms per press up or down,
+    // 8.4 per press right, on the MacBook simulator), thrown away. The layout's own attributes are the answer.
+    override func preferredLayoutAttributesFitting(_ layoutAttributes: UICollectionViewLayoutAttributes) -> UICollectionViewLayoutAttributes {
+        layoutAttributes
+    }
+
+    #if DEBUG
+    /// Tests: content sized to fit (UIKit's self-sizing of a cell), counted.
+    override func systemLayoutSizeFitting(_ targetSize: CGSize, withHorizontalFittingPriority horizontal: UILayoutPriority,
+                                          verticalFittingPriority vertical: UILayoutPriority) -> CGSize {
+        GuidePerf.cellSizingsForTesting += 1
+        return super.systemLayoutSizeFitting(targetSize, withHorizontalFittingPriority: horizontal, verticalFittingPriority: vertical)
+    }
+    #endif
+
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info else { contentConfiguration = nil; return }
         let measured = GuidePerf.cellBegan(); defer { GuidePerf.cellEnded(measured) } // #362
@@ -256,6 +272,19 @@ final class GuideGridTileCell: UICollectionViewCell {
         isAccessibilityElement = true
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // #360 (E1): as the programme cell: the layout's frame, never a SwiftUI size-to-fit.
+    override func preferredLayoutAttributesFitting(_ layoutAttributes: UICollectionViewLayoutAttributes) -> UICollectionViewLayoutAttributes {
+        layoutAttributes
+    }
+
+    #if DEBUG
+    override func systemLayoutSizeFitting(_ targetSize: CGSize, withHorizontalFittingPriority horizontal: UILayoutPriority,
+                                          verticalFittingPriority vertical: UILayoutPriority) -> CGSize {
+        GuidePerf.cellSizingsForTesting += 1
+        return super.systemLayoutSizeFitting(targetSize, withHorizontalFittingPriority: horizontal, verticalFittingPriority: vertical)
+    }
+    #endif
 
     override func updateConfiguration(using state: UICellConfigurationState) {
         guard let info, let channel else { contentConfiguration = nil; return }

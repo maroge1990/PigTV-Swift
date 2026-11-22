@@ -186,6 +186,8 @@ enum GuidePerf {
     static var bodyEvaluationsForTesting = 0
     /// Tests: every grid cell configuration (programme or tile), probe or not.
     static var cellConfigurationsForTesting = 0
+    /// Tests: grid cells sized to fit by UIKit (#360 E1: none since Apple 390).
+    static var cellSizingsForTesting = 0
     #endif
 
     static func bodyEvaluated() {

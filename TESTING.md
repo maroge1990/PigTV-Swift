@@ -42,7 +42,8 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
   re-evaluate `GuideView.body` (only the focus strip observes the focus); the 30 s clock tick reconfigures only the grid
   cells whose drawing changed (on air: the progress bar; a roll-over), not every visible cell; a long-press menu left open
   past its programme's end loses its RECORD items at the next tick; a page of channels appended below the screen configures
-  no cell on screen again and asks the layout for at most 500 items (one per item of every new row before Apple 388). `ChannelArtworkTests`: a logo in memory draws on the
+  no cell on screen again and asks the layout for at most 500 items (one per item of every new row before Apple 388). No grid cell
+  is sized to fit by UIKit (`preferredLayoutAttributesFitting` returns the layout's attributes; Apple 390). `ChannelArtworkTests`: a logo in memory draws on the
   first frame and stays drawn if the cache evicts it; fetches stop when no view waits; a stale end of display (on a
   reload) leaves a visible Guide tile loading its logo.
 - `ChannelWarmerTests` (audit R11, predictive warming): the player's warm policy with a hand-moved clock (off by default, dwell, one in
@@ -67,7 +68,11 @@ visual tier runs it when ffmpeg is installed, and they skip otherwise.
 The MacBook is the test gate (D-77): `sh Tools/mac-gate.sh <tier> [--worktree]` runs `Tools/test.sh <tier>` there. GitHub CI is
 non-blocking and not watched, and runs none of the UI tiers (D-49). Tiers: `fast` (build, the contract script once, the unit
 tests), `push` (fast and the regression UI tests), `visual` (the screenshot suites), `all` (fast, regression and visual),
-`perf` (only the speed suites, below; in no other tier), `ios` (#53: the unit tests on one iPad simulator, then one iPhone
+`perf` (only the speed suites, below; in no other tier), `profile` (#360 E1: Time Profiler attached through the simulator to the
+app while `GuidePerfUITests.testProfileScenarios` presses down 40, up 40 and right 10; `Tools/profile-summary.py` prints the main
+thread's on-CPU ms per press by phase, top-of-stack symbol and nearest app frame, and the samples as `PROFILE-DATA` base64 for
+summarising again off the Mac (`python3 Tools/profile-summary.py samples.json.gz - 40,40,10`); the trace is deleted; in no other
+tier; the figures include the XCUITest accessibility queries and Debug-only work), `ios` (#53: the unit tests on one iPad simulator, then one iPhone
 simulator, one at a time; in no other tier; `PIGTV_IPAD_SIM` / `PIGTV_IPHONE_SIM` name the devices). TestFlight builds come only
 from Xcode Cloud `tf/` tags (D-64); `Tools/testflight.sh` is retired and the `.ui-full-passed` marker a clean `all` still writes
 is only a record. Both CI and the Mac check out the server's `test/golden`, so `GoldenChecks` runs.

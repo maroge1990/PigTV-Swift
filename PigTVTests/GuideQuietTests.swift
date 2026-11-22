@@ -272,6 +272,37 @@ final class GuideQuietTests: XCTestCase {
         }
     }
 
+    // MARK: E1
+
+    /// #360 (E1, Time Profiler on the simulator): UIKit asked every cell coming on screen for its preferred size, a
+    /// SwiftUI size-to-fit of its content (11 % of the main thread's time per press), and the layout threw the answer away.
+    /// Now no cell is sized to fit, whether the grid fills or scrolls, and the grid draws as laid out (tiles pinned,
+    /// programmes clipped at the channel column, the now line). Fails on 389 (cells sized on every display).
+    func testCellsComingOnScreenAreNeverSizedToFit() throws {
+        let now = Date()
+        let controller = GuideGridViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        let sizings = GuidePerf.cellSizingsForTesting
+        controller.applyForTesting(rows: dayLineup(80, now: now), revision: GuideGridRevision(programmes: 1, loadedAt: nil))
+        controller.setClockForTesting(now + 3600) // the now line stays inside the timeline after the sideways step
+        let grid = try XCTUnwrap(controller.collectionView)
+        let layout = try XCTUnwrap(grid.collectionViewLayout as? GuideGridLayout)
+        for step in 1...12 { // rows come on screen, cells are reused
+            grid.contentOffset.y = CGFloat(step) * layout.metrics.rowHeight * 1.5
+            grid.layoutIfNeeded()
+        }
+        grid.setX(grid.contentOffset.x + 300) // and sideways
+        grid.layoutIfNeeded()
+        XCTAssertGreaterThan(grid.visibleCells.count, 20)
+        XCTAssertEqual(GuidePerf.cellSizingsForTesting - sizings, 0, "cells were sized to fit by UIKit")
+        assertDrawnAsLaidOut(grid, layout, "after scrolling down and sideways")
+    }
+
     // MARK: G8
 
     /// A grid of `count` rows in a window, the clock at `now`, laid out.
