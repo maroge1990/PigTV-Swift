@@ -424,6 +424,9 @@ final class BrowseModel: ObservableObject {
         guard guide.isEmpty else { return }
         let task = Task { [weak self] in
             guard let self else { return }
+            // Codex sign-off of 389 (medium): a guide load already running (Jump to… began first) owns the guide; the
+            // launch neither reads the saved guide nor starts its own.
+            guard !self.guideBusy else { return }
             // Review of 387-388 (medium): a load started while the cached guide's version answer was awaited (Jump to…)
             // owns the guide: this launch's fallback reset must not take its generation (and refetch its first page).
             let generation = self.guideGeneration
@@ -445,12 +448,22 @@ final class BrowseModel: ObservableObject {
     // covers the present. The network load that follows replaces it, unless a
     // version check (below) shows that load is unnecessary.
     func loadCachedGuide() async {
-        guard guide.isEmpty else { return }
+        guard guide.isEmpty, !guideBusy else { return }
+        let generation = guideGeneration
         let store = guideCache
+        #if DEBUG
+        let gate = Self.cacheReadGateForTesting
+        #endif
         let cached: GuideCache? = await Task.detached(priority: .userInitiated) {
+            #if DEBUG
+            gate?()
+            #endif
             guard let data = store.load() else { return nil }
             return try? JSONDecoder().decode(GuideCache.self, from: data)
         }.value
+        // Codex sign-off of 389 (medium): a load that started while the saved guide was read (Jump to…) owns the guide;
+        // nothing of the saved guide is published (its day, its rows, its ids would mix with that load's pages).
+        guard generation == guideGeneration, !guideBusy else { return }
         guard let cached, guide.isEmpty,
               cached.savedAt > Date().addingTimeInterval(-12 * 3600),
               cached.window <= Date(), cached.window.addingTimeInterval(GuideNavigation.loadedDuration) > Date().addingTimeInterval(4 * 3600) else { return }
@@ -465,6 +478,11 @@ final class BrowseModel: ObservableObject {
         exportTopShelf()
         _ = await tryMarkFreshByVersion()
     }
+
+    #if DEBUG
+    /// Tests: runs off the main actor just before the saved guide is read (a test holds the read there).
+    nonisolated(unsafe) static var cacheReadGateForTesting: (@Sendable () -> Void)?
+    #endif
 
     private func saveCache() {
         let snapshot = GuideCache(savedAt: Date(), window: window, channels: guide, version: guideCacheVersion)

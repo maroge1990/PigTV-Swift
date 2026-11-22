@@ -42,7 +42,7 @@ final class GuideGridStore {
         if let cached = ordered[channel.id] { return cached }
         let began = GuidePerf.orderBegan(); defer { GuidePerf.orderEnded(began) } // #360 (D1)
         mainThreadOrders += 1
-        let list = GuideNavigation.ordered(channel.programmes)
+        let list = Self.items(of: channel)
         ordered[channel.id] = list
         return list
     }
@@ -53,7 +53,7 @@ final class GuideGridStore {
         var lists: [String: [GuideProgramme]] = [:]
         lists.reserveCapacity(rows.count)
         for channel in rows where lists[channel.id] == nil {
-            lists[channel.id] = GuideNavigation.ordered(channel.programmes)
+            lists[channel.id] = items(of: channel)
         }
         return lists
     }
@@ -66,6 +66,19 @@ final class GuideGridStore {
             ordered.removeAll()
         }
         for (id, list) in lists where ordered[id] == nil { ordered[id] = list }
+    }
+
+    /// The programmes a row's cells show (the data source's items after the tile): valid, de-duplicated by start, in
+    /// order. The only place the grid normalises a row; everything that counts items goes through it.
+    nonisolated static func items(of channel: GuideChannel) -> [GuideProgramme] {
+        GuideNavigation.ordered(channel.programmes)
+    }
+
+    /// Codex sign-off of 389 (high): whether `b` gives the data source exactly what `a` did (the same channel, the same
+    /// items). `items(of:)` is a function of the programmes alone, so equal programmes are equal items; anything else
+    /// (a corrected or de-duplicated programme, a programme gained) counts as changed.
+    nonisolated static func unchangedForDataSource(_ a: GuideChannel, _ b: GuideChannel) -> Bool {
+        a.id == b.id && a.programmes == b.programmes
     }
 
     func itemCount(in section: Int) -> Int { 1 + max(1, programmes(in: section).count) }

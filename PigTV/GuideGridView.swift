@@ -402,14 +402,26 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         // #362: measured (GuidePerf), never changed by the measurement.
         var measured = GuidePerf.applyBegan(rows: store.rows.count, via: via)
         var kind = "reload"
-        defer { GuidePerf.applyEnded(measured, rows: rows.count, kind: kind) }
+        defer {
+            GuidePerf.applyEnded(measured, rows: rows.count, kind: kind)
+            #if DEBUG
+            lastApplyKindForTesting = kind
+            #endif
+        }
         let old = store.rows
         // Background paging appends channels; keep the existing cells (and
         // focus) then. Anything else reloads and restores focus by identity.
-        let appendOnly = !old.isEmpty && rows.count >= old.count && zip(old, rows).allSatisfy { a, b in
-            a.id == b.id && a.programmes.count == b.programmes.count
-                && a.programmes.first?.startTime == b.programmes.first?.startTime
-        }
+        // Codex sign-off of 389 (high): rows inserted after the existing ones go in as a batch insert only if every existing
+        // row gives the data source exactly what it did (`unchangedForDataSource`): a corrected row (starts A, B, C becoming
+        // A, B, B is one item fewer) under a trailing insert made the batch declare only the insert while that section's
+        // count changed, which UIKit rejects (an exception). Any change to an existing row takes the full reload below.
+        // Without rows added, the same-shape correction keeps its in-place path (A4).
+        let appendOnly = !old.isEmpty && rows.count >= old.count && (rows.count > old.count
+            ? zip(old, rows).allSatisfy { GuideGridStore.unchangedForDataSource($0, $1) }
+            : zip(old, rows).allSatisfy { a, b in
+                a.id == b.id && a.programmes.count == b.programmes.count
+                    && a.programmes.first?.startTime == b.programmes.first?.startTime
+            })
         // A4 (build 48): rows of the same shape whose content was corrected (a title, an end time):
         // their visible cells are reconfigured in place and the layout redone at once - the cells
         // (and focus) stay, but nothing waits for the next clock tick to show the correction.
@@ -515,6 +527,9 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     func applyPrimedForTesting(rows: [GuideChannel], lists: [String: [GuideProgramme]], revision: GuideGridRevision) {
         applyNow(rows: rows, revision: revision, via: "primed", primed: lists)
     }
+
+    /// Tests: the path the latest apply took (append, same, extend, reload).
+    private(set) var lastApplyKindForTesting = ""
 
     /// Tests: rows arrive as from GuideView's update (`rowsVersion` changed).
     func receiveRowsForTesting(_ rows: [GuideChannel]) { apply(rows: rows) }

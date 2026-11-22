@@ -272,6 +272,80 @@ final class GuideQuietTests: XCTestCase {
         }
     }
 
+    // MARK: Codex sign-off of 389 (high): a correction under an append
+
+    /// A grid of 500 day-long rows in a window, laid out (the store's revision 1).
+    private func hostedGrid(now: Date) throws -> (GuideGridViewController, UICollectionView) {
+        let controller = GuideGridViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        controller.applyForTesting(rows: dayLineup(500, now: now), revision: GuideGridRevision(programmes: 1, loadedAt: nil))
+        controller.setClockForTesting(now)
+        return (controller, try XCTUnwrap(controller.collectionView))
+    }
+
+    /// Row 0 with its programmes replaced by `edit` (the same channel).
+    private func editingRow0(_ rows: [GuideChannel], _ edit: ([GuideProgramme]) -> [GuideProgramme]) -> [GuideChannel] {
+        var rows = rows
+        let r = rows[0]
+        rows[0] = GuideChannel(rawID: r.rawID, sourceId: r.sourceId, name: r.name, logo: r.logo, category: r.category,
+                               programmes: edit(r.programmes))
+        return rows
+    }
+
+    /// A refresh that turns row 0's starts A, B, C into A, B, B (the same count and first start, one item fewer once
+    /// de-duplicated) while channels are added after the rows: the batch insert declared only the new rows while row 0's
+    /// count changed, and UIKit threw (an invalid batch update). Now that apply is a full reload, the grid shows the
+    /// corrected row and the new rows. Fails on 390 (the exception).
+    func testACorrectionThatDropsAnItemUnderAnAppendReloads() throws {
+        let now = Date()
+        let (controller, grid) = try hostedGrid(now: now)
+        XCTAssertEqual(grid.numberOfItems(inSection: 0), 49)
+        let rows = editingRow0(dayLineup(560, now: now)) { list in
+            var list = list
+            let b = list[1]
+            list[2] = GuideProgramme(title: "B again", description: nil, startTime: b.startTime, endTime: b.endTime)
+            return list
+        }
+        controller.applyForTesting(rows: rows, revision: GuideGridRevision(programmes: 2, loadedAt: nil))
+        grid.layoutIfNeeded()
+        XCTAssertEqual(controller.lastApplyKindForTesting, "reload")
+        XCTAssertEqual(grid.numberOfSections, 560)
+        XCTAssertEqual(grid.numberOfItems(inSection: 0), 48, "row 0 lost its duplicate start")
+        XCTAssertEqual(grid.numberOfItems(inSection: 559), 49)
+    }
+
+    /// An existing row that gained a programme while channels were added: a full reload too, with the new item.
+    func testAnAppendWhereARowGainedAProgrammeReloads() throws {
+        let now = Date()
+        let (controller, grid) = try hostedGrid(now: now)
+        let rows = editingRow0(dayLineup(560, now: now)) { list in
+            let last = list[list.count - 1]
+            return list + [GuideProgramme(title: "Late", description: nil, startTime: last.endTime, endTime: last.endTime + 1_800_000)]
+        }
+        controller.applyForTesting(rows: rows, revision: GuideGridRevision(programmes: 2, loadedAt: nil))
+        grid.layoutIfNeeded()
+        XCTAssertEqual(controller.lastApplyKindForTesting, "reload")
+        XCTAssertEqual(grid.numberOfItems(inSection: 0), 50)
+        XCTAssertEqual(grid.numberOfSections, 560)
+    }
+
+    /// A pure append (every existing row unchanged) keeps the fast path: a batch insert, the cells on screen kept.
+    func testAPureAppendStillTakesTheFastPath() throws {
+        let now = Date()
+        let (controller, grid) = try hostedGrid(now: now)
+        let shown = Set(grid.visibleCells.map(ObjectIdentifier.init))
+        controller.applyForTesting(rows: dayLineup(560, now: now), revision: GuideGridRevision(programmes: 1, loadedAt: nil))
+        grid.layoutIfNeeded()
+        XCTAssertEqual(controller.lastApplyKindForTesting, "append")
+        XCTAssertEqual(grid.numberOfSections, 560)
+        XCTAssertEqual(Set(grid.visibleCells.map(ObjectIdentifier.init)), shown)
+    }
+
     // MARK: E1
 
     /// #360 (E1, Time Profiler on the simulator): UIKit asked every cell coming on screen for its preferred size, a

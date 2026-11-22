@@ -234,6 +234,44 @@ final class GuideLoadReviewTests: XCTestCase {
         XCTAssertEqual(m.guide[1249].programmes, ProductionGuideFixture.channels(count: 1250, window: jumpDay)[1249].programmes)
     }
 
+    /// Codex sign-off of 389 (medium): the saved guide being read (held here) when the user jumps to another day: the read
+    /// used to publish the saved day and its channel ids over the jump's load (page two then asked with the saved day,
+    /// and the saved ids filtered rows out of the jump's first page). Now nothing of it is published. Fails on 390.
+    func testASavedGuideReadDuringAJumpPublishesNothing() async throws {
+        let saver = try model()
+        saver.window = today
+        await saver.loadGuide()
+        try await eventually { !saver.guidePagingActive && !saver.guideHasMore }
+        try await eventually { !((try? FileManager.default.contentsOfDirectory(at: self.cacheDirectory, includingPropertiesForKeys: nil)) ?? []).filter { $0.pathExtension == "json" }.isEmpty }
+        let m = try model()
+        let gate = ReadGate()
+        BrowseModel.cacheReadGateForTesting = { gate.wait() }
+        defer { BrowseModel.cacheReadGateForTesting = nil }
+        let launch = Task { await m.loadInitialGuide() }
+        try await eventually { gate.reached }
+        // Jump to… tomorrow while the saved guide is being read, its first page held.
+        let asked = ReviewServer.guideRequests
+        let jumpDay = today.addingTimeInterval(24 * 3600)
+        ReviewServer.holdFullPages = true
+        m.window = jumpDay
+        let jump = Task { await m.loadGuide(keepVisible: true) }
+        try await eventually { ReviewServer.guideRequests == asked + 1 }
+        gate.open() // the saved guide is decoded now
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(m.window, jumpDay, "the saved day replaced the jump's")
+        XCTAssertTrue(m.guide.isEmpty, "the saved rows were published over the jump's load")
+        XCTAssertFalse(m.fromCache)
+        ReviewServer.holdFullPages = false
+        await launch.value
+        await jump.value
+        try await eventually { !m.guidePagingActive && !m.guideHasMore }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(ReviewServer.guideRequests - asked, 3, "only the jump fetched its pages")
+        XCTAssertEqual(m.window, jumpDay)
+        XCTAssertEqual(m.guide.count, 1250, "every row of the jump's pages")
+        XCTAssertEqual(m.guide[1249].programmes, ProductionGuideFixture.channels(count: 1250, window: jumpDay)[1249].programmes)
+    }
+
     /// The Top Shelf's card logos during the launch's small first page: a favourite with a different logo from its preview
     /// row draws its own (the snapshot already uses its own slots). Fails on 386 (the preview row's logo).
     func testTopShelfLogosNeverComeFromTheSmallFirstPage() async throws {
@@ -260,6 +298,19 @@ final class GuideLoadReviewTests: XCTestCase {
         let full = try XCTUnwrap(m.topShelfSnapshot())
         XCTAssertEqual(m.topShelfLogoSources(for: full)[mine.id], m.guideChannel(id: mine.id).flatMap { m.logo(for: $0) })
         m.favourites = []
+    }
+}
+
+/// Holds a background read until opened.
+private final class ReadGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var hasReached = false
+    var reached: Bool { lock.withLock { hasReached } }
+    func open() { lock.withLock { isOpen = true } }
+    func wait() {
+        lock.withLock { hasReached = true }
+        while !lock.withLock({ isOpen }) { usleep(5000) }
     }
 }
 
