@@ -45,19 +45,19 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 appearance: `BrandDepthUITests`, `TabFlashUITests`, `BrandSplashUITests`, `TopShelfCardsUITests`, `PigTVUITests`,
 `PigTVUITestsLaunchTests`). `BrandDepthUITests`' two player checks need `Tools/generate-brand-review-media.sh` (ffmpeg); the
 visual tier runs it when ffmpeg is installed, and they skip otherwise.
-CI runs none of the UI tiers (D-49). `Tools/test.sh` tiers: `fast` (build, the contract script once, the unit tests), `push` (fast and
-the regression UI tests), `visual` (the screenshot suites), `all` (fast, regression and visual), `perf` (only the speed suites,
-below; in no other tier). A pass of `all` on a clean tree
-writes the git-ignored marker `.ui-full-passed` (the commit), which `Tools/testflight.sh` requires to equal HEAD, so an upload
-runs from the Mac's real clone, not an rsync copy. CI checks out the server's `test/golden`, so `GoldenChecks` runs there.
+The MacBook is the test gate (D-77): `sh Tools/mac-gate.sh <tier> [--worktree]` runs `Tools/test.sh <tier>` there. GitHub CI is
+non-blocking and not watched, and runs none of the UI tiers (D-49). Tiers: `fast` (build, the contract script once, the unit
+tests), `push` (fast and the regression UI tests), `visual` (the screenshot suites), `all` (fast, regression and visual),
+`perf` (only the speed suites, below; in no other tier), `ios` (#53: the unit tests on one iPad simulator, then one iPhone
+simulator, one at a time; in no other tier; `PIGTV_IPAD_SIM` / `PIGTV_IPHONE_SIM` name the devices). TestFlight builds come only
+from Xcode Cloud `tf/` tags (D-64); `Tools/testflight.sh` is retired and the `.ui-full-passed` marker a clean `all` still writes
+is only a record. Both CI and the Mac check out the server's `test/golden`, so `GoldenChecks` runs.
 
-**Test plans and Xcode Cloud (#351).** The scheme has two test plans. `PigTV.xctestplan` skips nothing; `Tools/test.sh` and
-GitHub CI name it (`-testPlan PigTV`), and in Xcode choose it with Product › Test Plan. `XcodeCloud.xctestplan` is the scheme's
+**Test plans and Xcode Cloud (#351).** The scheme has two test plans. `PigTV.xctestplan` skips nothing; `Tools/test.sh` names it (`-testPlan PigTV`), and in Xcode choose it with Product › Test Plan. `XcodeCloud.xctestplan` is the scheme's
 default because the release workflow's Test actions can only "Use scheme settings" (Xcode 27): Xcode Cloud builds on one
 machine and runs `test-without-building` on another that has only the build products, so it leaves out the static source scans
 (`BrandRulesTests`, `HelperLinesGoneTests`, `SelectionFlatTests`, `SportHideScoresWriterTests`, `LaunchImageTests`,
-`TestPlanTests`, two `PolishTests` colour-catalogue reads, two `SportSpoilersTests` source scans), which run on the Mac and in
-GitHub CI, and four timing probes that failed on its runners (`TabSwitchUITests`' thousand-channel switch, `OutsidePlayUITests`,
+`TestPlanTests`, two `PolishTests` colour-catalogue reads, two `SportSpoilersTests` source scans), which run on the Mac, and four timing probes that failed on its runners (`TabSwitchUITests`' thousand-channel switch, `OutsidePlayUITests`,
 `TouchLayoutUITests`' Watch on menu, `PlayerSlowStartUITests`' fixed 4.5 s wait) and the Guide's speed suite (`GuidePerfUITests`). `TestPlanTests` pins both lists. What tests read ships in their bundles: the JSON fixtures
 are also members of `PigTVUITests` (read through `UIFixture`), the Debug app carries `sport-front-0381.json` for the offline
 Home (Release excludes it), and the PigTVTests "Golden answers" build phase copies `../PigTV/test/golden` (or

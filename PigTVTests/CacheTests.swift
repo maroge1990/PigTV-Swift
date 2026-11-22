@@ -143,7 +143,8 @@ final class CacheTests: XCTestCase {
 
     func testPruneRemovesTheOldestPastTheSizeCapAndAnythingPastTheAgeCap() throws {
         let store = ArtworkDiskStore(directory: temp.appendingPathComponent("prune"))
-        let now = Date()
+        // A fixed instant, not the wall clock: every date and the prune's `now` are exact, whatever the machine's load.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
         let ages: [(String, TimeInterval)] = [("a", 3_000), ("b", 2_000), ("c", 1_000), ("stale", 40 * 24 * 3600)]
         for (key, age) in ages {
             store.write(Data(repeating: 1, count: 100), key: key)

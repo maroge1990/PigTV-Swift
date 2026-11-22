@@ -1,3 +1,4 @@
+# The Apple tests are run on the MacBook (D-77, Tools/mac-gate.sh); this workflow is non-blocking and not watched.
 name: CI
 
 on:

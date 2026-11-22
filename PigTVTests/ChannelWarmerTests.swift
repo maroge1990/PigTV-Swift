@@ -90,6 +90,14 @@ final class ChannelWarmerTests: XCTestCase {
         await settle()
     }
 
+    /// Waits until the dwell's sleep has reached the clock (`count` sleepers). `advance` moves the manual clock at once, and
+    /// a sleep that registers after it starts from the later time, so under load the dwell ran longer than the test said.
+    /// Polls, bounded at 5 s: a dwell that never starts fails the assertion that follows.
+    private func untilSleeping(_ count: Int) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while clock.sleepers != count, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(1)) }
+    }
+
     private func advance(_ seconds: Double) async {
         clock.advance(.milliseconds(Int(seconds * 1000)))
         await settle()
@@ -121,19 +129,25 @@ final class ChannelWarmerTests: XCTestCase {
     func testDwellIsRespectedAndARunOfSwitchesSendsNothing() async {
         let warmer = makeWarmer()
         await player(warmer, a)
+        await untilSleeping(1)
         await advance(1.0)
         await player(warmer, b)
+        await untilSleeping(1)
         await advance(1.0)
         XCTAssertTrue(sent.isEmpty, "a moved before its dwell ended; b has only had 1 s")
         await player(warmer, a)
+        await untilSleeping(1)
         await advance(1.0)
         await player(warmer, nil)
+        await untilSleeping(0)
         await advance(5)
         XCTAssertTrue(sent.isEmpty, "the target went before anything settled")
         await player(warmer, b)
+        await untilSleeping(1)
         await advance(1.4)
         XCTAssertTrue(sent.isEmpty)
         await advance(0.2)
+        await untilSent()
         XCTAssertEqual(sent, [b])
     }
 

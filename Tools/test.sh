@@ -4,6 +4,9 @@
 #   sh Tools/test.sh fast     contract checks, then the unit tests (~1 min after the build)
 #   sh Tools/test.sh push     fast, then the regression UI tests (once per batch: before its review and before the push)
 #   sh Tools/test.sh visual   the screenshot and appearance UI tests (before a release or a brand change, ~18 min with the review media)
+#   sh Tools/test.sh ios      the unit tests (PigTVTests) on one iPad simulator, then one iPhone simulator, one after the other
+#                             (#53). Not part of `all`; PIGTV_IPAD_SIM / PIGTV_IPHONE_SIM name the devices (default: the first
+#                             available iPad, and iPhone 17e or else the first available iPhone; the choice is printed)
 #   sh Tools/test.sh all      push, then visual: the full UI run. CI does not run it (D-49); Tools/testflight.sh requires it
 #                             to have passed for the exact commit it uploads (see the marker below)
 #   sh Tools/test.sh perf     the speed tests only (#362): GuidePerfUITests and the 1,000-channel tab switch; prints their
@@ -38,6 +41,26 @@ rm -f "$MARKER"
 # -testPlan PigTV: the full plan. The scheme's default is XcodeCloud, which Xcode Cloud's workflow can only take as "Use
 # scheme settings" (Xcode 27 offers no plan choice there, #351).
 xc() { xcodebuild -quiet -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "$DEST" "$@"; }
+
+# #53: the unit tests on iOS. One simulator at a time (an 8 GB Mac): each is shut down before the next one boots.
+# $1 = a name the user set (empty: pick), $2 = the pattern to prefer, $3 = the family to fall back to.
+pick_sim() {
+    if [ -n "$1" ]; then echo "$1"; return; fi
+    LIST="$(xcrun simctl list devices available 2>/dev/null | grep -E "^ +$3" | sed -E 's/^ +(.*) \([0-9A-F-]{36}\).*$/\1/')"
+    if [ -n "$2" ] && echo "$LIST" | grep -qx "$2"; then echo "$2"; else echo "$LIST" | head -1; fi
+}
+ios_unit() {
+    IPAD="$(pick_sim "${PIGTV_IPAD_SIM:-}" "" iPad)"
+    IPHONE="$(pick_sim "${PIGTV_IPHONE_SIM:-}" "iPhone 17e" iPhone)"
+    for name in "$IPAD" "$IPHONE"; do
+        [ -n "$name" ] || { echo "no iPad / iPhone simulator found (set PIGTV_IPAD_SIM / PIGTV_IPHONE_SIM)" >&2; exit 2; }
+        echo "== unit tests on iOS: $name"
+        # shellcheck disable=SC2086
+        xcodebuild -quiet -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "platform=iOS Simulator,name=$name" \
+            test $UNIT
+        xcrun simctl shutdown all >/dev/null 2>&1 || true
+    done
+}
 trap 'xcrun simctl shutdown all >/dev/null 2>&1 || true' EXIT
 
 fast() {
@@ -85,6 +108,7 @@ perf_ui() {
     if [ "$RC" != 0 ]; then tail -40 build/perf-output.log; exit "$RC"; fi
 }
 
+if [ "$TIER" = ios ]; then ios_unit; echo "== ios: passed"; exit 0; fi
 echo "== build for testing"
 xc build-for-testing
 case "$TIER" in
@@ -93,7 +117,7 @@ case "$TIER" in
     visual) visual_ui ;;
     all)    fast; regression_ui; visual_ui ;;
     perf)   perf_ui ;;
-    *)      echo "usage: sh Tools/test.sh fast|push|visual|all|perf" >&2; exit 2 ;;
+    *)      echo "usage: sh Tools/test.sh fast|push|visual|all|perf|ios" >&2; exit 2 ;;
 esac
 # The full UI run counts for TestFlight only on a clean, committed tree (tracked files; build/ is ignored).
 if [ "$TIER" = all ] && command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1 \
