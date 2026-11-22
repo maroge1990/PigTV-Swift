@@ -112,6 +112,11 @@ final class APIClient {
     /// Largest artwork response accepted, enforced while it streams in.
     var artworkMaxBytes = 4 * 1024 * 1024
     private let artworkStore: ArtworkDiskStore
+    /// #54: told when a request made with this client's token is answered 401 (the signed-in session's client only).
+    var unauthorisedHandler: (@MainActor (APIClient) -> Void)?
+    /// #54: a client with the same address and token and nothing else (no handler, the default session): what a 401's
+    /// confirming `auth/me` is asked with, as the launch restore asks it.
+    func confirmingClient() -> APIClient { APIClient(address: address, token: token) }
     private let artworkProtocols: [AnyClass]?
     // One task per logo: several cells asking for it share one fetch. #360 (G4): cancelled, down to its URLSession task,
     // once every caller that may cancel (`cancellable`) has been and no other caller waits.
@@ -212,7 +217,10 @@ final class APIClient {
         switch response.statusCode {
         case 200..<300: return Response(status: response.statusCode, data: data,
             retryAfter: response.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init))
-        case 401: throw PigTVError.unauthorised
+        case 401:
+            // #54: a request made with this client's token was refused: its owner (AppModel) confirms it. Never logged.
+            if token != nil, let handler = unauthorisedHandler { await handler(self) }
+            throw PigTVError.unauthorised
         case 403: throw PigTVError.forbidden
         // C-L: "not watchable" says whether it has finished; recordingWatch reads it.
         case 409 where path.hasPrefix("recordings/") && path.hasSuffix("/watch"):

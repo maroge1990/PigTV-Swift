@@ -121,6 +121,7 @@ final class AppModel: ChangeSuppressing {
             words = .saved
             let user = try await userAnswer.value
             let authenticated = APIClient(address: address, token: token, info: info, accountID: user.id)
+            watchRefusals(authenticated)
             self.client = authenticated
             self.serverInfo = info
             browse?.retirePrivateCaches()
@@ -226,6 +227,7 @@ final class AppModel: ChangeSuppressing {
         if let user { resolvedUser = user }
         else { resolvedUser = try await probe.request("auth/me") }
         let candidate = APIClient(address: address, token: token, info: info, accountID: resolvedUser.id)
+        watchRefusals(candidate)
         try keychain.save(token: token, for: address)
         UserDefaults.standard.set(address.url.absoluteString, forKey: "pigtv.server")
         serverText = address.url.absoluteString
@@ -333,7 +335,48 @@ final class AppModel: ChangeSuppressing {
         } catch { self.error = UserMessage.text(for: error) }
     }
 
-    private func clearSession() {
+    // MARK: A 401 mid-session (#54)
+
+    /// The confirming call in flight (one at a time), and when the last one was made (at most one per 30 s).
+    @ObservationIgnored private var refusalCheck: Task<Void, Never>?
+    @ObservationIgnored private var refusalCheckedAt: Date?
+    static let refusalCheckInterval: TimeInterval = 30
+
+    /// The signed-in session's client tells this model of each 401 its token is answered.
+    private func watchRefusals(_ client: APIClient) {
+        client.unauthorisedHandler = { [weak self] refused in self?.sessionRefused(by: refused) }
+    }
+
+    /// #54: a request made with the saved token was answered 401 while signed in. One confirming `auth/me` with that
+    /// token (the call a restore makes); only a second 401 leaves for Sign in. Anything else (a network error, a timeout,
+    /// a 5xx, any other answer) changes nothing: the screen that asked shows its own error as before.
+    private func sessionRefused(by refused: APIClient) {
+        guard refused === client, loggedIn, refusalCheck == nil else { return }
+        if let at = refusalCheckedAt, Date().timeIntervalSince(at) < Self.refusalCheckInterval { return }
+        refusalCheckedAt = Date()
+        let confirming = refused.confirmingClient()
+        refusalCheck = Task { [weak self] in
+            var refusedAgain = false
+            do { let _: User = try await confirming.request("auth/me") } catch { refusedAgain = error as? PigTVError == .unauthorised }
+            guard let self else { return }
+            self.refusalCheck = nil
+            if refusedAgain { await self.endRefusedSession(refused) }
+        }
+    }
+
+    /// The state a 401 at launch leaves: signed out of this session, the saved sign-in kept (never removed here) and
+    /// offered again (Sign in's "Your saved sign-in wasn’t accepted", Retry). A play is ended first, as Sign out ends it.
+    private func endRefusedSession(_ refused: APIClient) async {
+        guard refused === client, loggedIn else { return }
+        if let currentPlayback { await endPlayback(currentPlayback) }
+        guard !playbackBusy, refused === client, loggedIn else { return }
+        // The Top Shelf stays as it was, as at a launch 401 (Sign out clears it).
+        clearSession(clearingTopShelf: false)
+        canRestore = true
+        noteSignInFailure(PigTVError.unauthorised, words: .saved, retry: .saved)
+    }
+
+    private func clearSession(clearingTopShelf: Bool = true) {
         categoriesTask?.cancel() // Apple 162: an old session's categories never land in the next one
         categoriesTask = nil
         cancelPairing()
@@ -342,7 +385,7 @@ final class AppModel: ChangeSuppressing {
         pendingLink = nil
         // #362 (review of 374): an offline Guide fixture never published to the shared Top Shelf, so its sign-out neither
         // clears it nor retires its generation (`retirePrivateCaches` keeps the same rule).
-        if browse?.publishesTopShelf ?? true { TopShelfExport.clear() }
+        if clearingTopShelf, browse?.publishesTopShelf ?? true { TopShelfExport.clear() }
         client = nil
         serverInfo = nil
         browse?.retirePrivateCaches()
