@@ -93,19 +93,24 @@ perf_facts() {
         "load $(sysctl -n vm.loadavg 2>/dev/null), $(memory_pressure 2>/dev/null | grep -i 'free percentage' | sed 's/.*: //') free"
 }
 perf_ui() {
-    # Not -quiet: the tests' printed lines are the point. The full output stays in build/; the lines that matter are shown.
+    # Not -quiet: the tests' printed lines are the point. Each run keeps its own folder, build/perf-<UTC time>/ (the result
+    # bundle and the full output), so a second run neither fails on a used result-bundle path nor overwrites the first's log.
     echo "== perf UI tests"
+    RUN="build/perf-$(date -u +%Y%m%dT%H%M%SZ)"
+    while [ -e "$RUN" ]; do RUN="$RUN-x"; done
+    mkdir -p "$RUN"
+    echo "-- perf run folder: $RUN"
     echo "-- perf simulator: $DEST"
     perf_facts before
-    mkdir -p build
     RC=0
-    xcodebuild -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "$DEST" -resultBundlePath build/perf.xcresult \
+    xcodebuild -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "$DEST" -resultBundlePath "$RUN/perf.xcresult" \
         test-without-building -only-testing:PigTVUITests/GuidePerfUITests \
-        -only-testing:PigTVUITests/TabSwitchUITests/testSwitchingTabsOnAThousandChannelsIsQuick > build/perf-output.log 2>&1 || RC=$?
+        -only-testing:PigTVUITests/TabSwitchUITests/testSwitchingTabsOnAThousandChannelsIsQuick > "$RUN/perf-output.log" 2>&1 || RC=$?
     xcrun simctl list devices booted 2>/dev/null | grep -i "apple tv" | sed 's/^ */-- perf booted: /'
     perf_facts after
-    grep -E "GUIDE-SCROLL|TABSWITCH|measured \[|error:|Test Case .*(passed|failed)" build/perf-output.log || true
-    if [ "$RC" != 0 ]; then tail -40 build/perf-output.log; exit "$RC"; fi
+    grep -E "GUIDE-SCROLL|TABSWITCH|measured \[|error:|Test Case .*(passed|failed)" "$RUN/perf-output.log" || true
+    echo "-- perf output: $RUN/perf-output.log"
+    if [ "$RC" != 0 ]; then tail -40 "$RUN/perf-output.log"; exit "$RC"; fi
 }
 
 if [ "$TIER" = ios ]; then ios_unit; echo "== ios: passed"; exit 0; fi

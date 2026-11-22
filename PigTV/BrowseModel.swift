@@ -69,6 +69,9 @@ final class BrowseModel: ObservableObject {
     private let guideCache: GuideCacheStore
     /// A2 (build 48): the Top Shelf generation this session publishes under.
     let topShelfGeneration = TopShelfPublication.shared.current
+    /// #362 (review of 373): false for the offline UI fixtures, whose synthetic line-up must never reach the shared Top
+    /// Shelf snapshot or prune its cards: their exports then do nothing. True (publishing) everywhere else.
+    var publishesTopShelf = true
 
     init(client: APIClient, accountID: Int? = nil, guideCacheDirectory: URL = GuideCacheStore.defaultDirectory) {
         self.client = client
@@ -658,7 +661,7 @@ final class BrowseModel: ObservableObject {
             pages.invalidatePreferences()
             // #232 (D-66): the saved Top Shelf drops its scores at once (the choice is unknown until it is read again, and
             // unknown hides); the next export, once the choice is read, writes what it allows.
-            TopShelfExport.hideScores(generation: self.topShelfGeneration)
+            if self.publishesTopShelf { TopShelfExport.hideScores(generation: self.topShelfGeneration) }
             Task { [weak self] in
                 await pages.revalidatePreferences()
                 self?.exportTopShelf()

@@ -333,6 +333,102 @@ final class GuidePerfTests: XCTestCase {
         XCTAssertLessThan(ms, 5000)
     }
 
+    // MARK: Review of 373: a measurement ends one frame after the Guide's work
+
+    /// Frame callbacks the test makes itself, each with the time it says its frame is due.
+    @MainActor private final class ManualFrames: GuideFrames {
+        private var frame: (@MainActor (CFTimeInterval) -> Void)?
+        var running: Bool { frame != nil }
+        func start(_ frame: @escaping @MainActor (CFTimeInterval) -> Void) { self.frame = frame }
+        func stop() { frame = nil }
+        func tick(due: CFTimeInterval = CACurrentMediaTime() + 1.0 / 60) { frame?(due) }
+    }
+
+    /// High: the first frame callback after a focus change only opens the chance to draw; the layout and drawing of the
+    /// change come after it on the main thread. A stall there (here 200 ms between the first and second callbacks) is in
+    /// the figure, which ends at the second callback's due time.
+    func testAFocusMoveEndsAtTheFrameAfterItsWorkSoAStallBeforeThatFrameCounts() throws {
+        let defaults = try newDefaults()
+        defer { tidy(defaults); GuidePerf.resetForTests() }
+        let probe = try probeOnScreen(defaults)
+        let frames = ManualFrames()
+        GuidePerf.makeFrames = { frames }
+        probe.pressBegan(CACurrentMediaTime())
+        GuidePerf.focusMoved()
+        GuidePerf.focusHandled()
+        frames.tick() // the first callback after the work
+        XCTAssertEqual(probe.stats.moves, 0, "not landed at the first callback after the work: its frame is not drawn yet")
+        Thread.sleep(forTimeInterval: 0.2) // layout and drawing of the change stall the main thread
+        let due = CACurrentMediaTime() + 1.0 / 60
+        frames.tick(due: due)
+        XCTAssertEqual(probe.stats.moves, 1)
+        let focus = try XCTUnwrap(probe.stats.focusMs.first)
+        let press = try XCTUnwrap(probe.stats.pressMs.first)
+        XCTAssertGreaterThanOrEqual(focus, 200, "the stall before the move's frame is in the focus figure")
+        XCTAssertGreaterThanOrEqual(press, 200, "and in the press figure")
+        XCTAssertLessThan(focus, 1000)
+        XCTAssertFalse(frames.running, "the wait stops at its frame")
+    }
+
+    /// High, the first screen: the same, from the first row configured.
+    func testTheFirstScreenEndsAtTheFrameAfterItsRowsSoAStallBeforeThatFrameCounts() throws {
+        let defaults = try newDefaults()
+        defer { tidy(defaults); GuidePerf.resetForTests() }
+        let probe = try probeOnScreen(defaults)
+        let frames = ManualFrames()
+        GuidePerf.makeFrames = { frames }
+        GuidePerf.screenAppeared(rowsShown: false)
+        GuidePerf.rowsOnScreen()
+        frames.tick()
+        XCTAssertNil(probe.stats.firstScreenMs, "not ended at the first callback after the rows were configured")
+        Thread.sleep(forTimeInterval: 0.2)
+        frames.tick()
+        let ms = try XCTUnwrap(probe.stats.firstScreenMs)
+        XCTAssertGreaterThanOrEqual(ms, 200, "the stall before the first screen's frame is in the figure")
+        XCTAssertLessThan(ms, 1000)
+    }
+
+    // MARK: Review of 373: the fixtures never publish to the Top Shelf
+
+    #if os(tvOS)
+    /// Medium: the Guide fixtures' line-ups (the 14-channel one and the production-shaped one, loaded and paged through
+    /// the app's own loading) never reach the shared Top Shelf snapshot: the seeded last-written snapshot stays, no Top
+    /// Shelf file change is queued and the App Group's snapshot file (if this host has one) is as it was.
+    func testTheGuideFixturesNeverPublishToTheTopShelf() async throws {
+        let savedSnapshot = TopShelfExport.lastWritten
+        let filterKey = "pigtv.guide.filter"
+        let savedFilter = UserDefaults.standard.object(forKey: filterKey)
+        defer {
+            TopShelfExport.lastWritten = savedSnapshot
+            UserDefaults.standard.set(savedFilter, forKey: filterKey)
+        }
+        await TopShelfCardExport.finish()
+        let seeded = TopShelfSnapshot(kind: "favourites", channels: [
+            TopShelfSnapshot.Entry(id: "seeded", sourceId: 1, name: "Seeded", number: nil, logo: nil, programmes: []),
+        ], savedAt: Date(timeIntervalSince1970: 1_795_000_000))
+        TopShelfExport.lastWritten = seeded
+        let onDisk = TopShelfSnapshot.fileURL.flatMap { try? Data(contentsOf: $0) }
+        let queued = TopShelfPublication.shared.queuedCount
+
+        let app = AppModel()
+        app.injectGuideFixture()
+        let small = try XCTUnwrap(app.browse)
+        await small.exportTopShelfUntilWritten()
+        app.injectProductionGuideFixture()
+        let large = try XCTUnwrap(app.browse)
+        ProductionGuideServer.pageDelay = 0
+        await large.exportTopShelfUntilWritten()
+        await large.loadGuide()
+        for _ in 0..<500 where large.guidePaging { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(large.guide.count, ProductionGuideFixture.channelCount, "the fixture was loaded and paged")
+        await TopShelfCardExport.finish()
+
+        XCTAssertEqual(TopShelfExport.lastWritten, seeded, "a fixture's line-up replaced the Top Shelf snapshot")
+        XCTAssertEqual(TopShelfPublication.shared.queuedCount, queued, "a fixture queued a Top Shelf file change")
+        XCTAssertEqual(TopShelfSnapshot.fileURL.flatMap { try? Data(contentsOf: $0) }, onDisk)
+    }
+    #endif
+
     // MARK: The production-shaped fixture
 
     private let window = ProductionGuideFixture.window(now: Date(timeIntervalSince1970: 1_795_000_000))

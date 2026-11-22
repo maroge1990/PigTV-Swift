@@ -891,6 +891,7 @@ final class AppModel: ObservableObject {
             #"{"name":"PigTV","version":"3.9.0","build":"0494","apiVersion":1,"features":{"library":true,"sportsEvents":true}}"#.utf8)) : nil
         let client = info.map { APIClient(address: address, token: "fixture", info: $0) } ?? APIClient(address: address, token: "fixture")
         let model = BrowseModel(client: client)
+        model.publishesTopShelf = false // #362: the synthetic line-up never reaches the shared Top Shelf snapshot
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(), to: GuideFixtures.requestedCount)
         model.recordingStore.loaded = true // #280: the fixture's (empty) answer is in
         model.recordingStore.rulesLoaded = true
@@ -919,7 +920,7 @@ final class AppModel: ObservableObject {
     /// and 40 categories, served by `ProductionGuideServer` through the app's own client. Static: the rows in place as a
     /// finished load leaves them. PIGTV_UI_TEST_GUIDE_PAGED=1: nothing in place; the Guide's own first load pages it in.
     /// A fresh scratch folder per launch for the guide cache and the logos' disk store, so every launch starts cold.
-    private func injectProductionGuideFixture() {
+    func injectProductionGuideFixture() {
         guard let address = try? ServerAddress(ProductionGuideFixture.address) else { return }
         let count = ProductionGuideFixture.channelCount
         ProductionGuideServer.channelCount = count
@@ -928,6 +929,7 @@ final class AppModel: ObservableObject {
         let client = APIClient(address: address, token: "fixture", session: ProductionGuideFixture.session(),
                                artworkStore: ArtworkDiskStore(directory: scratch.appendingPathComponent("artwork", isDirectory: true)))
         let model = BrowseModel(client: client, guideCacheDirectory: scratch.appendingPathComponent("guide", isDirectory: true))
+        model.publishesTopShelf = false // #362: the synthetic line-up never reaches the shared Top Shelf snapshot
         model.recordingStore.loaded = true
         model.recordingStore.rulesLoaded = true
         if !ProductionGuideFixture.paged {

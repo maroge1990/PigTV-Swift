@@ -14,6 +14,7 @@ struct GuideSpeedReadoutRows: View {
                 SettingsRow("TV Guide", value: summary, wraps: true, lines: 4)
                     .accessibilityHint(GuidePerfProbe.readoutHint)
                     .accessibilityIdentifier("settings.guideReadout.summary")
+                footnote
                 resetRow
             }
         }
@@ -61,6 +62,22 @@ struct GuideSpeedReadoutRows: View {
         .tint(Color.pigAccent)
         .listRowBackground(Color.pigRaised)
         .accessibilityIdentifier("settings.guideReadout")
+        #endif
+    }
+
+    /// What the figures are (one frame after the Guide's work, not a camera measurement).
+    @ViewBuilder private var footnote: some View {
+        #if os(tvOS)
+        Text(GuidePerfProbe.readoutFootnote)
+            .font(.system(size: PigType.secondary)).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, PigSpacing.l)
+            .accessibilityIdentifier("settings.guideReadout.footnote")
+        #else
+        Text(GuidePerfProbe.readoutFootnote)
+            .font(.footnote).foregroundStyle(.secondary)
+            .listRowBackground(Color.pigRaised)
+            .accessibilityIdentifier("settings.guideReadout.footnote")
         #endif
     }
 

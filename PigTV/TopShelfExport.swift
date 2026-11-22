@@ -175,6 +175,7 @@ extension BrowseModel {
         // The Top Shelf exists only on tvOS and only its extension reads the snapshot:
         // elsewhere this does nothing, so the guide scan below never runs.
         #if os(tvOS)
+        guard publishesTopShelf else { return } // #362: an offline fixture's line-up is never published
         guard let snapshot = topShelfSnapshot() else {
             TopShelfLog.logger.notice("export: nothing to save yet (no favourites or guide rows)")
             return

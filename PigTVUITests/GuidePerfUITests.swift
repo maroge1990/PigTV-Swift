@@ -40,7 +40,7 @@ final class GuidePerfUITests: XCTestCase {
         reset()
         record("d-right-10", try presses(.right, 10), presses: 10)
         reset()
-        record("e-held-down-100", try heldScroll(rows: 100), presses: 0)
+        record("e-held-down-100", try heldScroll(rows: 100), presses: 0, heldMinimum: 50)
         reset()
         Thread.sleep(forTimeInterval: 35)
         record("f-idle-35s", try probe(), presses: 0, tick: true)
@@ -205,12 +205,20 @@ final class GuidePerfUITests: XCTestCase {
 
     // MARK: The record
 
-    /// Prints and attaches `GUIDE-SCROLL {"scenario":…,…}` (per-press counts added), then applies any budget set.
-    private func record(_ scenario: String, _ json: [String: Any], presses: Int, vertical: Bool = false, tick: Bool = false) {
+    /// At least this share of a single-press scenario's presses must move focus, or its figures say nothing.
+    static let landedShare = 0.9
+
+    /// Prints and attaches `GUIDE-SCROLL {"scenario":…,…}` (`presses` sent, `focusMoves` landed, and per-press counts:
+    /// per move that landed), then checks the presses landed (single presses: at least 90 % moved focus; a held scroll:
+    /// focus moved at least `heldMinimum` rows) and only then applies any budget set.
+    private func record(_ scenario: String, _ json: [String: Any], presses: Int, vertical: Bool = false, tick: Bool = false,
+                        heldMinimum: Int? = nil) {
         var json = json
+        let moves = number(json, "focusMoves") ?? 0
         if presses > 0 {
-            for key in ["bodyEvals", "cellConfigs", "applies"] {
-                if let value = number(json, key) { json[key + "PerPress"] = (value / Double(presses) * 10).rounded() / 10 }
+            json["presses"] = presses
+            for key in ["bodyEvals", "cellConfigs", "applies"] where moves > 0 {
+                if let value = number(json, key) { json[key + "PerPress"] = (value / moves * 10).rounded() / 10 }
             }
         }
         json.removeValue(forKey: "scenario")
@@ -231,7 +239,17 @@ final class GuidePerfUITests: XCTestCase {
 
         XCTAssertGreaterThan(number(json, "frames") ?? 0, 0, "\(scenario): the probe counted no frames")
         if presses > 0 {
-            XCTAssertGreaterThan(number(json, "focusMoves") ?? 0, 0, "\(scenario): no focus move landed")
+            let needed = (Double(presses) * Self.landedShare).rounded(.up)
+            guard moves >= needed else {
+                XCTFail("\(scenario): \(Int(moves)) of \(presses) presses moved focus (at least \(Int(needed)) must); no budget applied")
+                return
+            }
+        }
+        if let heldMinimum {
+            guard moves >= Double(heldMinimum) else {
+                XCTFail("\(scenario): the held scroll moved focus \(Int(moves)) rows (at least \(heldMinimum) must); no budget applied")
+                return
+            }
         }
         let env = ProcessInfo.processInfo.environment
         if presses > 0, let budget = env["PIGTV_GUIDEPERF_FOCUS_MS"].flatMap(Double.init), let worst = number(json, "focusMaxMs") {

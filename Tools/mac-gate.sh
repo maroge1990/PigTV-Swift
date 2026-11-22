@@ -84,6 +84,12 @@ REMOTE
 } >"$LOG" 2>&1
 RC=$?
 SECS=$(( $(date +%s) - START ))
+# perf: the run's full output (Tools/test.sh keeps it in build/perf-<UTC time>/) comes back next to the log, before the
+# cleanup deletes build/; the GUIDE-SCROLL lines are in the log already.
+if [ "${TIER%%+*}" = perf ] && [ -z "$ONLY" ]; then
+    mac "cat \$(ls -td $G/src/build/perf-*/ 2>/dev/null | head -1)perf-output.log" > "${LOG%.log}-perf-output.log" 2>/dev/null \
+        && echo "perf output: ${LOG%.log}-perf-output.log" >> "$LOG" || rm -f "${LOG%.log}-perf-output.log"
+fi
 
 if [ $RC = 0 ] && grep -q "^GATE-RESULT PASS" "$LOG"; then RES=PASS; else RES=FAIL; RC=1; fi
 # failed tests: the "Failing tests:" block xcodebuild ends with (tab-indented names), else per-test failure lines

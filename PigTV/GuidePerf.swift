@@ -7,9 +7,9 @@ import UIKit
 /// a row count and an apply kind; never a URL, token or channel address.
 /// - `GuideApplyRows` (interval): one grid apply, the batch-update and the reload paths.
 /// - `GuideCellConfigure` (interval): one programme or tile cell's configuration.
-/// - `GuideFocusMove` (interval): the grid's focus update → the first frame drawn after the SwiftUI side handled it.
+/// - `GuideFocusMove` (interval): the grid's focus update → the frame after the SwiftUI side handled it (`GuideFrameWait`).
 /// - `GuideBodyEval` (event): `GuideView.body` evaluated.
-/// - `GuideFirstScreen` (interval): the Guide appearing → the first frame with rows on screen.
+/// - `GuideFirstScreen` (interval): the Guide appearing → the frame after its first rows were configured (`GuideFrameWait`).
 /// The same hooks feed `GuidePerfProbe` while it is on (Settings › About › Guide speed readout, or the UI tests' launch
 /// variable); while it is off each hook's probe part is one nil check (GuidePerfProbe.swift).
 @MainActor
@@ -62,11 +62,17 @@ enum GuidePerf {
         GuidePerfProbe.shared?.bodyEvaluated()
     }
 
+    // MARK: Frames
+
+    /// The frame callbacks a measurement's `GuideFrameWait` counts: the display link in the app; unit tests put in a
+    /// source they tick themselves.
+    static var makeFrames: @MainActor () -> any GuideFrames = { DisplayLinkFrames() }
+
     // MARK: Focus moves
 
     private static var focusMove: (id: Int, state: OSSignpostIntervalState, began: CFTimeInterval)?
     private static var focusMoves = 0
-    private static var ticks: [Int: PigTVSignpost.FrameTick] = [:]
+    private static var ticks: [Int: GuideFrameWait] = [:]
 
     /// The grid's `didUpdateFocusIn` with a cell next: a move begins (a move still waiting for its frame is superseded).
     /// The probe pairs it with the arrow press that caused it, if one came just before; any other stored press is dropped.
@@ -81,16 +87,16 @@ enum GuidePerf {
         focusMove = (focusMoves, signposter.beginInterval("GuideFocusMove", id: signposter.makeSignpostID()), CACurrentMediaTime())
     }
 
-    /// GuideView has been told (`focusChanged`): the move ends on the next frame, which the main thread can draw only
-    /// once SwiftUI has finished with what that changed.
+    /// GuideView has been told (`focusChanged`): the move ends at the frame after the one that change opened, once its
+    /// layout and drawing have been done on the main thread (`GuideFrameWait`), timed to when that frame is due on screen.
     static func focusHandled() {
         guard let move = focusMove, ticks[move.id] == nil else { return }
-        ticks[move.id] = PigTVSignpost.FrameTick {
+        ticks[move.id] = GuideFrameWait(frames: makeFrames()) { shown in
             ticks[move.id] = nil
             guard let current = focusMove, current.id == move.id else { return }
             focusMove = nil
             signposter.endInterval("GuideFocusMove", current.state)
-            GuidePerfProbe.shared?.focusLanded(ms: (CACurrentMediaTime() - current.began) * 1000)
+            GuidePerfProbe.shared?.focusLanded(ms: (shown - current.began) * 1000, at: shown)
         }
     }
 
@@ -125,7 +131,7 @@ enum GuidePerf {
     /// `sample`: the probe records it (the Guide's first appearance since launch, with the probe already on).
     private static var firstScreen: (id: Int, state: OSSignpostIntervalState, began: CFTimeInterval, sample: Bool)?
     private static var firstScreens = 0
-    private static var firstScreenTick: PigTVSignpost.FrameTick?
+    private static var firstScreenTick: GuideFrameWait?
     private static var guideHasAppeared = false
 
     /// The Guide appeared. `rowsShown`: its grid already has rows (a return to the tab), so the next frame shows them.
@@ -143,19 +149,20 @@ enum GuidePerf {
         if rowsShown { rowsOnScreen() }
     }
 
-    /// A grid cell was configured with a row: the interval ends on the next frame (abandoned if past the limit).
+    /// A grid cell was configured with a row: the interval ends at the frame after the next (`GuideFrameWait`), timed to
+    /// when that frame is due on screen (abandoned if past the limit).
     static func rowsOnScreen() {
         guard let pending = firstScreen, firstScreenTick == nil else { return }
         if CACurrentMediaTime() - pending.began > firstScreenLimit {
             abandonFirstScreen()
             return
         }
-        firstScreenTick = PigTVSignpost.FrameTick {
+        firstScreenTick = GuideFrameWait(frames: makeFrames()) { shown in
             guard let current = firstScreen, current.id == pending.id else { return } // abandoned meanwhile
             firstScreenTick = nil
             firstScreen = nil
             signposter.endInterval("GuideFirstScreen", current.state)
-            if current.sample { GuidePerfProbe.shared?.firstScreen(ms: (CACurrentMediaTime() - current.began) * 1000) }
+            if current.sample { GuidePerfProbe.shared?.firstScreen(ms: (shown - current.began) * 1000) }
         }
     }
 
@@ -168,8 +175,9 @@ enum GuidePerf {
     }
 
     #if DEBUG
-    /// Unit tests: the measurements' state as at launch (open intervals are dropped).
+    /// Unit tests: the measurements' state as at launch (open intervals are dropped), on the display link.
     static func resetForTests() {
+        makeFrames = { DisplayLinkFrames() }
         focusMove = nil
         ticks = [:]
         visibleRuns = 0
@@ -178,4 +186,52 @@ enum GuidePerf {
         guideHasAppeared = false
     }
     #endif
+}
+
+/// One frame callback after another, each with when its frame is due on screen (CACurrentMediaTime's clock), until stopped.
+@MainActor protocol GuideFrames: AnyObject {
+    func start(_ frame: @escaping @MainActor (_ due: CFTimeInterval) -> Void)
+    func stop()
+}
+
+/// The app's frames: a display link on the main run loop, `targetTimestamp` as the time due.
+@MainActor final class DisplayLinkFrames: NSObject, GuideFrames {
+    private var link: CADisplayLink?
+    private var frame: (@MainActor (CFTimeInterval) -> Void)?
+
+    func start(_ frame: @escaping @MainActor (CFTimeInterval) -> Void) {
+        self.frame = frame
+        let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+        frame = nil
+    }
+
+    @objc private func tick(_ link: CADisplayLink) { frame?(link.targetTimestamp) }
+}
+
+/// #362 (review of 373, high): a measurement's end, two frame callbacks after the Guide's work, then gone. The first
+/// callback after the work (a focus change handled, a row configured) only opens the chance to draw: the layout and drawing
+/// of that work happen after it, on the main thread, and a stall there would go uncounted. The second can come only once
+/// they are done, so the measurement ends there, at the time its frame is due on screen: a close estimate of what you see,
+/// one frame later than the work's own end, not a camera measurement.
+@MainActor final class GuideFrameWait {
+    static let callbacks = 2
+    private let frames: any GuideFrames
+    private var seen = 0
+
+    init(frames: any GuideFrames, _ done: @escaping @MainActor (_ shown: CFTimeInterval) -> Void) {
+        self.frames = frames
+        frames.start { [self] due in
+            seen += 1
+            guard seen >= Self.callbacks else { return }
+            self.frames.stop()
+            done(due)
+        }
+    }
 }

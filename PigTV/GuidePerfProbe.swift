@@ -10,7 +10,7 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     static let sampleCap = 2000
     /// Focus moves that reached their frame.
     var moves = 0
-    /// Each focus move: the grid's focus update → the first frame after GuideView handled it (ms).
+    /// Each focus move: the grid's focus update → the frame after GuideView handled it (`GuideFrameWait`, ms).
     var focusMs: [Double] = []
     /// Each remote press that moved focus: the press event's own time → that same frame (ms).
     var pressMs: [Double] = []
@@ -135,8 +135,12 @@ final class GuidePerfProbe: NSObject {
     static let defaultsKey = "pigtv.guide.speedReadout"
     nonisolated static let resetNotification = "au.markrogers.PigTV.guideProbe.reset"
     nonisolated static let focusNotification = "au.markrogers.PigTV.guideProbe.focus"
-    static let readoutHint = "Typical and slowest: from the remote press to the first frame drawn after the move, or from "
-        + "the focus change where the press time is not known. Slow frames: more than 100 ms apart while the TV Guide was on screen."
+    static let readoutHint = "Typical and slowest: from the remote press (or the focus change, where the press time is not "
+        + "known) to the frame after the TV Guide finished its work. Slow frames: more than 100 ms apart while the TV Guide was on "
+        + "screen; longest stall: the longest of those gaps."
+    /// Settings' footnote under the line: what the figures are, in plain words (#362, review of 373).
+    static let readoutFootnote = "Each move is timed from the press to the frame after the TV Guide finished its work: a close "
+        + "estimate of what you see, not a camera measurement. A stall shows in slow frames and the longest stall."
 
     #if DEBUG
     /// The UI tests' switch (launch environment).
@@ -290,12 +294,13 @@ final class GuidePerfProbe: NSObject {
         movePress = nil
     }
 
-    func focusLanded(ms: Double) {
+    /// `shown`: when the move's frame is due on screen (`GuideFrameWait`), where its press is timed to as well.
+    func focusLanded(ms: Double, at shown: CFTimeInterval = CACurrentMediaTime()) {
         var pressMs: Double?
         if let press = movePress {
             movePress = nil
             // UIPress.timestamp and CACurrentMediaTime share the system's uptime clock; anything odd is dropped.
-            let value = (CACurrentMediaTime() - press) * 1000
+            let value = (shown - press) * 1000
             if value >= 0 && value < 10_000 { pressMs = value }
         }
         guard guideVisible else { return }
