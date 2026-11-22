@@ -825,13 +825,26 @@ struct GuideView: View {
     static var menuItemsForTesting: [ProgrammeMenuItem]?
     #endif
 
-    /// Whether choosing `item` still means anything at `now`: a RECORD item only while the programme the menu was opened on
-    /// has not ended (Codex sign-off of 380: by its end alone, never by comparing the rebuilt item, whose status words a
-    /// schedule refresh can change while it is on air); the others always.
+    /// Whether a chosen `item` may run at `now`, against `subject` rebuilt at the moment of choosing. A RECORD item runs
+    /// only while the programme has not ended AND the rebuilt menu still offers an enabled item of the same kind (its
+    /// `id`: never its status words or title, so "Recording scheduled" turning into "Recording now" still runs Change
+    /// recording, while Record this / Record every are refused once a cancellation is under way or the programme has
+    /// been scheduled meanwhile; Codex sign-offs of 380 and 381). The others always run.
     static func stillOffered(_ item: ProgrammeMenuItem, _ subject: ProgrammeMenuSubject, now: Date) -> Bool {
         guard item.isRecordSection else { return true }
-        guard let programme = subject.programme else { return false }
-        return programme.end > now
+        guard let programme = subject.programme, programme.end > now else { return false }
+        return ProgrammeMenu.items(subject, now: now).contains { $0.id == item.id && $0.isAvailable }
+    }
+
+    /// What the viewer is told when a RECORD item is refused while its programme is still on: the words its own failure
+    /// would use (shown in the card's error line, or the On now menu's alert), or the cancellation's when one is under way.
+    static func refusal(_ item: ProgrammeMenuItem, _ subject: ProgrammeMenuSubject) -> String? {
+        if subject.cancelling { return PageWords.cancellingEarlierText }
+        switch item {
+        case .recordThis: return "The recording could not be scheduled."
+        case .recordEvery: return "The rule could not be added."
+        default: return nil
+        }
     }
 
     /// The items the menu card is drawn with at `now` (kept for the tests in DEBUG).
@@ -880,11 +893,17 @@ struct GuideView: View {
     /// What a menu item does on the Guide; nil when it worked (the card closes), else the error to show in the card.
     private func runMenu(_ item: ProgrammeMenuItem, _ target: GuideMenuTarget) async -> String? {
         let channel = target.channel
-        // Review of 377: a RECORD item chosen after its programme ended (between two ticks) does nothing; the card is
-        // redrawn at once without it.
-        guard Self.stillOffered(item, target.subject, now: max(clock.now, Date())) else {
+        // Review of 377 and the sign-offs of 380/381: a RECORD item is checked against the menu as it would be built now
+        // (the TV card's subject is the one it opened with). After its programme's end it does nothing (the card is
+        // redrawn at once without it); refused while still on, the card is redrawn with the current items and says why
+        // (the On now menu's alert says it).
+        let now = max(clock.now, Date())
+        let current = menuSubject(channel, target.programme)
+        guard Self.stillOffered(item, current, now: now) else {
             clock.now = Date()
-            return nil
+            guard let programme = target.programme, programme.end > now else { return nil }
+            if menu != nil { menu = GuideMenuTarget(channel: channel, programme: programme, subject: current, anchor: target.anchor) }
+            return Self.refusal(item, current)
         }
         switch item {
         case .recordThis:

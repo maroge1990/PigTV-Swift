@@ -114,8 +114,27 @@ final class GuideQuietTests: XCTestCase {
         let rebuilt = ProgrammeMenuSubject(channelName: "Channel", programme: programme, recordingStatus: "Recording now")
         XCTAssertTrue(GuideView.stillOffered(shown, rebuilt, now: now),
                       "a Change recording chosen on a programme still on air did nothing (its status changed meanwhile)")
-        XCTAssertTrue(GuideView.stillOffered(.recordThis(), rebuilt, now: now), "an action on a programme that has not ended always runs")
+        XCTAssertFalse(GuideView.stillOffered(.recordThis(), rebuilt, now: now),
+                       "Record this is no longer offered once the programme is scheduled (Change recording is)")
         XCTAssertFalse(GuideView.stillOffered(shown, rebuilt, now: programme.end.addingTimeInterval(1)), "ended: nothing runs")
+    }
+
+    /// Codex sign-off of 381: a schedule refresh can report, after the menu opened, that an earlier recording of this
+    /// programme is being cancelled. The rebuilt menu then offers only the disabled "Cancelling…" in RECORD, so a stale
+    /// "Record every new episode" (or Record this) must not run (it reached addRule and could save a rule), and the
+    /// viewer is told why, in the menu's own error line or the On now menu's alert.
+    func testARecordItemChosenAfterACancellationBeganDoesNotRun() {
+        let now = Date()
+        let programme = GuideProgramme(title: "On air", description: nil, startTime: (now - 600).timeIntervalSince1970 * 1000,
+                                       endTime: (now + 1800).timeIntervalSince1970 * 1000)
+        let rebuilt = ProgrammeMenuSubject(channelName: "Channel", programme: programme, cancelling: true)
+        XCTAssertFalse(GuideView.stillOffered(.recordEvery(title: "Record every new episode"), rebuilt, now: now),
+                       "Record every new episode ran while an earlier recording of it was being cancelled")
+        XCTAssertFalse(GuideView.stillOffered(.recordThis(), rebuilt, now: now), "Record this ran while cancelling")
+        XCTAssertFalse(GuideView.stillOffered(.moreOptions, rebuilt, now: now), "More options ran while cancelling")
+        XCTAssertTrue(GuideView.stillOffered(.schedule, rebuilt, now: now), "the rest of the menu still runs")
+        XCTAssertEqual(GuideView.refusal(.recordEvery(title: "Record every new episode"), rebuilt), PageWords.cancellingEarlierText)
+        XCTAssertEqual(GuideView.refusal(.recordThis(), rebuilt), PageWords.cancellingEarlierText)
     }
 
     private func channel(_ id: String, _ programmes: [(start: Date, end: Date)]) -> GuideChannel {
