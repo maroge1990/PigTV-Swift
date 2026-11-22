@@ -350,36 +350,23 @@ final class GuideQuietTests: XCTestCase {
 
     /// #360 (E1, Time Profiler on the simulator): UIKit asked every cell coming on screen for its preferred size, a
     /// SwiftUI size-to-fit of its content (11 % of the main thread's time per press), and the layout threw the answer away.
-    /// Now no cell is sized to fit, whether the grid fills or scrolls, and the grid draws as laid out (tiles pinned,
-    /// programmes clipped at the channel column, the now line). Fails on 389 (cells sized on every display).
-    func testCellsComingOnScreenAreNeverSizedToFit() throws {
-        #if os(iOS)
-        // As `hostGuide`: the upright iPhone's Guide is the On now list, not this 1920-wide grid (it failed there on 391's
-        // ios tier, once in three runs; the iPad runs it).
-        if UIDevice.current.userInterfaceIdiom == .phone { throw XCTSkip("the iPhone's Guide has no grid") }
-        #endif
-        let now = Date()
-        let controller = GuideGridViewController()
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
-        self.window = window
-        controller.loadViewIfNeeded()
-        controller.view.layoutIfNeeded()
-        let sizings = GuidePerf.cellSizingsForTesting
-        controller.applyForTesting(rows: dayLineup(80, now: now), revision: GuideGridRevision(programmes: 1, loadedAt: nil))
-        controller.setClockForTesting(now + 3600) // the now line stays inside the timeline after the sideways step
-        let grid = try XCTUnwrap(controller.collectionView)
-        let layout = try XCTUnwrap(grid.collectionViewLayout as? GuideGridLayout)
-        for step in 1...12 { // rows come on screen, cells are reused
-            grid.contentOffset.y = CGFloat(step) * layout.metrics.rowHeight * 1.5
-            grid.layoutIfNeeded()
+    /// Each cell now answers with the layout's own attributes, unchanged, and sizes nothing. (Fails on 389.) This replaces
+    /// a hosted-grid version (390-394) whose drawn-geometry checks failed now and then on every platform: they read a
+    /// scene-less window's layout state right after scrolling, against a layout whose origin is the wall clock.
+    func testTheCellsAnswerTheLayoutsOwnAttributesWithoutSizingTheirContent() {
+        let cells: [UICollectionViewCell] = [GuideGridProgrammeCell(frame: CGRect(x: 0, y: 0, width: 300, height: 88)),
+                                             GuideGridTileCell(frame: CGRect(x: 0, y: 0, width: 300, height: 88))]
+        for cell in cells {
+            let given = UICollectionViewLayoutAttributes(forCellWith: IndexPath(item: 1, section: 3))
+            given.frame = CGRect(x: 412, y: 96, width: 377, height: 88)
+            given.zIndex = 2
+            let sizings = GuidePerf.cellSizingsForTesting
+            let answer = cell.preferredLayoutAttributesFitting(given)
+            XCTAssertTrue(answer === given, "\(type(of: cell)) answered other attributes")
+            XCTAssertEqual(answer.frame, CGRect(x: 412, y: 96, width: 377, height: 88), "\(type(of: cell)) changed the frame")
+            XCTAssertEqual(answer.zIndex, 2)
+            XCTAssertEqual(GuidePerf.cellSizingsForTesting - sizings, 0, "\(type(of: cell)) sized its content to fit")
         }
-        grid.setX(grid.contentOffset.x + 300) // and sideways
-        grid.layoutIfNeeded()
-        XCTAssertGreaterThan(grid.visibleCells.count, 20)
-        XCTAssertEqual(GuidePerf.cellSizingsForTesting - sizings, 0, "cells were sized to fit by UIKit")
-        assertDrawnAsLaidOut(grid, layout, "after scrolling down and sideways")
     }
 
     // MARK: G8

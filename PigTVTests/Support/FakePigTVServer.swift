@@ -86,6 +86,11 @@ final class FakePigTVServer: @unchecked Sendable {
         let answer: @Sendable (Int, String) -> LocalHTTPServer.Response
     }
 
+    /// #54: answers a test gives first (nil: the fake's own). A struct, as `PauseAnswer`.
+    struct Routes: Sendable {
+        let answer: @Sendable (LocalHTTPServer.Request) -> LocalHTTPServer.Response?
+    }
+
     /// `resolve(n)` builds the n-th resolve answer (1-based) as JSON.
     init(resolve: (@Sendable (Int, LocalHTTPServer.Request) -> LocalHTTPServer.Response)? = nil,
          sportEvents: String? = nil,
@@ -94,7 +99,8 @@ final class FakePigTVServer: @unchecked Sendable {
          warm: LocalHTTPServer.Response = .init(status: 204, contentType: "application/json", body: Data()),
          watch: (@Sendable (Int) -> LocalHTTPServer.Response)? = nil,
          livePause: PauseAnswer? = nil,
-         position: LocalHTTPServer.Response? = nil) throws {
+         position: LocalHTTPServer.Response? = nil,
+         routes: Routes? = nil) throws {
         let counter = Locked(0)
         let watchCount = Locked(0)
         let longCount = Locked(0)
@@ -105,6 +111,7 @@ final class FakePigTVServer: @unchecked Sendable {
         }
         let sport = sportEvents ?? FakePigTVServer.sportEventsJSON(now: Date())
         http = try LocalHTTPServer { request in
+            if let answer = routes?.answer(request) { return answer }
             if request.method == "GET", request.path == "/api/sports/events" { return .json(sport) }
             if request.method == "POST", request.path == "/api/playback/warm" {
                 if warm.status == 200 { warmed.value.insert(FakePigTVServer.channelKey(request.body)) }

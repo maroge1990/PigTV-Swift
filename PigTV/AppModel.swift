@@ -351,7 +351,8 @@ final class AppModel: ChangeSuppressing {
     /// token (the call a restore makes); only a second 401 leaves for Sign in. Anything else (a network error, a timeout,
     /// a 5xx, any other answer) changes nothing: the screen that asked shows its own error as before.
     private func sessionRefused(by refused: APIClient) {
-        guard refused === client, loggedIn, refusalCheck == nil else { return }
+        // Not while the session is ending: the stream's release on the refused token is answered 401 too.
+        guard refused === client, loggedIn, refusalCheck == nil, !sessionEnding else { return }
         if let at = refusalCheckedAt, Date().timeIntervalSince(at) < Self.refusalCheckInterval { return }
         refusalCheckedAt = Date()
         let confirming = refused.confirmingClient()
@@ -364,12 +365,40 @@ final class AppModel: ChangeSuppressing {
         }
     }
 
+    /// #54 (Codex review of 394): a confirmed refusal is ending the session. While it is set nothing starts on it: no
+    /// play, switch or zap (`beginPlayback`, `switchPlayback`), no link (`open`, dropped, never kept for the next
+    /// session), no play waiting for pages to close, no new page (`AppPresenter.refusing`), and its 401s are not checked
+    /// again.
+    @ObservationIgnored private(set) var sessionEnding = false
+
     /// The state a 401 at launch leaves: signed out of this session, the saved sign-in kept (never removed here) and
-    /// offered again (Sign in's "Your saved sign-in wasn’t accepted", Retry). A play is ended first, as Sign out ends it.
+    /// offered again (Sign in's "Your saved sign-in wasn’t accepted", Retry). A play is ended first, as Sign out ends it,
+    /// whatever is playing when it does (one may have replaced the play this began with), and the stream's release on
+    /// the refused token is best effort: its failure is not shown (no alert over Sign in).
     private func endRefusedSession(_ refused: APIClient) async {
+        guard refused === client, loggedIn, !sessionEnding else { return }
+        sessionEnding = true
+        presenter.refusing = true
+        defer {
+            sessionEnding = false
+            presenter.refusing = false
+        }
+        cancelHandoff()
+        pendingLink = nil
+        cancelPendingWatch()
+        var ended = 0
+        while let playing = currentPlayback, ended < 4 {
+            await endPlayback(playing, reportingFailure: false)
+            ended += 1
+        }
         guard refused === client, loggedIn else { return }
-        if let currentPlayback { await endPlayback(currentPlayback) }
-        guard !playbackBusy, refused === client, loggedIn else { return }
+        // Whatever is left of a play is gone with the session (nothing can have started meanwhile).
+        currentPlayback = nil
+        playback = nil
+        playbackBusy = false
+        playerPresented = false
+        zapList = []
+        sportPlay = nil
         // The Top Shelf stays as it was, as at a launch 401 (Sign out clears it).
         clearSession(clearingTopShelf: false)
         canRestore = true
@@ -383,6 +412,9 @@ final class AppModel: ChangeSuppressing {
         cancelPendingWatch()
         cancelHandoff()
         pendingLink = nil
+        // #54 (Codex review of 394): the page open, the one queued and the actions waiting for them belong to this
+        // session: dropped before its browse model goes, so none reopens or runs in the next one.
+        presenter.endSession()
         // #362 (review of 374): an offline Guide fixture never published to the shared Top Shelf, so its sign-out neither
         // clears it nor retires its generation (`retirePrivateCaches` keeps the same rule).
         if clearingTopShelf, browse?.publishesTopShelf ?? true { TopShelfExport.clear() }
@@ -433,6 +465,7 @@ final class AppModel: ChangeSuppressing {
 
     /// `pigtv://play?…`: plays that channel when signed in; ignored otherwise.
     func open(_ url: URL) {
+        guard !sessionEnding else { return } // #54: dropped, not kept for the next session
         // Build 31: pigtv://home showed Home. #216 (Apple 102): Home is retired; the link (still in older Top Shelf
         // snapshots) opens the opening tab: Sport, or the TV Guide where the server has no sport (LibraryView.tab(for:)).
         if PigTVLink.isHome(url) { requestedTab = LibraryView.homeLinkTab; return }
@@ -504,6 +537,7 @@ final class AppModel: ChangeSuppressing {
     /// #14: a play started from outside the screen (the Top Shelf, a "watch when it starts" timer) closes every open
     /// page first, since the player cannot present over a cover; it starts once they are gone.
     func playOverCovers(_ start: @escaping @MainActor (AppModel) -> Void) {
+        guard !sessionEnding else { return } // #54
         // #178: one waiting at a time: a newer link replaces it; backgrounding, signing out and any play the user
         // starts cancel it (cancelHandoff).
         cancelHandoff()
@@ -547,7 +581,7 @@ final class AppModel: ChangeSuppressing {
     /// `origin`: the tab the play starts from (D-39), sent with the play-start event.
     func beginPlayback(_ channel: Channel, origin: String? = nil) {
         cancelHandoff() // #178: whatever starts now wins over a play still waiting for pages to close
-        guard !playbackBusy, currentPlayback == nil, let client else { return }
+        guard !playbackBusy, currentPlayback == nil, !sessionEnding, let client else { return }
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         model.origin = origin ?? scopedPlayOrigin
         prepareFallback(model)
@@ -581,7 +615,7 @@ final class AppModel: ChangeSuppressing {
     // first (the provider allows one stream), then the new one resolves.
     func switchPlayback(to channel: Channel, origin: String? = nil) {
         cancelHandoff() // #178
-        guard let old = currentPlayback, let client, old.channel.id != channel.id else { return }
+        guard let old = currentPlayback, let client, old.channel.id != channel.id, !sessionEnding else { return }
         previousChannel = old.channel
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
         // D-39: a zap inside the player keeps the play's origin; a new choice from a page names its own.
@@ -771,7 +805,8 @@ final class AppModel: ChangeSuppressing {
         pendingWatch = nil
     }
 
-    func endPlayback(_ model: PlaybackModel) async {
+    /// `reportingFailure` false (#54, a refused session's teardown): a release the server did not confirm is not shown.
+    func endPlayback(_ model: PlaybackModel, reportingFailure: Bool = true) async {
         let message = await model.stop()
         if currentPlayback === model {
             currentPlayback = nil
@@ -782,7 +817,7 @@ final class AppModel: ChangeSuppressing {
             zapList = []
             sportPlay = nil // #334: and lists channels unless it starts from Sport
             warmer.playerClosed()
-            if let message { error = message }
+            if let message, reportingFailure { error = message }
         }
     }
 

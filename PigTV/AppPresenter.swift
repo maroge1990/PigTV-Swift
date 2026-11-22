@@ -67,7 +67,11 @@ final class AppPresenter {
     /// takes it then, and clears it).
     var guideJump: Date?
 
+    /// #54 (Codex review of 394): the session is ending: nothing new is presented until `endSession` has run.
+    @ObservationIgnored var refusing = false
+
     func present(_ item: AppPresentation) {
+        guard !refusing else { return }
         if presented == nil && !closing { presented = item; return }
         queued = item
         close()
@@ -106,6 +110,20 @@ final class AppPresenter {
             queued = nil
             presented = next
         }
+    }
+
+    /// #54 (Codex review of 394): the session that owned what is open has ended (Sign out, or a confirmed refusal). Its
+    /// page, the one queued after it and Search's guide jump are dropped, and so are the actions waiting for the page to
+    /// close (`dismiss(then:)`: a Watch from a channel's page or Search, a game from Search: plays on the ended session),
+    /// never run. The host resolves a page against whatever session exists when it draws, so one left here would reopen
+    /// in the next session (another server or account). The host's late onDismiss for the page that was open then finds
+    /// nothing to run.
+    func endSession() {
+        presented = nil
+        queued = nil
+        closing = false
+        afterClose = []
+        guideJump = nil
     }
 
     // MARK: Undo toast
