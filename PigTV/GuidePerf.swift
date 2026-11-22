@@ -76,9 +76,12 @@ enum GuidePerf {
 
     /// The grid's `didUpdateFocusIn` with a cell next: a move begins (a move still waiting for its frame is superseded).
     /// The probe pairs it with the arrow press that caused it, if one came just before; any other stored press is dropped.
-    static func focusMoved() {
+    /// `row`: the focused row (the grid's section), which the probe keeps so the held-scroll test can check how far focus
+    /// went (#362, review of 374).
+    static func focusMoved(row: Int? = nil) {
         guard watching else { return }
         GuidePerfProbe.shared?.focusBegan()
+        if let row { GuidePerfProbe.shared?.focusRow(row) }
         if let pending = focusMove {
             signposter.endInterval("GuideFocusMove", pending.state, "superseded")
             GuidePerfProbe.shared?.focusSuperseded()
@@ -95,10 +98,27 @@ enum GuidePerf {
             ticks[move.id] = nil
             guard let current = focusMove, current.id == move.id else { return }
             focusMove = nil
-            signposter.endInterval("GuideFocusMove", current.state)
-            GuidePerfProbe.shared?.focusLanded(ms: (shown - current.began) * 1000, at: shown)
+            let ms = (shown - current.began) * 1000
+            endTimed("GuideFocusMove", current.state, ms: ms)
+            GuidePerfProbe.shared?.focusLanded(ms: ms, at: shown)
         }
     }
+
+    /// #362 (review of 374): a signpost interval can only end now, at the second frame callback, while the figure the
+    /// probe and the perf test report ends when that callback's frame is due on screen (up to a frame later). So the
+    /// interval's own length is callback timing; its end message carries the frame-due figure (`frameDueMs`), the same
+    /// number the probe records, for Instruments and anyone comparing the two.
+    private static func endTimed(_ name: StaticString, _ state: OSSignpostIntervalState, ms: Double) {
+        signposter.endInterval(name, state, "frameDueMs \(ms, format: .fixed(precision: 1), privacy: .public)")
+        #if DEBUG
+        lastFrameDueMs["\(name)"] = ms
+        #endif
+    }
+
+    #if DEBUG
+    /// Tests: the frame-due figure each kind of interval last ended with (what its end message carries).
+    private(set) static var lastFrameDueMs: [String: Double] = [:]
+    #endif
 
     /// Focus left the grid (to the filter bar or the tab bar): the open move is dropped, neither landed nor superseded,
     /// so the next move into the grid does not count the time away.
@@ -161,8 +181,9 @@ enum GuidePerf {
             guard let current = firstScreen, current.id == pending.id else { return } // abandoned meanwhile
             firstScreenTick = nil
             firstScreen = nil
-            signposter.endInterval("GuideFirstScreen", current.state)
-            if current.sample { GuidePerfProbe.shared?.firstScreen(ms: (shown - current.began) * 1000) }
+            let ms = (shown - current.began) * 1000
+            endTimed("GuideFirstScreen", current.state, ms: ms)
+            if current.sample { GuidePerfProbe.shared?.firstScreen(ms: ms) }
         }
     }
 
@@ -184,6 +205,7 @@ enum GuidePerf {
         firstScreen = nil
         firstScreenTick = nil
         guideHasAppeared = false
+        lastFrameDueMs = [:]
     }
     #endif
 }

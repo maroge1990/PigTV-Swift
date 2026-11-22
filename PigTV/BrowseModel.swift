@@ -104,7 +104,8 @@ final class BrowseModel: ObservableObject {
         for worker in reconcilers.values { worker.cancel() }
         reconcilers.removeAll()
         // A2: and its Top Shelf publication: nothing it still exports is written.
-        if topShelfGeneration == TopShelfPublication.shared.current { TopShelfPublication.shared.retire() }
+        // #362 (review of 374): not for an offline fixture, which never published (its sign-out leaves the Top Shelf alone).
+        if publishesTopShelf, topShelfGeneration == TopShelfPublication.shared.current { TopShelfPublication.shared.retire() }
     }
 
     // Loads the first page immediately, then keeps paging in the background

@@ -335,7 +335,9 @@ final class AppModel: ObservableObject {
         cancelPendingWatch()
         cancelHandoff()
         pendingLink = nil
-        TopShelfExport.clear()
+        // #362 (review of 374): an offline Guide fixture never published to the shared Top Shelf, so its sign-out neither
+        // clears it nor retires its generation (`retirePrivateCaches` keeps the same rule).
+        if browse?.publishesTopShelf ?? true { TopShelfExport.clear() }
         client = nil
         serverInfo = nil
         browse?.retirePrivateCaches()

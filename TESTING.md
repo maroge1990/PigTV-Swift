@@ -92,19 +92,27 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   fixture (1,250 channels, a day of programmes with 150–300-character descriptions, a logo each through the real artwork path, 40
   categories). (a) first screen, (b) 40 single presses down at about 3 a second, each waiting for its move to land, (c) 40 up,
   (d) 10 right, (e) a held scroll of about 100 rows, (f) 35 s idle (the 30 s clock tick), (g) 45 presses down from the moment
-  the first page's rows show while pages 2–3 arrive (7 s apart; fewer than 2 applies in the window fails as a test-setup fault); (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` (GuideFocusMove). Each scenario prints and
+  the first page's rows show while pages 2–3 arrive (7 s apart; the window starts after the move that entered the grid; fewer than 2 applies in it fails as a test-setup fault); (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` (GuideFocusMove).
+  A signpost interval can only end at the frame callback, up to a frame before the probe's frame-due time, so Xcode's
+  GuideFocusMove figure is callback timing: each of its runs prints the probe's figures for the same presses
+  (`GUIDE-SIGNPOST run n: …`), and each completed GuideFocusMove/GuideFirstScreen signpost's end message carries the
+  frame-due figure (`frameDueMs`). Compare the probe's figures, never Xcode's, with the GUIDE-SCROLL lines. Each scenario prints and
   attaches one line `GUIDE-SCROLL {"scenario":…, <probe JSON>}`: `focusMs` (each move: the grid's focus update → the frame after
   the Guide finished its work, i.e. the display-link callback after the first one following GuideView's handling, timed to when
   that frame is due on screen: a close estimate of what you see, not a camera measurement) with median/p95/max, `pressMs` (an
   arrow press under 1 s before the move → that frame), `maxGapMs`, `gapsOver50`/`gapsOver100`
   and `frames` (a display-link monitor: a main-thread stall shows here whatever the moves say), `bodyEvals`, `cellConfigs`,
-  `applies`, `applyMs` (and per press: per focus move that landed), `presses` (sent) and `focusMoves` (landed), `rowsStart`/`rowsEnd`,
+  `applies`, `applyMs` (and per press: per focus move that landed), `presses` (sent), `focusMoves` (focus events that
+  landed), `landedPresses` (presses whose move landed, at most one each), `focusRow` (the focused row's index; the held
+  scroll adds `rowsMoved`, its change), `rowsStart`/`rowsEnd`,
   `firstScreenMs` (the Guide's first appearance since launch → the frame after its first rows were configured, timed the same
   way; none if it leaves the screen or has no rows within 30 s). A single-press scenario fails unless at least 90 % of its
-  presses moved focus, the held scroll unless focus moved at least 50 rows; budgets apply only after that. Record only unless a budget is set: `PIGTV_GUIDEPERF_FOCUS_MS`,
+  presses landed (`landedPresses`, not focus events), the held scroll unless the focused row moved at least 50 rows down
+  (`rowsMoved`); budgets apply only after that. Record only unless a budget is set: `PIGTV_GUIDEPERF_FOCUS_MS`,
   `_GAP_MS`, `_FIRST_MS`, `_BODY_PER_PRESS`, `_CELLS_PER_VERTICAL_PRESS`, `_CELLS_AT_TICK`, `_APPLY_MS` (`Tools/test.sh` and
   `Tools/mac-gate.sh` pass them to the test runner). Each perf run keeps its result bundle and full output in its own
-  `build/perf-<UTC time>/` (printed; `Tools/mac-gate.sh perf` copies the output back next to its log). The perf tier also prints the Mac's model, CPUs, memory, load and the booted simulator: the figures
+  `build/perf-<UTC time>/` (printed; `Tools/mac-gate.sh perf` copies the output back next to its log from that exact folder, and if the copy fails it
+  says so and leaves the output on the Mac, in `~/pigtv-build/perf-kept/`, with its path). The perf tier also prints the Mac's model, CPUs, memory, load and the booted simulator: the figures
   are the MacBook simulator's, never the Apple TV's.
 - `TabFlashUITests`: switches tabs in dark and light, failing if a screenshot is over half the wrong colour (the build 32 flash).
 - `BrandRulesTests` (unit): no typed-in colours, system red/yellow, greys, sub-82 % playback panels or literal radii in `PigTV/`

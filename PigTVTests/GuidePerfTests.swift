@@ -388,6 +388,51 @@ final class GuidePerfTests: XCTestCase {
         XCTAssertLessThan(ms, 1000)
     }
 
+    // MARK: Review of 374 (mediums)
+
+    /// Medium: the signposts ended at callback time while the probe used the frame's due time. A completed interval's end
+    /// now carries the frame-due figure, the same number the probe records (for a move and for the first screen).
+    func testTheSignpostsCarryTheSameFrameDueFigureAsTheProbe() throws {
+        let defaults = try newDefaults()
+        defer { tidy(defaults); GuidePerf.resetForTests() }
+        let probe = try probeOnScreen(defaults)
+        let frames = ManualFrames()
+        GuidePerf.makeFrames = { frames }
+        GuidePerf.focusMoved(row: 3)
+        GuidePerf.focusHandled()
+        frames.tick()
+        frames.tick(due: CACurrentMediaTime() + 0.25) // due well after the callback: the two timings differ by 250 ms
+        let move = try XCTUnwrap(probe.stats.focusMs.first)
+        XCTAssertGreaterThanOrEqual(move, 240, "the probe's figure ends when the frame is due")
+        XCTAssertEqual(try XCTUnwrap(GuidePerf.lastFrameDueMs["GuideFocusMove"], "the move's signpost carries no figure"),
+                       move, accuracy: 0.001)
+        GuidePerf.screenAppeared(rowsShown: false)
+        GuidePerf.rowsOnScreen()
+        frames.tick()
+        frames.tick(due: CACurrentMediaTime() + 0.25)
+        let first = try XCTUnwrap(probe.stats.firstScreenMs)
+        XCTAssertEqual(try XCTUnwrap(GuidePerf.lastFrameDueMs["GuideFirstScreen"], "the first screen's signpost carries no figure"),
+                       first, accuracy: 0.001)
+    }
+
+    /// Medium: the held-scroll gate counted focus events, not rows. The probe keeps the focused row (the grid's section)
+    /// of the latest move, across a reset, and says it in its JSON, so the test can measure forward progress in rows.
+    func testTheProbeKeepsTheFocusedRowAcrossAReset() throws {
+        let defaults = try newDefaults()
+        defer { tidy(defaults) }
+        let probe = try probeOnScreen(defaults)
+        GuidePerf.focusMoved(row: 7)
+        GuidePerf.focusMoved(row: 8)
+        XCTAssertEqual(probe.stats.focusRow, 8)
+        probe.reset()
+        XCTAssertEqual(probe.stats.focusRow, 8, "a reset keeps where focus is")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(probe.json.utf8)) as? [String: Any])
+        XCTAssertEqual(json["focusRow"] as? Int, 8)
+        GuidePerf.guideVisible(false)
+        GuidePerf.focusMoved(row: 40)
+        XCTAssertEqual(probe.stats.focusRow, 8, "nothing is recorded while the Guide is not on screen")
+    }
+
     // MARK: Review of 373: the fixtures never publish to the Top Shelf
 
     #if os(tvOS)
@@ -426,6 +471,44 @@ final class GuidePerfTests: XCTestCase {
         XCTAssertEqual(TopShelfExport.lastWritten, seeded, "a fixture's line-up replaced the Top Shelf snapshot")
         XCTAssertEqual(TopShelfPublication.shared.queuedCount, queued, "a fixture queued a Top Shelf file change")
         XCTAssertEqual(TopShelfSnapshot.fileURL.flatMap { try? Data(contentsOf: $0) }, onDisk)
+    }
+
+    /// Review of 374, medium: signing out inside a Guide fixture (Settings › Account › Sign out) cleared the shared Top
+    /// Shelf and retired its generation although the fixture never published. With a seeded snapshot (in memory and, where
+    /// this host has the App Group, on disk) the sign-out leaves it, its generation and the file queue as they were.
+    func testSigningOutOfAGuideFixtureLeavesTheTopShelfAlone() async throws {
+        let savedSnapshot = TopShelfExport.lastWritten
+        let fileURL = TopShelfSnapshot.fileURL
+        let savedFile = fileURL.flatMap { try? Data(contentsOf: $0) }
+        defer {
+            TopShelfExport.lastWritten = savedSnapshot
+            if let fileURL {
+                if let savedFile { try? savedFile.write(to: fileURL) } else { try? FileManager.default.removeItem(at: fileURL) }
+            }
+        }
+        await TopShelfCardExport.finish()
+        let seeded = TopShelfSnapshot(kind: "favourites", channels: [
+            TopShelfSnapshot.Entry(id: "seeded", sourceId: 1, name: "Seeded", number: nil, logo: nil, programmes: []),
+        ], savedAt: Date(timeIntervalSince1970: 1_795_000_000))
+        TopShelfExport.lastWritten = seeded
+        if fileURL != nil { XCTAssertTrue(seeded.write(container: TopShelfSnapshot.containerURL)) }
+        let onDisk = fileURL.flatMap { try? Data(contentsOf: $0) }
+
+        for production in [false, true] {
+            let generation = TopShelfPublication.shared.current
+            let queued = TopShelfPublication.shared.queuedCount
+            let app = AppModel()
+            if production { app.injectProductionGuideFixture() } else { app.injectGuideFixture() }
+            XCTAssertNotNil(app.browse)
+            await app.logout()
+            XCTAssertNil(app.browse, "signed out")
+            // A queued removal would run on the file queue: it has run once the queue is idle.
+            await TopShelfPublication.shared.idle()
+            XCTAssertEqual(TopShelfExport.lastWritten, seeded, "the sign-out cleared the Top Shelf snapshot (production \(production))")
+            XCTAssertEqual(TopShelfPublication.shared.current, generation, "the sign-out retired the Top Shelf generation")
+            XCTAssertEqual(TopShelfPublication.shared.queuedCount, queued + 1, "the sign-out queued a Top Shelf file change") // +1: the wait above
+            XCTAssertEqual(fileURL.flatMap { try? Data(contentsOf: $0) }, onDisk, "the snapshot on disk changed")
+        }
     }
     #endif
 

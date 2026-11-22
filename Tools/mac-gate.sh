@@ -44,9 +44,12 @@ if ! mac "mkdir -p $B && mkdir $B/gate.lock 2>/dev/null && echo \"$REPO \$(date 
     fi
     exit 4
 fi
+KEEP_BUILD=0
 cleanup() {
-    # the build folders and DerivedData this run made, the simulators, then the lock
-    mac "export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer; xcrun simctl shutdown all >/dev/null 2>&1; rm -rf $G/src/build $G/src/DerivedData $G/dd; for d in \$HOME/Library/Developer/Xcode/DerivedData/PigTV-*; do grep -q \"$G/src\" \"\$d/info.plist\" 2>/dev/null && rm -rf \"\$d\"; done; rm -rf $B/gate.lock" >/dev/null 2>&1
+    # the build folders and DerivedData this run made, the simulators, then the lock; build/ stays when it holds a perf
+    # output that could not be copied back (KEEP_BUILD=1)
+    KEEP=""; [ "$KEEP_BUILD" = 1 ] || KEEP="$G/src/build"
+    mac "export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer; xcrun simctl shutdown all >/dev/null 2>&1; rm -rf $KEEP $G/src/DerivedData $G/dd; for d in \$HOME/Library/Developer/Xcode/DerivedData/PigTV-*; do grep -q \"$G/src\" \"\$d/info.plist\" 2>/dev/null && rm -rf \"\$d\"; done; rm -rf $B/gate.lock" >/dev/null 2>&1
 }
 trap cleanup EXIT
 
@@ -84,11 +87,27 @@ REMOTE
 } >"$LOG" 2>&1
 RC=$?
 SECS=$(( $(date +%s) - START ))
-# perf: the run's full output (Tools/test.sh keeps it in build/perf-<UTC time>/) comes back next to the log, before the
-# cleanup deletes build/; the GUIDE-SCROLL lines are in the log already.
+# perf: the run's full output comes back next to the log, before the cleanup deletes build/; the GUIDE-SCROLL lines are in
+# the log already. Copied from the exact folder Tools/test.sh printed ("-- perf run folder: build/perf-<UTC time>"), and
+# checked: a copy that fails or comes back empty is said loudly, and the Mac's copy (and build/) is left in place.
+PERF_NOTE=""
 if [ "${TIER%%+*}" = perf ] && [ -z "$ONLY" ]; then
-    mac "cat \$(ls -td $G/src/build/perf-*/ 2>/dev/null | head -1)perf-output.log" > "${LOG%.log}-perf-output.log" 2>/dev/null \
-        && echo "perf output: ${LOG%.log}-perf-output.log" >> "$LOG" || rm -f "${LOG%.log}-perf-output.log"
+    RUN_DIR="$(sed -n 's/^-- perf run folder: //p' "$LOG" | tail -1)"
+    PERF_LOCAL="${LOG%.log}-perf-output.log"
+    REMOTE_PERF="$G/src/$RUN_DIR/perf-output.log"
+    if [ -z "$RUN_DIR" ]; then
+        PERF_NOTE="mac-gate: NO PERF OUTPUT: Tools/test.sh printed no run folder (the run stopped before the perf tests)"
+    elif mac "cat \"$REMOTE_PERF\"" > "$PERF_LOCAL" 2>/dev/null && [ -s "$PERF_LOCAL" ]; then
+        echo "perf output: $PERF_LOCAL" >> "$LOG"
+    else
+        rm -f "$PERF_LOCAL"
+        KEEP_BUILD=1
+        # Out of the export folder too, which the next gate run replaces (if the Mac answers; else build/ is all there is).
+        KEPT="$B/perf-kept/$(basename "${LOG%.log}")-perf-output.log"
+        if mac "mkdir -p $B/perf-kept && cp \"$REMOTE_PERF\" \"$KEPT\"" 2>/dev/null; then WHERE="$KEPT"; else WHERE="$REMOTE_PERF (until the next gate run)"; fi
+        PERF_NOTE="mac-gate: PERF OUTPUT NOT COPIED BACK. It is still on the Mac: $HOST:$(echo "$WHERE" | sed 's|^\$HOME|~|')"
+    fi
+    [ -n "$PERF_NOTE" ] && echo "$PERF_NOTE" >> "$LOG"
 fi
 
 if [ $RC = 0 ] && grep -q "^GATE-RESULT PASS" "$LOG"; then RES=PASS; else RES=FAIL; RC=1; fi
@@ -104,4 +123,5 @@ COUNTS="$(grep -E '^== ' "$LOG" | sed 's/^== //' | paste -sd',' -)"
 echo "mac-gate $REPO $WHAT $TIER: $RES in ${SECS}s ${COUNTS:+($COUNTS)}"
 [ -n "$FAILED" ] && echo "failed: $FAILED"
 echo "log: $LOG"
+[ -n "$PERF_NOTE" ] && echo "$PERF_NOTE" >&2
 exit $RC

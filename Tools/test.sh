@@ -108,7 +108,7 @@ perf_ui() {
         -only-testing:PigTVUITests/TabSwitchUITests/testSwitchingTabsOnAThousandChannelsIsQuick > "$RUN/perf-output.log" 2>&1 || RC=$?
     xcrun simctl list devices booted 2>/dev/null | grep -i "apple tv" | sed 's/^ */-- perf booted: /'
     perf_facts after
-    grep -E "GUIDE-SCROLL|TABSWITCH|measured \[|error:|Test Case .*(passed|failed)" "$RUN/perf-output.log" || true
+    grep -E "GUIDE-SCROLL|GUIDE-SIGNPOST|TABSWITCH|measured \[|error:|Test Case .*(passed|failed)" "$RUN/perf-output.log" || true
     echo "-- perf output: $RUN/perf-output.log"
     if [ "$RC" != 0 ]; then tail -40 "$RUN/perf-output.log"; exit "$RC"; fi
 }

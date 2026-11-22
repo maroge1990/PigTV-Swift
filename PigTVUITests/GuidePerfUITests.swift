@@ -39,8 +39,12 @@ final class GuidePerfUITests: XCTestCase {
         record("c-up-40", try presses(.up, 40), presses: 40, vertical: true)
         reset()
         record("d-right-10", try presses(.right, 10), presses: 10)
+        // Where focus is before the held scroll (read before its window: a read stalls the app), to measure rows moved.
+        let startRow = number(try probe(), "focusRow")
         reset()
-        record("e-held-down-100", try heldScroll(rows: 100), presses: 0, heldMinimum: 50)
+        var held = try heldScroll(rows: 100)
+        if let startRow, let endRow = number(held, "focusRow") { held["rowsMoved"] = Int(endRow - startRow) }
+        record("e-held-down-100", held, presses: 0, heldMinimum: 50)
         reset()
         Thread.sleep(forTimeInterval: 35)
         record("f-idle-35s", try probe(), presses: 0, tick: true)
@@ -66,6 +70,10 @@ final class GuidePerfUITests: XCTestCase {
             _ = GuideProbeLanding.wait(for: before + 1, timeout: 1)
         }
         XCTAssertGreaterThan(GuideProbeLanding.count, before, "no grid cell took focus")
+        // Review of 374: the entry move is setup, not one of the measured presses: the window starts after it (a posted
+        // reset, no query). Pages 2 and 3 are still to come (7 s and 14 s after the first).
+        GuideProbeLanding.postReset()
+        GuideProbeLanding.spin(0.3)
         var json = try presses(.down, 45)
         json["entryPresses"] = entry
         record("g0-paged-first-screen", first, presses: 0)
@@ -76,7 +84,10 @@ final class GuidePerfUITests: XCTestCase {
     }
 
     /// (b) again under `measure(metrics:)` with `XCTOSSignpostMetric` for the GuideFocusMove signpost (three runs of 40
-    /// presses down), so Xcode's own measurement can be compared with the probe's.
+    /// presses down). The signpost interval can only end at the frame callback, up to a frame before that frame is due on
+    /// screen, so Xcode's figure is callback timing; each run also prints the probe's own figures for the same presses
+    /// (`GUIDE-SIGNPOST`), which are the frame-due timing every other scenario reports (and each signpost's end message
+    /// carries as `frameDueMs`). Compare those, not Xcode's, with the GUIDE-SCROLL lines.
     @MainActor
     func testFocusMoveSignpostMetric() throws {
         launch()
@@ -86,8 +97,18 @@ final class GuidePerfUITests: XCTestCase {
         let options = XCTMeasureOptions()
         options.iterationCount = 3
         var failure: Error?
+        var run = 0
         measure(metrics: [metric], options: options) {
-            do { _ = try presses(.down, 40) } catch { failure = error }
+            run += 1
+            GuideProbeLanding.postReset()
+            GuideProbeLanding.spin(0.3)
+            do {
+                let json = try presses(.down, 40)
+                func ms(_ key: String) -> String { number(json, key).map { String(format: "%.1f", $0) } ?? "-" }
+                print("GUIDE-SIGNPOST run \(run): probe (frame-due timing) focusMedianMs \(ms("focusMedianMs")) "
+                    + "focusMaxMs \(ms("focusMaxMs")) over \(json["focusMoves"] ?? "-") moves; Xcode's GuideFocusMove "
+                    + "figure is callback timing, up to a frame shorter")
+            } catch { failure = error }
         }
         if let failure { throw failure }
     }
@@ -168,16 +189,23 @@ final class GuidePerfUITests: XCTestCase {
 
     /// `count` single presses about a third of a second apart, each after the previous one's move has landed (the app's
     /// focus notification, so the wait costs the app nothing; the probe's count if notifications never arrive).
+    /// `landedPresses` (review of 374): the presses whose move landed, at most one each, so extra focus events (a
+    /// redirected move, a restore) never stand in for a press that moved nothing.
     private func presses(_ button: XCUIRemote.Button, _ count: Int) throws -> [String: Any] {
         var landedBy = "notification"
+        var landed = 0
         for index in 0..<count {
             let started = Date()
             let target = GuideProbeLanding.count + 1
             XCUIRemote.shared.press(button)
-            if !GuideProbeLanding.wait(for: target, timeout: landedBy == "notification" ? 3 : 0) {
+            if GuideProbeLanding.wait(for: target, timeout: landedBy == "notification" ? 3 : 0) {
+                landed += 1
+            } else {
                 landedBy = "probe"
                 let base = index + 1
-                _ = waitUntil(5) { ((try? self.probe()).flatMap { self.number($0, "focusMoves") } ?? 0) >= Double(base) }
+                if waitUntil(5, { ((try? self.probe()).flatMap { self.number($0, "focusMoves") } ?? 0) >= Double(base) }) {
+                    landed += 1
+                }
             }
             let rest = 1.0 / 3 - Date().timeIntervalSince(started)
             if rest > 0 { GuideProbeLanding.spin(rest) }
@@ -185,6 +213,7 @@ final class GuidePerfUITests: XCTestCase {
         GuideProbeLanding.spin(0.5) // the last move's frame
         var json = try probe()
         json["landedBy"] = landedBy
+        json["landedPresses"] = landed
         return json
     }
 
@@ -239,15 +268,19 @@ final class GuidePerfUITests: XCTestCase {
 
         XCTAssertGreaterThan(number(json, "frames") ?? 0, 0, "\(scenario): the probe counted no frames")
         if presses > 0 {
+            // Review of 374: presses that landed, at most one each (not focus events, which a setup move or a redirect adds).
+            let landed = min(moves, number(json, "landedPresses") ?? 0)
             let needed = (Double(presses) * Self.landedShare).rounded(.up)
-            guard moves >= needed else {
-                XCTFail("\(scenario): \(Int(moves)) of \(presses) presses moved focus (at least \(Int(needed)) must); no budget applied")
+            guard landed >= needed else {
+                XCTFail("\(scenario): \(Int(landed)) of \(presses) presses moved focus (at least \(Int(needed)) must); no budget applied")
                 return
             }
         }
         if let heldMinimum {
-            guard moves >= Double(heldMinimum) else {
-                XCTFail("\(scenario): the held scroll moved focus \(Int(moves)) rows (at least \(heldMinimum) must); no budget applied")
+            // Review of 374: forward progress in rows (the focused row's index before and after), not focus events.
+            let rows = number(json, "rowsMoved") ?? 0
+            guard rows >= Double(heldMinimum) else {
+                XCTFail("\(scenario): the held scroll moved focus \(Int(rows)) rows down (at least \(heldMinimum) must); no budget applied")
                 return
             }
         }

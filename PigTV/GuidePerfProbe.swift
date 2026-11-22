@@ -31,6 +31,9 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     /// The grid's rows when the window began (the last reset), and after its latest apply.
     var rowsStart: Int?
     var rowsEnd: Int?
+    /// The row (the grid's section) of the latest focus move; carried across a reset, so a test can read it before a
+    /// window and again after it to see how far focus went (#362, review of 374).
+    var focusRow: Int?
 
     /// A display-link frame; `gapMs` is the time since the previous one (nil for the first after a pause or reset).
     mutating func frame(gapMs: Double?) {
@@ -54,9 +57,10 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
         if list.count > sampleCap { list.removeFirst(list.count - sampleCap) }
     }
 
-    /// Zero for the next window (the reset count goes on, so a test can see its reset arrive; the rows carry over).
+    /// Zero for the next window (the reset count goes on, so a test can see its reset arrive; the rows and the focused row
+    /// carry over).
     mutating func reset() {
-        self = GuidePerfStats(resets: resets + 1, rowsStart: rowsEnd, rowsEnd: rowsEnd)
+        self = GuidePerfStats(resets: resets + 1, rowsStart: rowsEnd, rowsEnd: rowsEnd, focusRow: focusRow)
     }
 
     static func median(_ values: [Double]) -> Double? {
@@ -108,6 +112,7 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
         ]
         if let rowsStart { object["rowsStart"] = rowsStart }
         if let rowsEnd { object["rowsEnd"] = rowsEnd }
+        if let focusRow { object["focusRow"] = focusRow }
         if let firstScreenMs { object["firstScreenMs"] = Self.rounded(firstScreenMs) }
         if let value = Self.median(focusMs) { object["focusMedianMs"] = Self.rounded(value) }
         if let value = Self.percentile(focusMs, 95) { object["focusP95Ms"] = Self.rounded(value) }
@@ -258,6 +263,7 @@ final class GuidePerfProbe: NSObject {
         stats.applies += 1
         stats.applyMs += ms
     }
+    func focusRow(_ row: Int) { if guideVisible { stats.focusRow = row } }
     func cellConfigured() { if guideVisible { stats.cellConfigurations += 1 } }
     func bodyEvaluated() { if guideVisible { stats.bodyEvaluations += 1 } }
     func focusSuperseded() { if guideVisible { stats.focusSuperseded += 1 } }

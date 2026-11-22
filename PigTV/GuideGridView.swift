@@ -679,7 +679,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         let previous = context.previouslyFocusedIndexPath
         focused = context.nextFocusedIndexPath
         // #362: a move within or into the grid begins; focus leaving it (filter bar, tab bar) drops the open move.
-        if context.nextFocusedIndexPath == nil { GuidePerf.focusLeftGrid() } else { GuidePerf.focusMoved() }
+        if let next = context.nextFocusedIndexPath { GuidePerf.focusMoved(row: next.section) } else { GuidePerf.focusLeftGrid() }
         // The planned row is spent once focus lands; from here the scroll keeps `focused` in view. 18 Oct (test team:
         // a fast scroll pulled back to where it started): a fast swipe drops focus, scrolls on its own and lands focus
         // on a row on screen without asking shouldUpdateFocus, so a row planned before the swipe clamped the landing
