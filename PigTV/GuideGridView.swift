@@ -345,7 +345,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     private var fillGeneration = 0
 
     private var revision: GuideGridRevision {
-        GuideGridRevision(programmes: model?.guideProgrammesVersion ?? 0, loadedAt: model?.guideLoadedAt)
+        #if DEBUG
+        if let revisionForTesting { return revisionForTesting }
+        #endif
+        return GuideGridRevision(programmes: model?.guideProgrammesVersion ?? 0, loadedAt: model?.guideLoadedAt)
     }
 
     private func apply(rows: [GuideChannel]) {
@@ -365,8 +368,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             Task { [weak self] in
                 let lists = await Task.detached(priority: .userInitiated) { GuideGridStore.orderedLists(for: added) }.value
                 guard let self, generation == fillGeneration else { return }
-                store.prime(lists, revision: revision)
-                applyNow(rows: rows, revision: revision, via: "primed")
+                applyNow(rows: rows, revision: revision, via: "primed", primed: lists)
             }
             return
         }
@@ -379,9 +381,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             // reload; do it off the main actor and publish if still current.
             let lists = await Task.detached(priority: .userInitiated) { GuideGridStore.orderedLists(for: rows) }.value
             guard let self, generation == fillGeneration else { return }
-            store.prime(lists, revision: revision)
             layout.revealedRows = Self.revealSteps[0]
-            applyNow(rows: rows, revision: revision, via: "fill")
+            applyNow(rows: rows, revision: revision, via: "fill", primed: lists)
             reveal(step: 1, generation: generation)
         }
     }
@@ -395,7 +396,9 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         }
     }
 
-    private func applyNow(rows: [GuideChannel], revision: GuideGridRevision, via: String = "direct") {
+    /// `primed`: the rows' lists ordered ahead; they go into the store with the rows and their revision, in one step.
+    private func applyNow(rows: [GuideChannel], revision: GuideGridRevision, via: String = "direct",
+                          primed: [String: [GuideProgramme]] = [:]) {
         // #362: measured (GuidePerf), never changed by the measurement.
         var measured = GuidePerf.applyBegan(rows: store.rows.count, via: via)
         var kind = "reload"
@@ -417,7 +420,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             if rows.count > old.count {
                 let insert = {
                     self.collectionView.performBatchUpdates {
-                        self.store.setRows(rows, revision: revision)
+                        self.store.setRows(rows, revision: revision, primed: primed)
                         self.collectionView.insertSections(IndexSet(old.count..<rows.count))
                     }
                 }
@@ -431,7 +434,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
                     insert()
                 }
             } else {
-                store.setRows(rows, revision: revision)
+                store.setRows(rows, revision: revision, primed: primed)
             }
             GuidePerf.applyStep(&measured, \.updateMs)
             refresh(corrected)
@@ -450,7 +453,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         if extendedOnly {
             kind = "extend"
             let changedSections = IndexSet(rows.indices.filter { rows[$0].programmes.count != old[$0].programmes.count })
-            store.setRows(rows, revision: revision)
+            store.setRows(rows, revision: revision, primed: primed)
             refresh(corrected.subtracting(changedSections)) // A4: same count, corrected content
             guard !changedSections.isEmpty else { layout.invalidateLayout(); return }
             let refocus = focused.map { changedSections.contains($0.section) } ?? false
@@ -464,7 +467,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             return
         }
         let hadFocus = focused != nil
-        store.setRows(rows, revision: revision)
+        store.setRows(rows, revision: revision, primed: primed)
         focused = nil
         collectionView.reloadData()
         GuidePerf.applyStep(&measured, \.updateMs)
@@ -503,6 +506,14 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         layout.invalidateLayout()
         collectionView.layoutIfNeeded()
         collectionView.visibleCells.forEach { $0.layoutIfNeeded() } // a pending configuration update runs here
+    }
+
+    /// Tests: the store revision GuideView's update would carry (nil: the model's).
+    var revisionForTesting: GuideGridRevision?
+
+    /// Tests: a page's rows applied with their lists ordered ahead, as the append path does once they are ready.
+    func applyPrimedForTesting(rows: [GuideChannel], lists: [String: [GuideProgramme]], revision: GuideGridRevision) {
+        applyNow(rows: rows, revision: revision, via: "primed", primed: lists)
     }
 
     /// Tests: rows arrive as from GuideView's update (`rowsVersion` changed).

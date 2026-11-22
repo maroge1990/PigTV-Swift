@@ -199,6 +199,41 @@ final class GuideLoadReviewTests: XCTestCase {
                        "rows of the jumped-to day")
     }
 
+    /// Review of 387-388 (medium): a launch from the saved guide awaits its version answer; meanwhile the user jumps to
+    /// another day. The late (changed) answer must not make the launch start its own reset, which took the jump's
+    /// generation, threw its pending first page away and fetched page one again. Fails on 388.
+    func testALateCachedVersionAnswerLeavesAJumpsPendingFirstPageAlone() async throws {
+        // A saved guide for today (the first model's full load saves it).
+        let saver = try model()
+        saver.window = today
+        await saver.loadGuide() // version request 0
+        try await eventually { !saver.guidePagingActive && !saver.guideHasMore }
+        try await eventually { !((try? FileManager.default.contentsOfDirectory(at: self.cacheDirectory, includingPropertiesForKeys: nil)) ?? []).filter { $0.pathExtension == "json" }.isEmpty }
+        let m = try model()
+        ReviewServer.version = "review-2" // changed: the saved guide is not marked fresh
+        ReviewServer.holdVersionIndex = 1 // the launch's version check of its saved guide
+        let launch = Task { await m.loadInitialGuide() }
+        try await eventually { ReviewServer.versionRequests == 2 && !m.guide.isEmpty }
+        XCTAssertTrue(m.fromCache)
+        // Jump to… tomorrow, its first page held.
+        let asked = ReviewServer.guideRequests
+        let jumpDay = today.addingTimeInterval(24 * 3600)
+        ReviewServer.holdFullPages = true
+        m.window = jumpDay
+        let jump = Task { await m.loadGuide(keepVisible: true) }
+        try await eventually { ReviewServer.guideRequests == asked + 1 }
+        ReviewServer.holdVersionIndex = nil // the saved guide's answer arrives now, late
+        try await Task.sleep(for: .milliseconds(300))
+        ReviewServer.holdFullPages = false
+        await launch.value
+        await jump.value
+        try await eventually { !m.guidePagingActive && !m.guideHasMore }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(ReviewServer.guideRequests - asked, 3, "only the jump fetched its pages (page one once)")
+        XCTAssertEqual(m.window, jumpDay)
+        XCTAssertEqual(m.guide[1249].programmes, ProductionGuideFixture.channels(count: 1250, window: jumpDay)[1249].programmes)
+    }
+
     /// The Top Shelf's card logos during the launch's small first page: a favourite with a different logo from its preview
     /// row draws its own (the snapshot already uses its own slots). Fails on 386 (the preview row's logo).
     func testTopShelfLogosNeverComeFromTheSmallFirstPage() async throws {

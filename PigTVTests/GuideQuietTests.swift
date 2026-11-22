@@ -232,6 +232,46 @@ final class GuideQuietTests: XCTestCase {
         XCTAssertEqual(tile.frame, GuideGridMath.tileFrame(row: 999, offsetX: grid.contentOffset.x, metrics: layout.metrics))
     }
 
+    /// Review of 388 (medium): a page whose rows carry a new store revision (a refresh swap that adds trailing channels and
+    /// corrects programmes on screen) had its lists primed into the store first, which moved the revision and emptied the
+    /// cache before the rows changed; a layout of the old rows in between (pending when the batch update began) refilled the
+    /// cache with the old programmes under the new revision, and the corrected cell redrew the old title. Fails on 388.
+    func testARevisionChangingAppendShowsTheCorrectedProgrammeOnScreen() async throws {
+        let now = Date()
+        let controller = GuideGridViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        controller.revisionForTesting = GuideGridRevision(programmes: 1, loadedAt: nil)
+        controller.receiveRowsForTesting(dayLineup(500, now: now))
+        try await until("the first 500 rows are in the grid") { controller.rowCountForTesting == 500 }
+        try await spin(0.3)
+        controller.setClockForTesting(now)
+        let grid = try XCTUnwrap(controller.collectionView)
+        XCTAssertTrue(controller.visibleProgrammesForTesting().contains { $0.section == 0 && $0.title == "a0 0" })
+        // The new guide: the same 500 channels, row 0's titles corrected, and 60 more channels after them.
+        var rows = dayLineup(560, now: now)
+        rows[0] = GuideChannel(rawID: rows[0].rawID, sourceId: rows[0].sourceId, name: rows[0].name, logo: nil, category: "News",
+                               programmes: rows[0].programmes.map {
+                                   GuideProgramme(title: "corrected " + $0.title, description: nil, startTime: $0.startTime, endTime: $0.endTime)
+                               })
+        let lists = GuideGridStore.orderedLists(for: Array(rows[500...]))
+        grid.setNeedsLayout()
+        grid.collectionViewLayout.invalidateLayout() // a layout pending when the page goes in
+        controller.applyPrimedForTesting(rows: rows, lists: lists, revision: GuideGridRevision(programmes: 2, loadedAt: nil))
+        grid.layoutIfNeeded()
+        grid.visibleCells.forEach { $0.layoutIfNeeded() }
+        XCTAssertEqual(grid.numberOfSections, 560)
+        let row0 = controller.visibleProgrammesForTesting().filter { $0.section == 0 }
+        XCTAssertFalse(row0.isEmpty)
+        for cell in row0 {
+            XCTAssertTrue(cell.title?.hasPrefix("corrected ") ?? false, "row 0 still shows \(cell.title ?? "nil")")
+        }
+    }
+
     // MARK: G8
 
     /// A grid of `count` rows in a window, the clock at `now`, laid out.

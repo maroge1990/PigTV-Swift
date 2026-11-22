@@ -424,7 +424,11 @@ final class BrowseModel: ObservableObject {
         guard guide.isEmpty else { return }
         let task = Task { [weak self] in
             guard let self else { return }
+            // Review of 387-388 (medium): a load started while the cached guide's version answer was awaited (Jump to…)
+            // owns the guide: this launch's fallback reset must not take its generation (and refetch its first page).
+            let generation = self.guideGeneration
             await self.loadCachedGuide()
+            guard generation == self.guideGeneration else { return }
             if self.guide.isEmpty || self.fromCache {
                 if !self.fromCache {
                     self.window = GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn)

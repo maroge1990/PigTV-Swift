@@ -24,11 +24,15 @@ final class GuideGridStore {
     /// #360 (D1): lists ordered here, on the main thread (cache misses), for the tests.
     private(set) var mainThreadOrders = 0
 
-    func setRows(_ rows: [GuideChannel], revision: GuideGridRevision = GuideGridRevision()) {
+    /// `primed`: lists built ahead (`orderedLists`) from these rows for `revision`, committed with them (review of 388:
+    /// primed earlier, a layout of the old rows in between refilled the cache under the new revision with old lists).
+    func setRows(_ rows: [GuideChannel], revision: GuideGridRevision = GuideGridRevision(),
+                 primed: [String: [GuideProgramme]] = [:]) {
         if revision != self.revision {
             self.revision = revision
             ordered.removeAll()
         }
+        for (id, list) in primed { ordered[id] = list }
         self.rows = rows
     }
 
