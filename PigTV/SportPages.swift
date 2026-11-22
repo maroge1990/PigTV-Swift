@@ -201,7 +201,7 @@ struct SportChannelRow: View {
 /// whether a row plays or offers a choice.
 struct SportChannelPicker: View {
     let event: SportEvent
-    @ObservedObject var app: AppModel
+    let app: AppModel
     let browse: BrowseModel
     let clock: Date
     /// Closes the picker, then runs the action (playback or a wait).
@@ -237,7 +237,7 @@ struct SportChannelPicker: View {
 /// channel picker (`SportChannelPicker`).
 struct SportChannelList: View {
     let event: SportEvent
-    @ObservedObject var app: AppModel
+    let app: AppModel
     /// Not observed (audit R05): the list marks scheduled recordings and
     /// draws the EPG logo fallback.
     let browse: BrowseModel
@@ -581,7 +581,7 @@ struct SportChannelPhoneRow: View {
 /// within five minutes), Record on the best channel, and every channel.
 struct SportEventDetails: View {
     let event: SportEvent
-    @ObservedObject var app: AppModel
+    let app: AppModel
     /// Not observed (audit R05): the page draws the schedule marks, the
     /// action state and the EPG logo fallback.
     let browse: BrowseModel

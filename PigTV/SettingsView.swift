@@ -140,7 +140,7 @@ nonisolated struct SettingsTVDetail: Equatable, Sendable {
 }
 
 struct LibrarySettings: View {
-    @ObservedObject var model: AppModel
+    let model: AppModel
     var isTab: Bool = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -698,7 +698,7 @@ struct SettingsPageBody<Content: View>: View {
 /// and it confirms inside its own row (never a dialog): the row becomes "Sign out of PigTV?" with Stay signed in (the
 /// rose primary, focused) and Sign out. "Use a different server" needs the same sign-out, so it opens the same row.
 struct SettingsAccountPage: View {
-    @ObservedObject var model: AppModel
+    let model: AppModel
     var showsTitle = true
     /// Called once signing out has begun (a Settings sheet closes itself).
     var signedOut: () -> Void = {}

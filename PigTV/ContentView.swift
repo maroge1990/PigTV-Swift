@@ -2,7 +2,7 @@ import SwiftUI
 import AVKit
 
 struct ContentView: View {
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
     /// Brand 1.8 §8 (#280): the splash shows only while a saved sign-in is being restored; with none the app opens on
     /// sign-in at once. #342: when it shows, it plays its whole sequence and hands over to Home (`SplashHandoff`).
@@ -219,7 +219,7 @@ nonisolated enum RetryCountdown {
 /// Offline (D-44 batch 6, R5-Offline-*): the pig inside a ring that empties over the 20 seconds to the next automatic
 /// retry, the server's address, Try now (the rose primary) and Use a different server.
 struct UnreachableView: View {
-    @ObservedObject var model: AppModel
+    let model: AppModel
     /// The title and sentence (the server could not be reached, or it answered that it could not sign in yet).
     let notice: OfflineNotice
     @State private var showSignIn = false
@@ -366,7 +366,7 @@ extension View {
 // Stays presented while channels change underneath it, so switching never
 // dismisses and re-presents the player.
 struct PlayerHost: View {
-    @ObservedObject var app: AppModel
+    let app: AppModel
     var body: some View {
         ZStack {
             Color.pigMediaCanvas.ignoresSafeArea()
@@ -381,7 +381,7 @@ struct PlayerHost: View {
 
 struct PlayerScreen: View {
     @ObservedObject var playback: PlaybackModel
-    @ObservedObject var app: AppModel
+    let app: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingGuide = false
     /// tvOS: the button that holds focus in the tuning, reconnecting, error and conflict states. Without a claim the
@@ -713,7 +713,7 @@ struct NativePlayer: UIViewRepresentable {
 /// #313 item 5: the app root's wiring of the player cover and the scene phase, apart from `ContentView` (which owns its
 /// own `AppModel`), so a test can host it with a model of its own (`PlayerCoverTests`).
 struct AppRootCover: ViewModifier {
-    @ObservedObject var model: AppModel
+    let model: AppModel
 
     func body(content: Content) -> some View {
         content

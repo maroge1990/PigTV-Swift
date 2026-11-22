@@ -30,7 +30,7 @@ struct SportF1Content: View {
     let browse: BrowseModel
     @ObservedObject private var model: F1PageModel
     /// Observed for a pending "watch when it starts".
-    @ObservedObject private var appState: AppModel
+    private let appState: AppModel
     @Environment(\.sportPresenter) private var presenter
     /// #345: the session tiles' hold menu (RECORD, Remind me).
     @StateObject private var flow = SportRecordFlow()
@@ -42,7 +42,7 @@ struct SportF1Content: View {
         self.app = app
         self.browse = browse
         _model = ObservedObject(wrappedValue: browse.f1Page)
-        _appState = ObservedObject(wrappedValue: app)
+        self.appState = app
     }
 
     var body: some View {

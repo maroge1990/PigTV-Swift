@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LibraryView: View {
-    @ObservedObject var model: AppModel
+    let model: AppModel
     /// The tab the app opens on (nil: `LibraryView.openingTab`; the offline fixtures may pick their own).
     var initialTab: String? = nil
     @State private var tab: String?
@@ -56,7 +56,15 @@ struct LibraryView: View {
         model.browse.map { "\(ObjectIdentifier($0))|\($0.sportEnabled)" } ?? ""
     }
 
+    #if DEBUG
+    /// Tests (#50): every `LibraryView.body` evaluation.
+    static var bodyEvaluationsForTesting = 0
+    #endif
+
     var body: some View {
+        #if DEBUG
+        let _ = Self.bodyEvaluationsForTesting += 1
+        #endif
         // Accent tint on the TabView so the selected tab reads pink — the
         // white selection was hard to distinguish from unselected tabs.
         // Until the opening tab is written (below), the selection is what it will be, so a selection the tab bar writes

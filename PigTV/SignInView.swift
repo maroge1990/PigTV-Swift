@@ -27,7 +27,7 @@ nonisolated enum SignInStep: Equatable, Sendable {
 }
 
 struct OnboardingView: View {
-    @ObservedObject var model: AppModel
+    @Bindable var model: AppModel
     @State private var step: SignInStep? = OnboardingView.fixtureStep
     #if os(tvOS)
     @FocusState private var focus: SignInFocus?

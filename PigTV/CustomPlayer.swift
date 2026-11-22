@@ -39,7 +39,7 @@ struct CustomPlayerView: View {
     /// The channel list's width; its rows keep `PlayerRowPanel.trailingRoom` free for the highlighted row's lift.
     static let channelListWidth: CGFloat = 640
     @ObservedObject var playback: PlaybackModel
-    @ObservedObject var app: AppModel
+    let app: AppModel
     let exit: () -> Void
     @State private var chrome: PlayerChrome = .info
     @State private var action = 0

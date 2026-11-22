@@ -1,37 +1,42 @@
 import Foundation
-import Combine
+import Observation
 
-@MainActor
-final class AppModel: ObservableObject {
+/// #50: @Observable, so each view is re-evaluated only by the properties its body reads (it was an ObservableObject:
+/// any change re-evaluated every root that held it). Stored state that was never published is @ObservationIgnored.
+@MainActor @Observable
+final class AppModel: ChangeSuppressing {
     // Review of 205 (M3): editing the form starts a new attempt, so the last one's note goes.
-    @Published var serverText = UserDefaults.standard.string(forKey: "pigtv.server") ?? "" {
+    var serverText = UserDefaults.standard.string(forKey: "pigtv.server") ?? "" {
         didSet { if serverText != oldValue { formEdited() } }
     }
-    @Published var username = "" { didSet { if username != oldValue { formEdited() } } }
-    @Published var password = "" { didSet { if password != oldValue { formEdited() } } }
-    @Published var error: String?
+    var username = "" { didSet { if username != oldValue { formEdited() } } }
+    var password = "" { didSet { if password != oldValue { formEdited() } } }
+    var error: String?
     /// #280: why the last sign-in attempt (the server check, a password, pairing or the saved sign-in) did not work, in
     /// plain words; Sign in shows it on the form (never an alert) and keeps what was typed.
-    @Published var signInError: SignInFailure? { didSet { if signInError == nil { signInRetry = nil } } }
+    var signInError: SignInFailure? { didSet { if signInError == nil { signInRetry = nil } } }
     /// Review of 205 (M2): what the note's "Try again" retries: the attempt the note is about (the saved sign-in, the
     /// server check, the password or pairing), nil when trying the same again cannot help (a wrong password).
-    @Published private(set) var signInRetry: SignInFailure.Step?
-    @Published private(set) var authBusy = false
-    @Published private(set) var canRestore = false
+    private(set) var signInRetry: SignInFailure.Step?
+    private(set) var authBusy = false
+    private(set) var canRestore = false
     /// A saved sign-in exists but the restore could not finish: the Offline screen's title and sentence (the server could
     /// not be reached, or it answered that it could not sign in yet).
-    @Published private(set) var unreachable: OfflineNotice?
-    @Published private(set) var pairing: PairStart?
-    @Published private(set) var user: User?
-    @Published private(set) var serverInfo: ServerInfo? {
+    private(set) var unreachable: OfflineNotice?
+    private(set) var pairing: PairStart?
+    private(set) var user: User?
+    private(set) var serverInfo: ServerInfo? {
         // R11: warming is on only while the server both supports and enables it.
         didSet { warmer.setEnabled(serverInfo?.warmingActive == true) }
     }
-    @Published private(set) var categories: [Category] = []
-    @Published var playback: PlaybackModel?
-    @Published var playerPresented = false
+    private(set) var categories: [Category] = []
+    var playback: PlaybackModel? { didSet { change(\.hasPlayback, to: playback != nil) } }
+    /// #50: whether a live play is on, changed only when that does (a channel change replaces `playback` and leaves this):
+    /// what a page that only cares whether the player is up reads, so a zap does not re-evaluate it.
+    private(set) var hasPlayback = false
+    var playerPresented = false
     /// #301: recording players on screen (each has its own cover); counted so one closing as another opens cannot clear it.
-    @Published private(set) var recordingPlayers = 0
+    private(set) var recordingPlayers = 0
     /// True while any full-screen player (live or a recording) covers the pages: they ask for nothing then (#278, #301).
     var pagesCovered: Bool { playerPresented || recordingPlayers > 0 }
     func recordingPlayer(presented: Bool) { recordingPlayers = max(0, recordingPlayers + (presented ? 1 : -1)) }
@@ -42,10 +47,10 @@ final class AppModel: ObservableObject {
     /// Build 31: a tab LibraryView should switch to ("guide" from the iOS
     /// player's TV Guide button, "sport" from a pigtv://home link);
     /// LibraryView applies it and clears it.
-    @Published var requestedTab: String?
+    var requestedTab: String?
     /// #280: a Settings page to open with it (the Sport page's empty state, "Choose your sport"); the Settings tab
     /// applies it and clears it.
-    @Published var requestedSettingsPage: SettingsPage?
+    var requestedSettingsPage: SettingsPage?
 
     /// #280: the Settings tab, on `page`.
     func openSettings(_ page: SettingsPage) {
@@ -56,39 +61,39 @@ final class AppModel: ObservableObject {
     // state here lets transport-bar actions open them without resolving media.
     /// A new session (or none) starts with no recording cover counted: one torn down with its session never reports
     /// its close, and would otherwise rest the next session's pages for good (Opus review of Apple 1).
-    @Published private(set) var browse: BrowseModel? { didSet { if browse !== oldValue { recordingPlayers = 0 } } }
-    @Published private(set) var playbackBusy = false
+    private(set) var browse: BrowseModel? { didSet { if browse !== oldValue { recordingPlayers = 0 } } }
+    private(set) var playbackBusy = false
     // Channels the guide was showing when playback started: the order used
     // for channel up/down inside the player. Falls back to the whole guide.
     /// #334: setting a list (a guide play, a Top Shelf channel, the end of a play) also leaves the live games list
     /// (`sportPlay`); a play from Sport sets its own after its list.
-    @Published var zapList: [Channel] = [] { didSet { sportPlay = nil } }
+    var zapList: [Channel] = [] { didSet { sportPlay = nil } }
     /// #334 (D-67): the live play began from Sport (a front card or a sport page), so the player's list shows the live
     /// games instead of the channels (`playerShowsGames`). Cleared with the play.
-    @Published private(set) var sportPlay: SportPlay?
+    private(set) var sportPlay: SportPlay?
     /// #334: a notice for the player's capsule from something the model refused (a game no longer on air); the player
     /// shows it and clears it.
-    @Published var playerNotice: String?
+    var playerNotice: String?
     // Set by the player's transport-bar menu; the player screen presents the
     // channel list sheet and clears it.
     // A1.2: the channel switchPlayback(to:) most recently switched away from,
     // for "Last channel". Cleared implicitly by never being set to the current
     // channel; not touched by beginPlayback, so leaving and reopening the
     // player on the same channel keeps the previous memory.
-    @Published private(set) var previousChannel: Channel?
+    private(set) var previousChannel: Channel?
     // C-I: "Watch <channel> when it starts" on an upcoming sport event.
-    @Published private(set) var pendingWatch: PendingWatch?
-    private var pendingWatchTask: Task<Void, Never>?
+    private(set) var pendingWatch: PendingWatch?
+    @ObservationIgnored private var pendingWatchTask: Task<Void, Never>?
 
     /// R11: predictive channel warming (the policy lives in `ChannelWarmer`).
-    private(set) lazy var warmer = ChannelWarmer { [weak self] target in await self?.sendWarm(target) ?? false }
+    @ObservationIgnored private(set) lazy var warmer = ChannelWarmer { [weak self] target in await self?.sendWarm(target) ?? false }
 
-    private var authRetry: (server: String, until: Date)?
-    private var client: APIClient?
-    private let keychain = KeychainStore()
-    private var pairingTask: Task<Void, Never>?
-    private var authGeneration = UUID()
-    private var currentPlayback: PlaybackModel?
+    @ObservationIgnored private var authRetry: (server: String, until: Date)?
+    @ObservationIgnored private var client: APIClient?
+    @ObservationIgnored private let keychain = KeychainStore()
+    @ObservationIgnored private var pairingTask: Task<Void, Never>?
+    @ObservationIgnored private var authGeneration = UUID()
+    @ObservationIgnored private var currentPlayback: PlaybackModel?
 
     init() {}
     var loggedIn: Bool { user != nil }
@@ -294,9 +299,9 @@ final class AppModel: ObservableObject {
     }
 
     /// D-44 batch 6: Sign in starts at its server step (not the two tiles) after "Use a different server".
-    @Published var signInAtServer = false
+    var signInAtServer = false
     /// Sign in's step 1: the address this session last reached.
-    @Published private(set) var checkedServer: String?
+    private(set) var checkedServer: String?
 
     /// Sign in's Continue: reaches the address's `/api/info` before offering the ways to sign in.
     func checkServer() async -> Bool {
@@ -352,7 +357,7 @@ final class AppModel: ObservableObject {
 
     /// Apple 162 (161 Codex round 1, medium): it runs after the tabs show, so its answer is published only while the
     /// session that asked is still the current one (a sign-out or another server may have come meanwhile).
-    private var categoriesTask: Task<Void, Never>?
+    @ObservationIgnored private var categoriesTask: Task<Void, Never>?
     private func loadCategories() async {
         guard let client else { return }
         do {
@@ -378,7 +383,7 @@ final class AppModel: ObservableObject {
     /// starts). Only a successful restore plays it, within a minute; any
     /// other outcome drops it (restore's defer), so a later manual sign-in
     /// never starts playback unexpectedly.
-    private var pendingLink: (link: PendingLink, at: Date)?
+    @ObservationIgnored private var pendingLink: (link: PendingLink, at: Date)?
 
     /// A Top Shelf link waiting for sign-in: a channel to play, or (#232) a game's card to open.
     private enum PendingLink { case play(PigTVLink.Play), game(String) }
@@ -470,8 +475,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private var pendingHandoff: Task<Void, Never>?
-    private var handoffGeneration = 0
+    @ObservationIgnored private var pendingHandoff: Task<Void, Never>?
+    @ObservationIgnored private var handoffGeneration = 0
 
     /// #178: a play waiting for open pages to close is dropped.
     func cancelHandoff() {
@@ -486,7 +491,7 @@ final class AppModel: ObservableObject {
     }
 
     /// D-39: the origin of the plays started inside `withPlayOrigin` (a page's action that runs once its cover closed).
-    private var scopedPlayOrigin: String?
+    @ObservationIgnored private var scopedPlayOrigin: String?
 
     /// D-39: runs `action` with plays it starts recorded as coming from `origin` (when they name none themselves).
     func withPlayOrigin(_ origin: String?, _ action: () -> Void) {
@@ -527,7 +532,7 @@ final class AppModel: ObservableObject {
     }
 
     /// #14: whether the current play's player screen has appeared.
-    private(set) var playerShown = false
+    @ObservationIgnored private(set) var playerShown = false
 
     // Change channel without leaving the player. The old session is released
     // first (the provider allows one stream), then the new one resolves.

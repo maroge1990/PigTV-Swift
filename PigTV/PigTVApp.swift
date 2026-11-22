@@ -82,7 +82,7 @@ struct PigTVApp: App {
 #if DEBUG
 // Isolated UI fixture: no restoration, authentication or server requests.
 private struct SettingsTestScreen: View {
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
     var body: some View {
         LibraryView(model: model)
             #if os(tvOS)
@@ -95,7 +95,7 @@ private struct SettingsTestScreen: View {
 // C-U (#200): Settings › Sport offline, PIGTV_UI_TEST_SCREEN=settings-sport: Settings in the tab bar, signed in, with two
 // followed sports, a league suggestion and a "Record every game" (SportFollowFixtures).
 private struct SportSettingsTestScreen: View {
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
     var body: some View {
         LibraryView(model: model, initialTab: "settings")
             #if os(tvOS)
@@ -112,7 +112,7 @@ private struct SportSettingsTestScreen: View {
 
 // Offline guide with synthetic data, for iterating the grid layout/scroll.
 private struct GuideTestScreen: View {
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
     var body: some View {
         LibraryView(model: model, initialTab: "guide")
             .task {
@@ -136,7 +136,7 @@ private struct SportFrontTestScreen: View {
     static let cricket = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_CRICKET_JSON"].flatMap { Data(base64Encoded: $0) }
     static let pages = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_PAGES_JSON"].flatMap { Data(base64Encoded: $0) }
         .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
 
     /// One part of the pages fixture, decoded.
     private static func part<T: Decodable>(_ value: Any?) -> T? {
@@ -273,7 +273,7 @@ private struct HomeTestScreen: View {
                 .appendingPathComponent("PigTVTests/Fixtures/sport-front-0381.json")))
         return data.flatMap { try? JSONDecoder().decode(SportFront.self, from: $0) }
     }()
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
     var body: some View {
         LibraryView(model: model, initialTab: initialTab)
             #if os(tvOS)
@@ -315,7 +315,7 @@ private struct HomeTestScreen: View {
 // live games list on PlayerGamesFixture's answer; the touch player opens it). PIGTV_UI_TEST_MEASURED=1 with any of them:
 // the channels carry measured qualities (D-67).
 private struct PlayerTestScreen: View {
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
     var body: some View {
         ZStack {
             PigPageBackground()
@@ -365,7 +365,7 @@ private struct DesignTestScreen: View {
                                        "search", "jump", "unreachable", "onboarding", "sport-event", "sport-channels", "recording-player", "recording-player-golive", "recordings", "recording-game", "pairing", "recording-loading", "recording-preparing", "recording-error", "recording-resume", "signin-server",
                                        "sport-picker-qualities", "sport-picker-qualities-later", "record-qualities"]
     let screen: String
-    @StateObject private var app = AppModel()
+    @State private var app = AppModel()
     @State private var ready = false
 
     var body: some View {
@@ -500,7 +500,7 @@ private struct DesignTestScreen: View {
 // and cards into the simulator's App Group, for checking the Top Shelf) and
 // shows the first four "on now" cards at 1x size (852×480, the focused size).
 private struct TopShelfCardsTestScreen: View {
-    @StateObject private var app = AppModel()
+    @State private var app = AppModel()
     @State private var cards: [(String, UIImage)] = []
     @State private var summary = "Rendering…"
 

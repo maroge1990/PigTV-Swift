@@ -23,7 +23,7 @@ import AVFoundation
 /// The channel list: current channel highlighted and scrolled to. #334: for a play from Sport, the live games instead
 /// (selecting one plays it on its preferred channel), on the same rows' panels.
 struct PlayerChannelPanel: View {
-    @ObservedObject var app: AppModel
+    let app: AppModel
     let close: () -> Void
 
     var body: some View {
@@ -127,7 +127,7 @@ struct PlayerChannelPanel: View {
 /// the TV's), with a header and close button; a tap beside it closes it.
 /// #334: on iPhone (`bottom`) the same see-through panel rises from the bottom edge, in place of the opaque system sheet.
 struct PlayerSidePanel: View {
-    @ObservedObject var app: AppModel
+    let app: AppModel
     var bottom = false
     let close: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -199,7 +199,7 @@ private struct PlayerRowPressStyle: ButtonStyle {
 /// seconds unless paused). Always dark: it sits over video.
 struct TouchPlayerChrome: View {
     @ObservedObject var playback: PlaybackModel
-    @ObservedObject var app: AppModel
+    let app: AppModel
     /// Not observed (audit R05): the controls draw the favourite heart and
     /// the EPG logo fallback.
     let browse: BrowseModel

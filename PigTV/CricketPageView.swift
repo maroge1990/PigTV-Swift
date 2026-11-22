@@ -69,7 +69,7 @@ struct CricketPageView: View {
     /// The household's preferences (spoiler-free, the followed teams), shared by every sport page.
     @ObservedObject var preferences: F1PageModel
     /// Observed for the bells (a pending "watch when it starts").
-    @ObservedObject private var appState: AppModel
+    private let appState: AppModel
     /// #347: the recordings, for a finished match's Play recording (found by its `card`).
     private let recordingStore: RecordingsStore
     @Environment(\.sportPresenter) private var presenter
@@ -97,7 +97,7 @@ struct CricketPageView: View {
         self.fallback = fallback
         self.model = browse.cricketPage
         self.preferences = browse.f1Page
-        _appState = ObservedObject(wrappedValue: app)
+        self.appState = app
         self.recordingStore = browse.recordingStore
     }
 

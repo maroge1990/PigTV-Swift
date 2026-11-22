@@ -94,7 +94,7 @@ private struct GuideRowsInput: Equatable {
 }
 
 struct GuideView: View {
-    @ObservedObject var app: AppModel
+    let app: AppModel
     /// Not observed itself (audit R05): the Guide draws from the guide
     /// store, the favourites and the schedule marks, and from nothing else
     /// BrowseModel holds, so a recordings refresh or a busy flag elsewhere
@@ -332,7 +332,7 @@ struct GuideView: View {
             }
             // Build 33: a forward extension merged more programmes in place.
             .onChange(of: model.guideProgrammesVersion) { refreshRows() }
-            .onChange(of: app.playback == nil) { _, closed in
+            .onChange(of: !app.hasPlayback) { _, closed in
                 if closed, usesGridView { gridFocusRestore += 1; claimGridFocus() }
             }
             // Jump to's Show guide: once the page has popped, the grid moves there and takes focus. On the TV that is when
