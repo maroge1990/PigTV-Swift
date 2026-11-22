@@ -305,6 +305,14 @@ final class GuidePerfUITests: XCTestCase {
         if let budget = env["PIGTV_GUIDEPERF_FIRST_MS"].flatMap(Double.init), let firstScreen = number(json, "firstScreenMs") {
             XCTAssertLessThanOrEqual(firstScreen, budget, "\(scenario): the first screen took \(firstScreen) ms (budget \(budget) ms)")
         }
+        // #360/#361 (C1, Apple 383): the first guide page a cold launch puts on screen is the small page (50 channels, 6 h),
+        // under the 300 KB first-page target (the full first page, 500 channels and 24 h, before). Only the paged first
+        // screen fetches a page; the other scenarios start with the rows in place.
+        if scenario == "g0-paged-first-screen", let budget = budget("FIRST_PAGE_BYTES", 300_000) {
+            let bytes = number(json, "firstPageBytes")
+            XCTAssertNotNil(bytes, "\(scenario): the probe has no firstPageBytes")
+            if let bytes { XCTAssertLessThanOrEqual(bytes, budget, "\(scenario): the first guide page was \(Int(bytes)) bytes (budget \(Int(budget)))") }
+        }
         // #360 (G1, Apple 376): a focus move no longer re-evaluates GuideView.body (1.0 per press before). Not earned in
         // the paged scenario, whose arriving pages re-evaluate it by design (a later batch's work).
         let paged = scenario.hasPrefix("g")

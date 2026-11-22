@@ -436,10 +436,17 @@ final class APIClient {
     #endif
 
     func guidePage(query: [URLQueryItem]) async throws -> GuidePage {
+        try await sizedGuidePage(query: query).page
+    }
+
+    /// A guide page and its body's size in bytes as received (after any transfer decoding): the speed figures'
+    /// `firstPageBytes` (#360/#361, GuidePerf).
+    func sizedGuidePage(query: [URLQueryItem]) async throws -> (page: GuidePage, bytes: Int) {
         let data = try await send("library/guide", method: "GET", query: query)
-        return try await Task.detached(priority: .userInitiated) {
+        let page = try await Task.detached(priority: .userInitiated) {
             try JSONDecoder().decode(GuidePage.self, from: data)
         }.value
+        return (page, data.count)
     }
     // A1.1: `library/guide/version`. Changes when channel data, visibility,
     // order, logos or EPG change — never merely because time passed.

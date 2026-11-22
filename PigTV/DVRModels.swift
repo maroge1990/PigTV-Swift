@@ -436,6 +436,10 @@ nonisolated enum GuideNavigation {
     // Programme data starts this long before the viewport so a few steps back
     // in time do not trigger a reload.
     static let leadIn: TimeInterval = 2 * 3600
+    /// #360/#361 (C1): a launch with no usable saved guide first asks for this small page (the first `previewChannels`
+    /// channels, the window's first `previewDuration`: about 30 KB on the real guide), shows it, then loads the full guide.
+    static let previewChannels = 50
+    static let previewDuration: TimeInterval = 6 * 3600
     static func rounded(_ date: Date) -> Date {
         Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / step) * step)
     }

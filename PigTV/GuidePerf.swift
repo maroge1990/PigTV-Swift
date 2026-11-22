@@ -74,6 +74,10 @@ enum GuidePerf {
     /// Review of 378: the header's day changed (GuideView's `shownDay`), which re-evaluates GuideView.body once.
     static func dayChanged() { GuidePerfProbe.shared?.count(\.dayChanges) }
 
+    /// #360/#361 (C1): the size of the first guide page put on screen since launch (the small first page, or the full
+    /// first page when that came first), in bytes as received. One nil check while the probe is off.
+    static func firstGuidePage(bytes: Int) { GuidePerfProbe.shared?.firstGuidePage(bytes: bytes) }
+
     // MARK: Channel logos (#360 G4)
 
     #if DEBUG

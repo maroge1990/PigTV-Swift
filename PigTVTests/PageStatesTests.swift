@@ -282,7 +282,9 @@ final class PageStatesTests: XCTestCase {
         XCTAssertFalse(PigErrorState.ownsRetryClock(schedule: m.guideStore.schedule), "the error view adds no clock")
         XCTAssertFalse(PigErrorState.ownsRetryClock(schedule: m.recordingStore.schedule))
         let asked = (PageRoutes.count(Self.guide), PageRoutes.count(Self.recordings))
-        XCTAssertEqual(asked.0, 1, "one guide request per pass, failed or not (no backoff here)")
+        // Apple 383 (#361): a cold launch's load asks for the small first page, then the full one: one load per pass, two
+        // requests on the first; a guide that has failed asks once per pass (no small page while its error shows).
+        XCTAssertEqual(asked.0, 2, "one guide load per pass, failed or not (no backoff here)")
         XCTAssertEqual(asked.1, 1, "one recordings request per pass")
         try? await Task.sleep(for: .milliseconds(600))
         XCTAssertEqual(PageRoutes.count(Self.guide), asked.0, "nothing asks again before the next pass")

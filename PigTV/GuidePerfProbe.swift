@@ -43,6 +43,8 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     var applies = 0
     var applyMs: Double = 0
     var firstScreenMs: Double?
+    /// #360/#361 (C1): the bytes of the first guide page put on screen (`GuidePerf.firstGuidePage`).
+    var firstPageBytes: Int?
     var resets = 0
     /// The grid's rows when the window began (the last reset), and after its latest apply.
     var rowsStart: Int?
@@ -133,6 +135,7 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
         if let rowsEnd { object["rowsEnd"] = rowsEnd }
         if let focusRow { object["focusRow"] = focusRow }
         if let firstScreenMs { object["firstScreenMs"] = Self.rounded(firstScreenMs) }
+        if let firstPageBytes { object["firstPageBytes"] = firstPageBytes }
         if let value = Self.median(focusMs) { object["focusMedianMs"] = Self.rounded(value) }
         if let value = Self.percentile(focusMs, 95) { object["focusP95Ms"] = Self.rounded(value) }
         if let value = focusMs.max() { object["focusMaxMs"] = Self.rounded(value) }
@@ -294,6 +297,7 @@ final class GuidePerfProbe: NSObject {
     func bodyEvaluated() { if guideVisible { stats.bodyEvaluations += 1 } }
     func focusSuperseded() { if guideVisible { stats.focusSuperseded += 1 } }
     func firstScreen(ms: Double) { if stats.firstScreenMs == nil { stats.firstScreenMs = ms } }
+    func firstGuidePage(bytes: Int) { if stats.firstPageBytes == nil { stats.firstPageBytes = bytes } }
 
     /// A press older than this when a focus move begins is not that move's press (a swipe moved focus since, or the
     /// press moved nothing): one second, three times the gap between presses at a brisk three a second.

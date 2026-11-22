@@ -64,6 +64,9 @@ final class BrowseModel: ObservableObject {
     // Set during a refresh: the visible guide is kept until the first new page
     // arrives, then replaced, so a background refresh never blanks the grid.
     private var replacePending = false
+    /// #360/#361 (C1): the rows on screen are the small first page (`fetchGuidePreview`), not a guide: the full guide's
+    /// first page replaces them, and they are never saved, never commit a version and never set `guideLoadedUntil`.
+    private var guideIsPreview = false
     private var guideExtending = false
     // Private to this server and account (R14); retired on sign-out.
     private let guideCache: GuideCacheStore
@@ -111,7 +114,8 @@ final class BrowseModel: ObservableObject {
     // Loads the first page immediately, then keeps paging in the background
     // until every channel is present. Filters and search then work locally,
     // and a full day of programme data per channel is already in memory.
-    func loadGuide(reset: Bool = true, keepVisible: Bool = false) async {
+    // `preview` (#360/#361, C1; the launch load): with nothing on screen, a small page first (`fetchGuidePreview`).
+    func loadGuide(reset: Bool = true, keepVisible: Bool = false, preview: Bool = false) async {
         let sp = PigTVSignpost.begin("GuideLoad"); defer { PigTVSignpost.end("GuideLoad", sp) }
         if reset {
             guidePrefetch?.cancel()
@@ -121,7 +125,7 @@ final class BrowseModel: ObservableObject {
             guideCursor = nil
             loadedGuideIds = []
             replacePending = keepVisible && !guide.isEmpty
-            if !replacePending { guide = [] }
+            if !replacePending { guide = []; guideIsPreview = false }
             guideTotal = 0
             guideHasMore = false
             // Build 33: a fresh load/reload always starts a new one-day
@@ -140,6 +144,11 @@ final class BrowseModel: ObservableObject {
         // #280 (review of 205, H2): the last failure stays until an attempt succeeds (fetchGuidePage clears it), so a
         // retry never swaps the error, or the stale notice, for the loading placeholders while it waits for its answer.
         defer { if generation == guideGeneration { guideBusy = false } }
+        // Not while a failure shows: a failing server is asked once per pass, as before (PageStatesTests).
+        if reset, preview, guide.isEmpty, guideError == nil {
+            await fetchGuidePreview(generation: generation)
+            guard generation == guideGeneration else { return }
+        }
         await fetchGuidePage(generation: generation)
         // #355: a retried page (`reset: false`) that succeeds with a cursor left resumes the paging too; before, only a
         // fresh load paged on, so the pages after a retried one were never fetched.
@@ -155,6 +164,30 @@ final class BrowseModel: ObservableObject {
         }
     }
 
+    /// #360/#361 (C1): the small first page (`GuideNavigation.previewChannels` channels, `previewDuration` from the
+    /// window), shown at once while the full guide's first page (500 channels, 24 h) is fetched behind it and replaces it.
+    /// Asked once, without the page retries: a failure only leaves the full load to show what it shows. It sets the rows
+    /// and the channel total only: no cursor, no loaded time, no version, no save, no Top Shelf export, and
+    /// `guideLoadedUntil` stays where the load put it, so moving right past its 6 hours reloads or extends nothing
+    /// (`guideBusy` holds both off until the full page has landed); the rows beyond it simply fill in then.
+    private func fetchGuidePreview(generation: UUID) async {
+        let sp = PigTVSignpost.begin("GuidePage"); defer { PigTVSignpost.end("GuidePage", sp) }
+        let start = window.timeIntervalSince1970 * 1000
+        let query = [
+            URLQueryItem(name: "start", value: String(Int64(start))),
+            URLQueryItem(name: "end", value: String(Int64(start + GuideNavigation.previewDuration * 1000))),
+            URLQueryItem(name: "limit", value: String(GuideNavigation.previewChannels))
+        ]
+        guard let answer = try? await client.sizedGuidePage(query: query),
+              generation == guideGeneration, guide.isEmpty, !answer.page.channels.isEmpty else { return }
+        guide = answer.page.channels
+        guideTotal = answer.page.total
+        guideIsPreview = true
+        replacePending = true
+        if guideError != nil { guideError = nil }
+        GuidePerf.firstGuidePage(bytes: answer.bytes)
+    }
+
     private func fetchGuidePage(generation: UUID) async {
         let sp = PigTVSignpost.begin("GuidePage"); defer { PigTVSignpost.end("GuidePage", sp) }
         // A1.1: cursor paging, 500 at a time.
@@ -167,12 +200,16 @@ final class BrowseModel: ObservableObject {
         query.append(URLQueryItem(name: "limit", value: "500"))
         if let guideCursor { query.append(URLQueryItem(name: "cursor", value: guideCursor)) }
         do {
-            let page = try await requestGuidePage(query, generation: generation)
+            let (page, bytes) = try await requestGuidePage(query, generation: generation)
             guard generation == guideGeneration else { return }
+            if isFirstPage && guide.isEmpty { GuidePerf.firstGuidePage(bytes: bytes) }
             if replacePending {
                 replacePending = false
                 guide = page.channels
                 loadedGuideIds = Set(page.channels.map(\.id))
+                // C1: the rows replaced were the small page's: told as a programme change, since a guide of 50 channels
+                // or fewer keeps its count and ids, and the Guide would keep drawing the small page's 6 hours.
+                if guideIsPreview { guideIsPreview = false; guideProgrammesVersion += 1 }
             } else {
                 // A single mutation of `guide` per page, against a persistent
                 // id set, instead of rebuilding `Set(guide.map(\.id))` (and
@@ -198,6 +235,14 @@ final class BrowseModel: ObservableObject {
             // A cancelled request (the task that asked went away, URLError's own "cancelled" too) is not a failure.
             guard generation == guideGeneration, !UserMessage.isCancellation(error) else { return }
             guideError = UserMessage.text(for: error) ?? UserMessage.somethingFailed
+            // C1: the small page never stands in for a guide whose load failed: the error shows on its own, as it did
+            // before the small page existed (and nothing extends or keeps its 6 hours).
+            if isFirstPage, replacePending, guideIsPreview {
+                replacePending = false
+                guideIsPreview = false
+                guide = []
+                guideTotal = 0
+            }
         }
     }
 
@@ -205,7 +250,7 @@ final class BrowseModel: ObservableObject {
     /// before rethrowing — the same failed page each time (nothing about
     /// `query` changes between attempts), so a caller that gives up leaves
     /// its paging cursor exactly where a retry can resume it.
-    private func requestGuidePage(_ query: [URLQueryItem], generation: UUID) async throws -> GuidePage {
+    private func requestGuidePage(_ query: [URLQueryItem], generation: UUID) async throws -> (page: GuidePage, bytes: Int) {
         var attempt = 0
         #if DEBUG
         let delays = Self.guidePageRetryDelaysOverride ?? GuideNavigation.guidePageRetryDelays
@@ -213,7 +258,7 @@ final class BrowseModel: ObservableObject {
         let delays = GuideNavigation.guidePageRetryDelays
         #endif
         while true {
-            do { return try await client.guidePage(query: query) }
+            do { return try await client.sizedGuidePage(query: query) }
             catch {
                 guard generation == guideGeneration, !UserMessage.isCancellation(error) else { throw CancellationError() }
                 guard attempt < delays.count else { throw error }
@@ -263,7 +308,7 @@ final class BrowseModel: ObservableObject {
     /// retried like the initial load; if it still fails, `guideLoadedUntil`
     /// is simply left where it was and the next viewport move tries again.
     func extendGuideForward() async {
-        guard !guideExtending, !guideEnded, !guideBusy, !guideHasMore, !guide.isEmpty else { return }
+        guard !guideExtending, !guideEnded, !guideBusy, !guideHasMore, !guide.isEmpty, !guideIsPreview else { return }
         let sp = PigTVSignpost.begin("GuideExtend"); defer { PigTVSignpost.end("GuideExtend", sp) }
         guideExtending = true
         defer { guideExtending = false }
@@ -282,7 +327,7 @@ final class BrowseModel: ObservableObject {
             query.append(URLQueryItem(name: "limit", value: "500"))
             if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
             let page: GuidePage
-            do { page = try await requestGuidePage(query, generation: generation) }
+            do { page = try await requestGuidePage(query, generation: generation).page }
             catch { return } // transient: guideLoadedUntil unchanged, retried on the next viewport move
             guard generation == guideGeneration else { return }
             for channel in page.channels where !channel.programmes.isEmpty {
@@ -324,7 +369,7 @@ final class BrowseModel: ObservableObject {
                 if !self.fromCache {
                     self.window = GuideNavigation.rounded(Date()).addingTimeInterval(-GuideNavigation.leadIn)
                 }
-                await self.loadGuide(reset: true, keepVisible: self.fromCache)
+                await self.loadGuide(reset: true, keepVisible: self.fromCache, preview: true)
             }
         }
         initialGuideLoad = task
