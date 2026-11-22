@@ -263,4 +263,71 @@ final class SessionTeardownTests: XCTestCase {
         XCTAssertFalse(ran.value)
         XCTAssertNil(model.presenter.presented)
     }
+
+    // MARK: Codex sign-off of 396
+
+    /// A live play whose release answers `release` once `refusing` is set, on a server whose confirming `auth/me` then
+    /// answers `confirm` (401 or 200) after `confirmDelay`.
+    private func backgroundPlay(release: LocalHTTPServer.Response, confirmRefuses: Bool, confirmDelay: TimeInterval = 1.5)
+        async throws -> (AppModel, FakePigTVServer, Locked<Bool>) {
+        try requireFixture()
+        let refusing = Locked(false)
+        let server = try FakePigTVServer(routes: .init { request in
+            switch (request.method, request.path) {
+            case ("GET", "/api/info"): return .json(Self.info)
+            case ("GET", "/api/library/categories"): return .json("[]")
+            case ("GET", "/api/auth/me"):
+                guard refusing.value else { return .json(Self.me) }
+                var answer = confirmRefuses ? LocalHTTPServer.Response.json(#"{"error":"Invalid token"}"#, status: 401) : .json(Self.me)
+                answer.delay = confirmDelay
+                return answer
+            default:
+                if request.method == "DELETE", request.path.hasPrefix("/api/playback/"), refusing.value { return release }
+                return nil
+            }
+        })
+        let address = try ServerAddress(server.http.baseURL)
+        try KeychainStore().save(token: "saved-token", for: address)
+        cleanups.append { server.http.stop(); try? KeychainStore().remove(for: address) }
+        let model = try await signedIn(at: server.http.baseURL)
+        model.beginPlayback(Channel(rawID: "harness-a", sourceId: 1, name: "Harness", logo: nil, category: nil, now: nil, next: nil))
+        let playback = try XCTUnwrap(model.playback)
+        playback.start()
+        try await eventually("the play is resolved and installed") { playback.ready }
+        return (model, server, refusing)
+    }
+
+    /// The trip to the background stops the play first; its release is answered 401, which starts the refusal check, and
+    /// the stop returns before the check is answered, and its failure is shown. The check then confirms the refusal:
+    /// Sign in, with no alert (the teardown takes the old session's alert down; on 396 it stayed over Sign in).
+    func testABackgroundReleaseRefusedBeforeTheCheckConfirmsShowsSignInWithNoAlert() async throws {
+        let (model, server, refusing) = try await backgroundPlay(release: .json(#"{"error":"Invalid token"}"#, status: 401),
+                                                                 confirmRefuses: true)
+        refusing.value = true
+        await model.background()
+        XCTAssertEqual(server.http.requests(path: "/api/playback/s1", method: "DELETE").count, 1)
+        try await eventually("Sign in, once the check confirms the refusal") { !model.loggedIn }
+        XCTAssertNil(model.error, "no alert over Sign in")
+        XCTAssertEqual(model.signInError?.title, "Your saved sign-in wasn’t accepted")
+    }
+
+    /// The same, but the check does not confirm a refusal: the session stays and the release's failure is shown (at once).
+    func testABackgroundReleaseRefusedButNotConfirmedStillShowsItsFailure() async throws {
+        let (model, _, refusing) = try await backgroundPlay(release: .json(#"{"error":"Invalid token"}"#, status: 401),
+                                                            confirmRefuses: false)
+        refusing.value = true
+        await model.background()
+        try await eventually("the release's failure is shown once the check is answered") { model.error != nil }
+        XCTAssertTrue(model.loggedIn)
+    }
+
+    /// A release that fails with no 401 at all is shown at once, as before.
+    func testABackgroundReleaseFailingWithoutARefusalIsShown() async throws {
+        let (model, _, refusing) = try await backgroundPlay(release: .json(#"{"error":"boom"}"#, status: 500),
+                                                            confirmRefuses: false)
+        refusing.value = true
+        await model.background()
+        XCTAssertNotNil(model.error, "the release's failure is shown")
+        XCTAssertTrue(model.loggedIn)
+    }
 }

@@ -345,6 +345,7 @@ final class AppModel: ChangeSuppressing {
     /// The signed-in session's client tells this model of each 401 its token is answered.
     private func watchRefusals(_ client: APIClient) {
         silencedPlaybacks = [] // a new session: the last one's plays are done with
+        shownReleaseAlert = nil
         client.unauthorisedHandler = { [weak self] refused in self?.sessionRefused(by: refused) }
     }
 
@@ -365,6 +366,10 @@ final class AppModel: ChangeSuppressing {
             if refusedAgain { await self.endRefusedSession(refused) }
         }
     }
+
+    /// #54 (Codex sign-off of 396): the stream release's failure this session showed, which its confirmed refusal's
+    /// teardown takes down (it belongs to the session that ended: on Sign in it is moot). Reset by each new session.
+    @ObservationIgnored private var shownReleaseAlert: String?
 
     /// #54 (Codex review of 394): a confirmed refusal is ending the session. While it is set nothing starts on it: no
     /// play, switch or zap (`beginPlayback`, `switchPlayback`), no link (`open`, dropped, never kept for the next
@@ -396,6 +401,8 @@ final class AppModel: ChangeSuppressing {
         cancelHandoff()
         pendingLink = nil
         cancelPendingWatch()
+        if let shown = shownReleaseAlert, error == shown { error = nil }
+        shownReleaseAlert = nil
         var ended = 0
         while let playing = currentPlayback, ended < 4 {
             if !silencedPlaybacks.contains(where: { $0 === playing }) { silencedPlaybacks.append(playing) }
@@ -830,7 +837,10 @@ final class AppModel: ChangeSuppressing {
             sportPlay = nil // #334: and lists channels unless it starts from Sport
             warmer.playerClosed()
             // #54: decided now, not by the caller: a play of a refused session's teardown never shows its release's failure.
-            if let message, reportingFailure, !silencedPlaybacks.contains(where: { $0 === model }) { error = message }
+            if let message, reportingFailure, !silencedPlaybacks.contains(where: { $0 === model }) {
+                error = message
+                shownReleaseAlert = message
+            }
         }
     }
 
