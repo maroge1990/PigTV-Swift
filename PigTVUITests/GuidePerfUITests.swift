@@ -11,7 +11,8 @@ import XCTest
 /// the TEST_RUNNER_ prefix): FOCUS_MS (the worst focus move in a press scenario), GAP_MS (the longest frame gap in any
 /// scenario), FIRST_MS (the first screen), BODY_PER_PRESS (body evaluations per press), CELLS_PER_VERTICAL_PRESS (cell
 /// configurations per up/down press), LAYOUT_PER_VERTICAL_PRESS (the grid layout's element queries per up/down press), LOGO_LATE (logos drawn a frame late in a vertical
-/// or held scenario), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there), APPLY_MS
+/// or held scenario), CELLS_AT_TICK (cell configurations in the idle window, the 30 s tick), BODY_AT_TICK (body evaluations there),
+/// ITEM_QUERIES (per-item layout queries in the paged scenario, default 1,000), APPLY_MS
 /// (all applies' ms in a scenario). Unset, a scenario only records, except where a fix has earned a count budget (#360,
 /// `budget(_:_:)` in `record`). Absent probe figures always fail.
 final class GuidePerfUITests: XCTestCase {
@@ -274,7 +275,7 @@ final class GuidePerfUITests: XCTestCase {
         if presses > 0 {
             json["presses"] = presses
             for key in ["bodyEvals", "cellConfigs", "layoutPrepares", "layoutPrepareRuns", "layoutQueries", "layoutMs",
-                        "logoFetches", "applies"] where moves > 0 {
+                        "logoFetches", "applies", "cellConfigMs", "mainBusyMs"] where moves > 0 {
                 if let value = number(json, key) { json[key + "PerPress"] = (value / moves * 10).rounded() / 10 }
             }
         }
@@ -360,6 +361,11 @@ final class GuidePerfUITests: XCTestCase {
         // paged scenario, whose arriving pages insert rows (a full layout by design).
         if vertical, let budget = budget("LAYOUT_PER_VERTICAL_PRESS", paged ? nil : 5), let value = number(json, "layoutQueriesPerPress") {
             XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(value) layout queries per press (budget \(budget))")
+        }
+        // #360 (D1, Apple 388): a page of channels appended below the screen no longer has UIKit ask the layout for every
+        // item of every new row (`itemQueries`: 38,628 in this scenario's two pages before, about 25,000 for 500 rows).
+        if scenario == "g-paged-down-45", let budget = budget("ITEM_QUERIES", 1000), let value = number(json, "itemQueries") {
+            XCTAssertLessThanOrEqual(value, budget, "\(scenario): \(Int(value)) per-item layout queries (budget \(Int(budget)))")
         }
         // #360 (G4, Apple 379): a channel logo already in memory is drawn on its tile's first frame, never by the view's task a
         // frame later (c-up-40 drew 36 that way, e-held-down-100 199, before).

@@ -21,6 +21,8 @@ final class GuideGridStore {
     private(set) var rows: [GuideChannel] = []
     private(set) var revision = GuideGridRevision()
     private var ordered: [String: [GuideProgramme]] = [:]
+    /// #360 (D1): lists ordered here, on the main thread (cache misses), for the tests.
+    private(set) var mainThreadOrders = 0
 
     func setRows(_ rows: [GuideChannel], revision: GuideGridRevision = GuideGridRevision()) {
         if revision != self.revision {
@@ -34,6 +36,8 @@ final class GuideGridStore {
         guard rows.indices.contains(section) else { return [] }
         let channel = rows[section]
         if let cached = ordered[channel.id] { return cached }
+        let began = GuidePerf.orderBegan(); defer { GuidePerf.orderEnded(began) } // #360 (D1)
+        mainThreadOrders += 1
         let list = GuideNavigation.ordered(channel.programmes)
         ordered[channel.id] = list
         return list
@@ -152,6 +156,8 @@ final class GuideGridLayout: UICollectionViewLayout {
     /// every element in its rect; `prepare()` does almost nothing). UIKit makes one per frame after a full invalidation,
     /// and only for newly exposed rows after a vertical-only one.
     private(set) var elementQueries = 0
+    /// #360 (D1): calls of `layoutAttributesForItem(at:)` (UIKit asks it per item, e.g. for every item of inserted rows).
+    private(set) var itemQueries = 0
 
     override func invalidateLayout(with context: UICollectionViewLayoutInvalidationContext) {
         let targeted = (context as? GuideGridInvalidationContext)?.verticalScrollOnly == true
@@ -232,7 +238,9 @@ final class GuideGridLayout: UICollectionViewLayout {
     }
 
     override func layoutAttributesForItem(at indexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
-        indexPath.item == 0 ? tileAttributes(indexPath.section) : hiddenIfNil(programmeAttributes(indexPath), indexPath)
+        let began = GuidePerf.queryBegan(); defer { GuidePerf.itemQueried(began) } // #360 (D1)
+        itemQueries += 1
+        return indexPath.item == 0 ? tileAttributes(indexPath.section) : hiddenIfNil(programmeAttributes(indexPath), indexPath)
     }
 
     override func layoutAttributesForDecorationView(ofKind elementKind: String,

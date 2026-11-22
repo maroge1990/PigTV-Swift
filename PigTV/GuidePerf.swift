@@ -28,19 +28,71 @@ enum GuidePerf {
     struct Interval {
         fileprivate let state: OSSignpostIntervalState
         fileprivate let began: CFTimeInterval
+        /// #360 (D1): the probe's record of an apply (nil for other intervals, and with the probe off).
+        var record: ApplyRecord?
+        fileprivate var mark: CFTimeInterval = 0
+        fileprivate var cells = 0
+        fileprivate var orders = 0
+        fileprivate var orderMs: Double = 0
+        fileprivate var start = GuidePerfStats()
     }
 
     /// nil unless someone is watching: with the readout off and nothing recording, one flag check and nothing made.
-    static func applyBegan() -> Interval? {
+    /// `via`: how the rows reached the apply (#360 D1).
+    static func applyBegan(rows: Int = 0, via: String = "direct") -> Interval? {
         guard watching else { return nil }
-        return Interval(state: signposter.beginInterval("GuideApplyRows", id: signposter.makeSignpostID()), began: probeClock())
+        var interval = Interval(state: signposter.beginInterval("GuideApplyRows", id: signposter.makeSignpostID()), began: probeClock())
+        if let probe = GuidePerfProbe.shared {
+            var record = ApplyRecord()
+            record.via = via
+            record.rowsBefore = rows
+            record.moveOpen = focusMove != nil
+            probe.moveState(into: &record)
+            interval.record = record
+            interval.mark = interval.began
+            interval.cells = probe.stats.cellConfigurations
+            interval.orders = probe.stats.orders
+            interval.orderMs = probe.stats.orderMs
+            interval.start = probe.stats
+        }
+        return interval
+    }
+
+    /// #360 (D1): the apply's path is decided (`check`), its update done (`update`), its corrected cells refreshed.
+    static func applyStep(_ interval: inout Interval?, _ step: WritableKeyPath<ApplyRecord, Double>) {
+        guard var current = interval, current.record != nil else { return }
+        let now = CACurrentMediaTime()
+        current.record?[keyPath: step] = (now - current.mark) * 1000
+        current.mark = now
+        interval = current
     }
 
     /// `kind`: append, extend, reload or same (which path the apply took).
     static func applyEnded(_ interval: Interval?, rows: Int, kind: String) {
         guard let interval else { return }
         signposter.endInterval("GuideApplyRows", interval.state, "\(kind, privacy: .public) \(rows)")
-        if let probe = GuidePerfProbe.shared { probe.applied(ms: (CACurrentMediaTime() - interval.began) * 1000, rows: rows) }
+        if let probe = GuidePerfProbe.shared {
+            var record = interval.record
+            record?.kind = kind
+            record?.rowsAfter = rows
+            record?.cellConfigs = probe.stats.cellConfigurations - interval.cells
+            record?.orders = probe.stats.orders - interval.orders
+            record?.orderMs = probe.stats.orderMs - interval.orderMs
+            let now = probe.stats, then = interval.start
+            record?.layoutMs = now.layoutMs - then.layoutMs
+            record?.itemQueries = now.itemQueries - then.itemQueries
+            record?.itemQueryMs = now.itemQueryMs - then.itemQueryMs
+            record?.countQueries = now.countQueries - then.countQueries
+            record?.countMs = now.countMs - then.countMs
+            probe.applied(ms: (CACurrentMediaTime() - interval.began) * 1000, rows: rows, record: record)
+        }
+    }
+
+    /// #360 (D1): a programme list ordered on the main thread (the grid store's cache miss): 0 unless the probe is on.
+    static func orderBegan() -> CFTimeInterval { probeClock() }
+    static func orderEnded(_ began: CFTimeInterval) {
+        guard began > 0, let probe = GuidePerfProbe.shared else { return }
+        probe.ordered(ms: (CACurrentMediaTime() - began) * 1000)
     }
 
     /// nil unless someone is watching (as `applyBegan`).
@@ -49,13 +101,24 @@ enum GuidePerf {
         cellConfigurationsForTesting += 1
         #endif
         guard watching else { return nil }
-        return Interval(state: signposter.beginInterval("GuideCellConfigure", id: signposter.makeSignpostID()), began: 0)
+        return Interval(state: signposter.beginInterval("GuideCellConfigure", id: signposter.makeSignpostID()), began: probeClock())
     }
 
     static func cellEnded(_ interval: Interval?) {
         guard let interval else { return }
         signposter.endInterval("GuideCellConfigure", interval.state)
-        GuidePerfProbe.shared?.cellConfigured()
+        GuidePerfProbe.shared?.cellConfigured(ms: interval.began > 0 ? (CACurrentMediaTime() - interval.began) * 1000 : 0)
+    }
+
+    /// #360 (D1): one `layoutAttributesForItem(at:)` / one item count (`numberOfItemsInSection`): 0 unless the probe is on.
+    static func queryBegan() -> CFTimeInterval { probeClock() }
+    static func itemQueried(_ began: CFTimeInterval) {
+        guard began > 0, let probe = GuidePerfProbe.shared else { return }
+        probe.itemQueried(ms: (CACurrentMediaTime() - began) * 1000)
+    }
+    static func countQueried(_ began: CFTimeInterval) {
+        guard began > 0, let probe = GuidePerfProbe.shared else { return }
+        probe.countQueried(ms: (CACurrentMediaTime() - began) * 1000)
     }
 
     /// #360 (G8): the grid's layout ran a full `prepare` (GuideGridLayout). One nil check while the probe is off.

@@ -4,7 +4,7 @@ import XCTest
 
 /// maroge1990/PigTV#360 (speed programme, batch 2): the Guide's quiet paths, on the real views in a window. A focus move
 /// must not re-evaluate GuideView.body (G1); the 30 s clock tick must not either, nor reconfigure cells whose drawing did
-/// not change (G5); rows that arrive while focus is moving wait for it to be still (the cheap half of G2).
+/// not change (G5); a page of channels appended below the screen leaves the cells on screen alone and is cheap (D1).
 @MainActor
 final class GuideQuietTests: XCTestCase {
     private var window: UIWindow?
@@ -176,6 +176,60 @@ final class GuideQuietTests: XCTestCase {
         controller.setClockForTesting(tick)
         XCTAssertEqual(GuidePerf.cellConfigurationsForTesting - before, changed,
                        "the tick reconfigured \(GuidePerf.cellConfigurationsForTesting - before) cells; \(changed) changed what they draw")
+    }
+
+    // MARK: D1 (a page of channels appended while focus moves)
+
+    /// Rows with a day of half-hour programmes each (about 50 items a row, as the production guide).
+    private func dayLineup(_ count: Int, now: Date, prefix: String = "a") -> [GuideChannel] {
+        (0..<count).map { i in channel("\(prefix)\(i)", (0..<48).map { k in (now - 600 + Double(k) * 1800, now + 1200 + Double(k) * 1800) }) }
+    }
+
+    /// #360 (D1): the background paging appends 500 channels below the rows on screen. Holding the append while focus moved
+    /// could not keep it out of the presses (on the simulator a press reaches its move about 340 ms later, so at three
+    /// presses a second there is no still moment, and the hold's cap let it in inside a move), so the append itself is
+    /// made cheap: it used to make UIKit ask the layout for every item of every new row (about 25,000 for 500 rows, 85 ms
+    /// on the MacBook simulator, inside the press). Now the rows on screen keep their cells (none is configured again),
+    /// focus stays, the layout is asked for at most a few hundred items whatever the page's size, and the new rows'
+    /// programme lists are ordered off the main thread before the insert.
+    func testAPageAppendedBelowTheRowsLeavesTheScreenAloneAndAsksForFewItems() async throws {
+        let now = Date()
+        let controller = GuideGridViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        // Through GuideView's path, as the pages come (the first fill, then the append, under the same store revision).
+        controller.receiveRowsForTesting(dayLineup(500, now: now))
+        try await until("the first 500 rows are in the grid") { controller.rowCountForTesting == 500 }
+        try await spin(0.3) // the first fill's reveal steps
+        controller.setClockForTesting(now)
+        let grid = try XCTUnwrap(controller.collectionView)
+        let layout = try XCTUnwrap(grid.collectionViewLayout as? GuideGridLayout)
+        let shown = Set(grid.visibleCells.map(ObjectIdentifier.init))
+        let paths = Set(grid.indexPathsForVisibleItems)
+        XCTAssertFalse(shown.isEmpty)
+        let queries = layout.itemQueries, cells = GuidePerf.cellConfigurationsForTesting
+        let orders = controller.mainThreadOrdersForTesting
+        controller.receiveRowsForTesting(dayLineup(1000, now: now))
+        try await until("all 1,000 rows are in the grid") { grid.numberOfSections == 1000 && controller.rowCountForTesting == 1000 }
+        grid.layoutIfNeeded()
+        grid.visibleCells.forEach { $0.layoutIfNeeded() }
+        XCTAssertEqual(GuidePerf.cellConfigurationsForTesting - cells, 0, "the append configured cells on screen again")
+        XCTAssertEqual(Set(grid.visibleCells.map(ObjectIdentifier.init)), shown, "the cells on screen were replaced")
+        XCTAssertEqual(Set(grid.indexPathsForVisibleItems), paths)
+        XCTAssertEqual(controller.mainThreadOrdersForTesting - orders, 0,
+                       "the new rows' programme lists were ordered on the main thread (the insert's item counts)")
+        XCTAssertLessThanOrEqual(layout.itemQueries - queries, 500,
+                                 "the append asked the layout for \(layout.itemQueries - queries) items (one per item of every new row)")
+        // The new rows are all there and draw where they belong.
+        XCTAssertEqual(grid.numberOfItems(inSection: 999), 49)
+        grid.contentOffset.y = grid.contentSize.height - grid.bounds.height
+        grid.layoutIfNeeded()
+        let tile = try XCTUnwrap(grid.cellForItem(at: IndexPath(item: 0, section: 999)), "the last row's tile is drawn")
+        XCTAssertEqual(tile.frame, GuideGridMath.tileFrame(row: 999, offsetX: grid.contentOffset.x, metrics: layout.metrics))
     }
 
     // MARK: G8

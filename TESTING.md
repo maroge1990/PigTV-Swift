@@ -41,7 +41,8 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 - `GuideQuietTests` (maroge1990/PigTV#360): the Guide's quiet paths on the real views in a window: a focus move does not
   re-evaluate `GuideView.body` (only the focus strip observes the focus); the 30 s clock tick reconfigures only the grid
   cells whose drawing changed (on air: the progress bar; a roll-over), not every visible cell; a long-press menu left open
-  past its programme's end loses its RECORD items at the next tick. `ChannelArtworkTests`: a logo in memory draws on the
+  past its programme's end loses its RECORD items at the next tick; a page of channels appended below the screen configures
+  no cell on screen again and asks the layout for at most 500 items (one per item of every new row before Apple 388). `ChannelArtworkTests`: a logo in memory draws on the
   first frame and stays drawn if the cache evicts it; fetches stop when no view waits; a stale end of display (on a
   reload) leaves a visible Guide tile loading its logo.
 - `ChannelWarmerTests` (audit R11, predictive warming): the player's warm policy with a hand-moved clock (off by default, dwell, one in
@@ -125,7 +126,15 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   grid layout passes; a vertical scroll step that only moves the now line is not one), `logoFetches`/`logoCancels` (channel logo
   fetches started, and cancelled because no tile waited any more), `logoSyncHits`/`logoLateHits` (logos drawn from memory on
   the tile's first frame, or found only by the view's task, a frame late),
-  `applies`, `applyMs` (and per press: per focus move that landed), `presses` (sent), `focusMoves` (focus events that
+  `applies`, `applyMs` (and per press: per focus move that landed), `applyLog` (#360, Apple 388: each apply's path, its own ms
+  split into `checkMs`/`updateMs`/`refreshMs`, the per-item layout queries, item counts and list orderings inside it, the layout
+  and cell configurations after it up to the next frame and that frame's gap, and whether a move was in flight: an arrow
+  down, a press not yet taken by a move, `pressPendingMs`, or a focus move not yet drawn), `appliesInMove`, `itemQueries`/`itemQueryMs`
+  (the layout's `layoutAttributesForItem(at:)`), `countQueries`/`countMs` (item counts), `orders`/`orderMs` (programme lists ordered
+  on the main thread), `pressHeldMs`/`moveAfterDownMs`/`moveAfterUpMs`/`movesWhileDown` (an arrow press down → up, and → its
+  focus move: XCUIRemote's press is up after 5 ms and focus moves about 340 ms later on the simulator), `cellConfigMs`/`cellConfigUs`
+  (time inside cell configurations, total and per configuration; the SwiftUI content's own layout comes later in the frame and is
+  not in it) and `mainBusyMs` (the main run loop's busy time, frame commits included), `presses` (sent), `focusMoves` (focus events that
   landed), `landedPresses` (presses whose move landed, at most one each, each counted from just before its press),
   `layoutPrepareRuns`/`layoutQueries`/`layoutMs` (the grid layout's `prepare()` and `layoutAttributesForElements(in:)` calls
   and the main-thread ms in both), `dayChanges` (the header's day changed: one body evaluation each), `focusRow` (the focused row's index; the held
@@ -137,7 +146,7 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   (`rowsMoved`); budgets apply only after that. Count budgets a fix has earned apply by default (#360: body evaluations per press 0.05 in the up/down scenarios, and in the sideways one no more than the day changes it
   crossed, 0 body evaluations and 0 cell configurations at the idle tick, whose grid shows later programmes; 5 layout element queries per up/down press outside the paged scenario, 19.8 with the layout before Apple 378 and 2.6
   after (`PIGTV_GUIDEPERF_OLD_LAYOUT=1` runs the old layout in the same build, with `_LAYOUT_PER_VERTICAL_PRESS` set high); 0 logos drawn a frame late in the up/down and held scenarios, 36 and 199 before Apple 379); the rest record only unless set: `PIGTV_GUIDEPERF_FOCUS_MS`,
-  `_GAP_MS`, `_FIRST_MS`, `_BODY_PER_PRESS`, `_CELLS_PER_VERTICAL_PRESS`, `_LAYOUT_PER_VERTICAL_PRESS`, `_LOGO_LATE`, `_CELLS_AT_TICK`, `_BODY_AT_TICK`, `_APPLY_MS` (`Tools/test.sh` and
+  `_GAP_MS`, `_FIRST_MS`, `_BODY_PER_PRESS`, `_CELLS_PER_VERTICAL_PRESS`, `_LAYOUT_PER_VERTICAL_PRESS`, `_LOGO_LATE`, `_CELLS_AT_TICK`, `_BODY_AT_TICK`, `_APPLY_MS`, `_ITEM_QUERIES` (per-item layout queries in the paged scenario; earned default 1,000, 38,628 before Apple 388) (`Tools/test.sh` and
   `Tools/mac-gate.sh` pass them to the test runner). Each perf run keeps its result bundle and full output in its own
   `build/perf-<UTC time>/` (printed; `Tools/mac-gate.sh perf` copies the output back next to its log from that exact folder, and if the copy fails it
   says so and leaves the output on the Mac, in `~/pigtv-build/perf-kept/`, with its path). The perf tier also prints the Mac's model, CPUs, memory, load and the booted simulator: the figures

@@ -3,6 +3,54 @@ import QuartzCore
 import SwiftUI
 import UIKit
 
+/// #360 (D1), measurement only: one grid apply. `ms` is its own synchronous main-thread time (`checkMs` deciding the path,
+/// `updateMs` the store and collection view update, `refreshMs` corrected rows' cells); `after*` is what followed on the
+/// main thread before the next frame (the collection view's layout and cell configurations: UIKit lays out after the
+/// apply returns), and `gapMs` that next frame's gap (the whole stall the apply was part of).
+nonisolated struct ApplyRecord: Equatable, Sendable {
+    var kind = ""
+    /// direct (GuideView's update) or fill (a first fill, after its lists were ordered off the main thread).
+    var via = "direct"
+    var rowsBefore = 0
+    var rowsAfter = 0
+    var ms: Double = 0
+    var checkMs: Double = 0
+    var updateMs: Double = 0
+    var refreshMs: Double = 0
+    var orders = 0
+    var orderMs: Double = 0
+    var layoutMs: Double = 0
+    var itemQueries = 0
+    var itemQueryMs: Double = 0
+    var countQueries = 0
+    var countMs: Double = 0
+    var cellConfigs = 0
+    var afterLayoutMs: Double = 0
+    var afterCellConfigs = 0
+    var afterOrders = 0
+    var gapMs: Double?
+    var arrowDown = false
+    var pressPendingMs: Double?
+    var moveOpen = false
+    var focusRow: Int?
+    var inMove: Bool { arrowDown || pressPendingMs != nil || moveOpen }
+
+    var object: [String: Any] {
+        func r(_ v: Double) -> Double { (v * 10).rounded() / 10 }
+        var o: [String: Any] = ["kind": kind, "via": via, "rowsBefore": rowsBefore, "rowsAfter": rowsAfter, "ms": r(ms),
+                                "checkMs": r(checkMs), "updateMs": r(updateMs), "refreshMs": r(refreshMs), "orders": orders,
+                                "orderMs": r(orderMs), "layoutMs": r(layoutMs), "itemQueries": itemQueries,
+                                "itemQueryMs": r(itemQueryMs), "countQueries": countQueries, "countMs": r(countMs),
+                                "cellConfigs": cellConfigs, "afterLayoutMs": r(afterLayoutMs),
+                                "afterCellConfigs": afterCellConfigs, "afterOrders": afterOrders, "arrowDown": arrowDown,
+                                "moveOpen": moveOpen, "inMove": inMove]
+        if let gapMs { o["gapMs"] = r(gapMs) }
+        if let pressPendingMs { o["pressPendingMs"] = r(pressPendingMs) }
+        if let focusRow { o["focusRow"] = focusRow }
+        return o
+    }
+}
+
 /// #362, measurement only: the Guide's figures since the probe was switched on or last reset, kept by `GuidePerfProbe`.
 /// Pure, so the arithmetic is unit-tested (GuidePerfTests).
 nonisolated struct GuidePerfStats: Equatable, Sendable {
@@ -42,6 +90,31 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
     var logoLateHits = 0
     var applies = 0
     var applyMs: Double = 0
+    /// #360 (D1): each apply in the window, what it cost and what was going on when it began (`ApplyRecord`).
+    var applyLog: [ApplyRecord] = []
+    /// Applies that began while a move was in flight: an arrow down, a press not yet taken by a move, or a focus move
+    /// not yet on screen.
+    var appliesInMove = 0
+    /// #360 (D1): each arrow press, down → up (ms); each focus move after its press went down, and after it came up
+    /// (ms; a move while the press was still down is counted instead).
+    var pressHeldMs: [Double] = []
+    var moveAfterDownMs: [Double] = []
+    var moveAfterUpMs: [Double] = []
+    var movesWhileDown = 0
+    /// Programme lists ordered on the main thread (the grid store's cache misses) and their ms.
+    var orders = 0
+    var orderMs: Double = 0
+    /// #360 (D1): the layout's per-item calls (`layoutAttributesForItem(at:)`) and the data source's item counts, with ms.
+    var itemQueries = 0
+    var itemQueryMs: Double = 0
+    var countQueries = 0
+    var countMs: Double = 0
+    /// #360 (D2): main-thread ms inside cell configurations (`updateConfiguration`: the cell's info to its hosting
+    /// configuration; the SwiftUI content's own layout and drawing come later in the frame and are not in it).
+    var cellConfigMs: Double = 0
+    /// #360 (D2): the main thread's busy time (each run-loop pass from waking to sleeping, the frame's layout and commit
+    /// included), an upper bound for everything the Guide does per press.
+    var mainBusyMs: Double = 0
     var firstScreenMs: Double?
     /// #360/#361 (C1): the bytes of the first guide page put on screen (`GuidePerf.firstGuidePage`).
     var firstPageBytes: Int?
@@ -72,6 +145,9 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
         if let press { Self.append(press, to: &pressMs) }
         Self.append(press ?? focus, to: &feltMs)
     }
+
+    /// #360 (D1): a sample onto one of the lists, capped as the others.
+    mutating func note(_ value: Double, _ list: WritableKeyPath<GuidePerfStats, [Double]>) { Self.append(value, to: &self[keyPath: list]) }
 
     private static func append(_ value: Double, to list: inout [Double]) {
         list.append(value)
@@ -132,6 +208,13 @@ nonisolated struct GuidePerfStats: Equatable, Sendable {
             "layoutPrepareRuns": layoutPrepareRuns, "layoutQueries": layoutQueries, "layoutMs": Self.rounded(layoutMs),
             "dayChanges": dayChanges,
             "logoFetches": logoFetches, "logoCancels": logoCancels, "logoSyncHits": logoSyncHits, "logoLateHits": logoLateHits, "applies": applies, "applyMs": Self.rounded(applyMs),
+            "applyLog": applyLog.map(\.object), "appliesInMove": appliesInMove,
+            "pressHeldMs": pressHeldMs.map(Self.rounded), "moveAfterDownMs": moveAfterDownMs.map(Self.rounded),
+            "moveAfterUpMs": moveAfterUpMs.map(Self.rounded), "movesWhileDown": movesWhileDown,
+            "orders": orders, "orderMs": Self.rounded(orderMs), "itemQueries": itemQueries,
+            "itemQueryMs": Self.rounded(itemQueryMs), "countQueries": countQueries, "countMs": Self.rounded(countMs),
+            "cellConfigMs": Self.rounded(cellConfigMs), "mainBusyMs": Self.rounded(mainBusyMs),
+            "cellConfigUs": cellConfigurations > 0 ? Self.rounded(cellConfigMs * 1000 / Double(cellConfigurations)) : 0,
             "resets": resets, "windowMs": Self.rounded(windowMs),
         ]
         if let rowsStart { object["rowsStart"] = rowsStart }
@@ -213,8 +296,17 @@ final class GuidePerfProbe: NSObject {
     /// The press the open focus move took, until that move lands (or is superseded, or focus leaves the grid).
     private var movePress: TimeInterval?
     private(set) var guideVisible = false
+    /// #360 (D1): the last arrow press's down and up times (UIPress timestamps), and whether it is down now.
+    private var lastDown: TimeInterval?
+    private var lastUp: TimeInterval?
+    private(set) var arrowDown = false
+    /// The latest apply's record index, until the next frame fills in what followed it (and the stats then).
+    private var openApply: (index: Int, layoutMs: Double, cells: Int, orders: Int)?
     private var active: Bool
     private var observers: [NSObjectProtocol] = []
+    /// #360 (D2): the main run loop's wake (first observer) and sleep (last observer, after Core Animation's commit).
+    private var runLoopObservers: [CFRunLoopObserver] = []
+    private var wokeAt: CFTimeInterval = 0
 
     private override init() {
         // Not yet active at launch is still the foreground: the became-active notice may have gone before this exists.
@@ -228,6 +320,16 @@ final class GuidePerfProbe: NSObject {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { GuidePerfProbe.shared?.setActive(isActive) }
             })
+        }
+        let wake = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue, true, CFIndex.min) { _, _ in
+            MainActor.assumeIsolated { GuidePerfProbe.shared?.runLoopWoke() }
+        }
+        let sleep = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max) { _, _ in
+            MainActor.assumeIsolated { GuidePerfProbe.shared?.runLoopSleeps() }
+        }
+        for observer in [wake, sleep].compactMap({ $0 }) {
+            CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+            runLoopObservers.append(observer)
         }
         #if DEBUG
         if Self.testHooks { Self.observeResets() }
@@ -246,6 +348,8 @@ final class GuidePerfProbe: NSObject {
         link = nil
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers = []
+        runLoopObservers.forEach { CFRunLoopRemoveObserver(CFRunLoopGetMain(), $0, .commonModes) }
+        runLoopObservers = []
     }
 
     var hasDisplayLink: Bool { link != nil }
@@ -272,8 +376,18 @@ final class GuidePerfProbe: NSObject {
 
     @objc private func frame(_ link: CADisplayLink) {
         let now = link.timestamp
-        stats.frame(gapMs: lastFrame > 0 ? (now - lastFrame) * 1000 : nil)
+        let gap = lastFrame > 0 ? (now - lastFrame) * 1000 : nil
+        stats.frame(gapMs: gap)
         lastFrame = now
+        if let open = openApply {
+            openApply = nil
+            if stats.applyLog.indices.contains(open.index) {
+                stats.applyLog[open.index].gapMs = gap
+                stats.applyLog[open.index].afterLayoutMs = stats.layoutMs - open.layoutMs
+                stats.applyLog[open.index].afterCellConfigs = stats.cellConfigurations - open.cells
+                stats.applyLog[open.index].afterOrders = stats.orders - open.orders
+            }
+        }
     }
 
     func reset() {
@@ -281,6 +395,7 @@ final class GuidePerfProbe: NSObject {
         lastFrame = 0
         pendingPress = nil
         movePress = nil
+        openApply = nil
         windowStart = CACurrentMediaTime()
     }
 
@@ -289,14 +404,54 @@ final class GuidePerfProbe: NSObject {
     var json: String { stats.json(windowMs: (CACurrentMediaTime() - windowStart) * 1000) }
 
     // Hooks (GuidePerf.swift, GuideGridSupport.swift). Only while the Guide is on screen.
-    func applied(ms: Double, rows: Int) {
+    func applied(ms: Double, rows: Int, record: ApplyRecord? = nil) {
         stats.rowsEnd = rows
         guard guideVisible else { return }
         stats.applies += 1
         stats.applyMs += ms
+        guard var record else { return }
+        record.ms = ms
+        if record.inMove { stats.appliesInMove += 1 }
+        if stats.applyLog.count < GuidePerfStats.sampleCap { stats.applyLog.append(record) } else { return }
+        openApply = (stats.applyLog.count - 1, stats.layoutMs, stats.cellConfigurations, stats.orders)
+    }
+    /// #360 (D1): what a moment holds: an arrow down, a press not yet taken by a move (its age, ms), the focus row.
+    func moveState(into record: inout ApplyRecord) {
+        record.arrowDown = arrowDown
+        if let press = pendingPress {
+            let age = CACurrentMediaTime() - press
+            if age >= 0, age < Self.pressFreshness { record.pressPendingMs = age * 1000 }
+        }
+        record.focusRow = stats.focusRow
+    }
+    func ordered(ms: Double) {
+        guard guideVisible else { return }
+        stats.orders += 1
+        stats.orderMs += ms
     }
     func focusRow(_ row: Int) { if guideVisible { stats.focusRow = row } }
-    func cellConfigured() { if guideVisible { stats.cellConfigurations += 1 } }
+    func cellConfigured(ms: Double = 0) {
+        guard guideVisible else { return }
+        stats.cellConfigurations += 1
+        stats.cellConfigMs += ms
+    }
+    func runLoopWoke() { wokeAt = CACurrentMediaTime() }
+    func runLoopSleeps() {
+        guard wokeAt > 0 else { return }
+        let busy = (CACurrentMediaTime() - wokeAt) * 1000
+        wokeAt = 0
+        if guideVisible, active { stats.mainBusyMs += busy }
+    }
+    func itemQueried(ms: Double) {
+        guard guideVisible else { return }
+        stats.itemQueries += 1
+        stats.itemQueryMs += ms
+    }
+    func countQueried(ms: Double) {
+        guard guideVisible else { return }
+        stats.countQueries += 1
+        stats.countMs += ms
+    }
     func layoutPrepared() { if guideVisible { stats.layoutPrepares += 1 } }
     func layoutWorked(ms: Double, prepare: Bool) {
         guard guideVisible else { return }
@@ -321,11 +476,30 @@ final class GuidePerfProbe: NSObject {
         }
     }
 
-    func pressBegan(_ timestamp: TimeInterval) { pendingPress = timestamp }
+    func pressBegan(_ timestamp: TimeInterval) {
+        pendingPress = timestamp
+        lastDown = timestamp
+        arrowDown = true
+    }
+
+    /// #360 (D1): an arrow press came up (ended or cancelled).
+    func pressEnded(_ timestamp: TimeInterval) {
+        if arrowDown, let down = lastDown, guideVisible {
+            let held = (timestamp - down) * 1000
+            if held >= 0, held < 10_000 { stats.note(held, \.pressHeldMs) }
+        }
+        arrowDown = false
+        lastUp = timestamp
+    }
 
     /// A focus move began: it takes the stored press if that is fresh; either way the store is emptied, so a press is
     /// never paired with a later move.
     func focusBegan(at now: CFTimeInterval = CACurrentMediaTime()) {
+        if guideVisible, let down = lastDown, now - down >= 0, now - down < Self.pressFreshness {
+            stats.note((now - down) * 1000, \.moveAfterDownMs)
+            if arrowDown { stats.movesWhileDown += 1 } else if let up = lastUp, up >= down { stats.note((now - up) * 1000, \.moveAfterUpMs) }
+            lastDown = nil
+        }
         if let press = pendingPress, now - press >= 0, now - press < Self.pressFreshness {
             movePress = press
         } else {

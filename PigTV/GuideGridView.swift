@@ -340,6 +340,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     /// of the first visit's half-second stall. The rows themselves go in at
     /// once (inserting a thousand sections later cost more than the cells).
     private static let revealSteps = [3, 6]
+    /// #360 (D1): appends of at least this many rows (a page) have their lists ordered off the main actor first.
+    private static let primedAppend = 50
     private var fillGeneration = 0
 
     private var revision: GuideGridRevision {
@@ -355,6 +357,19 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             layout.revealedRows = .max
             layout.invalidateLayout()
         }
+        // #360 (D1): a page of channels appended below: its programme lists are ordered off the main actor first, so
+        // the insert's item counts find them ready (500 lists were 6.5 ms of the append on the MacBook simulator).
+        if !store.rows.isEmpty, rows.count >= store.rows.count + Self.primedAppend,
+           zip(store.rows, rows).allSatisfy({ $0.id == $1.id }) {
+            let added = Array(rows[store.rows.count...])
+            Task { [weak self] in
+                let lists = await Task.detached(priority: .userInitiated) { GuideGridStore.orderedLists(for: added) }.value
+                guard let self, generation == fillGeneration else { return }
+                store.prime(lists, revision: revision)
+                applyNow(rows: rows, revision: revision, via: "primed")
+            }
+            return
+        }
         guard store.rows.isEmpty, rows.count > Self.revealSteps[0] else {
             applyNow(rows: rows, revision: revision)
             return
@@ -366,7 +381,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             guard let self, generation == fillGeneration else { return }
             store.prime(lists, revision: revision)
             layout.revealedRows = Self.revealSteps[0]
-            applyNow(rows: rows, revision: revision)
+            applyNow(rows: rows, revision: revision, via: "fill")
             reveal(step: 1, generation: generation)
         }
     }
@@ -380,9 +395,9 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         }
     }
 
-    private func applyNow(rows: [GuideChannel], revision: GuideGridRevision) {
+    private func applyNow(rows: [GuideChannel], revision: GuideGridRevision, via: String = "direct") {
         // #362: measured (GuidePerf), never changed by the measurement.
-        let measured = GuidePerf.applyBegan()
+        var measured = GuidePerf.applyBegan(rows: store.rows.count, via: via)
         var kind = "reload"
         defer { GuidePerf.applyEnded(measured, rows: rows.count, kind: kind) }
         let old = store.rows
@@ -396,17 +411,31 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         // their visible cells are reconfigured in place and the layout redone at once - the cells
         // (and focus) stay, but nothing waits for the next clock tick to show the correction.
         let corrected = IndexSet(old.indices.filter { $0 < rows.count && !Self.sameContent(old[$0], rows[$0]) })
+        GuidePerf.applyStep(&measured, \.checkMs)
         if appendOnly {
             kind = rows.count > old.count ? "append" : "same"
             if rows.count > old.count {
-                collectionView.performBatchUpdates {
-                    store.setRows(rows, revision: revision)
-                    collectionView.insertSections(IndexSet(old.count..<rows.count))
+                let insert = {
+                    self.collectionView.performBatchUpdates {
+                        self.store.setRows(rows, revision: revision)
+                        self.collectionView.insertSections(IndexSet(old.count..<rows.count))
+                    }
+                }
+                // #360 (D1): rows appended below the screen have nothing to animate, but an animated insert made UIKit ask
+                // the layout for every item of every new row (about 25,000 for a page of 500 channels, 85 ms on the
+                // MacBook simulator, inside a press). Without animation it asks for none of them. New rows that come
+                // into view (focus at the last loaded rows) are inserted as before.
+                if GuideGridMath.rowMinY(old.count, metrics: layout.metrics) >= collectionView.bounds.maxY {
+                    UIView.performWithoutAnimation(insert)
+                } else {
+                    insert()
                 }
             } else {
                 store.setRows(rows, revision: revision)
             }
+            GuidePerf.applyStep(&measured, \.updateMs)
             refresh(corrected)
+            GuidePerf.applyStep(&measured, \.refreshMs)
             return
         }
         // Build 33: a forward extension (or its periodic past-trim) changed
@@ -438,6 +467,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         store.setRows(rows, revision: revision)
         focused = nil
         collectionView.reloadData()
+        GuidePerf.applyStep(&measured, \.updateMs)
         if hadFocus, let identity = focusIdentity,
            let section = rows.firstIndex(where: { $0.id == identity.channel }) {
             let target = store.indexPath(section: section, start: identity.start)
@@ -474,6 +504,12 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         collectionView.layoutIfNeeded()
         collectionView.visibleCells.forEach { $0.layoutIfNeeded() } // a pending configuration update runs here
     }
+
+    /// Tests: rows arrive as from GuideView's update (`rowsVersion` changed).
+    func receiveRowsForTesting(_ rows: [GuideChannel]) { apply(rows: rows) }
+
+    /// Tests: programme lists ordered on the main thread so far (the store's cache misses).
+    var mainThreadOrdersForTesting: Int { store.mainThreadOrders }
 
     /// Tests: the rows in the grid's store.
     var rowCountForTesting: Int { store.rows.count }
@@ -797,7 +833,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     func numberOfSections(in collectionView: UICollectionView) -> Int { store.rows.count }
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        store.itemCount(in: section)
+        let began = GuidePerf.queryBegan(); defer { GuidePerf.countQueried(began) } // #360 (D1)
+        return store.itemCount(in: section)
     }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {

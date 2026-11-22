@@ -33,6 +33,22 @@ final class GuideGridCollectionView: UICollectionView {
         }
         super.pressesBegan(presses, with: event)
     }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        arrowsUp(presses)
+        super.pressesEnded(presses, with: event)
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        arrowsUp(presses)
+        super.pressesCancelled(presses, with: event)
+    }
+
+    /// #360 (D1): an arrow press came up, for the probe's press timing (only while the probe is on).
+    private func arrowsUp(_ presses: Set<UIPress>) {
+        guard let probe = GuidePerfProbe.shared, let press = presses.first(where: { GuidePerfProbe.movesFocus($0.type) }) else { return }
+        probe.pressEnded(press.timestamp)
+    }
 }
 
 /// Animates the grid's horizontal offset frame by frame (so the pinned
