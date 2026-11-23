@@ -596,8 +596,26 @@ final class GuidePerfTests: XCTestCase {
         let from = window.timeIntervalSince1970 * 1000
         let to = from + 24 * 3_600_000
         let categoryIDs = Set(ProductionGuideFixture.categories(count: 1250).map(\.rawID))
-        for channel in channels {
+        // #360: like a real guide, divider rows (2-hour blocks titled with a run of 14 symbols, about 15 in 500 rows) and
+        // channels with no programmes (about 6 in 500).
+        let kinds = (0..<500).map(ProductionGuideFixture.rowKind)
+        XCTAssertEqual(kinds.filter { $0 == .divider }.count, 15)
+        XCTAssertEqual(kinds.filter { $0 == .empty }.count, 6)
+        for (index, channel) in channels.enumerated() {
             let programmes = channel.programmes
+            switch ProductionGuideFixture.rowKind(index) {
+            case .empty:
+                XCTAssertTrue(programmes.isEmpty, "\(channel.name) has programmes")
+                continue
+            case .divider:
+                XCTAssertTrue((12...13).contains(programmes.count), "\(channel.name): \(programmes.count) blocks")
+                XCTAssertTrue(programmes.allSatisfy { $0.endTime - $0.startTime == 7_200_000 && $0.title.count == 14
+                    && !$0.title.contains { $0.isLetter || $0.isNumber } }, channel.name)
+                XCTAssertLessThanOrEqual(programmes.first?.startTime ?? .infinity, from)
+                XCTAssertGreaterThanOrEqual(programmes.last?.endTime ?? 0, to)
+                continue
+            case .ordinary: break
+            }
             XCTAssertTrue((24...26).contains(programmes.count), "\(channel.name): \(programmes.count) programmes")
             XCTAssertLessThanOrEqual(programmes.first?.startTime ?? .infinity, from, "\(channel.name) starts late")
             XCTAssertGreaterThanOrEqual(programmes.last?.endTime ?? 0, to, "\(channel.name) ends early")
@@ -625,7 +643,7 @@ final class GuidePerfTests: XCTestCase {
     func testAnyWindowAgreesWithAnyOther() {
         let a = window.timeIntervalSince1970 * 1000
         let b = a + 24 * 3_600_000, c = b + 24 * 3_600_000
-        for channel in [0, 7, 1249] {
+        for channel in [0, 5, 7, 20, 1249] {
             let whole = ProductionGuideFixture.programmes(channel: channel, from: a, to: c)
             let merged = GuideNavigation.mergeProgrammes(ProductionGuideFixture.programmes(channel: channel, from: a, to: b),
                                                          adding: ProductionGuideFixture.programmes(channel: channel, from: b, to: c))

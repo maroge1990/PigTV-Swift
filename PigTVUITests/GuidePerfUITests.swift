@@ -85,6 +85,27 @@ final class GuidePerfUITests: XCTestCase {
             + "\(json["rowsStart"] ?? "?") → \(json["rowsEnd"] ?? "?")); not a failure of the app.")
     }
 
+    /// #360: the rows a real guide has besides ordinary channels (ProductionGuideFixture.rowKind: a divider, 2-hour
+    /// blocks titled with a run of 14 symbols, on row 5 and every 34th row after; a channel with no programmes, drawn as
+    /// one cell across the loaded span, on row 20 and every 83rd after). From the first row: (h1) 21 presses down onto and
+    /// past the first divider and the first empty row, (h2) 10 right with both on screen (each step re-lays them), (h3)
+    /// 25 down past the next divider. Recorded like the other scenarios.
+    @MainActor
+    func testSpecialRowScenarios() throws {
+        launch()
+        _ = try waitForFirstScreen()
+        try enterGrid()
+        let startRow = number(try probe(), "focusRow")
+        reset()
+        var down = try presses(.down, 21)
+        down["startRow"] = startRow
+        record("h1-down-onto-special-21", down, presses: 21, vertical: true)
+        reset()
+        record("h2-right-beside-special-10", try presses(.right, 10), presses: 10)
+        reset()
+        record("h3-down-past-divider-25", try presses(.down, 25), presses: 25, vertical: true)
+    }
+
     /// #360 (E1): the profile tier only (PIGTV_GUIDEPERF_PROFILE=1, `sh Tools/test.sh profile`, which attaches Time Profiler
     /// to the app): after a pause for the profiler, 40 presses down, 40 up and 10 right, 4 s apart, so the trace's
     /// GuideFocusMove signposts fall in three clusters. Prints `PROFILE-PRESSES down,up,right` (presses that landed).
@@ -98,7 +119,11 @@ final class GuidePerfUITests: XCTestCase {
         try enterGrid()
         GuideProbeLanding.spin(8) // the profiler attaches meanwhile
         var landed: [Int] = []
-        for (button, count) in [(XCUIRemote.Button.down, 40), (.up, 40), (.right, 10)] {
+        // #360: PIGTV_GUIDEPERF_PROFILE_SPECIAL=1 profiles testSpecialRowScenarios' presses instead (down 21, right 10,
+        // down 25: onto and past the divider and empty rows).
+        let special = ProcessInfo.processInfo.environment["PIGTV_GUIDEPERF_PROFILE_SPECIAL"] == "1"
+        let steps: [(XCUIRemote.Button, Int)] = special ? [(.down, 21), (.right, 10), (.down, 25)] : [(.down, 40), (.up, 40), (.right, 10)]
+        for (button, count) in steps {
             reset()
             GuideProbeLanding.spin(4)
             let json = try presses(button, count)

@@ -5,7 +5,8 @@ import UIKit
 /// #362: a production-shaped TV Guide for the speed tests (PIGTV_UI_TEST_SCREEN=guide with
 /// PIGTV_UI_TEST_GUIDE_SHAPE=production; PIGTV_UI_TEST_CHANNELS, default 1,250). Each channel has a programme for every
 /// hour of the loaded day (lengths cycle 30–90 minutes, 8 in 8 hours, so about 25 a day), descriptions of 150–300
-/// characters, some new episodes, a logo of its own and one of 40 categories (three of them sport).
+/// characters, some new episodes, a logo of its own and one of 40 categories (three of them sport). Like a real guide it
+/// also has divider rows (2-hour blocks titled with a run of 14 symbols) and channels with no programmes (`rowKind`).
 ///
 /// Nothing here touches a network. The app's own client talks to `ProductionGuideServer`, a URLProtocol in the client's
 /// session that answers like the server, so logos take the real path (the artwork session, the disk store, the
@@ -90,8 +91,44 @@ nonisolated enum ProductionGuideFixture {
     static let cycleMinutes: [Double] = [60, 30, 90, 60, 45, 75, 60, 60]
     private static let minute = 60_000.0
 
+    // MARK: Rows the real guide has besides ordinary channels (#360)
+
+    /// A row of its own kind: a divider (a channel whose programmes are 2-hour blocks titled with a run of 14 symbols,
+    /// about 15 in every 500 rows of a real guide) or a channel with no programmes at all (about 6 in 500). Spread through
+    /// the guide at those proportions, the first divider on row 5 and the first empty row on row 20, so every scroll
+    /// scenario passes some.
+    nonisolated enum RowKind: Equatable { case ordinary, divider, empty }
+
+    static func rowKind(_ index: Int) -> RowKind {
+        if index % 83 == 20 { return .empty }
+        if index % 34 == 5 { return .divider }
+        return .ordinary
+    }
+
+    /// The symbols a divider's titles repeat (a run of one each, as real guides write them).
+    static let dividerSymbols = ["⬇️", "⭐️", "🏆", "▼", "━", "🔻"]
+    static let dividerRun = 14
+    private static let dividerBlock = 120 * minute
+
+    static func dividerTitle(channel: Int) -> String {
+        String(repeating: dividerSymbols[(channel / 34) % dividerSymbols.count], count: dividerRun)
+    }
+
     /// The programmes overlapping `from` ..< `to` (epoch ms), as the server answers a window.
     static func programmes(channel: Int, from: Double, to: Double) -> [GuideProgramme] {
+        switch rowKind(channel) {
+        case .empty: return []
+        case .divider:
+            let title = dividerTitle(channel: channel)
+            var t = (from / dividerBlock).rounded(.down) * dividerBlock
+            var result: [GuideProgramme] = []
+            while t < to {
+                result.append(GuideProgramme(title: title, description: title, startTime: t, endTime: t + dividerBlock))
+                t += dividerBlock
+            }
+            return result
+        case .ordinary: break
+        }
         let cycle = cycleMinutes.reduce(0, +) * minute
         let offset = Double((channel * 17) % 32) * 15 * minute
         let first = ((from - offset) / cycle).rounded(.down)
