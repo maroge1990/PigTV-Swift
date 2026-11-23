@@ -568,8 +568,7 @@ extension AppModel {
     /// The player's channel list: the guide's row order when playback began
     /// (the zap list), else the whole guide.
     var playerChannels: [Channel] {
-        if !zapList.isEmpty { return zapList }
-        return browse.map { model in model.playableChannels(model.guide) } ?? [] // #372: no headings
+        playerZapList // #372: without the guide's section headings
     }
 }
 

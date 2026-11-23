@@ -30,7 +30,7 @@ final class GuideHeadingRuleTests: XCTestCase {
     // MARK: The rule
 
     func testADecoratedNameWithSymbolProgrammesIsAHeading() {
-        let symbols = ["⬇️⬇️⬇️⬇️", "→ → →", "!!!", "•", "", "━━━━", "🏆🏆", "* * *"]
+        let symbols = ["⬇️⬇️⬇️⬇️", "→ → →", "!!!", "•••", "━━━━", "🏆🏆🏆", "* * *", "⬇️ ⬇️ ⬇️"]
         let cases: [(String, String)] = [
             ("### SPORTS ###", "SPORTS"), ("━━ Movies ━━", "Movies"), ("  *** Kids & Family ***  ", "Kids & Family"),
             ("===NEWS===", "NEWS"), ("••• Music •••", "Music"), ("⚽️ FOOTBALL ⚽️", "FOOTBALL"), ("★ UK ★", "UK"),

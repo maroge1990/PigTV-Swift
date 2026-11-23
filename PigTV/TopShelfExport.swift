@@ -125,8 +125,11 @@ extension BrowseModel {
     private func topShelfChannels(now: Date) -> TopShelfSnapshot? {
         // Review of 383-385 (medium): the small first page (6 hours of 50 channels, BrowseModel.guideIsPreview) is never
         // exported: with it on screen the snapshot is built as with no guide at all.
-        // #372: never a divider channel (the Guide's section headings).
-        let rows = guideIsPreview ? [] : Array(guide.lazy.filter { !GuideHeading.isHeading($0) }.prefix(TopShelfSnapshot.limit))
+        // #372: never a divider channel (the Guide's section headings), whether in the line-up or (Codex review of 404) a
+        // favourite saved before the Guide drew it as a heading; with only such favourites, the line-up's channels.
+        let headings = guideHeadingIDs
+        let rows = guideIsPreview ? [] : Array(guide.lazy.filter { !headings.contains($0.id) }.prefix(TopShelfSnapshot.limit))
+        let favourites = headings.isEmpty ? self.favourites : self.favourites.filter { !headings.contains($0.id) }
         if !favourites.isEmpty {
             let entries = favourites.prefix(TopShelfSnapshot.limit).map { favourite -> TopShelfSnapshot.Entry in
                 if !guideIsPreview, let row = guideChannel(id: favourite.id) { return topShelfEntry(row, now: now) }

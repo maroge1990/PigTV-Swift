@@ -273,7 +273,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             // the grid (GuideView.claimGridFocus); Earlier/Later keep it on
             // their header button and claim nothing, so no stale target
             // is left behind.
+            // #372 (Codex review of 404): the remembered row may have become a section heading while focus was away
+            // (on the header): its nearest channel instead.
             let row = focusIdentity.flatMap { identity in store.rows.firstIndex { $0.id == identity.channel } }
+                .flatMap { store.geometry.nearestChannel(to: $0, count: store.rows.count) }
                 ?? firstVisibleRow()
             if request.focus, !touchScrolling, let row { claimFocus(target(in: row, at: anchor)) }
         }

@@ -59,6 +59,15 @@ nonisolated struct LibrarySearchResponse: Decodable, Sendable {
 
     enum CodingKeys: String, CodingKey { case q, channels, programmes, events, teams, recordings }
 
+    /// #372: the answer without the channels `ids` names (the loaded guide's section headings) and their programmes.
+    func removingChannels(_ ids: Set<String>) -> LibrarySearchResponse {
+        guard !ids.isEmpty else { return self }
+        var copy = self
+        copy.channels = channels.filter { !ids.contains($0.id) }
+        copy.programmes = programmes.filter { !ids.contains($0.channel.id) }
+        return copy
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         q = LibrarySearchDecoding.string(c, .q) ?? ""

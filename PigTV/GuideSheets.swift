@@ -89,7 +89,11 @@ struct SearchActions {
     /// a record page replaces the search page.
     @MainActor static func app(_ app: AppModel, browse: BrowseModel) -> SearchActions {
         SearchActions(
-            watchChannel: { channel in app.playAfterClosingPages { app.beginPlayback(browse.asChannel(channel), origin: "Search") } },
+            watchChannel: { channel in
+                // #372: never a channel the loaded guide draws as a section heading (checked again at the press).
+                guard !browse.isGuideHeading(id: channel.id) else { return }
+                app.playAfterClosingPages { app.beginPlayback(browse.asChannel(channel), origin: "Search") }
+            },
             watchGame: { event in app.playAfterClosingPages { app.playSportEvent(event, origin: "Search") } },
             recordGame: { event in app.record(event) },
             recordProgramme: { channel, programme in
@@ -151,11 +155,19 @@ struct GuideSearchPage: View {
     static func runner(for model: BrowseModel) -> LibrarySearchRunner {
         let client = model.client
         var fetch: LibrarySearchRunner.Fetch?
-        if !model.isFixture { fetch = { @MainActor text in try await client.librarySearch(text) } }
+        // #372 (Codex review of 404): the server's answer without the channels the loaded guide draws as section headings
+        // (its rows carry no programmes to tell), and without their programmes.
+        if !model.isFixture {
+            fetch = { @MainActor [weak model] text in
+                try await client.librarySearch(text).removingChannels(model?.guideHeadingIDs ?? [])
+            }
+        }
         #if DEBUG
         // #57: the fixture's server search, for the screenshots (PIGTV_UI_TEST_LIBRARY_SEARCH=1).
         if model.isFixture && ProcessInfo.processInfo.environment["PIGTV_UI_TEST_LIBRARY_SEARCH"] == "1" {
-            fetch = { @MainActor [weak model] text in GuideFixtures.librarySearch(text, guide: model?.guide ?? []) }
+            fetch = { @MainActor [weak model] text in
+                GuideFixtures.librarySearch(text, guide: model?.guide ?? []).removingChannels(model?.guideHeadingIDs ?? [])
+            }
         }
         #endif
         return LibrarySearchRunner(fetch: fetch) { [weak model] text, failed in

@@ -68,6 +68,17 @@ final class AppModel: ChangeSuppressing {
     /// #334: setting a list (a guide play, a Top Shelf channel, the end of a play) also leaves the live games list
     /// (`sportPlay`); a play from Sport sets its own after its list.
     var zapList: [Channel] = [] { didSet { sportPlay = nil } }
+
+    /// #372 (Codex review of 404): the channels channel up/down, the player's list, Go to number and the warmer go
+    /// through: the zap list in its order without the channels the guide now draws as section headings (a row saved
+    /// from the small first page can turn into one once the whole guide arrives), else the guide's own playable rows.
+    /// The heading ids are found once per change of the guide (`BrowseModel.guideHeadingIDs`), never per press.
+    var playerZapList: [Channel] {
+        let headings = browse?.guideHeadingIDs ?? []
+        let saved = headings.isEmpty ? zapList : zapList.filter { !headings.contains($0.id) }
+        if !saved.isEmpty { return saved }
+        return browse.map { model in model.playableChannels(model.guide) } ?? []
+    }
     /// #334 (D-67): the live play began from Sport (a front card or a sport page), so the player's list shows the live
     /// games instead of the channels (`playerShowsGames`). Cleared with the play.
     private(set) var sportPlay: SportPlay?
@@ -723,7 +734,7 @@ final class AppModel: ChangeSuppressing {
     private func updateWarming(for model: PlaybackModel, justSwitched: Bool) {
         model.warmer = warmer
         warmer.beginStart(model.id)
-        let list = zapList.isEmpty ? (browse.map { b in b.playableChannels(b.guide) } ?? []) : zapList
+        let list = playerZapList
         let likely = ChannelWarmer.likelyNext(current: model.channel, previous: previousChannel,
                                               justSwitched: justSwitched, list: list)
         warmer.setPlayerTarget(likely?.warmTarget)
@@ -752,9 +763,9 @@ final class AppModel: ChangeSuppressing {
     // C-A (iOS "Go to number"): the channel with this number, looked up in the
     // zap list first, then the whole guide.
     func channel(number: Int) -> Channel? {
-        if let hit = zapList.first(where: { $0.number == number }) { return hit }
+        if !zapList.isEmpty, let hit = playerZapList.first(where: { $0.number == number }) { return hit }
         guard let browse,
-              let row = browse.guide.first(where: { $0.number == number && !GuideHeading.isHeading($0) }) else { return nil } // #372
+              let row = browse.guide.first(where: { $0.number == number && !browse.isGuideHeading(id: $0.id) }) else { return nil } // #372
         return browse.asChannel(row)
     }
 
@@ -771,7 +782,7 @@ final class AppModel: ChangeSuppressing {
     func zap(_ step: Int) {
         guard let current = currentPlayback?.channel else { return }
         // #372: never onto a divider channel (the Guide's section headings).
-        let list = zapList.isEmpty ? (browse.map { model in model.playableChannels(model.guide) } ?? []) : zapList
+        let list = playerZapList
         guard !list.isEmpty else { return }
         let index = list.firstIndex { $0.id == current.id } ?? -1
         let next = list[((index + step) % list.count + list.count) % list.count]

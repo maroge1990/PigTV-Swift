@@ -5,10 +5,12 @@ import Foundation
 /// takes focus and is never played, and every channel list built from the Guide's rows leaves it out. Recognised by one
 /// general rule, never one provider's text:
 ///
-/// - the channel has programmes, and not one of their titles has a letter or a digit (only symbols, emoji, punctuation,
-///   spaces); a channel with no programmes is never a heading (it keeps its "No programme information" row);
+/// - the channel has programmes, and every title is a run of symbols: no letter or digit, and at least three symbols
+///   that are not spaces (Codex review of 404: a placeholder title such as `—`, `-`, `.` or an empty one is no divider);
+///   a channel with no programmes is never a heading (it keeps its "No programme information" row);
 /// - its name, trimmed, begins and ends with decoration (anything but a letter, a digit or a space, e.g. `###`, `━━`,
-///   `***`, `===`, `•••`) around at least one letter. The label is the name without that decoration and its spaces.
+///   `***`, `===`, `•••`, `【】`) around at least one letter, and what is left has no bracket in it (so `[UK] BBC One (HD)`,
+///   whose brackets belong to a region and a quality, is a channel). The label is the name without that decoration.
 ///
 /// The name is checked first: almost every real channel's name begins with a letter, so the rule costs one character for
 /// it and never reads its programmes.
@@ -25,7 +27,7 @@ nonisolated enum GuideHeading {
         guard let label = decoratedLabel(name) else { return nil }
         var any = false
         for title in titles {
-            if hasLetterOrDigit(title) { return nil }
+            if !isSymbolRun(title) { return nil }
             any = true
         }
         return any ? label : nil
@@ -40,7 +42,29 @@ nonisolated enum GuideHeading {
         guard let from = scalars.firstIndex(where: { !isDecoration($0) && !isSpace($0) }),
               let to = scalars.lastIndex(where: { !isDecoration($0) && !isSpace($0) }) else { return nil }
         let label = String(scalars[from...to])
-        return label.unicodeScalars.contains(where: { $0.properties.isAlphabetic }) ? label : nil
+        guard label.unicodeScalars.contains(where: { $0.properties.isAlphabetic }),
+              !label.unicodeScalars.contains(where: isBracket) else { return nil }
+        return label
+    }
+
+    /// The fewest symbols a divider's programme title has (`⬇️⬇️⬇️`, `***`, `━━━`).
+    static let minimumSymbols = 3
+
+    /// A divider's programme title: no letter or digit, and at least `minimumSymbols` symbols besides spaces (an emoji's
+    /// variation selector or joiner is not one more).
+    static func isSymbolRun(_ title: String) -> Bool {
+        var symbols = 0
+        for scalar in title.unicodeScalars {
+            if isLetterOrDigit(scalar) { return false }
+            if isSpace(scalar) || scalar.properties.isVariationSelector || scalar.value == 0x200D { continue }
+            symbols += 1
+        }
+        return symbols >= minimumSymbols
+    }
+
+    private static func isBracket(_ scalar: Unicode.Scalar) -> Bool {
+        let category = scalar.properties.generalCategory
+        return category == .openPunctuation || category == .closePunctuation
     }
 
     /// `channels` without their headings: what a channel list built from the Guide's rows offers (the player's channel

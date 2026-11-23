@@ -27,11 +27,14 @@ extension ChangeSuppressing {
 /// paging state. Changes a lot while a load pages in.
 @MainActor @Observable
 final class GuideStore: ChangeSuppressing {
-    var guide: [GuideChannel] = [] { didSet { guideIndex = nil } }
+    var guide: [GuideChannel] = [] { didSet { guideIndex = nil; headings = nil } }
     // Channel id → position in `guide`, built lazily after each change. The
     // full guide is ~18 000 channels, so per-render `first(where:)` scans in
     // the guide header and player channel list were measurable work.
     @ObservationIgnored private var guideIndex: [String: Int]?
+    /// #372 (Codex review of 404): the ids of the guide's divider channels (GuideHeading), found once after each change,
+    /// so the lists that leave them out (zapping, Search, the Top Shelf) never read programme titles on a press.
+    @ObservationIgnored private var headings: Set<String>?
     var guideBusy = false
     var guideError: String?
     var guideHasMore = false
@@ -59,6 +62,13 @@ final class GuideStore: ChangeSuppressing {
     /// #280 (one retry clock): the app's next freshness pass (AppFreshness), which is what retries a guide that failed;
     /// published only while it has failed, for the error's countdown.
     var schedule: RefreshSchedule?
+
+    var headingIDs: Set<String> {
+        if let headings { return headings }
+        let found = Set(guide.lazy.filter(GuideHeading.isHeading).map(\.id))
+        headings = found
+        return found
+    }
 
     func channel(id: String) -> GuideChannel? {
         if guideIndex == nil {

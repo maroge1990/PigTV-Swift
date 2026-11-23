@@ -541,10 +541,16 @@ final class BrowseModel: ObservableObject {
             number: number(for: channel), measured: channel.measured?.known)
     }
     /// #372: the player's channels from guide rows (channel up and down, its list, the warmer's guess): the rows in their
-    /// order, without the divider channels the Guide draws as section headings.
+    /// order, without the divider channels the Guide draws as section headings (rows of the loaded guide, by id).
     func playableChannels(_ rows: [GuideChannel]) -> [Channel] {
-        GuideHeading.playable(rows).map(asChannel)
+        let headings = guideHeadingIDs
+        return rows.filter { !headings.contains($0.id) }.map(asChannel)
     }
+
+    /// #372: the loaded guide's divider channels (section headings), by id; found once per change of the guide.
+    var guideHeadingIDs: Set<String> { guideStore.headingIDs }
+
+    func isGuideHeading(id: String) -> Bool { guideHeadingIDs.contains(id) }
     // C-A: the channel's number, a label only.
     func number(for channel: GuideChannel) -> Int? { channel.number }
     // C-G: the guide marks a channel unreliable from its `health`.
