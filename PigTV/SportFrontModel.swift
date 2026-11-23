@@ -119,16 +119,25 @@ final class SportFrontModel: ObservableObject {
         heroID = id
     }
 
-    func load() async {
+    func load() async { await load(after: nil) }
+
+    /// One load at a time, which every caller joins (`load`, `refresh`, the Top Shelf's freshness pass). #55 (Apple 403):
+    /// `preferences`, when given, are asked at the same time as the answer, which is published only once they have
+    /// answered. The load is registered (`inFlight`) before either request is sent, so a caller arriving while the
+    /// preferences are pending joins it and sends nothing of its own (Codex review of 403).
+    private func load(after preferences: F1PageModel?) async {
         if let inFlight { await inFlight.value; return }
         #if DEBUG
-        if holdsLoading { return }
+        if holdsLoading { await preferences?.revalidatePreferences(); return }
         #endif
-        guard !isFixture else { loaded = true; return }
+        guard !isFixture else { await preferences?.revalidatePreferences(); loaded = true; return }
+        let client = client
         let task = Task { [weak self] in
-            guard let self else { return }
+            let asked = Task { () async throws -> SportFront in try await client.decodedOffMain("sports/front") }
+            await preferences?.revalidatePreferences()
+            guard let self else { asked.cancel(); return }
             do {
-                let answer: SportFront = try await self.client.decodedOffMain("sports/front")
+                let answer = try await asked.value
                 self.apply(answer)
                 self.error = nil
                 self.stale = false
@@ -162,10 +171,19 @@ final class SportFrontModel: ObservableObject {
     }
 
     /// The preferences, then the answer (published only after them); a failed preferences read leaves the choice
-    /// unknown, and the scores hidden (Apple 90, Codex round 2, high).
+    /// unknown, and the scores hidden (Apple 90, Codex round 2, high). #55 (Apple 403): the answer is asked at the same
+    /// time as the preferences, not after them (the first refresh is what the launch splash waits for on Sport), in the
+    /// one shared load (`load(after:)`); it is still published only once they have answered, and a failure of either is
+    /// handled as before.
     func refresh(preferences: F1PageModel?) async {
-        await preferences?.revalidatePreferences()
-        await load()
+        guard let preferences else { await load(); return }
+        // A load already running: as before 403, the preferences are asked again, then that load is joined.
+        if inFlight != nil {
+            await preferences.revalidatePreferences()
+            await load()
+            return
+        }
+        await load(after: preferences)
     }
 
     /// The catalogue's labels, once per session (only when the server has per-account follows, C-U); a failed read is
