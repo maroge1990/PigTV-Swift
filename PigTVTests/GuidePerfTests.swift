@@ -285,6 +285,70 @@ final class GuidePerfTests: XCTestCase {
         XCTAssertTrue([UIPress.PressType.upArrow, .downArrow, .leftArrow, .rightArrow].allSatisfy(GuidePerfProbe.movesFocus))
     }
 
+    /// The focus engine moves focus while UIKit dispatches an arrow press down (its window-level arrow recognizer), and
+    /// only then does the press reach the grid's pressesBegan (measured on the simulator: focus updated about 13 ms after
+    /// the press's own time, the grid's pressesBegan about 23 ms later, in the same dispatch). Each move is timed from its
+    /// own press, never from the press before it: before this, every move took the previous press, so press-to-frame was
+    /// the gap between presses plus the move (about 340 ms at three presses a second) and a move after a pause took none.
+    func testAMoveIsTimedFromThePressBeingDispatchedWhenItBegan() throws {
+        let defaults = try newDefaults()
+        defer { tidy(defaults) }
+        let probe = try probeOnScreen(defaults)
+        let now = CACurrentMediaTime()
+        for press in [now - 0.6, now] { // two presses 600 ms apart, as UIKit delivers each
+            probe.focusBegan(at: press + 0.013)
+            probe.pressBegan(press, at: press + 0.036)
+            probe.pressEnded(press + 0.005)
+            probe.focusLanded(ms: 37, at: press + 0.05)
+        }
+        XCTAssertEqual(probe.stats.pressMs.count, 2, "each move has its own press")
+        for value in probe.stats.pressMs { XCTAssertEqual(value, 50, accuracy: 0.5, "press to frame, not the gap between presses") }
+        XCTAssertEqual(probe.stats.moveAfterDownMs.count, 2)
+        for value in probe.stats.moveAfterDownMs { XCTAssertEqual(value, 13, accuracy: 0.5) }
+        XCTAssertEqual(probe.stats.movesWhileDown, 2)
+        XCTAssertEqual(probe.stats.pressHeldMs.count, 2)
+        // A move the press did not make (a swipe, a redirect after a veto) still takes no press, and a press that arrives
+        // while an older move is open is kept for the move it makes next.
+        probe.focusBegan(at: now + 1)
+        probe.focusLanded(ms: 20, at: now + 1.05)
+        XCTAssertEqual(probe.stats.pressMs.count, 2)
+        probe.focusBegan(at: now + 2)
+        probe.pressBegan(now + 2.01, at: now + 2.02)
+        probe.focusLanded(ms: 20, at: now + 2.05)
+        XCTAssertEqual(probe.stats.pressMs.count, 2, "a press after the move began is not that move's")
+        probe.focusBegan(at: now + 2.06)
+        probe.focusLanded(ms: 20, at: now + 2.1)
+        XCTAssertEqual(probe.stats.pressMs.last ?? 0, 90, accuracy: 0.5, "it goes with the move it made")
+    }
+
+    /// A busy main thread delays the press's dispatch, and the move it makes, well past the press's own (hardware) time:
+    /// that move is still the press's, timed from the press, and the next pair is unaffected. A press that moved nothing,
+    /// reaching the grid long after another move (a swipe's) began, is not that move's.
+    func testAMoveDelayedByABusyMainThreadIsStillTimedFromItsPress() throws {
+        let defaults = try newDefaults()
+        defer { tidy(defaults) }
+        let probe = try probeOnScreen(defaults)
+        let now = CACurrentMediaTime()
+        let late = now - 1
+        probe.focusBegan(at: late + 0.6) // dispatched 600 ms after the press
+        probe.pressBegan(late, at: late + 0.62)
+        probe.pressEnded(late + 0.005)
+        probe.focusLanded(ms: 40, at: late + 0.64)
+        XCTAssertEqual(probe.stats.pressMs.count, 1)
+        XCTAssertEqual(probe.stats.pressMs.first ?? 0, 640, accuracy: 0.5, "600 ms of delay plus the move's frame")
+        XCTAssertEqual(probe.stats.moveAfterDownMs.first ?? 0, 600, accuracy: 0.5)
+        probe.focusBegan(at: now + 0.013)
+        probe.pressBegan(now, at: now + 0.036)
+        probe.focusLanded(ms: 37, at: now + 0.05)
+        XCTAssertEqual(probe.stats.pressMs.count, 2)
+        XCTAssertEqual(probe.stats.pressMs.last ?? 0, 50, accuracy: 0.5, "the next pair is its own")
+        probe.focusBegan(at: now + 1) // a swipe's move, still open
+        probe.pressBegan(now + 1.2, at: now + 1.5) // a press after it began: not its press
+        probe.pressBegan(now + 0.9, at: now + 1.4) // before it began, but not in its dispatch
+        probe.focusLanded(ms: 20, at: now + 1.6)
+        XCTAssertEqual(probe.stats.pressMs.count, 2, "no press paired with the swipe's move")
+    }
+
     /// Finding 2: with the readout off and nothing recording, the apply and cell hooks make nothing (nil), and their ends
     /// take that nil. Whether Instruments-style recording is on in the test host is the signposter's to say.
     func testHooksMakeNothingWhileNobodyIsWatching() throws {

@@ -137,7 +137,10 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   down, a press not yet taken by a move, `pressPendingMs`, or a focus move not yet drawn), `appliesInMove`, `itemQueries`/`itemQueryMs`
   (the layout's `layoutAttributesForItem(at:)`), `countQueries`/`countMs` (item counts), `orders`/`orderMs` (programme lists ordered
   on the main thread), `pressHeldMs`/`moveAfterDownMs`/`moveAfterUpMs`/`movesWhileDown` (an arrow press down → up, and → its
-  focus move: XCUIRemote's press is up after 5 ms and focus moves about 340 ms later on the simulator), `cellConfigMs`/`cellConfigUs`
+  focus move: XCUIRemote's press is up after 5 ms; the focus engine moves focus while UIKit dispatches the press down, about 13 ms
+  after it on the simulator, before the press reaches the grid's `pressesBegan`, so the probe pairs a press with the move that
+  began during its dispatch; before that fix every move took the previous press, and the 340 ms once reported here was the
+  test's press spacing), `cellConfigMs`/`cellConfigUs`
   (time inside cell configurations, total and per configuration; the SwiftUI content's own layout comes later in the frame and is
   not in it) and `mainBusyMs` (the main run loop's busy time, frame commits included), `presses` (sent), `focusMoves` (focus events that
   landed), `landedPresses` (presses whose move landed, at most one each, each counted from just before its press),

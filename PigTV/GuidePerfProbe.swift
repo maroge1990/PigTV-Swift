@@ -299,6 +299,11 @@ final class GuidePerfProbe: NSObject {
     /// #360 (D1): the last arrow press's down and up times (UIPress timestamps), and whether it is down now.
     private var lastDown: TimeInterval?
     private var lastUp: TimeInterval?
+    /// The arrow press down now (its time), for its held time.
+    private var heldSince: TimeInterval?
+    /// When the open focus move began (until it lands or focus leaves the grid): the press UIKit is dispatching reaches
+    /// the grid only after the focus engine has moved focus for it, so it is paired with this move when it arrives.
+    private var moveStart: CFTimeInterval?
     private(set) var arrowDown = false
     /// The latest apply's record index, until the next frame fills in what followed it (and the stats then).
     private var openApply: (index: Int, layoutMs: Double, cells: Int, orders: Int)?
@@ -467,6 +472,14 @@ final class GuidePerfProbe: NSObject {
     /// A press older than this when a focus move begins is not that move's press (a swipe moved focus since, or the
     /// press moved nothing): one second, three times the gap between presses at a brisk three a second.
     static let pressFreshness: TimeInterval = 1
+    /// A move that began at most this long after a press's own time is that press's, when the press reaches the grid in
+    /// the same dispatch (`pressDispatch`). Long, because a busy main thread delays the dispatch, and the move with it,
+    /// past the press's hardware time: exactly the presses the readout is for.
+    static let pressLead: TimeInterval = 2
+    /// The press reaches the grid within this of its move beginning (the same dispatch: about 23 ms on the simulator).
+    /// Guards the long lead: a press that moved nothing, arriving while another move (a swipe's) is still open, is not
+    /// that move's.
+    static let pressDispatch: TimeInterval = 0.25
 
     /// Only the four arrows move focus by a press; select, menu and play/pause reaching the grid are not kept.
     nonisolated static func movesFocus(_ type: UIPress.PressType) -> Bool {
@@ -476,19 +489,35 @@ final class GuidePerfProbe: NSObject {
         }
     }
 
-    func pressBegan(_ timestamp: TimeInterval) {
+    /// `now`: when the press reaches the grid (tests pass it).
+    func pressBegan(_ timestamp: TimeInterval, at now: CFTimeInterval = CACurrentMediaTime()) {
+        heldSince = timestamp
+        arrowDown = true
+        // The focus engine moves focus while UIKit dispatches the press down (its window-level arrow recognizer), before
+        // the press reaches the grid's pressesBegan: a move that began just after this press's own time is this press's.
+        // Kept for a later move instead, it would pair the next press's move with this press (the press spacing, not
+        // the app's latency: about 340 ms at three presses a second).
+        if let start = moveStart, movePress == nil, start - timestamp >= 0, start - timestamp < Self.pressLead,
+           now - start >= 0, now - start < Self.pressDispatch {
+            movePress = timestamp
+            if guideVisible {
+                stats.note((start - timestamp) * 1000, \.moveAfterDownMs)
+                stats.movesWhileDown += 1
+            }
+            return
+        }
         pendingPress = timestamp
         lastDown = timestamp
-        arrowDown = true
     }
 
     /// #360 (D1): an arrow press came up (ended or cancelled).
     func pressEnded(_ timestamp: TimeInterval) {
-        if arrowDown, let down = lastDown, guideVisible {
+        if arrowDown, let down = heldSince, guideVisible {
             let held = (timestamp - down) * 1000
             if held >= 0, held < 10_000 { stats.note(held, \.pressHeldMs) }
         }
         arrowDown = false
+        heldSince = nil
         lastUp = timestamp
     }
 
@@ -506,17 +535,20 @@ final class GuidePerfProbe: NSObject {
             movePress = nil
         }
         pendingPress = nil
+        moveStart = now
     }
 
     /// Focus left the grid: no press goes with what comes next.
     func focusLeft() {
         pendingPress = nil
         movePress = nil
+        moveStart = nil
     }
 
     /// `shown`: when the move's frame is due on screen (`GuideFrameWait`), where its press is timed to as well.
     func focusLanded(ms: Double, at shown: CFTimeInterval = CACurrentMediaTime()) {
         var pressMs: Double?
+        moveStart = nil
         if let press = movePress {
             movePress = nil
             // UIPress.timestamp and CACurrentMediaTime share the system's uptime clock; anything odd is dropped.
