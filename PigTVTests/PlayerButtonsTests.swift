@@ -180,26 +180,62 @@ final class PlayerButtonsTests: XCTestCase {
     func testStartOverIsAskedAgainWhenTheInfoOpensAndAtABoundaryAtMostOnceAMinute() {
         var refresh = StartOverRefresh()
         let t0 = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertFalse(refresh.due(now: t0, programmeStart: 1, infoOpened: false), "the first look only notes the programme")
-        XCTAssertTrue(refresh.due(now: t0, programmeStart: 1, infoOpened: true), "the info opened")
-        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(30), programmeStart: 1, infoOpened: true), "not twice a minute")
-        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(90), programmeStart: 1, infoOpened: false), "no timer: nothing changed")
-        XCTAssertTrue(refresh.due(now: t0.addingTimeInterval(90), programmeStart: 2, infoOpened: false), "a programme boundary")
-        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(100), programmeStart: 3, infoOpened: false), "a boundary within the minute")
-        XCTAssertTrue(refresh.due(now: t0.addingTimeInterval(151), programmeStart: 3, infoOpened: true))
+        func at(_ s: TimeInterval) -> Date { t0.addingTimeInterval(s) }
+        XCTAssertNil(refresh.due(now: t0, programmeStart: 1, infoOpened: false), "the first look only notes the programme")
+        XCTAssertEqual(refresh.due(now: t0, programmeStart: 1, infoOpened: true), .stale, "the info opened")
+        XCTAssertNil(refresh.due(now: at(30), programmeStart: 1, infoOpened: true), "not twice a minute")
+        XCTAssertNil(refresh.due(now: at(90), programmeStart: 1, infoOpened: false), "no timer: nothing changed")
+        XCTAssertEqual(refresh.due(now: at(90), programmeStart: 2, infoOpened: false), .since(at(90)), "a programme boundary")
+        XCTAssertNil(refresh.due(now: at(100), programmeStart: 3, infoOpened: false, loadBegan: at(90)),
+                     "a load began at the boundary: done; a new boundary within the minute waits")
+        XCTAssertEqual(refresh.due(now: at(151), programmeStart: 3, infoOpened: true, loadBegan: at(90)), .since(at(100)))
     }
 
-    /// Codex sign-off of 407: a boundary inside the cooldown (the opening ask may have been served by the shared cache) is
-    /// kept and asked for once, when the cooldown allows; then nothing more until the next boundary or opening.
-    func testABoundaryInsideTheCooldownIsAskedForOnceItEnds() {
+    /// Codex sign-off of 407 and 408: a boundary inside the cooldown is kept, and stays until a recordings load that
+    /// began after it is known; a load the shared cache made before it (an in-player Record, say) does not count.
+    func testABoundaryInsideTheCooldownIsKeptUntilALoadAfterItBegins() {
         var refresh = StartOverRefresh()
         let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        func at(_ s: TimeInterval) -> Date { t0.addingTimeInterval(s) }
         _ = refresh.due(now: t0, programmeStart: 1, infoOpened: false)
-        XCTAssertTrue(refresh.due(now: t0, programmeStart: 1, infoOpened: true), "the info opened (a cache hit, say)")
-        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(10), programmeStart: 2, infoOpened: false), "a boundary in the cooldown")
-        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(30), programmeStart: 2, infoOpened: false))
-        XCTAssertTrue(refresh.due(now: t0.addingTimeInterval(61), programmeStart: 2, infoOpened: false), "the kept boundary, once")
-        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(130), programmeStart: 2, infoOpened: false), "consumed: no polling")
+        XCTAssertEqual(refresh.due(now: t0, programmeStart: 1, infoOpened: true), .stale, "the info opened")
+        XCTAssertNil(refresh.due(now: at(10), programmeStart: 2, infoOpened: false, loadBegan: at(5)), "a boundary in the cooldown")
+        XCTAssertNil(refresh.due(now: at(30), programmeStart: 2, infoOpened: false, loadBegan: at(5)))
+        XCTAssertEqual(refresh.due(now: at(61), programmeStart: 2, infoOpened: false, loadBegan: at(5)), .since(at(10)),
+                       "the kept boundary: a load from after it, not the cache's age")
+        XCTAssertNil(refresh.due(now: at(62), programmeStart: 2, infoOpened: false, loadBegan: at(61)), "once")
+        XCTAssertNil(refresh.due(now: at(130), programmeStart: 2, infoOpened: false, loadBegan: at(61)), "consumed: no polling")
+    }
+
+    /// The shared cache refreshed (a Record in the player) between the opening ask and the boundary: the boundary still
+    /// brings a read of its own once the minute is up.
+    @MainActor
+    func testACacheRefreshBeforeTheBoundaryDoesNotConsumeIt() async throws {
+        let t0 = Date()
+        let ms = t0.timeIntervalSince1970 * 1000
+        let first = GuideProgramme(title: "News", description: nil, startTime: ms - 600_000, endTime: ms + 20_000)
+        let second = GuideProgramme(title: "Saturday Night Football", description: nil, startTime: ms + 20_000, endTime: ms + 3_600_000)
+        let row = GuideChannel(rawID: "s1", sourceId: 1, name: "Sport 1", logo: nil, category: nil, programmes: [first, second])
+        let server = try FakePigTVServer(routes: .init { request in
+            guard request.method == "GET" else { return nil }
+            if request.path.hasPrefix("/api/recordings/scheduled") { return .json("[]") }
+            if request.path == "/api/recordings" || request.path.hasPrefix("/api/recordings?") { return .json("[]") }
+            return nil
+        })
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client(), accountID: 1)
+        browse.guide = [row]
+        let playback = PlaybackModel(channel: browse.asChannel(row), client: try server.client(), programmes: row.programmes)
+        func reads() -> Int { server.http.requests(path: "/api/recordings", method: "GET").count }
+        await playback.refreshStartOverIfDue(browse: browse, at: t0, infoOpened: true)?.value
+        XCTAssertEqual(reads(), 1, "the info opened")
+        await browse.loadRecordings() // the shared cache refreshed (a Record pressed in the player)
+        XCTAssertEqual(reads(), 2)
+        XCTAssertNil(playback.refreshStartOverIfDue(browse: browse, at: t0.addingTimeInterval(30), infoOpened: false),
+                     "the boundary, inside the minute")
+        let ask = try XCTUnwrap(playback.refreshStartOverIfDue(browse: browse, at: t0.addingTimeInterval(61), infoOpened: false))
+        await ask.value
+        XCTAssertEqual(reads(), 3, "the boundary's own read, though the cache is under a minute old")
     }
 
     /// A recording that starts after tune-in: the live player's ask (the info opening) reads the schedules again, and
@@ -403,6 +439,40 @@ final class StartOverHandoffTests: XCTestCase {
         XCTAssertNil(app.presenter.presented, "Start over did not open its recording over the Sport watch")
         XCTAssertEqual(app.playback?.channel.id, browse.asChannel(row).id)
         XCTAssertFalse(app.playback === playback)
+    }
+
+    /// Codex sign-off of 408: Start over, a newer play link, then Start over again for the play still being released:
+    /// the repeat does nothing, and the newer play is not cancelled.
+    func testARepeatedStartOverAfterANewerPlayDoesNotCancelIt() async throws {
+        let (app, browse, playback, recording) = try await playing(releaseDelay: 0.6)
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(100))
+        app.open(try link(browse.guide[1]))
+        app.startOver(playback, recording: recording) // a repeated press, the old play still current
+        try await Task.sleep(for: .milliseconds(1500))
+        XCTAssertNil(app.presenter.presented, "the recording did not open over the newer play")
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(browse.guide[1]).id)
+    }
+
+    /// Codex sign-off of 408: a zap waiting for the release keeps what a switch keeps: Last channel returns to the
+    /// channel left, and a Sport play keeps its channels and its event.
+    func testAZapDuringTheReleaseKeepsLastChannelAndTheSportPlay() async throws {
+        let (app, browse, playback, recording) = try await playing(releaseDelay: 0.6)
+        let rows = [browse.guide[2], browse.guide[3], browse.guide[4]]
+        let now = Date().timeIntervalSince1970 * 1000
+        let event = SportEvent(id: "e1", title: "Event", league: "AFL", startTime: now - 60_000, endTime: now + 3_600_000,
+                               channels: rows.map { SportEventChannel(sourceId: $0.sourceId, rawID: $0.rawID, name: $0.name) })
+        app.playSportEvent(event, channel: event.channels[0]) // already on that channel: the play becomes the event's
+        XCTAssertEqual(app.sportPlay?.eventID, "e1")
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(100))
+        app.zap(1) // channel up, during the release
+        try await Task.sleep(for: .milliseconds(1500))
+        XCTAssertNil(app.presenter.presented)
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(rows[1]).id, "the next of the event's channels")
+        XCTAssertEqual(app.previousChannel?.id, browse.asChannel(rows[0]).id, "Last channel returns to the channel left")
+        XCTAssertEqual(app.sportPlay?.eventID, "e1", "the Sport play and its event")
+        XCTAssertEqual(app.zapList.map(\.id), rows.map { browse.asChannel($0).id }, "the event's channels")
     }
 
     func testGoingToTheBackgroundDuringTheReleaseDropsIt() async throws {

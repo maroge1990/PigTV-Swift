@@ -258,23 +258,30 @@ nonisolated struct StartOverRefresh: Equatable, Sendable {
     /// The programme on air when last looked at (its start, ms); nil before the first look.
     private var programmeStart: Double?
     private var looked = false
-    /// Codex sign-off of 407: a programme boundary seen inside the cooldown, kept until it may ask (once).
-    private var boundaryPending = false
+    /// Codex sign-off of 407/408: when a programme boundary was seen whose recordings have not been read yet. It stays
+    /// until a recordings load that began at or after it (in flight or done) is known (`loadBegan`).
+    private(set) var boundaryAt: Date?
 
     init() {}
 
-    /// Whether to ask now. `infoOpened`: the info (Apple TV) or the controls (touch) just opened; `programmeStart`: the
-    /// programme on air now. The first look only notes the programme (the opening info asks). A boundary inside the
-    /// cooldown is kept and asked for once the cooldown (and with it the shared recordings cache's age) allows.
-    mutating func due(now: Date, programmeStart: Double?, infoOpened: Bool) -> Bool {
-        if looked && programmeStart != self.programmeStart { boundaryPending = true }
+    /// What to ask for: `stale`, the usual minute-old check (the info opened); `since(date)`, a load that began at or after
+    /// the boundary.
+    enum Ask: Equatable, Sendable { case stale, since(Date) }
+
+    /// What to ask for now, or nil. `infoOpened`: the info (Apple TV) or the controls (touch) just opened;
+    /// `programmeStart`: the programme on air now; `loadBegan`: when the shared recordings load last began. The first
+    /// look only notes the programme (the opening info asks). A boundary is kept until a load that began after it is
+    /// known, and asked for (at most once a minute) until then.
+    mutating func due(now: Date, programmeStart: Double?, infoOpened: Bool, loadBegan: Date? = nil) -> Ask? {
+        // A load since the kept boundary settles it; then a new boundary (a later programme) is kept in its turn.
+        if let boundary = boundaryAt, let loadBegan, loadBegan >= boundary { boundaryAt = nil }
+        if looked && programmeStart != self.programmeStart && boundaryAt == nil { boundaryAt = now }
         self.programmeStart = programmeStart
         looked = true
-        guard boundaryPending || infoOpened else { return false }
-        if let lastAsked, now.timeIntervalSince(lastAsked) < Self.minimumGap { return false }
+        guard boundaryAt != nil || infoOpened else { return nil }
+        if let lastAsked, now.timeIntervalSince(lastAsked) < Self.minimumGap { return nil }
         lastAsked = now
-        boundaryPending = false
-        return true
+        return boundaryAt.map { .since($0) } ?? .stale
     }
 }
 
@@ -284,7 +291,11 @@ extension PlaybackModel {
     @discardableResult
     func refreshStartOverIfDue(browse: BrowseModel?, at now: Date = Date(), infoOpened: Bool) -> Task<Void, Never>? {
         guard let browse, !browse.isFixture,
-              startOverRefresh.due(now: now, programmeStart: programme(at: now)?.startTime, infoOpened: infoOpened) else { return nil }
-        return Task { await browse.loadRecordingsIfStale(maxAge: StartOverRefresh.minimumGap, quietly: true) }
+              let ask = startOverRefresh.due(now: now, programmeStart: programme(at: now)?.startTime, infoOpened: infoOpened,
+                                             loadBegan: browse.recordingsLoadBegan) else { return nil }
+        switch ask {
+        case .stale: return Task { await browse.loadRecordingsIfStale(maxAge: StartOverRefresh.minimumGap, quietly: true) }
+        case .since(let boundary): return Task { await browse.loadRecordings(beganSince: boundary) }
+        }
     }
 }

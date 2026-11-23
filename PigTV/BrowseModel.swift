@@ -648,6 +648,20 @@ final class BrowseModel: ObservableObject {
         await beginRecordingsLoad(quietly: quietly).task.value
     }
 
+    /// When the last recordings load began (in flight or done), nil before the first.
+    var recordingsLoadBegan: Date? { lastLoads["recordings"] }
+
+    /// Codex sign-off of 408 (Start over's programme boundary): a recordings load that began at or after `date`: one in
+    /// flight or done that did is enough (joined), else one begins. Never the cache's age, which a load before `date`
+    /// (an in-player Record, say) could make look fresh.
+    func loadRecordings(beganSince date: Date) async {
+        guard !isFixture else { return }
+        if let inFlight = recordingsInFlight, inFlight.began >= date { await inFlight.task.value; return }
+        if let began = lastLoads["recordings"], began >= date { return }
+        while let inFlight = recordingsInFlight, inFlight.began < date { await inFlight.task.value }
+        await beginRecordingsLoad(quietly: true).task.value
+    }
+
     /// After a write (a schedule made, changed or cancelled): a load whose reads began after `write`. A load in flight
     /// that began before it is waited out, never joined: its scheduled list may have been read before the write (Codex
     /// sign-off of #347: the new schedule was then missing from the list `schedule()` returned with).

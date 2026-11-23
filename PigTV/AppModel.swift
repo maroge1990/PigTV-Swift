@@ -543,6 +543,9 @@ final class AppModel: ChangeSuppressing {
     func startOver(_ playing: PlaybackModel, recording: Recording) {
         guard currentPlayback === playing, !sessionEnding else { return }
         if let pending = startOverHandoff, pending == handoffGeneration, pendingHandoff != nil { return }
+        // Codex sign-off of 408: never again for a play whose Start over release is already in flight, whoever owns the
+        // hand-off now (a newer play waiting for that release must not be cancelled by a repeated press).
+        if startOverRelease?.playback === playing { return }
         cancelHandoff()
         handoffGeneration &+= 1
         let generation = handoffGeneration
@@ -552,7 +555,7 @@ final class AppModel: ChangeSuppressing {
             await self?.endPlayback(playing)
             if self?.startOverRelease?.id == generation { self?.startOverRelease = nil } // before anyone waiting resumes
         }
-        startOverRelease = (generation, release)
+        startOverRelease = (generation, release, playing)
         pendingHandoff = Task { [weak self] in
             await release.value
             guard let self, self.startOverStillCurrent(generation, session) else { return }
@@ -574,7 +577,7 @@ final class AppModel: ChangeSuppressing {
     /// The Start over hand-off under way (its `handoffGeneration`), if any.
     @ObservationIgnored private var startOverHandoff: Int?
     /// The live play's release a Start over is waiting for (its hand-off's generation), while it is in flight.
-    @ObservationIgnored private var startOverRelease: (id: Int, task: Task<Void, Never>)?
+    @ObservationIgnored private var startOverRelease: (id: Int, task: Task<Void, Never>, playback: PlaybackModel)?
 
     /// Codex sign-off of 407 (high): while a Start over's release is in flight the live play being torn down is not an
     /// existing play. A newer play request (any channel, a link, a Sport watch, a switch) cancels the Start over, waits
@@ -730,6 +733,19 @@ final class AppModel: ChangeSuppressing {
     // Change channel without leaving the player. The old session is released
     // first (the provider allows one stream), then the new one resolves.
     func switchPlayback(to channel: Channel, origin: String? = nil) {
+        // Codex sign-off of 408: a switch waiting for a Start over's release keeps what a switch keeps: the channel it
+        // leaves (Last channel), the zap list and the Sport play (its event id), put back only if it still owns the
+        // hand-off when it runs (endPlayback clears them).
+        if let leaving = currentPlayback, startOverRelease != nil {
+            let left = leaving.channel, list = zapList, sport = sportPlay, origin = origin ?? leaving.origin
+            if afterStartOverRelease({ app in
+                guard left.id != channel.id else { app.beginPlayback(channel, origin: origin); return }
+                app.previousChannel = left
+                app.zapList = list
+                app.sportPlay = sport
+                app.beginPlayback(channel, origin: origin)
+            }) { return }
+        }
         if afterStartOverRelease({ $0.beginPlayback(channel, origin: origin) }) { return }
         cancelHandoff() // #178
         guard let old = currentPlayback, let client, old.channel.id != channel.id, !sessionEnding else { return }

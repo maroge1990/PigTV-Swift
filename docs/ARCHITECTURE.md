@@ -254,10 +254,13 @@ controls are not used for live play.
   registered before the release starts, so a newer play, the background or the session ending cancels it, a second press
   does nothing, and it presents only if still current after the release and after the covers close (Apple 407). While
   that release is in flight the stopping play is not an existing play: any newer request (the same channel too: a link,
-  a Sport watch, a switch) cancels Start over, waits for the release and then plays as asked (Apple 408). The
+  a Sport watch, a switch) cancels Start over, waits for the release and then plays as asked (Apple 408); a waiting
+  switch keeps the channel it leaves (Last channel), the zap list and the Sport play, and a repeated Start over for a play
+  whose release is in flight does nothing (Apple 409). The
   app's minute refresh rests under the player, so the live player asks again itself (`StartOverRefresh` per play, through
   `loadRecordingsIfStale`): when the info or the touch controls open and at a programme boundary, at most once a minute;
-  a boundary inside that minute is kept and asked for once when it ends (Apple 408).
+  a boundary inside that minute is kept until a recordings load that began after it is known
+  (`BrowseModel.loadRecordings(beganSince:)`), never settled by the cache's age (Apple 408-409).
   Apple TV: every row button is 140 pt wide and always shows its name (`PlayerActionRow`; #369's uneven gap was hidden
   names keeping their width); the bar's buttons are pills (`PlayerBarPill`). The remote (`PlayerCursor`, pure, shared
   by `CustomPlayerView` and `RecordingPlayerView`): the info opens on the row's first button; Left/Right move in a line;
