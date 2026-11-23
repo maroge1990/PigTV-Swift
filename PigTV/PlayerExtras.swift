@@ -254,7 +254,10 @@ struct TouchPlayerChrome: View {
             .padding(.horizontal, regular ? PigSpacing.section : PigSpacing.l)
             .padding(.top, regular ? PigSpacing.l : PigSpacing.s)
             .padding(.bottom, regular ? PigSpacing.xl : PigSpacing.s)
+            // Codex review of 406: Start over's eligibility at a programme boundary while the controls show.
+            .onChange(of: context.date) { _, now in playback.refreshStartOverIfDue(browse: browse, at: now, infoOpened: false) }
         }
+        .onAppear { playback.refreshStartOverIfDue(browse: browse, infoOpened: true) } // the controls opened
         .foregroundStyle(.white)
         .background { shades.allowsHitTesting(false) }
         .environment(\.colorScheme, .dark)
@@ -571,11 +574,54 @@ struct PlayerPillButton: View {
     }
 }
 
-private struct PlayerPressStyle: ButtonStyle {
+/// The touch players' press look. Codex review of 406: it also tells the player's `PlayerControlHold` while a finger is
+/// down on the control, so the idle timer never hides a control from under a press.
+struct PlayerPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        PlayerPressLabel(configuration: configuration)
+    }
+}
+
+private struct PlayerPressLabel: View {
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.playerControlHold) private var hold
+    var body: some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.94 : 1)
             .opacity(configuration.isPressed ? 0.75 : 1)
+            .onChange(of: configuration.isPressed) { _, pressed in hold?.set(pressed) }
+            .onDisappear { if configuration.isPressed { hold?.set(false) } }
+    }
+}
+
+/// Codex review of 406: the controls a finger is on (a player button from touch-down to release or cancel, the scrub
+/// bar while dragging). The touch players' idle timers do not hide the controls while it is held, and count the idle
+/// time from its release.
+@MainActor final class PlayerControlHold {
+    private var pressed = 0
+    private(set) var releasedAt: Date?
+    var held: Bool { pressed > 0 }
+
+    func set(_ down: Bool, now: Date = Date()) {
+        if down { pressed += 1; return }
+        guard pressed > 0 else { return }
+        pressed -= 1
+        if pressed == 0 { releasedAt = now }
+    }
+
+    /// The later of `input` and the last release.
+    func lastInput(_ input: Date) -> Date { max(input, releasedAt ?? .distantPast) }
+}
+
+private struct PlayerControlHoldKey: EnvironmentKey {
+    static let defaultValue: PlayerControlHold? = nil
+}
+
+extension EnvironmentValues {
+    /// The touch player's `PlayerControlHold` (nil outside one).
+    var playerControlHold: PlayerControlHold? {
+        get { self[PlayerControlHoldKey.self] }
+        set { self[PlayerControlHoldKey.self] = newValue }
     }
 }
 
@@ -586,6 +632,9 @@ struct TouchScrubBar: View {
     let changed: (Double) -> Void
     let ended: (Double) -> Void
     let skip: (Double) -> Void
+    /// Codex review of 406: a drag in progress (reset by SwiftUI on a cancel too) holds the controls up.
+    @GestureState private var dragging = false
+    @Environment(\.playerControlHold) private var hold
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
@@ -600,10 +649,13 @@ struct TouchScrubBar: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
+                .updating($dragging) { _, state, _ in state = true }
                 .onChanged { changed(PlayerSeekWindow.fraction(forX: $0.location.x, width: width)) }
                 .onEnded { ended(PlayerSeekWindow.fraction(forX: $0.location.x, width: width)) })
         }
         .frame(height: 44)
+        .onChange(of: dragging) { _, down in hold?.set(down) }
+        .onDisappear { if dragging { hold?.set(false) } }
         .accessibilityElement()
         .accessibilityAdjustableAction { direction in
             skip(direction == .increment ? 15 : -15)

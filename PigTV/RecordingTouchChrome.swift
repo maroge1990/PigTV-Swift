@@ -19,6 +19,8 @@ struct RecordingTouchPlayer: View {
     @State private var chromeVisible = true
     @State private var lastInput = Date()
     @State private var dragFraction: Double?
+    /// Codex review of 406: a finger on a control or the scrub bar keeps the controls up (Skip break is in them now).
+    @State private var hold = PlayerControlHold()
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -61,6 +63,7 @@ struct RecordingTouchPlayer: View {
                 .transition(.opacity)
             }
         }
+        .environment(\.playerControlHold, hold)
         .pigAnimation(value: chromeVisible)
         .pigAnimation(value: model.inBreak != nil)
         .pigAnimation(value: model.goLiveUndo)
@@ -68,8 +71,8 @@ struct RecordingTouchPlayer: View {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 if !UIAccessibility.isVoiceOverRunning,
-                   PlayerChromeTimer.shouldHide(visible: chromeVisible, lastInput: lastInput, now: Date(),
-                                                paused: model.paused, panelOpen: false) {
+                   PlayerChromeTimer.shouldHide(visible: chromeVisible, lastInput: hold.lastInput(lastInput), now: Date(),
+                                                paused: model.paused, panelOpen: false, held: hold.held) {
                     chromeVisible = false
                 }
             }
@@ -137,7 +140,7 @@ struct RecordingTouchPlayer: View {
             .foregroundStyle(red ? Color.white : Color.black)
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlayerPressStyle())
         .accessibilityLabel(title)
     }
 
@@ -163,7 +166,7 @@ struct RecordingTouchPlayer: View {
                     .foregroundStyle(.black)
                     .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlayerPressStyle())
             .accessibilityIdentifier("recording.goLiveUndo")
         }
         .padding(.leading, PigSpacing.l)

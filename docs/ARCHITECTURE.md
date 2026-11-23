@@ -250,16 +250,24 @@ controls are not used for live play.
   Off" on iPhone), Audio & subtitles (Apple TV live), Favourite, Record, Last channel, Labs' sync marker (the iOS top bar
   keeps its own). **Start over** (live, #308) shows when `BrowseModel.startOverRecording` finds the recording being made
   of the programme on now (the Guide's Watch from start, `recordingInProgress`); `AppModel.startOver` ends the live play
-  the normal way and presents `.recordingPlayer` (from its start) once the player's cover has gone (`playOverCovers`).
+  the normal way and presents `.recordingPlayer` (from its start) once the player's cover has gone; the hand-off is
+  registered before the release starts, so a newer play, the background or the session ending cancels it, a second press
+  does nothing, and it presents only if still current after the release and after the covers close (Apple 407). The
+  app's minute refresh rests under the player, so the live player asks again itself (`StartOverRefresh` per play, through
+  `loadRecordingsIfStale`): when the info or the touch controls open and at a programme boundary, at most once a minute.
   Apple TV: every row button is 140 pt wide and always shows its name (`PlayerActionRow`; #369's uneven gap was hidden
   names keeping their width); the bar's buttons are pills (`PlayerBarPill`). The remote (`PlayerCursor`, pure, shared
   by `CustomPlayerView` and `RecordingPlayerView`): the info opens on the row's first button; Left/Right move in a line;
   Down goes to the bar's right end (Skip break before Go to live, else Start over) when the bar has a button; Up returns
   to the row where it was left; Up from the row and Down from the bar (or with an empty bar) hide; a break starting with
-  the info up selects Skip break; a button going moves the selection to the nearest one in its line, or back to the row.
+  the info up selects Skip break; a row button going moves the selection to the nearest one in the row, and a bar button
+  going (Skip break pressed or its break over, Go to live reached) returns it to the row button it came from, so a second
+  Select never jumps to live (Codex review of 406, Apple 407).
   iPad/iPhone: Start over and Go to live in `TouchPlayerChrome`'s scrub row; Skip break and Go to live at the end of
   `RecordingTouchPlayer`'s scrub row (icons on iPhone) with Auto-skip above the bar on iPad, below it on iPhone, and the
-  floating Skip break only while the controls are hidden. Tests `PlayerButtonsTests`, `PlayerButtonsUITests`; fixtures
+  floating Skip break only while the controls are hidden. A finger on a touch player's control (`PlayerPressStyle`) or
+  dragging the scrub bar holds the controls up (`PlayerControlHold`, `PlayerChromeTimer.shouldHide(held:)`), so the idle
+  timer never takes a button from under a press (Apple 407). Tests `PlayerButtonsTests`, `StartOverHandoffTests`, `PlayerButtonsUITests`, `TouchPlayerButtonsUITests` (`ios` tier); fixtures
   `PIGTV_UI_TEST_START_OVER=1` and `PIGTV_UI_TEST_NO_LAST=1` (screen `player`), `PIGTV_UI_TEST_NO_BREAKS=1` and
   `PIGTV_UI_TEST_SEEK=<s>` (`recording-player`, `recording-player-golive`).
 

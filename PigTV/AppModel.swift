@@ -534,15 +534,40 @@ final class AppModel: ChangeSuppressing {
 
     /// #308: the live player's Start over: the play ends the normal way (as its own close), then `recording`, the one
     /// being made of the programme on now, plays from its start in the recording player, as the Guide's Watch from start
-    /// does. The recording player is presented once the live player's cover has gone (`playOverCovers`).
+    /// does. The recording player is presented once the live player's cover has gone.
+    /// Codex review of 406 (high): the hand-off is registered before the release starts, so a newer play (a channel
+    /// switch, a Top Shelf link), the background or the session ending while the release waits on the server cancels it
+    /// (`cancelHandoff`); it presents only if it is still the current hand-off, nothing plays, and the session is the same,
+    /// checked after the release and again once the covers have closed. A second press while one is under way does
+    /// nothing. The release itself is never cancelled with it.
     func startOver(_ playing: PlaybackModel, recording: Recording) {
         guard currentPlayback === playing, !sessionEnding else { return }
+        if let pending = startOverHandoff, pending == handoffGeneration, pendingHandoff != nil { return }
         cancelHandoff()
-        Task { [weak self] in
-            await self?.endPlayback(playing)
-            self?.playOverCovers { $0.presenter.present(.recordingPlayer(recording)) }
+        handoffGeneration &+= 1
+        let generation = handoffGeneration
+        startOverHandoff = generation
+        let session = browse
+        pendingHandoff = Task { [weak self] in
+            await Task { [weak self] in await self?.endPlayback(playing) }.value
+            guard let self, self.startOverStillCurrent(generation, session) else { return }
+            NotificationCenter.default.post(name: .pigCloseCovers, object: nil)
+            do { try await Task.sleep(for: Self.coverCloseDelay) } catch { return }
+            guard self.startOverStillCurrent(generation, session) else { return }
+            self.pendingHandoff = nil
+            self.startOverHandoff = nil
+            self.presenter.present(.recordingPlayer(recording))
         }
     }
+
+    /// The Start over hand-off `generation` may still present: nothing newer was asked for, nothing plays, same session.
+    private func startOverStillCurrent(_ generation: Int, _ session: BrowseModel?) -> Bool {
+        handoffGeneration == generation && !Task.isCancelled && !sessionEnding && currentPlayback == nil
+            && session != nil && browse === session
+    }
+
+    /// The Start over hand-off under way (its `handoffGeneration`), if any.
+    @ObservationIgnored private var startOverHandoff: Int?
 
     private func revealGame(_ id: String, in browse: BrowseModel) {
         guard self.browse === browse else { return } // signed out or switched meanwhile

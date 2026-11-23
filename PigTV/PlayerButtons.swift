@@ -60,8 +60,8 @@ nonisolated struct PlayerButtons: Equatable, Sendable {
 
 /// The Apple TV remote's place in the player's two lines of buttons (the players are one full-screen Button that reads
 /// every press itself, not SwiftUI focus). It names the button it is on, so a button appearing or going elsewhere in the
-/// line never moves it; when its own button goes it moves to the nearest one left in that line, or back to the row when
-/// the bar has none. Pure (tests `PlayerCursorTests`).
+/// line never moves it; when its own row button goes it moves to the nearest one left in the row, and when its own bar
+/// button goes it returns to the row button it came from. Pure (tests `PlayerButtonsTests`).
 nonisolated struct PlayerCursor: Equatable, Sendable {
     enum Line: String, Equatable, Sendable { case row, bar }
     enum Move: Equatable, Sendable { case left, right, up, down }
@@ -125,12 +125,13 @@ nonisolated struct PlayerCursor: Equatable, Sendable {
         button = target
     }
 
-    /// The buttons changed: stay on the same button wherever it now is; if it has gone, the nearest one left in the line;
-    /// if the bar has none left, back to the row where it was.
+    /// The buttons changed: stay on the same button wherever it now is; a row button that has gone moves it to the nearest
+    /// one left in the row. Codex review of 406: a bar button that goes (Skip break pressed or its break over, Go to live reached) returns the
+    /// selection to the row button it came from, never onto another bar button: Go to live is selected only by a press.
     mutating func settle(in buttons: PlayerButtons) {
         let items = buttons.buttons(in: line)
-        if line == .bar, items.isEmpty { backToRow(buttons); return }
         if let button, let at = items.firstIndex(of: button) { index = at; return }
+        if line == .bar { backToRow(buttons); return }
         guard !items.isEmpty else { index = 0; button = nil; return }
         index = min(max(0, index), items.count - 1)
         button = items[index]
@@ -243,5 +244,43 @@ extension BrowseModel {
         browse.schedules += [scheduled]
         browse.recordings += [made]
         return made
+    }
+}
+
+/// Codex review of 406: Start over's eligibility while the live player is open. The app's minute refresh rests under the
+/// player (#278), so a recording that starts after tune-in would never show Start over. The live player asks again
+/// through the recordings path every page uses (`loadRecordingsIfStale`, deduplicated, `/recordings` and the scheduled
+/// list): when the info opens, and at a programme boundary, never more often than `minimumGap`; no timer of its own.
+/// One per play (`PlaybackModel.startOverRefresh`). Pure (tests `PlayerButtonsTests`).
+nonisolated struct StartOverRefresh: Equatable, Sendable {
+    static let minimumGap: TimeInterval = 60
+    private var lastAsked: Date?
+    /// The programme on air when last looked at (its start, ms); nil before the first look.
+    private var programmeStart: Double?
+    private var looked = false
+
+    init() {}
+
+    /// Whether to ask now. `infoOpened`: the info (Apple TV) or the controls (touch) just opened; `programmeStart`: the
+    /// programme on air now. The first look only notes the programme (the opening info asks).
+    mutating func due(now: Date, programmeStart: Double?, infoOpened: Bool) -> Bool {
+        let boundary = looked && programmeStart != self.programmeStart
+        self.programmeStart = programmeStart
+        looked = true
+        guard boundary || infoOpened else { return false }
+        if let lastAsked, now.timeIntervalSince(lastAsked) < Self.minimumGap { return false }
+        lastAsked = now
+        return true
+    }
+}
+
+extension PlaybackModel {
+    /// Codex review of 406: asks for the recordings and schedules again when Start over's eligibility may have changed
+    /// (`StartOverRefresh`). Returns the load, for tests.
+    @discardableResult
+    func refreshStartOverIfDue(browse: BrowseModel?, at now: Date = Date(), infoOpened: Bool) -> Task<Void, Never>? {
+        guard let browse, !browse.isFixture,
+              startOverRefresh.due(now: now, programmeStart: programme(at: now)?.startTime, infoOpened: infoOpened) else { return nil }
+        return Task { await browse.loadRecordingsIfStale(maxAge: StartOverRefresh.minimumGap, quietly: true) }
     }
 }

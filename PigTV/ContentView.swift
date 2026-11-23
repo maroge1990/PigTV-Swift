@@ -396,6 +396,8 @@ struct PlayerScreen: View {
     // on the picture shows/hides them, see PlayerChromeTimer.
     @State private var chromeVisible = true
     @State private var lastInput = Date()
+    /// Codex review of 406: a finger on a control or the scrub bar keeps the controls up.
+    @State private var hold = PlayerControlHold()
     @StateObject private var pip = PiPHandle()
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -605,6 +607,7 @@ struct PlayerScreen: View {
                 }
             }
         }
+        .environment(\.playerControlHold, hold)
         .pigAnimation(value: chromeVisible)
         .pigAnimation(value: showingGuide, moves: true)
         .task(id: lastInput) {
@@ -612,8 +615,8 @@ struct PlayerScreen: View {
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 let paused = playback.player.timeControlStatus == .paused
                 if !UIAccessibility.isVoiceOverRunning,
-                   PlayerChromeTimer.shouldHide(visible: chromeVisible, lastInput: lastInput, now: Date(),
-                                                paused: paused, panelOpen: showingGuide || enteringNumber) {
+                   PlayerChromeTimer.shouldHide(visible: chromeVisible, lastInput: hold.lastInput(lastInput), now: Date(),
+                                                paused: paused, panelOpen: showingGuide || enteringNumber, held: hold.held) {
                     chromeVisible = false
                 }
             }

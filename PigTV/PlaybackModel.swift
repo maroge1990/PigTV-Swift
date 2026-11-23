@@ -8,6 +8,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// The channel playing. #348: a resolve answer's `fallback` changes it to the channel the server played instead.
     @Published private(set) var channel: Channel
     private(set) var programmes: [GuideProgramme]
+    /// Codex review of 406: when this play last asked whether Start over applies (`refreshStartOverIfDue`).
+    var startOverRefresh = StartOverRefresh()
     /// #348: the C-I event of the game this play came from (sent with the resolve as `eventId`); nil for any other play.
     var eventID: String?
     /// #348: the channel (and its guide) the server played instead (`fallback.to`); AppModel looks it up in the guide.

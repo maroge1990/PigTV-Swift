@@ -121,6 +121,7 @@ struct CustomPlayerView: View {
                     }
                     .onChange(of: context.date) { _, now in
                         settle(now) // Start over and Go to live come and go with the clock and the playhead
+                        playback.refreshStartOverIfDue(browse: browse, at: now, infoOpened: false) // a programme boundary
                         autoHide(now)
                     }
                 }
@@ -138,6 +139,7 @@ struct CustomPlayerView: View {
         .onAppear {
             focused = true
             buttonCursor.open(in: buttons())
+            playback.refreshStartOverIfDue(browse: browse, infoOpened: true)
             favourite = browse?.isFavourite(playback.channel) ?? false
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
         }
@@ -288,7 +290,10 @@ struct CustomPlayerView: View {
 
     /// The info opens on the row's first button (#335: never Go to live); already open, it stays where it is.
     private func showInfo() {
-        if chrome != .info { buttonCursor.open(in: buttons()) }
+        if chrome != .info {
+            buttonCursor.open(in: buttons())
+            playback.refreshStartOverIfDue(browse: browse, infoOpened: true) // Codex review of 406
+        }
         chrome = .info
     }
 

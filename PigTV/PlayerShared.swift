@@ -584,8 +584,10 @@ nonisolated enum PlayerChromeTimer {
     /// never reach it).
     static func afterTap(visible: Bool) -> Bool { !visible }
 
-    static func shouldHide(visible: Bool, lastInput: Date, now: Date, paused: Bool, panelOpen: Bool) -> Bool {
-        visible && !paused && !panelOpen && now.timeIntervalSince(lastInput) >= idle
+    /// `held` (Codex review of 406): a finger is down on one of the player's controls or scrubbing: the controls stay
+    /// until it lifts (idle counts from then: `PlayerControlHold.lastInput`).
+    static func shouldHide(visible: Bool, lastInput: Date, now: Date, paused: Bool, panelOpen: Bool, held: Bool = false) -> Bool {
+        visible && !paused && !panelOpen && !held && now.timeIntervalSince(lastInput) >= idle
     }
 }
 

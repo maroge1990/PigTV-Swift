@@ -104,30 +104,31 @@ final class PlayerButtonsTests: XCTestCase {
         XCTAssertEqual(cursor.current(in: inBreak), .autoSkip, "Up returns to the button it came from")
     }
 
-    /// A button going (Go to live at the live point, Skip break when the break ends) moves the selection to the nearest
-    /// one left in its line, or back to the row; a button arriving elsewhere never moves it.
-    func testADisappearingButtonMovesTheSelectionToTheNearestOne() {
+    /// A row button going moves the selection to the nearest one left in the row; a button arriving elsewhere never
+    /// moves it. Codex review of 406 (reversing 406): a bar button going (Go to live reached, Skip break pressed or its
+    /// break over) returns the selection to the row button it came from, never onto another bar button.
+    func testADisappearingButtonMovesTheSelection() {
         var cursor = PlayerCursor()
         cursor.open(in: live)
         _ = cursor.move(.right, in: live) // Audio & subtitles
         _ = cursor.move(.down, in: live) // Go to live
         let atLive = PlayerButtons.live(startOver: true, goLive: false, tracks: true, lastChannel: true, syncMarker: false)
-        XCTAssertEqual(cursor.current(in: atLive), .startOver, "the nearest on the bar")
+        XCTAssertEqual(cursor.current(in: atLive), .tracks, "back to the row button it came from, not Start over")
         cursor.settle(in: atLive)
-        XCTAssertEqual(cursor.index, 0)
-        let empty = PlayerButtons.live(startOver: false, goLive: false, tracks: true, lastChannel: true, syncMarker: false)
-        cursor.settle(in: empty)
-        XCTAssertEqual(cursor.line, .row, "the bar is empty: back to the row")
-        XCTAssertEqual(cursor.current(in: empty), .tracks, "where it left the row")
+        XCTAssertEqual(cursor.line, .row)
+        XCTAssertEqual(cursor.index, 1)
 
-        // Skip break, then Go to live: the break ends, Go to live stays.
+        // Skip break, then Go to live: the break ends, and the selection goes back to the row, not onto Go to live.
         let making = PlayerButtons.recording(inBreak: true, hasBreaks: true, canGoLive: true)
         cursor.open(in: making)
-        _ = cursor.move(.down, in: making)
+        _ = cursor.move(.right, in: making) // Auto-skip
+        _ = cursor.move(.down, in: making) // Skip break
         let afterBreak = PlayerButtons.recording(inBreak: false, hasBreaks: true, canGoLive: true)
         cursor.settle(in: afterBreak)
+        XCTAssertEqual(cursor.current(in: afterBreak), .autoSkip)
+        XCTAssertEqual(cursor.line, .row)
+        XCTAssertTrue(cursor.move(.down, in: afterBreak), "Go to live is still reached by a press")
         XCTAssertEqual(cursor.current(in: afterBreak), .goLive)
-        XCTAssertEqual(cursor.index, 0)
 
         // The row's last button goes: never an index past the end.
         cursor.open(in: live)
@@ -145,6 +146,90 @@ final class PlayerButtonsTests: XCTestCase {
         cursor.settle(in: tracks)
         XCTAssertEqual(cursor.current(in: tracks), .favourite)
         XCTAssertEqual(cursor.index, 2)
+    }
+
+    /// Codex review of 406: Select on Skip break, then Select again at once, never jumps to live (it lands on the row
+    /// button the remote came from).
+    func testRepeatedSelectOnSkipBreakNeverGoesLive() {
+        let making = PlayerButtons.recording(inBreak: true, hasBreaks: true, canGoLive: true)
+        var cursor = PlayerCursor()
+        cursor.open(in: making)
+        cursor.select(.skipBreak, in: making) // the break began with the info up
+        XCTAssertEqual(cursor.current(in: making), .skipBreak)
+        // First Select: the break is skipped (it leaves the bar); the player settles.
+        let skipped = PlayerButtons.recording(inBreak: false, hasBreaks: true, canGoLive: true)
+        cursor.settle(in: skipped)
+        XCTAssertEqual(cursor.current(in: skipped), .playPause, "the second Select is Pause, not Go to live")
+    }
+
+    /// Codex review of 406: the break ends just before a Select meant for Skip break: that Select never reaches Go to live.
+    func testABreakEndingJustBeforeSelectNeverGoesLive() {
+        let making = PlayerButtons.recording(inBreak: true, hasBreaks: true, canGoLive: true)
+        var cursor = PlayerCursor()
+        cursor.open(in: making)
+        _ = cursor.move(.down, in: making)
+        XCTAssertEqual(cursor.current(in: making), .skipBreak)
+        // No settle between the break ending and the press: what Select runs is read from the buttons now.
+        let ended = PlayerButtons.recording(inBreak: false, hasBreaks: true, canGoLive: true)
+        XCTAssertEqual(cursor.current(in: ended), .playPause)
+        XCTAssertNotEqual(cursor.current(in: ended), .goLive)
+    }
+
+    // MARK: Start over's eligibility while the live player is open (Codex review of 406)
+
+    func testStartOverIsAskedAgainWhenTheInfoOpensAndAtABoundaryAtMostOnceAMinute() {
+        var refresh = StartOverRefresh()
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertFalse(refresh.due(now: t0, programmeStart: 1, infoOpened: false), "the first look only notes the programme")
+        XCTAssertTrue(refresh.due(now: t0, programmeStart: 1, infoOpened: true), "the info opened")
+        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(30), programmeStart: 1, infoOpened: true), "not twice a minute")
+        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(90), programmeStart: 1, infoOpened: false), "no timer: nothing changed")
+        XCTAssertTrue(refresh.due(now: t0.addingTimeInterval(90), programmeStart: 2, infoOpened: false), "a programme boundary")
+        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(100), programmeStart: 3, infoOpened: false), "a boundary within the minute")
+        XCTAssertTrue(refresh.due(now: t0.addingTimeInterval(151), programmeStart: 3, infoOpened: true))
+    }
+
+    /// A recording that starts after tune-in: the live player's ask (the info opening) reads the schedules again, and
+    /// Start over shows; before, the cached schedule stayed "scheduled" for the whole viewing.
+    @MainActor
+    func testARecordingStartingDuringLiveViewingBringsStartOver() async throws {
+        let now = Date()
+        let ms = now.timeIntervalSince1970 * 1000
+        let onNow = GuideProgramme(title: "Saturday Night Football", description: nil, startTime: ms - 600_000, endTime: ms + 3_000_000)
+        let row = GuideChannel(rawID: "s1", sourceId: 1, name: "Sport 1", logo: nil, category: nil, programmes: [onNow])
+        let schedule = { (status: String) in
+            #"[{"id":2,"title":"Saturday Night Football","channel_name":"Sport 1","program_start":\#(Int64(onNow.startTime)),"program_end":\#(Int64(onNow.endTime)),"status":"\#(status)","recording_id":9,"source_id":1,"channel_item_id":"s1"}]"#
+        }
+        let recording = #"[{"id":9,"title":"Saturday Night Football","channel_name":"Sport 1","started_at":\#(onNow.startTime),"status":"recording","watch_live":true}]"#
+        let nowRecording = schedule("recording")
+        let server = try FakePigTVServer(routes: .init { request in
+            guard request.method == "GET" else { return nil }
+            if request.path.hasPrefix("/api/recordings/scheduled") { return .json(nowRecording) }
+            if request.path == "/api/recordings" || request.path.hasPrefix("/api/recordings?") { return .json(recording) }
+            return nil
+        })
+        defer { server.http.stop() }
+        let browse = BrowseModel(client: try server.client(), accountID: 1)
+        browse.guide = [row]
+        browse.schedules = try JSONDecoder().decode([ScheduledRecording].self, from: Data(schedule("scheduled").utf8))
+        let channel = browse.asChannel(row)
+        XCTAssertNil(browse.startOverRecording(channel: channel, at: now), "tuned in before the recording began")
+        let playback = PlaybackModel(channel: channel, client: try server.client(), programmes: row.programmes)
+        let ask = try XCTUnwrap(playback.refreshStartOverIfDue(browse: browse, at: now, infoOpened: true))
+        await ask.value
+        XCTAssertEqual(browse.startOverRecording(channel: channel, at: now)?.id, 9)
+        XCTAssertNil(playback.refreshStartOverIfDue(browse: browse, at: now.addingTimeInterval(10), infoOpened: true),
+                     "not again within the minute")
+    }
+
+    // MARK: Touch: a finger on a control keeps the controls (Codex review of 406)
+
+    func testAHeldControlKeepsTheControlsPastTheIdleDeadline() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let late = now.addingTimeInterval(PlayerChromeTimer.idle + 2)
+        XCTAssertTrue(PlayerChromeTimer.shouldHide(visible: true, lastInput: now, now: late, paused: false, panelOpen: false))
+        XCTAssertFalse(PlayerChromeTimer.shouldHide(visible: true, lastInput: now, now: late, paused: false, panelOpen: false,
+                                                    held: true), "a finger is down on Skip break")
     }
 
     // MARK: Start over on live TV (#308)
@@ -219,4 +304,85 @@ final class PlayerButtonsTests: XCTestCase {
         return count
     }
     #endif
+}
+
+/// Codex review of 406 (high): Start over's hand-off. Before, it joined the cancellable hand-off only after the live play's
+/// release had returned, so a newer play or the background during a slow release was overridden by the old recording,
+/// and a second press started a second hand-off. Each test fails on 406.
+@MainActor
+final class StartOverHandoffTests: XCTestCase {
+    private var cleanups: [() async -> Void] = []
+
+    override func tearDown() async throws {
+        for cleanup in cleanups.reversed() { await cleanup() }
+        cleanups = []
+    }
+
+    /// A live play on the fake server whose release takes `releaseDelay`, running; the recording of its programme.
+    private func playing(releaseDelay: TimeInterval) async throws -> (AppModel, BrowseModel, PlaybackModel, Recording) {
+        guard HLSFixture.isComplete else { throw XCTSkip("no fixture") }
+        let server = try FakePigTVServer(routes: .init { request in
+            guard request.method == "DELETE", request.path.hasPrefix("/api/playback/") else { return nil }
+            var answer = LocalHTTPServer.Response.json(#"{"success":true}"#)
+            answer.delay = releaseDelay
+            return answer
+        })
+        let app = AppModel()
+        app.injectHomeFixture()
+        let browse = try XCTUnwrap(app.browse)
+        app.configureClientForTesting(try server.client(), browse: browse)
+        let delay = AppModel.coverCloseDelay
+        AppModel.coverCloseDelay = .milliseconds(50)
+        cleanups.append {
+            AppModel.coverCloseDelay = delay
+            if let playback = app.playback { await app.endPlayback(playback) }
+            server.http.stop()
+        }
+        app.beginPlayback(browse.asChannel(browse.guide[2]))
+        let playback = try XCTUnwrap(app.playback)
+        app.playerAppeared(playback)
+        playback.start()
+        let end = Date().addingTimeInterval(10)
+        while !playback.ready && Date() < end { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(playback.ready, "the play is resolved")
+        let recording = try XCTUnwrap(PlayerButtonsFixture.recordNow(playback.channel, in: browse))
+        return (app, browse, playback, recording)
+    }
+
+    private func link(_ row: GuideChannel) throws -> URL {
+        try XCTUnwrap(URL(string: "pigtv://play?sourceId=\(row.sourceId)&id=\(row.rawID)"))
+    }
+
+    func testANewerChannelDuringTheReleaseWins() async throws {
+        let (app, browse, playback, recording) = try await playing(releaseDelay: 0.6)
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(150)) // the release is waiting on the server
+        app.open(try link(browse.guide[1])) // a Top Shelf channel
+        try await Task.sleep(for: .milliseconds(1500))
+        XCTAssertNil(app.presenter.presented, "the old Start over did not open its recording over the newer play")
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(browse.guide[1]).id)
+    }
+
+    func testGoingToTheBackgroundDuringTheReleaseDropsIt() async throws {
+        let (app, _, playback, recording) = try await playing(releaseDelay: 0.6)
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(150))
+        await app.background()
+        try await Task.sleep(for: .milliseconds(1200))
+        XCTAssertNil(app.presenter.presented, "returning to the foreground never starts a play by itself")
+    }
+
+    func testASecondPressWhileItIsUnderWayDoesNothingAndTheRecordingOpensOnce() async throws {
+        let (app, _, playback, recording) = try await playing(releaseDelay: 0.4)
+        var closed = 0
+        let token = NotificationCenter.default.addObserver(forName: .pigCloseCovers, object: nil, queue: nil) { _ in closed += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(100))
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(1200))
+        XCTAssertEqual(closed, 1, "one hand-off")
+        XCTAssertNil(app.playback, "the live play ended")
+        XCTAssertEqual(app.presenter.presented?.id, "player:\(recording.id)", "the recording opened, from its start")
+    }
 }

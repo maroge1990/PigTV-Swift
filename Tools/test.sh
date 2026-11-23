@@ -4,7 +4,7 @@
 #   sh Tools/test.sh fast     contract checks, then the unit tests (~1 min after the build)
 #   sh Tools/test.sh push     fast, then the regression UI tests (once per batch: before its review and before the push)
 #   sh Tools/test.sh visual   the screenshot and appearance UI tests (before a release or a brand change, ~18 min with the review media)
-#   sh Tools/test.sh ios      the unit tests (PigTVTests) on one iPad simulator, then one iPhone simulator, one after the other
+#   sh Tools/test.sh ios      the unit tests (PigTVTests) and TouchPlayerButtonsUITests on one iPad simulator, then one iPhone simulator, one after the other
 #                             (#53). Not part of `all`; PIGTV_IPAD_SIM / PIGTV_IPHONE_SIM name the devices (default: the first
 #                             available iPad, and iPhone 17e or else the first available iPhone; the choice is printed)
 #   sh Tools/test.sh all      push, then visual: the full UI run. CI does not run it (D-49); Tools/testflight.sh requires it
@@ -59,8 +59,10 @@ ios_unit() {
         [ -n "$name" ] || { echo "no iPad / iPhone simulator found (set PIGTV_IPAD_SIM / PIGTV_IPHONE_SIM)" >&2; exit 2; }
         echo "== unit tests on iOS: $name"
         # shellcheck disable=SC2086
+        # Codex review of 406: and the touch players' button checks (TouchPlayerButtonsUITests; they skip without the
+        # review movie), which no other tier runs on iOS.
         xcodebuild -quiet -project PigTV.xcodeproj -scheme PigTV -testPlan PigTV -destination "platform=iOS Simulator,name=$name" \
-            test $UNIT
+            test $UNIT -only-testing:PigTVUITests/TouchPlayerButtonsUITests
         xcrun simctl shutdown all >/dev/null 2>&1 || true
     done
 }

@@ -57,7 +57,9 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,
   `ObservationTests` (audit R05: a guide page changes nothing in the recordings/favourites stores and vice versa, a quiet refresh that finds nothing new changes nothing; counted by `Support/Invalidations.swift`, which sees an ObservableObject's publishes and an `@Observable` model's changes to what a view reads alike; it also appends a per-screen count to `/tmp/pigtv-observation.txt`), `StoreObservationTests` (#51: a view reading one store property is not re-evaluated by another), `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `PlayerButtonsTests` (#58 option B: which buttons each player
   shows in its row and on its bar, the Apple TV remote's two lines (`PlayerCursor`), #308's Start over lookup, #369's equal-width
-  row with every name drawn), `PlayerTimeMathTests`,
+  row with every name drawn; Apple 407: a bar button going returns the remote to the row, Start over asked again under the
+  player, a held control keeps the touch controls), `StartOverHandoffTests` (Apple 407, fake server with a slow release: a
+  newer channel or the background during the release wins, a second press does nothing), `PlayerTimeMathTests`,
   `DisplayModeTests`, `StreamInfoTests`, `SportTests.swift` (`SportRowsTests`: text, `playsChannelNow`, tolerant
   decoding; `SportModelTests`: the model against the fake server, `live`/`soon`; `SportsGameTests`: the game labels the front page draws), `TopShelfTests` and `TopShelfCardTests`
   (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).
@@ -74,7 +76,7 @@ tests), `push` (fast and the regression UI tests), `visual` (the screenshot suit
 app while `GuidePerfUITests.testProfileScenarios` presses down 40, up 40 and right 10; `Tools/profile-summary.py` prints the main
 thread's on-CPU ms per press by phase, top-of-stack symbol and nearest app frame, and the samples as `PROFILE-DATA` base64 for
 summarising again off the Mac (`python3 Tools/profile-summary.py samples.json.gz - 40,40,10`); the trace is deleted; in no other
-tier; the figures include the XCUITest accessibility queries and Debug-only work), `ios` (#53: the unit tests on one iPad simulator, then one iPhone
+tier; the figures include the XCUITest accessibility queries and Debug-only work), `ios` (#53: the unit tests, and `TouchPlayerButtonsUITests`, on one iPad simulator, then one iPhone
 simulator, one at a time; in no other tier; `PIGTV_IPAD_SIM` / `PIGTV_IPHONE_SIM` name the devices). TestFlight builds come only
 from Xcode Cloud `tf/` tags (D-64); `Tools/testflight.sh` is retired and the `.ui-full-passed` marker a clean `all` still writes
 is only a record. Both CI and the Mac check out the server's `test/golden`, so `GoldenChecks` runs.
@@ -117,7 +119,9 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
 - `PlayerButtonsUITests` (push tier, #58/#308, needs the review movie): on the live player the chrome opens on Pause, Down
   reaches Go to live then Start over on the bar, Up returns, and Start over ends the live play (fixture
   `PIGTV_UI_TEST_START_OVER=1`); on a recording still being made a break selects Skip break on the bar, Go to live follows it,
-  and Down from the bar hides.
+  and Down from the bar hides. `TouchPlayerButtonsUITests` (`ios` tier, iPad and iPhone, Apple 407): Skip break and Go to
+  live at the scrub bar's end, Auto-skip breaks flips, Start over and Go to live on the live bar, and Skip break held past
+  the idle deadline still skips.
 - `GuideFastScrollUITests` (build 46): on 300 channels, holding Down then Up leaves focus on a row on screen, not pulled
   back to the starting row (the fast swipe's landing scroll was clamped to a stale planned row).
 - `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all four tabs.
