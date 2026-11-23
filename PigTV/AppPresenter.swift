@@ -202,7 +202,7 @@ extension View {
                     RecordingView(model: browse, presenter: presenter, original: recording)
                 case .channelSchedule(let channel):
                     ChannelPageView(model: browse, presenter: presenter, channel: channel) {
-                        presenter.dismiss { app.beginPlayback(browse.asChannel(channel)) }
+                        app.playAfterClosingPages { app.beginPlayback(browse.asChannel(channel)) }
                     }
                 case .record(let request):
                     RecordPage(model: browse, presenter: presenter, request: request) { presenter.dismiss() }

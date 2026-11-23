@@ -565,8 +565,8 @@ struct PlaybackEvent: Encodable {
     var origin: String?
     // #36 (Apple 174, server 0487), play-start only: where the start went, ms since the play began.
     var phases: StartPhases?
-    // #36 (Apple 400, server 0908), play-start only: the press to the first `.playing` in whole ms (ZapClock); absent on
-    // a reconnect's play-start.
+    // #36 (Apple 400, server 0908), play-start only: the press to the play's first picture in whole ms (ZapClock), on the
+    // play-start that reports that picture, whichever item delivered it; absent on every play-start after it.
     var zapMs: Int?
     // #268, av-desync only (Labs › Sync marker button): the player's rate (0.97 while it builds its hold, else 1), how
     // far behind the live edge it plays (seekable end − current time, s) and whether it is still catching up (#7).
@@ -631,23 +631,29 @@ nonisolated struct StartPhases: Encodable, Equatable, Sendable {
 }
 
 /// #36 (Apple 400): `zapMs`, the whole wait the viewer sees: from the press (Watch, a channel change, Try again) to the
-/// player's first `.playing`, the release of the previous channel and the resolve included (`totalMs` starts at the
-/// resolve). One per play; a play that never plays reports none. Pure.
+/// play's first picture, the release of the previous channel and the resolve included (`totalMs` starts at the resolve).
+/// Exactly one per play, on the play-start that reports the first picture, whichever item delivers it (a fallback or
+/// recovery before any picture is still the viewer's wait); none after the play has played; none for a play that never
+/// plays. Times are a monotonic clock's seconds (`now()`, the system uptime), so a wall-clock change cannot skew it.
+/// Pure.
 nonisolated struct ZapClock: Equatable, Sendable {
-    private(set) var pressedAt: Date?
+    private(set) var pressedAt: TimeInterval?
     private(set) var reported = false
 
+    /// The monotonic clock (seconds since the device started).
+    static func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
+
     /// The request to play: starts the clock, or restarts it (Try again) while the play has not played yet.
-    mutating func pressed(at date: Date) {
+    mutating func pressed(at time: TimeInterval) {
         guard !reported else { return }
-        pressedAt = date
+        pressedAt = time
     }
 
-    /// The first `.playing`: whole ms since the press, once; nil after that (a reconnect) or without a press.
-    mutating func playing(at date: Date) -> Int? {
+    /// The play's first picture: whole ms since the press, once; nil after that or without a press.
+    mutating func playing(at time: TimeInterval) -> Int? {
         guard !reported, let pressedAt else { return nil }
         reported = true
-        let ms = date.timeIntervalSince(pressedAt) * 1000
+        let ms = (time - pressedAt) * 1000
         return ms.isFinite ? max(0, Int(ms.rounded())) : nil
     }
 }

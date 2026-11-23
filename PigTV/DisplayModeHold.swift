@@ -59,6 +59,18 @@ nonisolated struct DisplayCriteriaHold<Criteria: Equatable, Play: Equatable> {
         }
     }
 
+    /// The play's item has no criteria after all (its asset's load answered none or failed, or the item asks for none),
+    /// or it began playing with them still unknown: a mode inherited from the previous channel must not outlive the
+    /// tuning (Apple 401, 399 Codex round 1, high). A mode the play asked for itself is left alone. Criteria that arrive
+    /// later for the current item are shown (and applied) as usual.
+    mutating func confirmedNone(by play: Play) -> Action {
+        guard holder == play, inherited else { return .none }
+        inherited = false
+        guard applied != nil else { return .none }
+        applied = nil
+        return .clear
+    }
+
     /// The play was exited, ended in an error or its view left the screen: the TV's default mode, unless the play
     /// handed the mode on (then this is the old channel going and changes nothing).
     mutating func ended(_ play: Play) -> Action {
@@ -93,7 +105,9 @@ final class TVDisplayModeHold {
     /// The window that last showed a player: a play with no view (tuning, an error) still clears the mode there.
     private weak var window: UIWindow?
     /// What reaches the display manager; tests record it instead.
-    var setCriteria: (UIWindow, AVDisplayCriteria?) -> Void = { window, criteria in
+    var setCriteria: (UIWindow, AVDisplayCriteria?) -> Void = TVDisplayModeHold.displayManager
+    /// The real one: the window's display manager.
+    static let displayManager: (UIWindow, AVDisplayCriteria?) -> Void = { window, criteria in
         window.avDisplayManager.preferredDisplayCriteria = criteria
     }
 
@@ -114,6 +128,11 @@ final class TVDisplayModeHold {
 
     func ended(_ play: UUID) {
         guard hold.ended(play) == .clear, let window else { return }
+        setCriteria(window, nil)
+    }
+
+    func confirmedNone(by play: UUID) {
+        guard hold.confirmedNone(by: play) == .clear, let window else { return }
         setCriteria(window, nil)
     }
 

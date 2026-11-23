@@ -32,6 +32,8 @@ final class SportPresenter: ObservableObject {
     @Published var futureError: String?
     @Published private(set) var futureAnswers: [String: SportFutureRecord.Answer] = [:]
     private var afterDismiss: (() -> Void)?
+    /// #36 (Apple 401): when the play waiting for the page to close was pressed (ZapClock's clock).
+    private var afterDismissPressed: TimeInterval?
     private let app: AppModel
     /// D-39: the tab the screen belongs to ("sport-front", "tv"), recorded with every play started here.
     let origin: String?
@@ -78,15 +80,20 @@ final class SportPresenter: ObservableObject {
 
     func close(then action: @escaping () -> Void) {
         afterDismiss = action
+        afterDismissPressed = ZapClock.now()
         presented = nil
     }
 
     /// The cover's `onDismiss`.
     func dismissed() {
         let action = afterDismiss
+        let pressed = afterDismissPressed
         afterDismiss = nil
+        afterDismissPressed = nil
         guard let action else { return }
-        app.withPlayOrigin(origin, action)
+        app.withPlayOrigin(origin) {
+            if let pressed { app.withPlayPress(pressed, action) } else { action() }
+        }
     }
 }
 

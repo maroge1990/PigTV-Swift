@@ -85,7 +85,7 @@ struct AppSearchHost: View {
 
     /// A page's Watch: the search closes, then the player opens (it cannot present over the page).
     private func watch(_ channel: GuideChannel) {
-        app.presenter.dismiss { app.beginPlayback(browse.asChannel(channel), origin: "Search") }
+        app.playAfterClosingPages { app.beginPlayback(browse.asChannel(channel), origin: "Search") }
     }
 
     @ViewBuilder

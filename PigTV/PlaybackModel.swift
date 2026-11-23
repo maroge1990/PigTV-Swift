@@ -36,8 +36,22 @@ final class PlaybackModel: ObservableObject, Identifiable {
             #endif
         }
     }
-    @Published private(set) var recordingConflict: RecordingConflict?
-    @Published private(set) var viewerConflict: String?
+    // #35 (Apple 401, 399 Codex round 1): a conflict's decision screen shows no picture: the previous channel's mode
+    // inherited by a channel change is given back.
+    @Published private(set) var recordingConflict: RecordingConflict? {
+        didSet {
+            #if os(tvOS)
+            if recordingConflict != nil { TVDisplayModeHold.shared.ended(id) }
+            #endif
+        }
+    }
+    @Published private(set) var viewerConflict: String? {
+        didSet {
+            #if os(tvOS)
+            if viewerConflict != nil { TVDisplayModeHold.shared.ended(id) }
+            #endif
+        }
+    }
     @Published private(set) var reconnecting = false
     @Published private(set) var canRetry = false
     #if os(tvOS)
@@ -50,6 +64,12 @@ final class PlaybackModel: ObservableObject, Identifiable {
     /// The mode `displayCriteria` was built from (nil: none, or the asset's own criteria), so an equal mode is not asked
     /// for again.
     @Published private(set) var displayCriteriaMode: DisplayMode?
+    /// #35 (Apple 401): the current item's criteria are still being loaded from its asset.
+    private(set) var criteriaPending = false
+    /// The asset's own criteria (tests replace it: none, a failure, never, late).
+    var assetCriteriaLoader: @MainActor (AVPlayerItem) async throws -> AVDisplayCriteria? = { item in
+        try await item.asset.load(.preferredDisplayCriteria)
+    }
     #endif
     private var eventContext: PlaybackEvent?
     /// D-39: the tab this play was started from, sent with its play-start event ("sport-front", "tv", "guide").
@@ -139,13 +159,14 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private var stopTask: Task<String?, Never>?
     private var observation: NSKeyValueObservation?
 
-    init(channel: Channel, client: APIClient, programmes: [GuideProgramme] = []) {
+    /// `pressedAt` (#36, Apple 401): the press on ZapClock's clock when it came before the model (a Watch that waited
+    /// for a page to close); nil: now, the model is made at the press (AppModel's beginPlayback and switchPlayback).
+    init(channel: Channel, client: APIClient, programmes: [GuideProgramme] = [], pressedAt: TimeInterval? = nil) {
         self.channel = channel
         self.client = client
         self.programmes = programmes
         player.allowsExternalPlayback = false
-        // #36: the model is made at the press (AppModel's beginPlayback and switchPlayback).
-        zapClock.pressed(at: Date())
+        zapClock.pressed(at: pressedAt ?? ZapClock.now())
     }
 
     func programme(at date: Date = Date()) -> GuideProgramme? {
@@ -517,15 +538,24 @@ final class PlaybackModel: ObservableObject, Identifiable {
         #if os(tvOS)
         displayCriteria = mode?.criteria()
         displayCriteriaMode = displayCriteria == nil ? nil : mode
+        criteriaPending = false
         if displayCriteria != nil { requestModeSwitch(for: generation) }
         if mode == nil, assetCriteria {
+            // #35 (Apple 401): pending until the load answers; none (or a failure) gives back an inherited mode, and so
+            // does the first picture while it is still pending. A late answer for this item still applies.
+            criteriaPending = true
+            let load = assetCriteriaLoader
             Task { [weak self] in
-                let criteria = try? await item.asset.load(.preferredDisplayCriteria)
-                guard let self, let criteria, !self.ended, self.itemGeneration == generation else { return }
+                let criteria = try? await load(item)
+                guard let self, !self.ended, self.itemGeneration == generation else { return }
+                self.criteriaPending = false
+                guard let criteria else { TVDisplayModeHold.shared.confirmedNone(by: self.id); return }
                 self.displayCriteriaMode = nil
                 self.displayCriteria = criteria
                 self.requestModeSwitch(for: generation)
             }
+        } else if displayCriteria == nil {
+            TVDisplayModeHold.shared.confirmedNone(by: id) // this item asks for none (the stream-playlist fallback)
         }
         #endif
         Self.setExternalMetadata(metadata(), on: item)
@@ -778,6 +808,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
 
     func playbackStarted() {
         guard !ended, !handlingFailure else { return }
+        #if os(tvOS)
+        if criteriaPending { TVDisplayModeHold.shared.confirmedNone(by: id) } // #35: no inherited mode past tuning
+        #endif
         itemPlayed = true
         hasPlayed = true
         reconnecting = false
@@ -785,7 +818,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
             firstPlayReported = true
             event.totalMs = Date().timeIntervalSince(resolveBegan) * 1000
             event.phases = startPhases(frameMs: event.totalMs)
-            event.zapMs = zapClock.playing(at: Date())
+            // #36: the play's first picture, whichever item delivered it (a fallback before any picture included)
+            event.zapMs = zapClock.playing(at: ZapClock.now())
             report(event)
         }
     }
@@ -939,7 +973,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
 
     func retry() {
         guard canRetry, resolveTask == nil, !ended else { return }
-        zapClock.pressed(at: Date()) // #36: Try again is a new press, unless this play has already played
+        zapClock.pressed(at: ZapClock.now()) // #36: Try again is a new press, unless this play has already played
         recoveries = []
         hasPlayed = false
         error = nil

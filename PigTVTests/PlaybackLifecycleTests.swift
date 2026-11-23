@@ -350,7 +350,8 @@ final class PlaybackLifecycleTests: XCTestCase {
         let total = try XCTUnwrap(first["totalMs"] as? Double)
         XCTAssertGreaterThanOrEqual(zap, 500, "from the press, not the resolve")
         XCTAssertGreaterThan(Double(zap), total + 250, "it includes the wait before the resolve that totalMs leaves out")
-        // The same play's next item (the stream-playlist fallback) reports its own start, without zapMs.
+        // After the play has played, the same play's next item (the stream-playlist fallback) reports its own start,
+        // without zapMs.
         let noAlternates = [PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11868)]
         playback.playbackFailed(detail: "Synthetic", codeName: AVFoundationErrorDomain, code: -11868, errorCodes: noAlternates)
         playback.playbackStarted()
@@ -358,6 +359,185 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertNil(playStarts(server)[1]["zapMs"], "one zapMs per play")
         _ = await playback.stop()
     }
+
+    /// #36 (Apple 401, 400 Codex round 1): a fallback before any picture is still the viewer's wait: the play-start of
+    /// the first picture, from the fallback item, carries zapMs, once.
+    func testAFallbackBeforeTheFirstPictureCarriesZapOnce() async throws {
+        let server = SyntheticServer { path, _, _ in
+            if path == "/api/playback/resolve" {
+                return .init(status: 200, json: #"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","container":"hls"}"#)
+            }
+            return .init(status: 200, json: #"{"success":true}"#)
+        }
+        let playback = model(try client(server, address: quietHost))
+        try await Task.sleep(for: .milliseconds(200))
+        playback.start()
+        try await eventually { playback.ready }
+        let noAlternates = [PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11868)]
+        playback.playbackFailed(detail: "Synthetic", codeName: AVFoundationErrorDomain, code: -11868, errorCodes: noAlternates)
+        XCTAssertEqual(itemPath(playback), "/api/transcode/s1/stream.m3u8")
+        playback.playbackStarted()
+        playback.playbackStarted()
+        try await eventually { self.playStarts(server).count == 1 }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(playStarts(server).count, 1)
+        let zap = try XCTUnwrap(playStarts(server)[0]["zapMs"] as? Int, "the fallback's first picture carries zapMs")
+        XCTAssertGreaterThanOrEqual(zap, 200)
+        _ = await playback.stop()
+    }
+
+    /// #36 (Apple 401, 400 Codex round 1): a Watch that waits for its page to close is timed from the press.
+    func testADeferredWatchIsTimedFromThePressNotThePageClosing() async throws {
+        let app = AppModel()
+        app.configureClientForTesting(try client(SyntheticServer { _, _, _ in .init(status: 200, json: "{}") }))
+        app.presenter.present(.search(from: "tv"))
+        let pressed = ZapClock.now()
+        app.playAfterClosingPages { app.beginPlayback(Channel(rawID: "a", sourceId: 1, name: "A", logo: nil, category: nil, now: nil, next: nil)) }
+        XCTAssertNil(app.playback, "the play waits for the page")
+        try await Task.sleep(for: .milliseconds(250))
+        app.presenter.didDismiss()
+        let model = try XCTUnwrap(app.playback)
+        let start = try XCTUnwrap(model.zapClock.pressedAt)
+        XCTAssertEqual(start, pressed, accuracy: 0.05, "the clock starts at the press")
+        XCTAssertGreaterThanOrEqual(ZapClock.now() - start, 0.25, "the page's closing is in the wait")
+        await app.endPlayback(model)
+    }
+
+    #if os(tvOS)
+    // #35 (Apple 401, 399 Codex round 1): a mode inherited from the previous channel never outlives the tuning of a play
+    // with no criteria; a conflict's decision screen gives it back too.
+    private final class Recorder { var sent: [String] = []; var resume: CheckedContinuation<Void, Never>? }
+    private let noInfo = #"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","container":"hls"}"#
+    private func hdr() -> (AVDisplayCriteria, DisplayMode) {
+        let mode = DisplayMode.make(videoMode: "copy", info: ResolveStreamInfo(fps: "50/1", videoRange: "PQ"))!
+        return (mode.criteria()!, mode)
+    }
+
+    /// An HDR 50 Hz channel's view showed its mode, then a channel change handed it to `next`. Returns the window.
+    private func inheritHDR(to next: PlaybackModel, _ recorder: Recorder) -> UIWindow {
+        let hold = TVDisplayModeHold.shared
+        hold.resetForTesting()
+        hold.setCriteria = { _, criteria in recorder.sent.append(criteria == nil ? "default" : "mode") }
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        let old = PlayerLayerView.LayerView()
+        let oldID = UUID()
+        old.play = oldID
+        let (criteria, mode) = hdr()
+        old.mode = mode
+        old.criteria = criteria
+        window.addSubview(old)
+        hold.handOver(from: oldID, to: next.id)
+        old.removeFromSuperview()
+        return window
+    }
+
+    private func restoreHold() {
+        TVDisplayModeHold.shared.setCriteria = TVDisplayModeHold.displayManager
+        TVDisplayModeHold.shared.resetForTesting()
+    }
+
+    private struct NoCriteria: Error {}
+
+    func testAnInheritedModeIsClearedWhenTheNextItemHasNoCriteriaOrTheirLoadFails() async throws {
+        defer { restoreHold() }
+        for fails in [false, true] {
+            let noInfo = noInfo
+            let server = SyntheticServer { path, _, _ in
+                path == "/api/playback/resolve" ? .init(status: 200, json: noInfo) : .init(status: 200, json: #"{"success":true}"#)
+            }
+            let next = model(try client(server, address: quietHost))
+            let recorder = Recorder()
+            let window = inheritHDR(to: next, recorder) // the hold keeps the window weakly, as the app's lives on
+            next.assetCriteriaLoader = { _ in if fails { throw NoCriteria() }; return nil }
+            next.start()
+            try await eventually { recorder.sent == ["mode", "default"] }
+            _ = await next.stop()
+            XCTAssertEqual(recorder.sent, ["mode", "default"], fails ? "a failed load" : "none")
+            withExtendedLifetime(window) {}
+        }
+    }
+
+    func testCriteriaThatNeverArriveGiveTheModeBackAtTheFirstPictureAndALateAnswerStillApplies() async throws {
+        defer { restoreHold() }
+        let noInfo = noInfo
+        let server = SyntheticServer { path, _, _ in
+            path == "/api/playback/resolve" ? .init(status: 200, json: noInfo) : .init(status: 200, json: #"{"success":true}"#)
+        }
+        let next = model(try client(server, address: quietHost))
+        let recorder = Recorder()
+        let window = inheritHDR(to: next, recorder)
+        let (late, _) = hdr()
+        next.assetCriteriaLoader = { _ in
+            await withCheckedContinuation { recorder.resume = $0 }
+            return late
+        }
+        let view = PlayerLayerView.LayerView()
+        view.play = next.id
+        window.addSubview(view)
+        let bind = next.$displayCriteria.sink { view.criteria = $0 }
+        next.start()
+        try await eventually { next.ready && recorder.resume != nil }
+        XCTAssertEqual(recorder.sent, ["mode"], "still tuning: the previous mode holds")
+        next.playbackStarted()
+        XCTAssertEqual(recorder.sent, ["mode", "default"], "the first picture with criteria still unknown")
+        recorder.resume?.resume()
+        try await eventually { next.displayCriteria != nil }
+        XCTAssertEqual(recorder.sent, ["mode", "default", "mode"], "the current item's late answer applies")
+        bind.cancel()
+        view.removeFromSuperview()
+        _ = await next.stop()
+    }
+
+    func testALateAnswerForAReplacedItemIsDropped() async throws {
+        defer { restoreHold() }
+        let noInfo = noInfo
+        let server = SyntheticServer { path, _, _ in
+            path == "/api/playback/resolve" ? .init(status: 200, json: noInfo) : .init(status: 200, json: #"{"success":true}"#)
+        }
+        let next = model(try client(server, address: quietHost))
+        let recorder = Recorder()
+        let window = inheritHDR(to: next, recorder)
+        let (late, _) = hdr()
+        next.assetCriteriaLoader = { _ in
+            await withCheckedContinuation { recorder.resume = $0 }
+            return late
+        }
+        let view = PlayerLayerView.LayerView()
+        view.play = next.id
+        window.addSubview(view)
+        let bind = next.$displayCriteria.sink { view.criteria = $0 }
+        next.start()
+        try await eventually { next.ready && recorder.resume != nil }
+        let noAlternates = [PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11868)]
+        next.playbackFailed(detail: "Synthetic", codeName: AVFoundationErrorDomain, code: -11868, errorCodes: noAlternates)
+        XCTAssertEqual(recorder.sent, ["mode", "default"])
+        recorder.resume?.resume()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNil(next.displayCriteria, "the replaced item's answer is not the current item's")
+        XCTAssertEqual(recorder.sent, ["mode", "default"])
+        bind.cancel()
+        view.removeFromSuperview()
+        _ = await next.stop()
+    }
+
+    func testAConflictAfterAChannelChangeGivesTheModeBack() async throws {
+        defer { restoreHold() }
+        let recording = #"{"conflict":{"type":"recording-in-progress","scheduleId":9,"title":"News","channelName":"One","endsAt":1893456000000}}"#
+        let viewer = viewer
+        for body in [viewer, recording] {
+            let server = SyntheticServer { _, _, _ in .init(status: 409, json: body) }
+            let next = model(try client(server))
+            let recorder = Recorder()
+            let window = inheritHDR(to: next, recorder) // the hold keeps the window weakly, as the app's lives on
+            next.start()
+            try await eventually { next.viewerConflict != nil || next.recordingConflict != nil }
+            XCTAssertEqual(body == viewer ? next.viewerConflict != nil : next.recordingConflict != nil, true)
+            XCTAssertEqual(recorder.sent, ["mode", "default"], "the decision screen shows no picture")
+            _ = await next.stop()
+            withExtendedLifetime(window) {}
+        }
+    }
+    #endif
 
     func testAPlayThatNeverPlaysSendsNoZapAndAChannelChangeStartsItsOwnClock() async throws {
         let server = SyntheticServer { path, _, _ in
@@ -372,17 +552,18 @@ final class PlaybackLifecycleTests: XCTestCase {
         _ = await playback.stop()
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertTrue(playStarts(server).isEmpty, "no picture, no play-start, no zapMs")
+        XCTAssertFalse(playback.zapClock.reported)
 
         let app = AppModel()
         app.configureClientForTesting(try client(SyntheticServer { _, _, _ in .init(status: 200, json: "{}") }))
         app.beginPlayback(Channel(rawID: "a", sourceId: 1, name: "A", logo: nil, category: nil, now: nil, next: nil))
         let firstPress = try XCTUnwrap(app.playback?.zapClock.pressedAt)
         try await Task.sleep(for: .milliseconds(100))
-        let changed = Date()
+        let changed = ZapClock.now()
         app.switchPlayback(to: Channel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, now: nil, next: nil))
         let secondPress = try XCTUnwrap(app.playback?.zapClock.pressedAt)
         XCTAssertGreaterThanOrEqual(secondPress, changed, "the channel change's clock starts at the change")
-        XCTAssertGreaterThan(secondPress.timeIntervalSince(firstPress), 0.09)
+        XCTAssertGreaterThan(secondPress - firstPress, 0.09)
         if let playing = app.playback { await app.endPlayback(playing) }
     }
 

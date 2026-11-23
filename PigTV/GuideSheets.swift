@@ -87,8 +87,8 @@ struct SearchActions {
     /// a record page replaces the search page.
     @MainActor static func app(_ app: AppModel, browse: BrowseModel) -> SearchActions {
         SearchActions(
-            watchChannel: { channel in app.presenter.dismiss { app.beginPlayback(browse.asChannel(channel), origin: "Search") } },
-            watchGame: { event in app.presenter.dismiss { app.playSportEvent(event, origin: "Search") } },
+            watchChannel: { channel in app.playAfterClosingPages { app.beginPlayback(browse.asChannel(channel), origin: "Search") } },
+            watchGame: { event in app.playAfterClosingPages { app.playSportEvent(event, origin: "Search") } },
             recordGame: { event in app.record(event) },
             recordProgramme: { channel, programme in
                 app.presenter.present(.record(browse.recordRequest(channel: channel, programme: programme)))

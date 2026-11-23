@@ -597,11 +597,33 @@ final class AppModel: ChangeSuppressing {
         action()
     }
 
+    /// #36 (Apple 401): the press of a play that waits for a page to close (ZapClock's clock), so its zapMs counts the
+    /// close too. Top Shelf links and "watch when it starts" have no press in the app: their clock starts at the play.
+    @ObservationIgnored private var scopedPressedAt: TimeInterval?
+
+    /// #36: runs `action` with plays it starts timed from `pressedAt` (the outermost press wins).
+    func withPlayPress(_ pressedAt: TimeInterval, _ action: () -> Void) {
+        let saved = scopedPressedAt
+        scopedPressedAt = saved ?? pressedAt
+        defer { scopedPressedAt = saved }
+        action()
+    }
+
+    /// #36: a Watch on a page: the page closes first (`presenter.dismiss(then:)`), and the play is timed from the press.
+    func playAfterClosingPages(_ play: @escaping () -> Void) {
+        let pressed = ZapClock.now()
+        presenter.dismiss { [weak self] in
+            guard let self else { return }
+            self.withPlayPress(pressed, play)
+        }
+    }
+
     /// `origin`: the tab the play starts from (D-39), sent with the play-start event.
     func beginPlayback(_ channel: Channel, origin: String? = nil) {
         cancelHandoff() // #178: whatever starts now wins over a play still waiting for pages to close
         guard !playbackBusy, currentPlayback == nil, !sessionEnding, let client else { return }
-        let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
+        let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [],
+                                  pressedAt: scopedPressedAt)
         model.origin = origin ?? scopedPlayOrigin
         prepareFallback(model)
         currentPlayback = model
@@ -636,7 +658,8 @@ final class AppModel: ChangeSuppressing {
         cancelHandoff() // #178
         guard let old = currentPlayback, let client, old.channel.id != channel.id, !sessionEnding else { return }
         previousChannel = old.channel
-        let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [])
+        let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [],
+                                  pressedAt: scopedPressedAt)
         // D-39: a zap inside the player keeps the play's origin; a new choice from a page names its own.
         model.origin = origin ?? scopedPlayOrigin ?? old.origin
         prepareFallback(model)
