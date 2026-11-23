@@ -189,6 +189,19 @@ final class PlayerButtonsTests: XCTestCase {
         XCTAssertTrue(refresh.due(now: t0.addingTimeInterval(151), programmeStart: 3, infoOpened: true))
     }
 
+    /// Codex sign-off of 407: a boundary inside the cooldown (the opening ask may have been served by the shared cache) is
+    /// kept and asked for once, when the cooldown allows; then nothing more until the next boundary or opening.
+    func testABoundaryInsideTheCooldownIsAskedForOnceItEnds() {
+        var refresh = StartOverRefresh()
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        _ = refresh.due(now: t0, programmeStart: 1, infoOpened: false)
+        XCTAssertTrue(refresh.due(now: t0, programmeStart: 1, infoOpened: true), "the info opened (a cache hit, say)")
+        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(10), programmeStart: 2, infoOpened: false), "a boundary in the cooldown")
+        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(30), programmeStart: 2, infoOpened: false))
+        XCTAssertTrue(refresh.due(now: t0.addingTimeInterval(61), programmeStart: 2, infoOpened: false), "the kept boundary, once")
+        XCTAssertFalse(refresh.due(now: t0.addingTimeInterval(130), programmeStart: 2, infoOpened: false), "consumed: no polling")
+    }
+
     /// A recording that starts after tune-in: the live player's ask (the info opening) reads the schedules again, and
     /// Start over shows; before, the cached schedule stayed "scheduled" for the whole viewing.
     @MainActor
@@ -361,6 +374,35 @@ final class StartOverHandoffTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(1500))
         XCTAssertNil(app.presenter.presented, "the old Start over did not open its recording over the newer play")
         XCTAssertEqual(app.playback?.channel.id, browse.asChannel(browse.guide[1]).id)
+    }
+
+    /// Codex sign-off of 407 (high): the live play being torn down is not an existing play: a newer request for the same
+    /// channel cancels Start over and tunes once the release is done.
+    func testANewerPlayOfTheSameChannelDuringTheReleaseWins() async throws {
+        let (app, browse, playback, recording) = try await playing(releaseDelay: 0.6)
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(150))
+        app.open(try link(browse.guide[2])) // the channel being torn down, from the Top Shelf
+        try await Task.sleep(for: .milliseconds(1500))
+        XCTAssertNil(app.presenter.presented, "Start over did not open its recording over the newer request")
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(browse.guide[2]).id, "the channel plays live again")
+        XCTAssertFalse(app.playback === playback, "as a new play, after the old one's release")
+    }
+
+    /// The same through "Watch when it starts" on a Sport event on that channel (starting now).
+    func testASportWatchOfTheSameChannelDuringTheReleaseWins() async throws {
+        let (app, browse, playback, recording) = try await playing(releaseDelay: 0.6)
+        app.startOver(playback, recording: recording)
+        try await Task.sleep(for: .milliseconds(150))
+        let row = browse.guide[2]
+        let now = Date().timeIntervalSince1970 * 1000
+        let event = SportEvent(id: "e", title: "Event", league: "AFL", startTime: now - 60_000, endTime: now + 3_600_000,
+                               channels: [SportEventChannel(sourceId: row.sourceId, rawID: row.rawID, name: row.name)])
+        app.watchWhenStarts(event)
+        try await Task.sleep(for: .milliseconds(1500))
+        XCTAssertNil(app.presenter.presented, "Start over did not open its recording over the Sport watch")
+        XCTAssertEqual(app.playback?.channel.id, browse.asChannel(row).id)
+        XCTAssertFalse(app.playback === playback)
     }
 
     func testGoingToTheBackgroundDuringTheReleaseDropsIt() async throws {

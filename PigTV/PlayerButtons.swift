@@ -258,18 +258,22 @@ nonisolated struct StartOverRefresh: Equatable, Sendable {
     /// The programme on air when last looked at (its start, ms); nil before the first look.
     private var programmeStart: Double?
     private var looked = false
+    /// Codex sign-off of 407: a programme boundary seen inside the cooldown, kept until it may ask (once).
+    private var boundaryPending = false
 
     init() {}
 
     /// Whether to ask now. `infoOpened`: the info (Apple TV) or the controls (touch) just opened; `programmeStart`: the
-    /// programme on air now. The first look only notes the programme (the opening info asks).
+    /// programme on air now. The first look only notes the programme (the opening info asks). A boundary inside the
+    /// cooldown is kept and asked for once the cooldown (and with it the shared recordings cache's age) allows.
     mutating func due(now: Date, programmeStart: Double?, infoOpened: Bool) -> Bool {
-        let boundary = looked && programmeStart != self.programmeStart
+        if looked && programmeStart != self.programmeStart { boundaryPending = true }
         self.programmeStart = programmeStart
         looked = true
-        guard boundary || infoOpened else { return false }
+        guard boundaryPending || infoOpened else { return false }
         if let lastAsked, now.timeIntervalSince(lastAsked) < Self.minimumGap { return false }
         lastAsked = now
+        boundaryPending = false
         return true
     }
 }

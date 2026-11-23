@@ -548,8 +548,13 @@ final class AppModel: ChangeSuppressing {
         let generation = handoffGeneration
         startOverHandoff = generation
         let session = browse
+        let release = Task { [weak self] in
+            await self?.endPlayback(playing)
+            if self?.startOverRelease?.id == generation { self?.startOverRelease = nil } // before anyone waiting resumes
+        }
+        startOverRelease = (generation, release)
         pendingHandoff = Task { [weak self] in
-            await Task { [weak self] in await self?.endPlayback(playing) }.value
+            await release.value
             guard let self, self.startOverStillCurrent(generation, session) else { return }
             NotificationCenter.default.post(name: .pigCloseCovers, object: nil)
             do { try await Task.sleep(for: Self.coverCloseDelay) } catch { return }
@@ -568,6 +573,26 @@ final class AppModel: ChangeSuppressing {
 
     /// The Start over hand-off under way (its `handoffGeneration`), if any.
     @ObservationIgnored private var startOverHandoff: Int?
+    /// The live play's release a Start over is waiting for (its hand-off's generation), while it is in flight.
+    @ObservationIgnored private var startOverRelease: (id: Int, task: Task<Void, Never>)?
+
+    /// Codex sign-off of 407 (high): while a Start over's release is in flight the live play being torn down is not an
+    /// existing play. A newer play request (any channel, a link, a Sport watch, a switch) cancels the Start over, waits
+    /// for that release, then plays as asked (unless something newer, the background or the session's end, came since).
+    /// True when the request was taken over here.
+    private func afterStartOverRelease(_ play: @escaping @MainActor (AppModel) -> Void) -> Bool {
+        guard let release = startOverRelease?.task else { return false }
+        cancelHandoff()
+        handoffGeneration &+= 1
+        let generation = handoffGeneration
+        pendingHandoff = Task { [weak self] in
+            await release.value
+            guard let self, self.handoffGeneration == generation, !Task.isCancelled, !self.sessionEnding else { return }
+            self.pendingHandoff = nil
+            play(self)
+        }
+        return true
+    }
 
     private func revealGame(_ id: String, in browse: BrowseModel) {
         guard self.browse === browse else { return } // signed out or switched meanwhile
@@ -585,6 +610,7 @@ final class AppModel: ChangeSuppressing {
     }
 
     private func play(_ link: PigTVLink.Play) {
+        if afterStartOverRelease({ $0.play(link) }) { return }
         let channel = channel(for: link)
         // #13: a Top Shelf channel zaps through the guide, not whatever list the last play left behind.
         zapList = []
@@ -668,6 +694,7 @@ final class AppModel: ChangeSuppressing {
 
     /// `origin`: the tab the play starts from (D-39), sent with the play-start event.
     func beginPlayback(_ channel: Channel, origin: String? = nil) {
+        if afterStartOverRelease({ $0.beginPlayback(channel, origin: origin) }) { return }
         cancelHandoff() // #178: whatever starts now wins over a play still waiting for pages to close
         guard !playbackBusy, currentPlayback == nil, !sessionEnding, let client else { return }
         let model = PlaybackModel(channel: channel, client: client, programmes: browse?.programmes(for: channel) ?? [],
@@ -703,6 +730,7 @@ final class AppModel: ChangeSuppressing {
     // Change channel without leaving the player. The old session is released
     // first (the provider allows one stream), then the new one resolves.
     func switchPlayback(to channel: Channel, origin: String? = nil) {
+        if afterStartOverRelease({ $0.beginPlayback(channel, origin: origin) }) { return }
         cancelHandoff() // #178
         guard let old = currentPlayback, let client, old.channel.id != channel.id, !sessionEnding else { return }
         previousChannel = old.channel
@@ -835,6 +863,7 @@ final class AppModel: ChangeSuppressing {
     func playSportEvent(_ event: SportEvent, channel: SportEventChannel? = nil, origin: String? = nil,
                         fromSport: Bool = true) {
         guard let browse else { return }
+        if afterStartOverRelease({ $0.playSportEvent(event, channel: channel, origin: origin, fromSport: fromSport) }) { return }
         let channels = event.channels.map(browse.playable)
         guard let chosen = channel.map(browse.playable) ?? channels.first else { return }
         if pendingWatch?.eventID == event.id { cancelPendingWatch() }
