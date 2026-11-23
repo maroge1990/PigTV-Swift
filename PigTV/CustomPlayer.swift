@@ -105,7 +105,8 @@ struct CustomPlayerView: View {
         // reachable only via the info overlay's action row.
         Button(action: select) {
             ZStack {
-                PlayerLayerView(player: playback.player, criteria: playback.displayCriteria).ignoresSafeArea()
+                PlayerLayerView(player: playback.player, criteria: playback.displayCriteria, mode: playback.displayCriteriaMode,
+                                play: playback.id).ignoresSafeArea()
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     ZStack {
                         if chrome == .info { infoOverlay(now: context.date) }

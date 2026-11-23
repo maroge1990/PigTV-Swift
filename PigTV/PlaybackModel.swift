@@ -27,7 +27,15 @@ final class PlaybackModel: ObservableObject, Identifiable {
     @Published private(set) var ready = false
     /// The player screen can remain visible while the server releases its stream.
     @Published private(set) var stopping = false
-    @Published private(set) var error: String?
+    @Published private(set) var error: String? {
+        didSet {
+            #if os(tvOS)
+            // #35: a play that ends in an error gives the TV back its default mode, even with no player view up (a
+            // channel change whose resolve failed while the previous channel's mode was held).
+            if error != nil { TVDisplayModeHold.shared.ended(id) }
+            #endif
+        }
+    }
     @Published private(set) var recordingConflict: RecordingConflict?
     @Published private(set) var viewerConflict: String?
     @Published private(set) var reconnecting = false
@@ -35,9 +43,13 @@ final class PlaybackModel: ObservableObject, Identifiable {
     #if os(tvOS)
     // Display mode for the stream (frame rate, SDR/PQ/HLG), built from the
     // resolve decision's `info` (DisplayMode, build 27). Applied to the window by
-    // PlayerLayerView, which clears it when the video leaves the screen, so a
-    // channel change or exit to the guide drops back to SDR.
+    // PlayerLayerView through TVDisplayModeHold (#35, Apple 399): a channel change
+    // keeps the mode while the next channel tunes; an exit or an error drops back
+    // to the TV's default mode.
     @Published private(set) var displayCriteria: AVDisplayCriteria?
+    /// The mode `displayCriteria` was built from (nil: none, or the asset's own criteria), so an equal mode is not asked
+    /// for again.
+    @Published private(set) var displayCriteriaMode: DisplayMode?
     #endif
     private var eventContext: PlaybackEvent?
     /// D-39: the tab this play was started from, sent with its play-start event ("sport-front", "tv", "guide").
@@ -500,11 +512,13 @@ final class PlaybackModel: ObservableObject, Identifiable {
         modeRequestedFor = nil
         #if os(tvOS)
         displayCriteria = mode?.criteria()
+        displayCriteriaMode = displayCriteria == nil ? nil : mode
         if displayCriteria != nil { requestModeSwitch(for: generation) }
         if mode == nil, assetCriteria {
             Task { [weak self] in
                 let criteria = try? await item.asset.load(.preferredDisplayCriteria)
                 guard let self, let criteria, !self.ended, self.itemGeneration == generation else { return }
+                self.displayCriteriaMode = nil
                 self.displayCriteria = criteria
                 self.requestModeSwitch(for: generation)
             }
@@ -810,6 +824,11 @@ final class PlaybackModel: ObservableObject, Identifiable {
                         reportsError: Bool = true) {
         guard !ended, !handlingFailure else { return }
         handlingFailure = true
+        #if os(tvOS)
+        // #35: a failed item gives the TV back its default mode (as its view leaving did); a recovery or a fallback item
+        // asks again for its own.
+        TVDisplayModeHold.shared.ended(id)
+        #endif
         if reportsError, let context = eventContext {
             var event = PlaybackEvent(event: "media-error")
             event.strategy = context.strategy
@@ -1122,6 +1141,9 @@ final class PlaybackModel: ObservableObject, Identifiable {
         stopping = true
         clearItem()
         #if os(tvOS)
+        // #35: leaving the player gives the TV back its default mode; a channel that handed its mode to the next one
+        // changes nothing.
+        TVDisplayModeHold.shared.ended(id)
         if let modeSwitchObserver { NotificationCenter.default.removeObserver(modeSwitchObserver) }
         modeSwitchObserver = nil
         #endif

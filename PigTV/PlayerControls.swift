@@ -89,38 +89,40 @@ struct BlankButtonStyle: ButtonStyle {
 }
 
 // Plain video surface: no AVKit controls, so no competing remote handling.
-// It also owns the TV's display mode: a bare AVPlayerLayer never asks tvOS to
+// It also shows the TV's display mode: a bare AVPlayerLayer never asks tvOS to
 // switch to HDR / the stream's frame rate (AVPlayerViewController did that
-// itself), so the stream's criteria are applied to the hosting window here.
+// itself), so the stream's criteria are applied to the hosting window. #35
+// (Apple 399): the mode is held by the play (TVDisplayModeHold), so a channel
+// change keeps it through "Tuning…" instead of dropping to the default mode.
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
     let criteria: AVDisplayCriteria?
+    /// What the criteria ask for, when built from a resolve answer (equal modes are not asked for again).
+    var mode: DisplayMode? = nil
+    /// The play this view shows (a live play's PlaybackModel id); nil: the view is its own play (a recording).
+    var play: UUID? = nil
     final class LayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
         var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
-        // The view that last applied criteria. Only it may reset them, so an
-        // outgoing channel's view cannot clear the incoming channel's mode.
-        private static weak var owner: LayerView?
+        var play = UUID()
+        var mode: DisplayMode?
         var criteria: AVDisplayCriteria? {
             didSet { if criteria !== oldValue { apply() } }
         }
         private func apply() {
             guard let window else { return }
-            window.avDisplayManager.preferredDisplayCriteria = criteria
-            Self.owner = self
+            TVDisplayModeHold.shared.shown(criteria, mode: mode, by: play, in: window)
         }
         func reset() {
-            guard Self.owner === self else { return }
-            window?.avDisplayManager.preferredDisplayCriteria = nil
-            Self.owner = nil
+            // The play leaving the screen (exit, an error): the TV's default mode. A play that handed the mode to
+            // the next channel changes nothing here.
+            TVDisplayModeHold.shared.ended(play)
         }
         override func didMoveToWindow() {
             super.didMoveToWindow()
             apply()
         }
         override func willMove(toWindow newWindow: UIWindow?) {
-            // Leaving the screen (exit to the guide, an error, or the next
-            // channel's view taking over): return the TV to its default mode.
             if newWindow == nil { reset() }
             super.willMove(toWindow: newWindow)
         }
@@ -130,11 +132,14 @@ struct PlayerLayerView: UIViewRepresentable {
         view.backgroundColor = .black
         view.playerLayer.videoGravity = .resizeAspect
         view.playerLayer.player = player
+        if let play { view.play = play }
+        view.mode = mode
         view.criteria = criteria
         return view
     }
     func updateUIView(_ view: LayerView, context: Context) {
         if view.playerLayer.player !== player { view.playerLayer.player = player }
+        view.mode = mode
         view.criteria = criteria
     }
     static func dismantleUIView(_ view: LayerView, coordinator: ()) {

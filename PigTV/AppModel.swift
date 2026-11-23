@@ -640,6 +640,11 @@ final class AppModel: ChangeSuppressing {
         // D-39: a zap inside the player keeps the play's origin; a new choice from a page names its own.
         model.origin = origin ?? scopedPlayOrigin ?? old.origin
         prepareFallback(model)
+        #if os(tvOS)
+        // #35 (Apple 399): the TV keeps the old channel's display mode while the next one tunes (no drop to the default
+        // mode and back: two HDMI resyncs); the next channel asks again only for a different mode.
+        TVDisplayModeHold.shared.handOver(from: old.id, to: model.id)
+        #endif
         model.prerequisite = Task { _ = await old.stop() }
         currentPlayback = model
         playback = model
