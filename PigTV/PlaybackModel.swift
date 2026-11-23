@@ -65,6 +65,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private var modeSwitchObserver: NSObjectProtocol?
     #endif
     private var firstPlayReported = false
+    /// #36 (Apple 400): the press to the first `.playing`, sent once with this play's first play-start.
+    private(set) var zapClock = ZapClock()
     private var playingSince: Date?
     private var watchedSeconds: Double = 0
     private var stalls = 0
@@ -142,6 +144,8 @@ final class PlaybackModel: ObservableObject, Identifiable {
         self.client = client
         self.programmes = programmes
         player.allowsExternalPlayback = false
+        // #36: the model is made at the press (AppModel's beginPlayback and switchPlayback).
+        zapClock.pressed(at: Date())
     }
 
     func programme(at date: Date = Date()) -> GuideProgramme? {
@@ -781,6 +785,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
             firstPlayReported = true
             event.totalMs = Date().timeIntervalSince(resolveBegan) * 1000
             event.phases = startPhases(frameMs: event.totalMs)
+            event.zapMs = zapClock.playing(at: Date())
             report(event)
         }
     }
@@ -934,6 +939,7 @@ final class PlaybackModel: ObservableObject, Identifiable {
 
     func retry() {
         guard canRetry, resolveTask == nil, !ended else { return }
+        zapClock.pressed(at: Date()) // #36: Try again is a new press, unless this play has already played
         recoveries = []
         hasPlayed = false
         error = nil

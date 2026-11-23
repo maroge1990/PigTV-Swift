@@ -565,6 +565,9 @@ struct PlaybackEvent: Encodable {
     var origin: String?
     // #36 (Apple 174, server 0487), play-start only: where the start went, ms since the play began.
     var phases: StartPhases?
+    // #36 (Apple 400, server 0908), play-start only: the press to the first `.playing` in whole ms (ZapClock); absent on
+    // a reconnect's play-start.
+    var zapMs: Int?
     // #268, av-desync only (Labs › Sync marker button): the player's rate (0.97 while it builds its hold, else 1), how
     // far behind the live edge it plays (seekable end − current time, s) and whether it is still catching up (#7).
     var rate: Double?
@@ -625,4 +628,26 @@ nonisolated struct StartPhases: Encodable, Equatable, Sendable {
     var readyMs: Double?
     var modeMs: Double?
     var frameMs: Double?
+}
+
+/// #36 (Apple 400): `zapMs`, the whole wait the viewer sees: from the press (Watch, a channel change, Try again) to the
+/// player's first `.playing`, the release of the previous channel and the resolve included (`totalMs` starts at the
+/// resolve). One per play; a play that never plays reports none. Pure.
+nonisolated struct ZapClock: Equatable, Sendable {
+    private(set) var pressedAt: Date?
+    private(set) var reported = false
+
+    /// The request to play: starts the clock, or restarts it (Try again) while the play has not played yet.
+    mutating func pressed(at date: Date) {
+        guard !reported else { return }
+        pressedAt = date
+    }
+
+    /// The first `.playing`: whole ms since the press, once; nil after that (a reconnect) or without a press.
+    mutating func playing(at date: Date) -> Int? {
+        guard !reported, let pressedAt else { return nil }
+        reported = true
+        let ms = date.timeIntervalSince(pressedAt) * 1000
+        return ms.isFinite ? max(0, Int(ms.rounded())) : nil
+    }
 }

@@ -323,6 +323,69 @@ final class PlaybackLifecycleTests: XCTestCase {
         XCTAssertEqual(server.captured.count, 1)
     }
 
+    // #36 (Apple 400): the play-start carries zapMs, the press (the model is made then) to the first .playing, the wait
+    // before the resolve included; once per play: a second play-start of the same play (a fallback item) has none.
+    private func playStarts(_ server: SyntheticServer) -> [[String: Any]] {
+        server.captured.filter { $0.path == "/api/playback/client-event" }
+            .compactMap { try? JSONSerialization.jsonObject(with: $0.body) as? [String: Any] }
+            .filter { $0["event"] as? String == "play-start" }
+    }
+
+    func testThePlayStartCarriesTheWaitFromThePressOncePerPlay() async throws {
+        let server = SyntheticServer { path, _, _ in
+            if path == "/api/playback/resolve" {
+                return .init(status: 200, json: #"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","container":"hls"}"#, delay: 0.2)
+            }
+            return .init(status: 200, json: #"{"success":true}"#)
+        }
+        let playback = model(try client(server, address: quietHost))
+        try await Task.sleep(for: .milliseconds(300)) // where a channel change waits for the previous stream's release
+        playback.start()
+        try await eventually { playback.ready }
+        playback.playbackStarted()
+        playback.playbackStarted() // still playing: nothing more
+        try await eventually { self.playStarts(server).count == 1 }
+        let first = playStarts(server)[0]
+        let zap = try XCTUnwrap(first["zapMs"] as? Int, "the play-start carries zapMs")
+        let total = try XCTUnwrap(first["totalMs"] as? Double)
+        XCTAssertGreaterThanOrEqual(zap, 500, "from the press, not the resolve")
+        XCTAssertGreaterThan(Double(zap), total + 250, "it includes the wait before the resolve that totalMs leaves out")
+        // The same play's next item (the stream-playlist fallback) reports its own start, without zapMs.
+        let noAlternates = [PlayerErrorCode(domain: AVFoundationErrorDomain, code: -11868)]
+        playback.playbackFailed(detail: "Synthetic", codeName: AVFoundationErrorDomain, code: -11868, errorCodes: noAlternates)
+        playback.playbackStarted()
+        try await eventually { self.playStarts(server).count == 2 }
+        XCTAssertNil(playStarts(server)[1]["zapMs"], "one zapMs per play")
+        _ = await playback.stop()
+    }
+
+    func testAPlayThatNeverPlaysSendsNoZapAndAChannelChangeStartsItsOwnClock() async throws {
+        let server = SyntheticServer { path, _, _ in
+            if path == "/api/playback/resolve" {
+                return .init(status: 200, json: #"{"strategy":"transcode","url":"/api/transcode/s1/master.m3u8","sessionId":"s1","container":"hls"}"#)
+            }
+            return .init(status: 200, json: #"{"success":true}"#)
+        }
+        let playback = model(try client(server, address: quietHost))
+        playback.start()
+        try await eventually { playback.ready }
+        _ = await playback.stop()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(playStarts(server).isEmpty, "no picture, no play-start, no zapMs")
+
+        let app = AppModel()
+        app.configureClientForTesting(try client(SyntheticServer { _, _, _ in .init(status: 200, json: "{}") }))
+        app.beginPlayback(Channel(rawID: "a", sourceId: 1, name: "A", logo: nil, category: nil, now: nil, next: nil))
+        let firstPress = try XCTUnwrap(app.playback?.zapClock.pressedAt)
+        try await Task.sleep(for: .milliseconds(100))
+        let changed = Date()
+        app.switchPlayback(to: Channel(rawID: "b", sourceId: 1, name: "B", logo: nil, category: nil, now: nil, next: nil))
+        let secondPress = try XCTUnwrap(app.playback?.zapClock.pressedAt)
+        XCTAssertGreaterThanOrEqual(secondPress, changed, "the channel change's clock starts at the change")
+        XCTAssertGreaterThan(secondPress.timeIntervalSince(firstPress), 0.09)
+        if let playing = app.playback { await app.endPlayback(playing) }
+    }
+
     func testInitialMediaFailureDoesNotAutomaticallyResolve() async throws {
         let server = SyntheticServer { _, _, _ in .init(status: 500, json: "{}") }
         let playback = model(try client(server))
