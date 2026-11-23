@@ -723,7 +723,7 @@ final class AppModel: ChangeSuppressing {
     private func updateWarming(for model: PlaybackModel, justSwitched: Bool) {
         model.warmer = warmer
         warmer.beginStart(model.id)
-        let list = zapList.isEmpty ? (browse.map { b in b.guide.map(b.asChannel) } ?? []) : zapList
+        let list = zapList.isEmpty ? (browse.map { b in b.playableChannels(b.guide) } ?? []) : zapList
         let likely = ChannelWarmer.likelyNext(current: model.channel, previous: previousChannel,
                                               justSwitched: justSwitched, list: list)
         warmer.setPlayerTarget(likely?.warmTarget)
@@ -754,7 +754,7 @@ final class AppModel: ChangeSuppressing {
     func channel(number: Int) -> Channel? {
         if let hit = zapList.first(where: { $0.number == number }) { return hit }
         guard let browse,
-              let row = browse.guide.first(where: { $0.number == number }) else { return nil }
+              let row = browse.guide.first(where: { $0.number == number && !GuideHeading.isHeading($0) }) else { return nil } // #372
         return browse.asChannel(row)
     }
 
@@ -770,7 +770,8 @@ final class AppModel: ChangeSuppressing {
 
     func zap(_ step: Int) {
         guard let current = currentPlayback?.channel else { return }
-        let list = zapList.isEmpty ? (browse.map { model in model.guide.map(model.asChannel) } ?? []) : zapList
+        // #372: never onto a divider channel (the Guide's section headings).
+        let list = zapList.isEmpty ? (browse.map { model in model.playableChannels(model.guide) } ?? []) : zapList
         guard !list.isEmpty else { return }
         let index = list.firstIndex { $0.id == current.id } ?? -1
         let next = list[((index + step) % list.count + list.count) % list.count]
@@ -925,6 +926,7 @@ final class AppModel: ChangeSuppressing {
         model.isFixture = true
         model.fixtureRecordDefaults = RecordPlan.PadDefaults(before: 1, after: 5) // the server's shipped Settings (#358)
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(logos: true), to: GuideFixtures.requestedCount)
+        if GuideFixtures.headingsRequested { model.guide = GuideFixtures.withHeadings(model.guide) } // #372
         model.favourites = GuideFixtures.favourites(from: model.guide).map(model.asChannel)
         model.recordings = GuideFixtures.recordings()
         model.recordingStore.loaded = true // #280: the fixture's answer is in
@@ -1029,6 +1031,8 @@ final class AppModel: ChangeSuppressing {
         let model = BrowseModel(client: client)
         model.publishesTopShelf = false // #362: the synthetic line-up never reaches the shared Top Shelf snapshot
         model.guide = GuideFixtures.enlarged(GuideFixtures.channels(), to: GuideFixtures.requestedCount)
+        // #372: PIGTV_UI_TEST_GUIDE_SHAPE=headings: the same channels with divider channels between them.
+        if GuideFixtures.headingsRequested { model.guide = GuideFixtures.withHeadings(model.guide) }
         model.recordingStore.loaded = true // #280: the fixture's (empty) answer is in
         model.recordingStore.rulesLoaded = true
         if watchOn {

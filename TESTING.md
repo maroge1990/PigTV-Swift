@@ -106,6 +106,12 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   it back). `RecordingsHomeTests` (unit) covers what the tab, Scheduled and View recording list and say, and the team
   match; `RecordingUndoTests` the held server call (hidden at once, nothing sent on Undo, waits for a change in flight,
   a refused call comes back with its error). `PhoneGuideFilterUITests.testAFailedOnNowMenuActionSaysWhy` (iOS, #219).
+- `GuideHeadingsUITests` (push tier, #372): on the headings fixture (`PIGTV_UI_TEST_GUIDE_SHAPE=headings`: a heading first, one
+  beside the channel with no programmes, two in a row, one last) Up and Down pass over every heading and Left/Right stay in the
+  row. `GuideHeadingRuleTests` (unit) covers the rule (near-misses, other scripts), the row geometry and the store;
+  `GuideHeadingTests` the grid's bands on the real controller, a guide without headings laid out exactly as before, a row
+  turning into a heading without moving the screen, and the consumers that leave headings out. `GuideScreensUITests.
+  testGuideWithHeadings` shoots the fixture (visual tier).
 - `GuideFastScrollUITests` (build 46): on 300 channels, holding Down then Up leaves focus on a row on screen, not pulled
   back to the starting row (the fast swipe's landing scroll was clamped to a stale planned row).
 - `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all four tabs.

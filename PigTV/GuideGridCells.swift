@@ -304,6 +304,52 @@ final class GuideGridTileCell: UICollectionViewCell {
     }
 }
 
+/// #372 (Mark's option A): a divider channel as a slim section heading across the grid: its label in the detail pages'
+/// eyebrow (small uppercase letters in the accent text colour) at the channel column's left edge, then a hairline in the
+/// border colour to the right edge. No tile, no programmes; it never takes focus.
+struct GuideGridHeadingView: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: PigSpacing.s) {
+            Eyebrow(text: label).lineLimit(1).truncationMode(.tail)
+            Rectangle().fill(Color.pigBorder).frame(height: GuideGridMetrics.headingRule)
+                .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+    }
+}
+
+final class GuideGridHeadingCell: UICollectionViewCell {
+    static let reuseID = "guide.heading"
+    var label: String? {
+        didSet { if label != oldValue { setNeedsUpdateConfiguration() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundConfiguration = .clear()
+        isAccessibilityElement = true
+        accessibilityTraits = .header
+        clipsToBounds = true
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var canBecomeFocused: Bool { false }
+
+    // As the other cells: the layout's frame, never a SwiftUI size-to-fit.
+    override func preferredLayoutAttributesFitting(_ layoutAttributes: UICollectionViewLayoutAttributes) -> UICollectionViewLayoutAttributes {
+        layoutAttributes
+    }
+
+    override func updateConfiguration(using state: UICellConfigurationState) {
+        guard let label else { contentConfiguration = nil; return }
+        contentConfiguration = UIHostingConfiguration { GuideGridHeadingView(label: label) }.margins(.all, 0)
+        accessibilityLabel = label
+    }
+}
+
 /// The time header above the grid: half-hour labels on a strip that
 /// follows the grid's horizontal offset. It is clipped at the timeline's
 /// left edge, so labels slide under the channel column like the cells.

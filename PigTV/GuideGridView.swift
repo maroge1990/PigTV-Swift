@@ -142,6 +142,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         collectionView.accessibilityValue = ISO8601DateFormatter().string(from: viewport)
         collectionView.register(GuideGridTileCell.self, forCellWithReuseIdentifier: GuideGridTileCell.reuseID)
         collectionView.register(GuideGridProgrammeCell.self, forCellWithReuseIdentifier: GuideGridProgrammeCell.reuseID)
+        collectionView.register(GuideGridHeadingCell.self, forCellWithReuseIdentifier: GuideGridHeadingCell.reuseID)
         if touchScrolling {
             collectionView.locksX = false
             collectionView.isDirectionalLockEnabled = true
@@ -169,7 +170,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         #else
         guard let indexPath = collectionView.indexPathForItem(at: recognizer.location(in: collectionView)) else { return }
         #endif
-        guard store.rows.indices.contains(indexPath.section),
+        guard store.rows.indices.contains(indexPath.section), !store.isHeading(indexPath.section), // #372
               let attributes = collectionView.layoutAttributesForItem(at: indexPath) else { return }
         let visible = attributes.frame.intersection(collectionView.bounds)
         let frame = collectionView.convert(visible.isNull ? attributes.frame : visible, to: nil)
@@ -290,10 +291,11 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
 
     // MARK: Focus from outside the grid
 
+    /// The first row wholly on screen; #372: a channel's, never a heading's (the next one down, else up).
     private func firstVisibleRow() -> Int? {
         guard !store.rows.isEmpty else { return nil }
-        let row = Int((collectionView.contentOffset.y / layout.metrics.rowHeight).rounded(.up))
-        return min(max(0, row), store.rows.count - 1)
+        let row = store.geometry.firstRow(atOrBelow: collectionView.contentOffset.y, count: store.rows.count)
+        return store.geometry.nearestChannel(to: row, count: store.rows.count)
     }
 
     /// The programme under `time` in `section` (the placeholder for a row
@@ -312,7 +314,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     /// what is on now in its row).
     private func restoreFocus() {
         guard let identity = focusIdentity,
-              let section = store.rows.firstIndex(where: { $0.id == identity.channel }) else { return }
+              let row = store.rows.firstIndex(where: { $0.id == identity.channel }),
+              let section = store.geometry.nearestChannel(to: row, count: store.rows.count) else { return } // #372
         var target = store.indexPath(section: section, start: identity.start) ?? IndexPath(item: 0, section: section)
         if let programme = store.programme(at: target), programme.end <= Date() {
             target = self.target(in: section, at: Date())
@@ -409,6 +412,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             #endif
         }
         let old = store.rows
+        // #372: a row that becomes a section heading, or stops being one, changes its height and its items: never in
+        // place (the paths below keep every existing row's shape), always the reload, which keeps the screen still.
+        let headings = GuideGridStore.headings(of: rows)
+        let sameHeadings = headings.rows.filter { $0 < old.count } == store.geometry.headings.filter { $0 < rows.count }
         // Background paging appends channels; keep the existing cells (and
         // focus) then. Anything else reloads and restores focus by identity.
         // Codex sign-off of 389 (high): rows inserted after the existing ones go in as a batch insert only if every existing
@@ -416,7 +423,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         // A, B, B is one item fewer) under a trailing insert made the batch declare only the insert while that section's
         // count changed, which UIKit rejects (an exception). Any change to an existing row takes the full reload below.
         // Without rows added, the same-shape correction keeps its in-place path (A4).
-        let appendOnly = !old.isEmpty && rows.count >= old.count && (rows.count > old.count
+        let appendOnly = sameHeadings && !old.isEmpty && rows.count >= old.count && (rows.count > old.count
             ? zip(old, rows).allSatisfy { GuideGridStore.unchangedForDataSource($0, $1) }
             : zip(old, rows).allSatisfy { a, b in
                 a.id == b.id && a.programmes.count == b.programmes.count
@@ -432,7 +439,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             if rows.count > old.count {
                 let insert = {
                     self.collectionView.performBatchUpdates {
-                        self.store.setRows(rows, revision: revision, primed: primed)
+                        self.store.setRows(rows, revision: revision, primed: primed, headings: headings)
                         self.collectionView.insertSections(IndexSet(old.count..<rows.count))
                     }
                 }
@@ -446,7 +453,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
                     insert()
                 }
             } else {
-                store.setRows(rows, revision: revision, primed: primed)
+                store.setRows(rows, revision: revision, primed: primed, headings: headings)
             }
             GuidePerf.applyStep(&measured, \.updateMs)
             refresh(corrected)
@@ -459,13 +466,13 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         // itself. UIKit requires `reloadSections` once a section's item
         // count changes, but only for the sections that actually did;
         // scroll position and every other row's focus/cells are untouched.
-        let extendedOnly = !old.isEmpty && rows.count == old.count && zip(old, rows).allSatisfy { a, b in
+        let extendedOnly = sameHeadings && !old.isEmpty && rows.count == old.count && zip(old, rows).allSatisfy { a, b in
             a.id == b.id && a.programmes.first?.startTime == b.programmes.first?.startTime
         }
         if extendedOnly {
             kind = "extend"
             let changedSections = IndexSet(rows.indices.filter { rows[$0].programmes.count != old[$0].programmes.count })
-            store.setRows(rows, revision: revision, primed: primed)
+            store.setRows(rows, revision: revision, primed: primed, headings: headings)
             refresh(corrected.subtracting(changedSections)) // A4: same count, corrected content
             guard !changedSections.isEmpty else { layout.invalidateLayout(); return }
             let refocus = focused.map { changedSections.contains($0.section) } ?? false
@@ -479,16 +486,42 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
             return
         }
         let hadFocus = focused != nil
-        store.setRows(rows, revision: revision, primed: primed)
+        // #372: with headings before or after, the row on screen (the focused one, else the top one) keeps its place on
+        // screen: a heading appearing or going above it (the small first page giving way to the whole guide, a channel
+        // whose programmes arrived) would otherwise move every row under a still offset.
+        let kept = store.geometry.hasHeadings || !headings.rows.isEmpty ? screenAnchor() : nil
+        store.setRows(rows, revision: revision, primed: primed, headings: headings)
         focused = nil
         collectionView.reloadData()
+        if let kept { keepOnScreen(kept) }
         GuidePerf.applyStep(&measured, \.updateMs)
         if hadFocus, let identity = focusIdentity,
-           let section = rows.firstIndex(where: { $0.id == identity.channel }) {
-            let target = store.indexPath(section: section, start: identity.start)
-                ?? IndexPath(item: 0, section: section)
+           let row = rows.firstIndex(where: { $0.id == identity.channel }),
+           let section = store.geometry.nearestChannel(to: row, count: rows.count) {
+            // A channel that became a heading hands focus to the nearest channel, under the same time.
+            let target = section == row
+                ? store.indexPath(section: section, start: identity.start) ?? IndexPath(item: 0, section: section)
+                : target(in: section, at: anchor)
             requestFocus(target)
         }
+    }
+
+    /// #372: the row a reload keeps in place (the focused row, else the one at the top) and its top's distance from the
+    /// top of the screen.
+    private func screenAnchor() -> (channel: String, offset: CGFloat)? {
+        guard !store.rows.isEmpty else { return nil }
+        let y = collectionView.contentOffset.y
+        let row = focused?.section ?? store.geometry.row(at: y, count: store.rows.count)
+        guard store.rows.indices.contains(row) else { return nil }
+        return (store.rows[row].id, store.geometry.minY(row) - y)
+    }
+
+    private func keepOnScreen(_ anchor: (channel: String, offset: CGFloat)) {
+        guard let row = store.rows.firstIndex(where: { $0.id == anchor.channel }) else { return }
+        collectionView.layoutIfNeeded()
+        let maximum = max(0, store.geometry.contentHeight(count: store.rows.count) - collectionView.bounds.height)
+        let y = min(max(0, store.geometry.minY(row) - anchor.offset), maximum)
+        if y != collectionView.contentOffset.y { collectionView.contentOffset.y = y }
     }
 
     /// A4: does a row draw the same as before (its programmes and the tile's own fields)?
@@ -675,10 +708,11 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     }
 
     private func clampedY(_ y: CGFloat, row: Int) -> CGFloat {
-        let m = layout.metrics
+        let geometry = store.geometry
         let height = collectionView.bounds.height
-        let top = CGFloat(row) * m.rowHeight
-        let bottom = GuideGridMath.rowMinY(row + 1, metrics: m) - height
+        // #372: a channel right under a section heading brings its heading on screen with it.
+        let top = geometry.minY(row > 0 && geometry.isHeading(row - 1) ? row - 1 : row)
+        let bottom = geometry.maxY(row) - height
         var result = min(max(y, bottom), top)
         let maximum = max(0, collectionView.contentSize.height - height)
         result = min(max(0, result), maximum)
@@ -701,6 +735,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     }
 
     func collectionView(_ collectionView: UICollectionView, canFocusItemAt indexPath: IndexPath) -> Bool {
+        // #372: a section heading never takes focus: Up and Down pass over it to the next channel's row.
+        if store.isHeading(indexPath.section) { return false }
         if menuOpen { return false }
         if indexPath == pendingFocus { return true }
         if indexPath.item > 0, !store.isPlaceholder(indexPath) {
@@ -835,10 +871,19 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
         }
     }
 
+    // #372: a section heading is never pressed, played or opened (touch).
+    func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath) -> Bool {
+        !store.isHeading(indexPath.section)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
+        !store.isHeading(indexPath.section)
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         // Touch leaves a selection behind; nothing is drawn for it.
         collectionView.deselectItem(at: indexPath, animated: false)
-        guard store.rows.indices.contains(indexPath.section), let actions else { return }
+        guard store.rows.indices.contains(indexPath.section), !store.isHeading(indexPath.section), let actions else { return }
         let channel = store.rows[indexPath.section]
         if let programme = programme(indexPath) { actions.select(channel, programme) } else { actions.play(channel) }
     }
@@ -846,7 +891,7 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     #if os(iOS)
     /// D-44 (Apple 106): touch has no focus, so the strip above the grid reads the programme last touched.
     func collectionView(_ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath) {
-        guard store.rows.indices.contains(indexPath.section) else { return }
+        guard store.rows.indices.contains(indexPath.section), !store.isHeading(indexPath.section) else { return }
         let channel = store.rows[indexPath.section]
         let start: Double? = indexPath.item == 0 ? nil : (programme(indexPath)?.startTime ?? -1)
         focusIdentity = (channel.id, start)
@@ -864,7 +909,8 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let id = indexPath.item == 0 ? GuideGridTileCell.reuseID : GuideGridProgrammeCell.reuseID
+        let id = store.isHeading(indexPath.section) ? GuideGridHeadingCell.reuseID
+            : indexPath.item == 0 ? GuideGridTileCell.reuseID : GuideGridProgrammeCell.reuseID
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: id, for: indexPath)
         configure(cell, at: indexPath)
         return cell
@@ -873,6 +919,10 @@ final class GuideGridViewController: UIViewController, UICollectionViewDataSourc
     private func configure(_ cell: UICollectionViewCell, at indexPath: IndexPath) {
         guard store.rows.indices.contains(indexPath.section) else { return }
         GuidePerf.rowsOnScreen() // #362: ends a pending first-screen measurement on the next frame
+        if let heading = cell as? GuideGridHeadingCell {
+            heading.label = store.headingLabel(indexPath.section)
+            return
+        }
         let channel = store.rows[indexPath.section]
         let logo = model?.logo(for: channel)
         if let tile = cell as? GuideGridTileCell {

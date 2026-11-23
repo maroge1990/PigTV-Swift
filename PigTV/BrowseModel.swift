@@ -540,6 +540,11 @@ final class BrowseModel: ObservableObject {
             logo: logo(for: channel), category: channel.category, now: nil, next: nil, stableId: channel.stableId,
             number: number(for: channel), measured: channel.measured?.known)
     }
+    /// #372: the player's channels from guide rows (channel up and down, its list, the warmer's guess): the rows in their
+    /// order, without the divider channels the Guide draws as section headings.
+    func playableChannels(_ rows: [GuideChannel]) -> [Channel] {
+        GuideHeading.playable(rows).map(asChannel)
+    }
     // C-A: the channel's number, a label only.
     func number(for channel: GuideChannel) -> Int? { channel.number }
     // C-G: the guide marks a channel unreliable from its `health`.

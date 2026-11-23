@@ -77,6 +77,47 @@ final class GuideScreensUITests: XCTestCase {
         #endif
     }
 
+    /// #372: the guide with divider channels (PIGTV_UI_TEST_GUIDE_SHAPE=headings): its top (a heading on the first row),
+    /// then further down, where a heading sits under the channel with no programmes (TCM). The iPhone upright shows its
+    /// On now list, then the grid sideways.
+    @MainActor
+    func testGuideWithHeadings() throws {
+        #if os(iOS)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        let app = XCUIApplication()
+        app.launchEnvironment["PIGTV_UI_TEST_SCREEN"] = "tab-guide"
+        app.launchEnvironment["PIGTV_UI_TEST_GUIDE_SHAPE"] = "headings"
+        app.launchEnvironment["PIGTV_UI_TEST_APPEARANCE"] = "dark"
+        app.launch()
+        let grid = app.collectionViews["guide.grid"]
+        _ = grid.waitForExistence(timeout: 15)
+        shoot(app, "guide-headings")
+        #if os(tvOS)
+        for _ in 0..<8 where !focusedLabel(app).contains(", ") { XCUIRemote.shared.press(.down); usleep(300_000) }
+        for _ in 0..<14 where !focusedLabel(app).hasPrefix("BBC News") { XCUIRemote.shared.press(.down); usleep(350_000) }
+        shoot(app, "guide-headings-no-programmes")
+        #else
+        if grid.exists {
+            grid.swipeUp(velocity: .slow)
+            shoot(app, "guide-headings-no-programmes")
+        } else {
+            app.swipeUp(velocity: .slow)
+            shoot(app, "guide-headings-no-programmes")
+        }
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            app.terminate()
+            XCUIDevice.shared.orientation = .landscapeLeft
+            app.launch()
+            _ = app.collectionViews["guide.grid"].waitForExistence(timeout: 15)
+            shoot(app, "guide-headings-sideways")
+            app.collectionViews["guide.grid"].swipeUp(velocity: .slow)
+            shoot(app, "guide-headings-sideways-no-programmes")
+            XCUIDevice.shared.orientation = .portrait
+        }
+        #endif
+    }
+
     @MainActor
     func testPages() throws {
         #if os(iOS)

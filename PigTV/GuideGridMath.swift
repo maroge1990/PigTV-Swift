@@ -12,6 +12,13 @@ import Foundation
 // `origin + contentOffset.x / pointsPerSecond`.
 
 extension GuideGridMetrics {
+    /// #372: a section heading's hairline.
+    #if os(tvOS)
+    static let headingRule: CGFloat = 2
+    #else
+    static let headingRule: CGFloat = 1
+    #endif
+
     #if os(tvOS)
     /// Brand 1.8 §15 (#279, owner's choice): the time line at 23 pt above one title line cut with an ellipsis, so the
     /// 80 pt row pitch (and the number of channels on screen) stays.
@@ -27,6 +34,8 @@ nonisolated struct GuideGridMetrics: Equatable, Sendable {
     // Same numbers as GuideView (R16): row pitch 80, one 8 pt gap everywhere.
     var channelWidth: CGFloat = 176
     var rowHeight: CGFloat = 80
+    /// #372: a divider channel's section heading, about half a row (GuideGridRowGeometry).
+    var headingHeight: CGFloat = 40
     var gap: CGFloat = 8
     // Time header above the rows (a separate view that follows the
     // horizontal offset; the rows scroll beneath it, never under it).
@@ -104,9 +113,14 @@ nonisolated enum GuideGridMath {
     /// every side, like GuideView's cells.
     static func programmeFrame(start: Date, end: Date, row: Int, origin: Date,
                                metrics m: GuideGridMetrics) -> CGRect {
+        programmeFrame(start: start, end: end, minY: rowMinY(row, metrics: m), origin: origin, metrics: m)
+    }
+
+    /// #372: the same at a row's top (`GuideGridRowGeometry.minY`), for a guide with section headings.
+    static func programmeFrame(start: Date, end: Date, minY: CGFloat, origin: Date, metrics m: GuideGridMetrics) -> CGRect {
         let minX = x(of: start, origin: origin, metrics: m) + m.inset
         let width = max(1, CGFloat(end.timeIntervalSince(start)) * m.pointsPerSecond - m.gap)
-        return CGRect(x: minX, y: rowMinY(row, metrics: m) + m.inset, width: width, height: m.rowHeight - m.gap)
+        return CGRect(x: minX, y: minY + m.inset, width: width, height: m.rowHeight - m.gap)
     }
 
     /// Left edge of the visible timeline in content coordinates: cells are
@@ -147,15 +161,28 @@ nonisolated enum GuideGridMath {
 
     /// The pinned channel tile: always at the left of the visible area.
     static func tileFrame(row: Int, offsetX: CGFloat, metrics m: GuideGridMetrics) -> CGRect {
-        CGRect(x: offsetX + m.inset, y: rowMinY(row, metrics: m) + m.inset,
-               width: m.channelWidth - m.gap, height: m.rowHeight - m.gap)
+        tileFrame(minY: rowMinY(row, metrics: m), offsetX: offsetX, metrics: m)
+    }
+
+    static func tileFrame(minY: CGFloat, offsetX: CGFloat, metrics m: GuideGridMetrics) -> CGRect {
+        CGRect(x: offsetX + m.inset, y: minY + m.inset, width: m.channelWidth - m.gap, height: m.rowHeight - m.gap)
     }
 
     /// The no-programme-information placeholder spans the whole loaded day,
     /// so it always lies under the time anchor.
     static func placeholderFrame(row: Int, duration: TimeInterval, metrics m: GuideGridMetrics) -> CGRect {
-        CGRect(x: m.channelWidth + m.inset, y: rowMinY(row, metrics: m) + m.inset,
+        placeholderFrame(minY: rowMinY(row, metrics: m), duration: duration, metrics: m)
+    }
+
+    static func placeholderFrame(minY: CGFloat, duration: TimeInterval, metrics m: GuideGridMetrics) -> CGRect {
+        CGRect(x: m.channelWidth + m.inset, y: minY + m.inset,
                width: max(1, CGFloat(duration) * m.pointsPerSecond - m.gap), height: m.rowHeight - m.gap)
+    }
+
+    /// #372: a section heading's band, pinned like the channel tile: from the channel column's left edge across the
+    /// whole visible width (`visibleWidth`, the grid's width), half a gap in from each side, half a row high.
+    static func headingFrame(minY: CGFloat, offsetX: CGFloat, visibleWidth: CGFloat, metrics m: GuideGridMetrics) -> CGRect {
+        CGRect(x: offsetX + m.inset, y: minY + m.inset, width: max(1, visibleWidth - m.gap), height: m.headingHeight - m.gap)
     }
 
     /// x of a half-hour label in the time header, whose left edge is the
@@ -272,6 +299,103 @@ nonisolated enum GuideGridMath {
         let live = GuideNavigation.programme(in: GuideNavigation.ordered(programmes), at: now)
             ?? programmes.first { $0.end > now }
         return .move(viewport: baseline, start: live?.startTime)
+    }
+}
+
+/// #372: where the grid's rows sit when some are section headings (half a row high, `GuideGridMetrics.headingHeight`).
+/// Without headings every answer is the plain one (`row × rowHeight`, `GuideGridMath.rows(in:)`), computed the same way,
+/// so a guide with no divider channels lays out exactly as before. With them, a row's top is found by counting the
+/// headings above it (a binary search of `headings`), never by walking the rows.
+nonisolated struct GuideGridRowGeometry: Equatable, Sendable {
+    /// The heading rows, ascending.
+    let headings: [Int]
+    let rowHeight: CGFloat
+    let headingHeight: CGFloat
+
+    init(headings: [Int] = [], metrics m: GuideGridMetrics = GuideGridMetrics()) {
+        self.headings = headings
+        rowHeight = m.rowHeight
+        headingHeight = m.headingHeight
+    }
+
+    var hasHeadings: Bool { !headings.isEmpty }
+
+    /// Headings above `row` (rows before it).
+    func headingsBefore(_ row: Int) -> Int {
+        var low = 0, high = headings.count
+        while low < high {
+            let mid = (low + high) / 2
+            if headings[mid] < row { low = mid + 1 } else { high = mid }
+        }
+        return low
+    }
+
+    func isHeading(_ row: Int) -> Bool {
+        guard hasHeadings else { return false }
+        let index = headingsBefore(row)
+        return index < headings.count && headings[index] == row
+    }
+
+    func minY(_ row: Int) -> CGFloat {
+        guard hasHeadings else { return CGFloat(row) * rowHeight }
+        return CGFloat(row) * rowHeight - CGFloat(headingsBefore(row)) * (rowHeight - headingHeight)
+    }
+
+    func height(_ row: Int) -> CGFloat { isHeading(row) ? headingHeight : rowHeight }
+
+    func maxY(_ row: Int) -> CGFloat { minY(row) + height(row) }
+
+    /// The content's height for `count` rows.
+    func contentHeight(count: Int) -> CGFloat { minY(max(0, count)) }
+
+    /// The row whose band holds `y` (clamped to 0 ..< count; 0 when there are no rows).
+    func row(at y: CGFloat, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        guard hasHeadings else { return min(count - 1, max(0, Int(floor(y / rowHeight)))) }
+        var low = 0, high = count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if minY(mid) <= y { low = mid } else { high = mid - 1 }
+        }
+        return low
+    }
+
+    /// Rows intersecting a vertical range (`GuideGridMath.rows(in:)` when there are no headings).
+    func rows(in minY: CGFloat, _ maxY: CGFloat, count: Int) -> Range<Int> {
+        guard count > 0, rowHeight > 0 else { return 0..<0 }
+        guard hasHeadings else {
+            // GuideGridMath.rows(in:)'s own arithmetic.
+            let first = max(0, Int(floor(minY / rowHeight)))
+            let last = min(count - 1, Int(floor(maxY / rowHeight)))
+            return first <= last ? first..<(last + 1) : 0..<0
+        }
+        guard maxY >= 0, minY < contentHeight(count: count) else { return 0..<0 }
+        let first = row(at: max(0, minY), count: count)
+        let last = row(at: maxY, count: count)
+        return first <= last ? first..<(last + 1) : 0..<0
+    }
+
+    /// The first row at or below `y` whose top is not above it (a row wholly on screen from `y` down), as
+    /// `ceil(y / rowHeight)` without headings.
+    func firstRow(atOrBelow y: CGFloat, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        guard hasHeadings else { return min(max(0, Int((y / rowHeight).rounded(.up))), count - 1) }
+        let row = row(at: y, count: count)
+        return minY(row) < y && row + 1 < count ? row + 1 : row
+    }
+
+    /// The nearest row to `row` that is not a heading: itself, else the next one down, else the next one up; nil when
+    /// every row is a heading.
+    func nearestChannel(to row: Int, count: Int) -> Int? {
+        guard count > 0 else { return nil }
+        let start = min(max(0, row), count - 1)
+        guard hasHeadings else { return start }
+        var down = start
+        while down < count, isHeading(down) { down += 1 }
+        if down < count { return down }
+        var up = start
+        while up >= 0, isHeading(up) { up -= 1 }
+        return up >= 0 ? up : nil
     }
 }
 

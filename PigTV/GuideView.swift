@@ -402,7 +402,8 @@ struct GuideView: View {
             ScrollView { guideEmpty.pigStateFillsPage() }
         } else {
             GuideClockReader(clock: clock) { now in
-            OnNowList(rows: rows, model: model, clock: now, play: { play($0) }, info: { openChannel($0) },
+            // #372: the On now list is a channel list: divider channels (the grid's section headings) are not in it.
+            OnNowList(rows: GuideHeading.playable(rows), model: model, clock: now, play: { play($0) }, info: { openChannel($0) },
                       menu: { channel in menuSubject(channel, OnNowRow.make(programmes: channel.programmes, now: Date()).current) },
                       choose: { channel, programme, item in
                           let target = GuideMenuTarget(channel: channel, programme: programme,
@@ -644,9 +645,9 @@ struct GuideView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    // Start a channel and hand the player the current row order for channel up/down.
+    // Start a channel and hand the player the current row order for channel up/down (#372: without the section headings).
     private func play(_ channel: GuideChannel) {
-        app.zapList = rows.map(model.asChannel)
+        app.zapList = model.playableChannels(rows)
         app.beginPlayback(asChannel(channel), origin: "guide")
     }
     private func asChannel(_ channel: GuideChannel) -> Channel {

@@ -569,7 +569,7 @@ extension AppModel {
     /// (the zap list), else the whole guide.
     var playerChannels: [Channel] {
         if !zapList.isEmpty { return zapList }
-        return browse.map { model in model.guide.map(model.asChannel) } ?? []
+        return browse.map { model in model.playableChannels(model.guide) } ?? [] // #372: no headings
     }
 }
 

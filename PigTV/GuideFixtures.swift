@@ -93,6 +93,40 @@ enum GuideFixtures {
         }
     }
 
+    // MARK: Section headings (#372, PIGTV_UI_TEST_GUIDE_SHAPE=headings)
+
+    static var headingsRequested: Bool { ProcessInfo.processInfo.environment["PIGTV_UI_TEST_GUIDE_SHAPE"] == "headings" }
+
+    /// The fixture's channels with divider channels between them, as some providers send them (a decorated name,
+    /// programmes titled with symbols): one first, one by the channel with no programmes (TCM), two in a row, one last.
+    static func withHeadings(_ channels: [GuideChannel]) -> [GuideChannel] {
+        let before: [String: [String]] = ["Sky Sports Main Event": ["━━ SPORTS ━━"], "HBO": ["### MOVIES ###"],
+                                          "BBC News": ["*** NEWS ***"], "CBeebies": ["=== KIDS ===", "••• JUNIOR •••"]]
+        var result: [GuideChannel] = []
+        for channel in channels {
+            for name in before[channel.name] ?? [] { result.append(divider(name, index: result.count)) }
+            result.append(channel)
+        }
+        if channels.count == names.count { result.append(divider("▼▼ RADIO ▼▼", index: result.count)) }
+        return result
+    }
+
+    /// A divider channel: 2-hour blocks titled with a run of one symbol across the fixture's span.
+    static func divider(_ name: String, index: Int) -> GuideChannel {
+        let hour = 3_600_000.0
+        let now = Date().timeIntervalSince1970 * 1000
+        let symbol = ["⬇️", "➡️", "▼", "━", "⭐️", "🔻"][index % 6]
+        var t = ((now - 6 * hour) / (2 * hour)).rounded(.down) * 2 * hour
+        var programmes: [GuideProgramme] = []
+        while t < now + forwardHorizon * 1000 {
+            let title = String(repeating: symbol, count: 10)
+            programmes.append(GuideProgramme(title: title, description: title, startTime: t, endTime: t + 2 * hour))
+            t += 2 * hour
+        }
+        return GuideChannel(rawID: "divider\(index)", sourceId: 1, name: name, logo: nil, category: nil, programmes: programmes,
+                            number: 900 + index)
+    }
+
     // MARK: Home fixture (PIGTV_UI_TEST_SCREEN=home)
 
     /// Plausible titles per category for the Home screenshots.

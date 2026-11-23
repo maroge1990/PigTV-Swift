@@ -27,6 +27,8 @@ nonisolated enum GuideSearch {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.count >= 2 else { return Results() }
         var seen = Set<String>()
+        // #372: divider channels (the Guide's section headings) are neither found nor searched.
+        let guide = GuideHeading.playable(guide)
         let channels = guide.filter { $0.name.localizedStandardContains(text) && seen.insert($0.identityKey).inserted }
         let until = now.addingTimeInterval(horizon)
         var hits: [GuideSearchHit] = []

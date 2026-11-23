@@ -68,6 +68,8 @@ nonisolated enum ProductionGuideFixture {
         "Nine", "Seven", "Ten", "SBS", "TVNZ 1", "Three", "CBC", "RTÉ One", "Star Plus", "Sony Max"]
 
     static func name(_ index: Int) -> String {
+        // #372: a divider's name is wrapped in decoration, as real guides write them, so the Guide draws it as a heading.
+        if rowKind(index) == .divider { return "### SECTION \(index / 34 + 1) ###" }
         let brand = brands[index % brands.count]
         return index < brands.count ? brand : "\(brand) \(index / brands.count + 1)"
     }

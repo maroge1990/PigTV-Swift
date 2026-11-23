@@ -24,17 +24,49 @@ final class GuideGridStore {
     /// #360 (D1): lists ordered here, on the main thread (cache misses), for the tests.
     private(set) var mainThreadOrders = 0
 
+    /// #372: where the rows sit (divider channels are half-row section headings) and the headings' labels by row.
+    private(set) var geometry = GuideGridRowGeometry()
+    private var headingLabels: [Int: String] = [:]
+
+    /// #372: the heading rows of `rows` and their labels (GuideHeading's rule, one pass).
+    nonisolated struct Headings: Equatable, Sendable {
+        var rows: [Int] = []
+        var labels: [Int: String] = [:]
+    }
+
+    nonisolated static func headings(of rows: [GuideChannel]) -> Headings {
+        var result = Headings()
+        for (index, channel) in rows.enumerated() {
+            guard let label = GuideHeading.label(of: channel) else { continue }
+            result.rows.append(index)
+            result.labels[index] = label
+        }
+        return result
+    }
+
     /// `primed`: lists built ahead (`orderedLists`) from these rows for `revision`, committed with them (review of 388:
     /// primed earlier, a layout of the old rows in between refilled the cache under the new revision with old lists).
+    /// `headings`: `headings(of: rows)` when the caller has it already.
     func setRows(_ rows: [GuideChannel], revision: GuideGridRevision = GuideGridRevision(),
-                 primed: [String: [GuideProgramme]] = [:]) {
+                 primed: [String: [GuideProgramme]] = [:], headings: Headings? = nil) {
         if revision != self.revision {
             self.revision = revision
             ordered.removeAll()
         }
         for (id, list) in primed { ordered[id] = list }
         self.rows = rows
+        let headings = headings ?? Self.headings(of: rows)
+        if headings.rows != geometry.headings { geometry = GuideGridRowGeometry(headings: headings.rows) }
+        headingLabels = headings.labels
     }
+
+    /// The current headings, as `headings(of:)` gave them.
+    var headings: Headings { Headings(rows: geometry.headings, labels: headingLabels) }
+
+    /// #372: a divider channel drawn as a section heading (one item, the band; never focused, played or opened).
+    func isHeading(_ section: Int) -> Bool { geometry.isHeading(section) }
+
+    func headingLabel(_ section: Int) -> String? { headingLabels[section] }
 
     func programmes(in section: Int) -> [GuideProgramme] {
         guard rows.indices.contains(section) else { return [] }
@@ -81,21 +113,23 @@ final class GuideGridStore {
         a.id == b.id && a.programmes == b.programmes
     }
 
-    func itemCount(in section: Int) -> Int { 1 + max(1, programmes(in: section).count) }
+    /// A heading has one item, its band; a channel its tile and its programmes (or the placeholder).
+    func itemCount(in section: Int) -> Int { isHeading(section) ? 1 : 1 + max(1, programmes(in: section).count) }
 
-    /// Item index → programme (nil for the tile and the placeholder).
+    /// Item index → programme (nil for the tile, the placeholder and a heading).
     func programme(at indexPath: IndexPath) -> GuideProgramme? {
-        guard indexPath.item > 0 else { return nil }
+        guard indexPath.item > 0, !isHeading(indexPath.section) else { return nil }
         let list = programmes(in: indexPath.section)
         return list.indices.contains(indexPath.item - 1) ? list[indexPath.item - 1] : nil
     }
 
     func isPlaceholder(_ indexPath: IndexPath) -> Bool {
-        indexPath.item == 1 && programmes(in: indexPath.section).isEmpty
+        indexPath.item == 1 && !isHeading(indexPath.section) && programmes(in: indexPath.section).isEmpty
     }
 
+    /// The item of a channel's row (nil for a heading: nothing in it can be focused).
     func indexPath(section: Int, start: Double?) -> IndexPath? {
-        guard rows.indices.contains(section) else { return nil }
+        guard rows.indices.contains(section), !isHeading(section) else { return nil }
         guard let start else { return IndexPath(item: 0, section: section) }
         let list = programmes(in: section)
         if start < 0 || list.isEmpty { return list.isEmpty ? IndexPath(item: 1, section: section) : nil }
@@ -197,7 +231,7 @@ final class GuideGridLayout: UICollectionViewLayout {
 
     override var collectionViewContentSize: CGSize {
         CGSize(width: GuideGridMath.contentWidth(duration: loadedDuration, metrics: metrics),
-               height: GuideGridMath.rowMinY(sectionCount, metrics: metrics))
+               height: store.geometry.contentHeight(count: sectionCount))
     }
 
     // The tiles and the clipping follow the horizontal offset, the now line the
@@ -227,8 +261,14 @@ final class GuideGridLayout: UICollectionViewLayout {
         var result: [UICollectionViewLayoutAttributes] = []
         let fromTime = GuideGridMath.viewport(forOffsetX: rect.minX - metrics.channelWidth, origin: origin, metrics: metrics)
         let toTime = GuideGridMath.viewport(forOffsetX: rect.maxX - metrics.channelWidth, origin: origin, metrics: metrics)
-        for section in GuideGridMath.rows(in: rect.minY, rect.maxY, count: sectionCount, metrics: metrics)
+        let geometry = store.geometry
+        for section in geometry.rows(in: rect.minY, rect.maxY, count: sectionCount)
         where section < revealedRows {
+            // #372: a heading is its band alone.
+            if geometry.hasHeadings, geometry.isHeading(section) {
+                result.append(tileAttributes(section))
+                continue
+            }
             let items = collectionView.numberOfItems(inSection: section)
             result.append(tileAttributes(section))
             if store.programmes(in: section).isEmpty {
@@ -271,9 +311,16 @@ final class GuideGridLayout: UICollectionViewLayout {
         return attributes
     }
 
+    /// Item 0: the pinned channel tile, or (#372) a heading's band across the visible width.
     private func tileAttributes(_ section: Int) -> GuideGridAttributes {
         let attributes = GuideGridAttributes(forCellWith: IndexPath(item: 0, section: section))
-        attributes.frame = GuideGridMath.tileFrame(row: section, offsetX: offset.x, metrics: metrics)
+        let geometry = store.geometry
+        if geometry.hasHeadings, geometry.isHeading(section) {
+            attributes.frame = GuideGridMath.headingFrame(minY: geometry.minY(section), offsetX: offset.x,
+                                                          visibleWidth: collectionView?.bounds.width ?? 0, metrics: metrics)
+        } else {
+            attributes.frame = GuideGridMath.tileFrame(minY: geometry.minY(section), offsetX: offset.x, metrics: metrics)
+        }
         attributes.zIndex = zTile
         return attributes
     }
@@ -283,10 +330,11 @@ final class GuideGridLayout: UICollectionViewLayout {
     private func programmeAttributes(_ indexPath: IndexPath) -> GuideGridAttributes? {
         let full: CGRect
         if store.isPlaceholder(indexPath) {
-            full = GuideGridMath.placeholderFrame(row: indexPath.section, duration: loadedDuration, metrics: metrics)
+            full = GuideGridMath.placeholderFrame(minY: store.geometry.minY(indexPath.section), duration: loadedDuration,
+                                                  metrics: metrics)
         } else if let programme = store.programme(at: indexPath) {
             full = GuideGridMath.programmeFrame(start: programme.start, end: programme.end,
-                                                row: indexPath.section, origin: origin, metrics: metrics)
+                                                minY: store.geometry.minY(indexPath.section), origin: origin, metrics: metrics)
         } else {
             return nil
         }
@@ -302,7 +350,7 @@ final class GuideGridLayout: UICollectionViewLayout {
         if let attributes { return attributes }
         let hidden = GuideGridAttributes(forCellWith: indexPath)
         let edge = GuideGridMath.clipX(offsetX: offset.x, metrics: metrics)
-        hidden.frame = CGRect(x: edge, y: GuideGridMath.rowMinY(indexPath.section, metrics: metrics) + metrics.inset,
+        hidden.frame = CGRect(x: edge, y: store.geometry.minY(indexPath.section) + metrics.inset,
                               width: 0, height: metrics.rowHeight - metrics.gap)
         hidden.isHidden = true
         return hidden
