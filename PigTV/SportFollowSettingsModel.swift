@@ -144,6 +144,14 @@ final class SportFollowSettingsModel: ObservableObject {
         _ = await (rulesRead, suggestionsRead, namesRead)
     }
 
+    /// #368: the follows alone, for Settings' menu row (its sub text) before the Sport page has ever opened. Nothing is
+    /// asked when they are already held (an answer, or this device's last copy), and the page's own `load` still runs
+    /// when it appears. A failed read leaves this device's last copy, as `load` does.
+    func loadFollowsIfNeeded() async {
+        guard !isFixture, follows == nil else { return }
+        _ = await readFollows()
+    }
+
     /// What one read of the follows came to.
     private enum FollowsRead {
         /// Its answer is what `follows` holds now.

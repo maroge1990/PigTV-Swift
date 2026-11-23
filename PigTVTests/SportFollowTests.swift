@@ -250,6 +250,23 @@ final class SportFollowSettingsModelTests: XCTestCase {
         XCTAssertTrue(model.message.hasPrefix("Not saved: "), "a refusal stays until the next change: \(model.message)")
     }
 
+    /// #368: Settings' Sport row builds its sub text from `follows`, which only the Sport page's `load` filled, so the row
+    /// was empty until that page had been opened. Settings now reads the follows alone when it opens, and asks nothing
+    /// when they are already held.
+    func testTheFollowsAreReadWhenSettingsOpensWithoutTheSportPageAndOnlyOnce() async throws {
+        let account = Account()
+        let http = try server(account)
+        defer { http.stop() }
+        let model = try model(http)
+        XCTAssertNil(SettingsMenu.sportSummary(model.follows), "before anything is read the row has no sub text")
+        await model.loadFollowsIfNeeded()
+        XCTAssertEqual(SettingsMenu.sportSummary(model.follows), "1 sport · 1 follow", "the row has its sub text without the page")
+        XCTAssertEqual(http.requests(path: "/api/sports/follows", method: "GET").count, 1)
+        XCTAssertTrue(http.requests(path: "/api/sports/names", method: "GET").isEmpty, "only the follows: no names, rules or suggestions")
+        await model.loadFollowsIfNeeded()
+        XCTAssertEqual(http.requests(path: "/api/sports/follows", method: "GET").count, 1, "held follows are not asked for again")
+    }
+
     func testARefusedSaveSaysSoAndReadsTheFollowsAgain() async throws {
         let account = Account()
         let http = try server(account)

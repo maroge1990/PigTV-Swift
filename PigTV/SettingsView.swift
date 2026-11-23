@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // D-44 (batch 6, R5-Settings-*): Settings is a menu beside its page. On the Apple TV and the iPad (regular width) the
 // system split view holds the menu in its sidebar and the chosen page beside it; on the iPhone (compact width) the menu is
@@ -148,6 +149,9 @@ struct LibrarySettings: View {
     @AppStorage(Labs.streamInfo) private var streamInfo = false
     @State private var page: SettingsPage?
     @State private var opened = false
+    /// #368: the follows the Sport row's sub text is built from; filled by the model's own answers (`.onReceive` below),
+    /// so the menu shows them without the Sport page having been opened.
+    @State private var sportFollows: SportFollows?
     /// The iPhone's pushed page (a fixture may push one).
     @State private var phonePath: [SettingsPage] = []
     #if os(tvOS)
@@ -173,6 +177,13 @@ struct LibrarySettings: View {
     var body: some View {
         content
             .onAppear(perform: open)
+            // #368: the row's follows are read when Settings opens (not when the Sport page does); nothing is asked when held.
+            .task(id: model.browse?.sportFollowsEnabled == true) {
+                guard let follows = model.browse?.sportFollows, model.browse?.sportFollowsEnabled == true else { return }
+                sportFollows = follows.follows
+                await follows.loadFollowsIfNeeded()
+            }
+            .onReceive(model.browse?.sportFollows.$follows.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { sportFollows = $0 }
             .onChange(of: pages) { _, now in if let page, !now.contains(page) { self.page = SettingsMenu.opening(now, compact: compact) } }
             // #280: a page asked for from elsewhere (the Sport page's "Choose your sport") opens as a press on its row would.
             .onChange(of: model.requestedSettingsPage, initial: true) { _, requested in
@@ -355,7 +366,7 @@ struct LibrarySettings: View {
     private func facts(_ item: SettingsPage) -> [String] {
         switch item {
         case .sport:
-            return SettingsMenu.sportFacts(model.browse?.sportFollows.follows)
+            return SettingsMenu.sportFacts(sportFollows)
         case .account:
             return [(model.user?.username).map { "Signed in as \($0)" } ?? "Not signed in", "Server \(model.serverText)"]
         case .appearance:
@@ -374,7 +385,7 @@ struct LibrarySettings: View {
 
     private func summary(_ item: SettingsPage) -> String? {
         switch item {
-        case .sport: SettingsMenu.sportSummary(model.browse?.sportFollows.follows)
+        case .sport: SettingsMenu.sportSummary(sportFollows)
         case .account: SettingsMenu.accountSummary(user: model.user?.username, server: model.serverText)
         case .appearance: SettingsMenu.appearanceSummary(appearance)
         case .labs: SettingsMenu.labsSummary(Labs.toggles) { key in key == Labs.streamInfo ? streamInfo : Labs.isOn(key) }
