@@ -271,6 +271,44 @@ final class PlayerButtonsTests: XCTestCase {
                      "not again within the minute")
     }
 
+    /// Codex check of 409: a boundary refresh that waits out an older recordings load sends nothing after it if its
+    /// play was torn down (closed, zapped, handed off) or the session was retired meanwhile.
+    @MainActor
+    func testABoundaryRefreshWaitingOnAnOlderLoadSendsNothingAfterTeardownOrRetirement() async throws {
+        for retire in [false, true] {
+            let t0 = Date()
+            let ms = t0.timeIntervalSince1970 * 1000
+            let first = GuideProgramme(title: "News", description: nil, startTime: ms - 600_000, endTime: ms + 20_000)
+            let second = GuideProgramme(title: "Football", description: nil, startTime: ms + 20_000, endTime: ms + 3_600_000)
+            let row = GuideChannel(rawID: "s1", sourceId: 1, name: "Sport 1", logo: nil, category: nil, programmes: [first, second])
+            let server = try FakePigTVServer(routes: .init { request in
+                guard request.method == "GET" else { return nil }
+                if request.path.hasPrefix("/api/recordings/scheduled") { return .json("[]") }
+                if request.path == "/api/recordings" || request.path.hasPrefix("/api/recordings?") {
+                    var answer = LocalHTTPServer.Response.json("[]")
+                    answer.delay = 0.6
+                    return answer
+                }
+                return nil
+            })
+            defer { server.http.stop() }
+            let browse = BrowseModel(client: try server.client(), accountID: 1)
+            browse.guide = [row]
+            let playback = PlaybackModel(channel: browse.asChannel(row), client: try server.client(), programmes: row.programmes)
+            func reads() -> Int { server.http.requests(path: "/api/recordings", method: "GET").count }
+            _ = playback.refreshStartOverIfDue(browse: browse, at: t0, infoOpened: false) // notes the first programme
+            let older = Task { await browse.loadRecordings() } // an older load, slow to answer
+            try await Task.sleep(for: .milliseconds(100))
+            let ask = try XCTUnwrap(playback.refreshStartOverIfDue(browse: browse, at: t0.addingTimeInterval(61), infoOpened: false),
+                                    "the boundary asks, waiting on the older load")
+            if retire { browse.retirePrivateCaches() } else { _ = await playback.stop() }
+            await older.value
+            await ask.value
+            try await Task.sleep(for: .milliseconds(300))
+            XCTAssertEqual(reads(), 1, retire ? "nothing on a retired session's token" : "nothing for a play that has stopped")
+        }
+    }
+
     // MARK: Touch: a finger on a control keeps the controls (Codex review of 406)
 
     func testAHeldControlKeepsTheControlsPastTheIdleDeadline() {

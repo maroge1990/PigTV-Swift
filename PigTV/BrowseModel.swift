@@ -654,11 +654,14 @@ final class BrowseModel: ObservableObject {
     /// Codex sign-off of 408 (Start over's programme boundary): a recordings load that began at or after `date`: one in
     /// flight or done that did is enough (joined), else one begins. Never the cache's age, which a load before `date`
     /// (an in-player Record, say) could make look fresh.
+    /// Codex check of 409: after waiting out an older load, nothing more is sent if the asker was cancelled (its play
+    /// closed, zapped or handed off) or the session was retired meanwhile.
     func loadRecordings(beganSince date: Date) async {
-        guard !isFixture else { return }
+        guard !isFixture, !isRetired else { return }
         if let inFlight = recordingsInFlight, inFlight.began >= date { await inFlight.task.value; return }
         if let began = lastLoads["recordings"], began >= date { return }
         while let inFlight = recordingsInFlight, inFlight.began < date { await inFlight.task.value }
+        guard !Task.isCancelled, !isRetired else { return }
         await beginRecordingsLoad(quietly: true).task.value
     }
 
