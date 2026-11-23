@@ -329,7 +329,8 @@ private struct PlayerTestScreen: View {
             // D-67: PIGTV_UI_TEST_MEASURED=1: the channels carry the server's measured quality (the badge in the info
             // overlay, the touch panel and each channel row).
             model.injectPlayerFixture(media: screen == "player-tuning" ? nil : media, sportFront: screen == "player-games",
-                                      measured: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEASURED"] == "1")
+                                      measured: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEASURED"] == "1",
+                                      lastChannel: ProcessInfo.processInfo.environment["PIGTV_UI_TEST_NO_LAST"] != "1")
             if screen == "player-games" {
                 // #348: PIGTV_UI_TEST_GAME_CHANNELS=1: the game playing is on three channels (the list's first rows).
                 if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_GAME_CHANNELS"] == "1", let playing = model.playback,
@@ -347,6 +348,12 @@ private struct PlayerTestScreen: View {
                                                from: .init(sourceId: playback.channel.sourceId, id: playback.channel.rawID,
                                                            name: playback.channel.name),
                                                to: .init(sourceId: to.sourceId, id: to.rawID, stableId: to.stableId, name: to.name)))
+            }
+            // #58 (option B): PIGTV_UI_TEST_START_OVER=1: the programme on now is being recorded (Start over shows);
+            // PIGTV_UI_TEST_NO_LAST=1: no last channel is remembered (the fewest buttons).
+            if ProcessInfo.processInfo.environment["PIGTV_UI_TEST_START_OVER"] == "1", let browse = model.browse,
+               let playing = model.playback {
+                PlayerButtonsFixture.recordNow(playing.channel, in: browse)
             }
             model.playback?.applyReviewState(screen ?? "")
             // #348: PIGTV_UI_TEST_PLAYED=1: the picture has shown (the list opens on the TV only then).

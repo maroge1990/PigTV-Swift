@@ -14,10 +14,14 @@ import AVKit
 //                     Play/Pause → pause/resume (shows info) · Back → guide
 //   Scrub bar:        Left/Right → keep seeking · Select → info
 //                     Up/Down/Back → hide
-//   Info shown:       Left/Right → choose action · Select → run action
-//                     Up/Down → hide · Back → hide
-//                     Actions include "Last channel" (A1.2) when a previous
-//                     channel is remembered and differs from the current one.
+//   Info shown:       two lines of buttons (#58 option B, `PlayerButtons`, `PlayerCursor`): the row (Pause, Audio &
+//                     subtitles, Favourite, Record, Last channel, Labs' sync marker) and the progress bar (Start over at
+//                     its start when a recording of the programme on now exists, #308; Go to live at its end when
+//                     behind or paused). It opens on the row's first button. Left/Right → choose in the line · Select →
+//                     run it · Down → the bar (its right end) when it has a button · Up → back to the row · Up from the
+//                     row, Down from the bar (or from the row with nothing on the bar), Back → hide
+//                     "Last channel" (A1.2) shows when a previous channel is
+//                     remembered and differs from the current one.
 //   Channel list:     Up/Down → move · Select → switch · Back → close
 //   #334: a play started from Sport lists the live games in the channel list's place (Select plays the game on its
 //   preferred channel); with no other game live, Up/Down says so instead of opening it.
@@ -29,10 +33,6 @@ enum PlayerChrome: Equatable {
     case hidden, info, channels, tracks, scrub
 }
 
-private enum PlayerAction: CaseIterable {
-    case favourite, record, tracks, channels, live, lastChannel, syncMarker
-}
-
 struct CustomPlayerView: View {
     /// Room above and below the channel list, so its first and last rows can scroll to the centre.
     private static let channelListOverscroll: CGFloat = 340
@@ -42,7 +42,8 @@ struct CustomPlayerView: View {
     let app: AppModel
     let exit: () -> Void
     @State private var chrome: PlayerChrome = .info
-    @State private var action = 0
+    /// Where the remote is in the row and on the bar (#58).
+    @State private var buttonCursor = PlayerCursor()
     @State private var cursor = 0
     @State private var paused = false
     @State private var lastInput = Date()
@@ -75,19 +76,17 @@ struct CustomPlayerView: View {
     private var gameChannels: [Channel] { gamesMode ? app.playerGameChannels : [] }
     /// How many rows the open list has.
     private var listCount: Int { gamesMode ? gameChannels.count + games.count : channels.count }
-    // Channels are reached with Up/Down (the side list), so the action row no
-    // longer carries a Channels button. Go to live only appears when behind.
-    private var actions: [PlayerAction] {
-        PlayerAction.allCases.filter {
-            switch $0 {
-            case .channels: return false
-            case .tracks: return playback.hasTrackChoice
-            case .live: return playback.behindLive || paused
-            case .lastChannel: return app.previousChannel.map { $0.id != playback.channel.id } ?? false
-            case .syncMarker: return syncMarker
-            default: return true
-            }
-        }
+    // Channels are reached with Up/Down (the side list), so the row carries no Channels button. #58 option B: Start
+    // over (#308) and Go to live (only when behind or paused) on the bar, the rest in the row.
+    private func buttons(at now: Date = Date()) -> PlayerButtons {
+        PlayerButtons.live(startOver: startOverRecording(at: now) != nil, goLive: playback.behindLive || paused,
+                           tracks: playback.hasTrackChoice,
+                           lastChannel: app.previousChannel.map { $0.id != playback.channel.id } ?? false,
+                           syncMarker: syncMarker)
+    }
+    /// #308: the recording being made of the programme on this channel now, when it can be watched from its start.
+    private func startOverRecording(at now: Date) -> Recording? {
+        browse?.startOverRecording(channel: playback.channel, at: now)
     }
     @State private var trackCursor = 0
     private var allTracks: [PlaybackModel.MediaTrack] { playback.audioTracks + playback.subtitleTracks }
@@ -120,7 +119,10 @@ struct CustomPlayerView: View {
                                 .frame(maxHeight: .infinity, alignment: .top).padding(.top, PigSpacing.tvSafeTop)
                         }
                     }
-                    .onChange(of: context.date) { _, now in autoHide(now) }
+                    .onChange(of: context.date) { _, now in
+                        settle(now) // Start over and Go to live come and go with the clock and the playhead
+                        autoHide(now)
+                    }
                 }
                 .pigAnimation(value: chrome)
             }
@@ -128,13 +130,14 @@ struct CustomPlayerView: View {
         .buttonStyle(BlankButtonStyle())
         #if DEBUG
         .accessibilityIdentifier("review.livePlayer")
-        .accessibilityValue("\(chrome); action=\(action); track=\(trackCursor); channel=\(cursor); selected=\(allTracks.filter { $0.selected }.map(\.id).joined(separator: ","))")
+        .accessibilityValue("\(chrome); \(PlayerCursor.describe(buttonCursor, buttons())); track=\(trackCursor); channel=\(cursor); selected=\(allTracks.filter { $0.selected }.map(\.id).joined(separator: ","))")
         #endif
         .focusEffectDisabled()
         .environment(\.colorScheme, .dark)
         .focused($focused)
         .onAppear {
             focused = true
+            buttonCursor.open(in: buttons())
             favourite = browse?.isFavourite(playback.channel) ?? false
             cursor = channels.firstIndex { $0.id == playback.channel.id } ?? 0
         }
@@ -179,13 +182,10 @@ struct CustomPlayerView: View {
         case (.scrub, _):
             chrome = .hidden
         case (.hidden, _):
-            chrome = .info
-        case (.info, .left):
-            action = max(0, action - 1)
-        case (.info, .right):
-            action = min(actions.count - 1, action + 1)
+            showInfo()
         case (.info, _):
-            chrome = .hidden
+            guard let move = PlayerCursor.Move(direction) else { return }
+            if !buttonCursor.move(move, in: buttons()) { chrome = .hidden }
         case (.channels, .up):
             let count = listCount
             if count > 0 { cursor = (cursor - 1 + count) % count }
@@ -215,11 +215,10 @@ struct CustomPlayerView: View {
         touch()
         switch chrome {
         case .hidden, .scrub:
-            action = 0
-            chrome = .info
+            showInfo()
         case .info:
-            guard actions.indices.contains(action) else { return }
-            run(actions[action])
+            guard let item = buttonCursor.current(in: buttons()) else { return }
+            run(item)
         case .channels:
             if gamesMode {
                 let gameChannels = self.gameChannels
@@ -275,11 +274,27 @@ struct CustomPlayerView: View {
         chrome = .channels
     }
 
+    /// The remote's Play/Pause: pauses or plays and shows the info.
     private func togglePause() {
         touch()
+        pauseOrPlay()
+        showInfo()
+    }
+
+    private func pauseOrPlay() {
         if playback.player.rate == 0 { playback.player.play(); paused = false }
         else { playback.player.pause(); paused = true }
+    }
+
+    /// The info opens on the row's first button (#335: never Go to live); already open, it stays where it is.
+    private func showInfo() {
+        if chrome != .info { buttonCursor.open(in: buttons()) }
         chrome = .info
+    }
+
+    private func settle(_ now: Date = Date()) {
+        let settled = buttonCursor.settled(in: buttons(at: now))
+        if settled != buttonCursor { buttonCursor = settled }
     }
 
     private func autoHide(_ now: Date) {
@@ -288,16 +303,24 @@ struct CustomPlayerView: View {
         if notice != nil, now.timeIntervalSince(lastInput) > 3 { notice = nil }
     }
 
-    private func run(_ item: PlayerAction) {
+    private func run(_ item: PlayerButton) {
         switch item {
-        case .channels:
-            openList()
+        case .playPause:
+            pauseOrPlay()
+        case .startOver:
+            // #308: the Guide's Watch from start: this play ends, and the recording plays from the programme's start.
+            guard let recording = startOverRecording(at: Date()) else { settle(); return }
+            chrome = .hidden
+            app.startOver(playback, recording: recording)
+        case .skipBreak, .autoSkip:
+            break // a recording's
         case .tracks:
             trackCursor = max(0, allTracks.firstIndex { $0.selected } ?? 0)
             chrome = .tracks
-        case .live:
+        case .goLive:
             playback.goToLive(); paused = false
             notice = "Back to live"
+            settle()
         case .lastChannel:
             app.returnToPreviousChannel()
         case .syncMarker:
@@ -335,6 +358,7 @@ struct CustomPlayerView: View {
         // C-E: once rewound, describe what is on screen, not what is live.
         let programme = playback.programme(at: now)
         let next = playback.nextProgramme(after: now)
+        let shown = buttons(at: now)
         return VStack(alignment: .leading, spacing: 0) {
             Spacer()
             HStack(alignment: .bottom) {
@@ -367,9 +391,9 @@ struct CustomPlayerView: View {
                     if showsStreamInfo { StreamInfoLine(playback: playback) }
                 }
                 Spacer()
-                actionRow
+                actionRow(shown)
             }
-            timeline(programme: programme, next: next, now: now).padding(.top, PigSpacing.l)
+            timeline(programme: programme, next: next, now: now, shown: shown).padding(.top, PigSpacing.l)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, PigSpacing.tvSafeSide).padding(.bottom, PigSpacing.xl)
@@ -387,31 +411,30 @@ struct CustomPlayerView: View {
         .transition(.opacity)
     }
 
-    private var actionRow: some View {
-        PlayerActionRow(items: actions.map { (icon($0), label($0)) }, selected: action)
+    private func actionRow(_ shown: PlayerButtons) -> some View {
+        let at = buttonCursor.settled(in: shown)
+        return PlayerActionRow(items: shown.row.map { (icon($0), label($0)) }, selected: at.line == .row ? at.index : nil)
     }
 
-    private func icon(_ item: PlayerAction) -> String {
+    /// A button on the bar, white while the remote is on it.
+    private func barPill(_ item: PlayerButton, _ shown: PlayerButtons) -> some View {
+        PlayerBarPill(icon: icon(item), label: label(item),
+                      selected: buttonCursor.settled(in: shown).line == .bar && buttonCursor.current(in: shown) == item)
+    }
+
+    private func icon(_ item: PlayerButton) -> String {
         switch item {
         case .favourite: return favourite ? "heart.fill" : "heart"
-        case .record: return "record.circle"
-        case .tracks: return "captions.bubble"
-        case .channels: return "list.bullet"
-        case .live: return "dot.radiowaves.left.and.right"
-        case .lastChannel: return "arrow.uturn.backward"
-        case .syncMarker: return "waveform.badge.exclamationmark"
+        case .playPause: return paused ? "play.fill" : "pause.fill"
+        default: return PlayerButtonText.icon(item)
         }
     }
 
-    private func label(_ item: PlayerAction) -> String {
+    private func label(_ item: PlayerButton) -> String {
         switch item {
         case .favourite: return favourite ? "Unfavourite" : "Favourite"
-        case .tracks: return "Audio & subtitles"
-        case .record: return "Record"
-        case .channels: return gamesMode ? PlayerGames.header : PlayerGames.channelsHeader
-        case .live: return "Go to live"
-        case .lastChannel: return "Last channel"
-        case .syncMarker: return SyncMarker.label
+        case .playPause: return paused ? "Play" : "Pause"
+        default: return PlayerButtonText.label(item)
         }
     }
 
@@ -454,27 +477,34 @@ struct CustomPlayerView: View {
         }
     }
 
-    // Programme bar (about three quarters) plus the next programme's slot,
-    // as in the reference layout.
-    private func timeline(programme: GuideProgramme?, next: GuideProgramme?, now: Date) -> some View {
+    /// Programme bar (about three quarters) plus the next programme's slot, as in the reference layout. #58: Start over
+    /// at the programme bar's start, Go to live at its end (before the next programme's slot).
+    private func timeline(programme: GuideProgramme?, next: GuideProgramme?, now: Date, shown: PlayerButtons) -> some View {
         let programmeProgress = programme.map { PlayerTimeMath.fraction(of: now, from: $0.start, to: $0.end) } ?? 0
         // At the live edge the bar tracks programme progress; once rewound it
         // becomes a scrubber (pink) with a draggable-looking knob at the
         // position in the buffer.
         let scrubbing = playback.behindLive
         let progress = !scrubbing ? programmeProgress : (playback.bufferPosition() ?? programmeProgress)
+        // With a button on the bar its line is a pill's height, and the next programme's slot keeps level with it.
+        let line: CGFloat? = shown.bar.isEmpty ? nil : 60
         return HStack(alignment: .top, spacing: PigSpacing.m) {
             VStack(alignment: .leading, spacing: PigSpacing.s) {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.3))
-                        Capsule().fill(scrubbing ? Color.pigMediaAccent : Color.white).frame(width: geometry.size.width * progress)
-                        if scrubbing {
-                            Circle().fill(Color.white).frame(width: 22, height: 22)
-                                .offset(x: min(geometry.size.width - 22, max(0, geometry.size.width * progress - 11)))
+                HStack(spacing: PigSpacing.m) {
+                    if shown.bar.contains(.startOver) { barPill(.startOver, shown) }
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.white.opacity(0.3))
+                            Capsule().fill(scrubbing ? Color.pigMediaAccent : Color.white).frame(width: geometry.size.width * progress)
+                            if scrubbing {
+                                Circle().fill(Color.white).frame(width: 22, height: 22)
+                                    .offset(x: min(geometry.size.width - 22, max(0, geometry.size.width * progress - 11)))
+                            }
                         }
-                    }
-                }.frame(height: 10)
+                    }.frame(height: 10)
+                    if shown.bar.contains(.goLive) { barPill(.goLive, shown) }
+                }
+                .frame(height: line)
                 HStack {
                     Text(programme?.start.formatted(date: .omitted, time: .shortened) ?? "").pigFigures()
                     Spacer()
@@ -487,7 +517,7 @@ struct CustomPlayerView: View {
             }
             .frame(maxWidth: .infinity)
             VStack(alignment: .leading, spacing: PigSpacing.s) {
-                Capsule().fill(Color.white.opacity(0.2)).frame(height: 10)
+                Capsule().fill(Color.white.opacity(0.2)).frame(height: 10).frame(height: line)
                 Text(next.map { "\($0.start.formatted(date: .omitted, time: .shortened)) · \($0.title)" } ?? "")
                     .font(.system(size: PigType.body, weight: .semibold)).lineLimit(1)
             }

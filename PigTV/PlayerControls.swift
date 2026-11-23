@@ -5,40 +5,75 @@ import AVKit
 
 // Pieces of the live player shared with other screens (split out of CustomPlayer.swift in build 39).
 
-/// The row of round action buttons; the selected one is white and labelled.
-/// `destructive` (#335): the index of the one item drawn red (the recording player's Go to live), or nil.
+/// The row of round action buttons (#58 option B: Pause, Auto-skip breaks, Audio & subtitles, Favourite, Record, Last
+/// channel; `PlayerButtons`); the selected one is white. #369: every button has the same width and always shows its
+/// name (a name hidden with opacity used to keep its own width, so the gaps between the circles differed).
+/// `selected`: nil while the remote is on the bar.
 struct PlayerActionRow: View {
+    static let itemWidth: CGFloat = 140
     let items: [(icon: String, label: String)]
-    let selected: Int
-    var destructive: Int? = nil
+    let selected: Int?
     var body: some View {
-        HStack(spacing: PigSpacing.m) {
+        HStack(alignment: .top, spacing: PigSpacing.s) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 let isSelected = index == selected
-                let red = index == destructive
-                VStack(spacing: PigSpacing.xs) {
+                VStack(spacing: PigSpacing.s) {
                     Image(systemName: item.icon)
                         .font(.system(size: PigType.sectionTitle, weight: .semibold))
                         .frame(width: 76, height: 76)
-                        .background(fill(selected: isSelected, red: red), in: Circle())
-                        .foregroundStyle(glyph(selected: isSelected, red: red))
+                        .background(isSelected ? Color.white : Color.white.opacity(0.18), in: Circle())
+                        .foregroundStyle(isSelected ? Color.black : Color.white)
                         .scaleEffect(isSelected ? 1.1 : 1)
                     Text(item.label).font(.system(size: PigType.caption, weight: .medium))
-                        .opacity(isSelected ? 1 : 0)
+                        .multilineTextAlignment(.center).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(.white.opacity(isSelected ? 1 : 0.8))
                 }
+                .frame(width: Self.itemWidth, alignment: .top)
             }
         }
         .pigAnimation(value: selected, moves: true)
     }
+}
 
-    private func fill(selected: Bool, red: Bool) -> Color {
-        if red { return selected ? Color.pigDanger : Color.white.opacity(0.18) }
+/// A button on the progress bar (#58 option B: Start over at its start, Skip break and Go to live at its end): a pill,
+/// white while the remote is on it. `destructive` (#335): the recording player's Go to live, red.
+struct PlayerBarPill: View {
+    let icon: String
+    let label: String
+    let selected: Bool
+    var destructive = false
+    var body: some View {
+        Label(label, systemImage: icon)
+            .font(.system(size: PigType.body, weight: .semibold)).lineLimit(1).fixedSize()
+            .padding(.horizontal, PigSpacing.l).padding(.vertical, PigSpacing.s)
+            .background(fill, in: Capsule())
+            .foregroundStyle(glyph)
+            .scaleEffect(selected ? 1.08 : 1)
+            .pigAnimation(value: selected, moves: true)
+    }
+
+    private var fill: Color {
+        if destructive { return selected ? Color.pigDanger : Color.white.opacity(0.18) }
         return selected ? Color.white : Color.white.opacity(0.18)
     }
 
-    private func glyph(selected: Bool, red: Bool) -> Color {
-        if red { return selected ? Color.white : Color.pigDanger }
+    private var glyph: Color {
+        if destructive { return selected ? Color.white : Color.pigDanger }
         return selected ? Color.black : Color.white
+    }
+}
+
+extension PlayerCursor.Move {
+    /// A remote arrow.
+    init?(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .left: self = .left
+        case .right: self = .right
+        case .up: self = .up
+        case .down: self = .down
+        @unknown default: return nil
+        }
     }
 }
 

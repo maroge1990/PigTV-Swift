@@ -96,20 +96,22 @@ final class RecordingPlayerModel: ObservableObject {
         if state == "recording-resume" { resumePrompt = 3909; ready = true }
     }
 
-    func playReviewMedia(_ url: URL, live: Bool = false) {
+    /// `breaks` false (#58, PIGTV_UI_TEST_NO_BREAKS): none found; `seek`: start there (seconds, PIGTV_UI_TEST_SEEK).
+    func playReviewMedia(_ url: URL, live: Bool = false, breaks: Bool = true, seek: Double? = nil) {
         started = true
         watchingLive = live
         // As a real start does (PiP is only "supported" under the playback category).
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
-        breaks = (try? JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"completed","markers":[{"id":1,"startMs":10000,"endMs":20000,"type":"ad"}]}"#.utf8)))?.markers ?? []
+        self.breaks = !breaks ? [] : (try? JSONDecoder().decode(RecordingMarkers.self, from: Data(#"{"status":"completed","markers":[{"id":1,"startMs":10000,"endMs":20000,"type":"ad"}]}"#.utf8)))?.markers ?? []
         autoSkip = false
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 100), queue: .main) { @Sendable [weak self] time in
             MainActor.assumeIsolated { self?.tick(time.seconds) }
         }
         ready = true
         hasPlayed = true
+        if let seek { player.seek(to: CMTime(seconds: seek, preferredTimescale: 600)) }
         player.play()
     }
     #endif
@@ -592,7 +594,10 @@ struct RecordingPlayerScreen: View {
                let path = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_MEDIA"] {
                 // #335: recording-player-golive plays the movie as a recording still being made (its live playlist), so
                 // Go to live is offered from its start.
-                model.playReviewMedia(URL(fileURLWithPath: path), live: screen == "recording-player-golive")
+                let environment = ProcessInfo.processInfo.environment
+                model.playReviewMedia(URL(fileURLWithPath: path), live: screen == "recording-player-golive",
+                                      breaks: environment["PIGTV_UI_TEST_NO_BREAKS"] != "1",
+                                      seek: environment["PIGTV_UI_TEST_SEEK"].flatMap(Double.init))
             } else if let screen = ProcessInfo.processInfo.environment["PIGTV_UI_TEST_SCREEN"],
                       ["recording-loading", "recording-preparing", "recording-error", "recording-resume"].contains(screen) {
                 model.showReviewStatus(screen)

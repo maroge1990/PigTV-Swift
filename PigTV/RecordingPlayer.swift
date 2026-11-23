@@ -14,28 +14,30 @@ import AVFoundation
 //                     Up/Down → info · Play/Pause → pause/resume · Back → close
 //   Scrub bar:        Left/Right → keep seeking · Select → info
 //                     Up/Down/Back → hide
-//   Info shown:       Left/Right → choose action · Select → run action
-//                     Up/Down/Back → hide
-//                     #335: Go to live, last and red, while a recording still
-//                     being made plays more than 30 s short of its live point
+//   Info shown:       two lines of buttons (#58 option B, `PlayerButtons`, `PlayerCursor`): the row (Pause, Auto-skip
+//                     breaks) and the progress bar (Skip break, then Go to live, at its end). It opens on the row's first
+//                     button. Left/Right → choose in the line · Select → run it · Down → the bar (its right end) when
+//                     it has a button · Up → back to the row · Up from the row, Down from the bar (or from the row with
+//                     nothing on the bar), Back → hide
+//                     #335: Go to live, red, while a recording still being made plays more than 30 s short of its live point
 // Overlays hide themselves after a few idle seconds (not while paused).
 
 private enum RecordingChrome: Equatable { case hidden, scrub, info }
-
-private typealias RecordingAction = RecordingActions.Item
 
 struct RecordingPlayerView: View {
     @ObservedObject var model: RecordingPlayerModel
     let close: () -> Void
     @State private var chrome: RecordingChrome = .info
-    @State private var action = 0
+    /// Where the remote is in the row and on the bar (#58).
+    @State private var cursor = PlayerCursor()
     @State private var lastInput = Date()
     @State private var seekForward = false
     @FocusState private var focused: Bool
 
-    private var actions: [RecordingAction] {
-        // #335: Go to live is always last (never the first focus) and never a pill of its own.
-        RecordingActions.list(inBreak: model.inBreak != nil, hasBreaks: !model.breaks.isEmpty, canGoLive: model.canGoLive)
+    /// #58 option B: Pause and Auto-skip breaks in the row; Skip break and Go to live (#335: red, never the first
+    /// selection) at the bar's end.
+    private var buttons: PlayerButtons {
+        PlayerButtons.recording(inBreak: model.inBreak != nil, hasBreaks: !model.breaks.isEmpty, canGoLive: model.canGoLive)
     }
 
     var body: some View {
@@ -49,7 +51,10 @@ struct RecordingPlayerView: View {
                         else if chrome == .hidden, model.inBreak != nil { skipBreakPill }
                         if chrome != .hidden { overlay(timeline: model.timeline()) }
                     }
-                    .onChange(of: context.date) { _, now in autoHide(now) }
+                    .onChange(of: context.date) { _, now in
+                        settle() // Go to live comes and goes with the playhead (no publish of its own)
+                        autoHide(now)
+                    }
                 }
                 .pigAnimation(value: chrome)
             }
@@ -57,19 +62,22 @@ struct RecordingPlayerView: View {
         .buttonStyle(BlankButtonStyle())
         #if DEBUG
         .accessibilityIdentifier("review.recordingPlayer")
-        .accessibilityValue("\(chrome); action=\(action); paused=\(model.paused); autoSkip=\(model.autoSkip); break=\(model.inBreak?.id ?? -1)")
+        .accessibilityValue("\(chrome); \(PlayerCursor.describe(cursor, buttons)); paused=\(model.paused); autoSkip=\(model.autoSkip); break=\(model.inBreak?.id ?? -1)")
         #endif
         .focusEffectDisabled()
         .environment(\.colorScheme, .dark)
         .focused($focused)
-        .onAppear { focused = true }
+        .onAppear { focused = true; cursor.open(in: buttons) }
         .onMoveCommand(perform: move)
-        .onPlayPauseCommand { touch(); model.togglePause(); chrome = .info }
+        .onPlayPauseCommand {
+            touch()
+            model.togglePause()
+            showInfo()
+        }
         .onExitCommand(perform: back)
         .onChange(of: model.inBreak?.id) { _, id in
-            // Entering a break with the info shown: preselect Skip break.
-            if id != nil, chrome == .info { action = 0 }
-            else { action = min(action, actions.count - 1) }
+            // Entering a break with the info shown: Skip break, on the bar, is selected.
+            if id != nil, chrome == .info { cursor.select(.skipBreak, in: buttons) } else { settle() }
         }
     }
 
@@ -77,16 +85,27 @@ struct RecordingPlayerView: View {
 
     private func touch() { lastInput = Date() }
 
+    /// The info opens on the row's first button; already open, it stays where it is.
+    private func showInfo() {
+        if chrome != .info { cursor.open(in: buttons) }
+        chrome = .info
+    }
+
+    private func settle() {
+        let settled = cursor.settled(in: buttons)
+        if settled != cursor { cursor = settled }
+    }
+
     private func move(_ direction: MoveCommandDirection) {
         touch()
         switch (chrome, direction) {
         case (.hidden, .left), (.scrub, .left): seek(-15)
         case (.hidden, .right), (.scrub, .right): seek(15)
-        case (.hidden, _): action = 0; chrome = .info
+        case (.hidden, _): showInfo()
         case (.scrub, _): chrome = .hidden
-        case (.info, .left): action = max(0, action - 1)
-        case (.info, .right): action = min(actions.count - 1, action + 1)
-        case (.info, _): chrome = .hidden
+        case (.info, _):
+            guard let move = PlayerCursor.Move(direction) else { return }
+            if !cursor.move(move, in: buttons) { chrome = .hidden }
         }
     }
 
@@ -101,13 +120,12 @@ struct RecordingPlayerView: View {
         switch chrome {
         case .hidden:
             if model.goLiveUndo != nil { model.undoGoLive() }
-            else if model.inBreak != nil { model.skipBreak() } else { action = 0; chrome = .info }
+            else if model.inBreak != nil { model.skipBreak() } else { showInfo() }
         case .scrub:
-            action = 0
-            chrome = .info
+            showInfo()
         case .info:
-            guard actions.indices.contains(action) else { return }
-            run(actions[action])
+            guard let item = cursor.current(in: buttons) else { return }
+            run(item)
         }
     }
 
@@ -116,15 +134,18 @@ struct RecordingPlayerView: View {
         if chrome == .hidden { close() } else { chrome = .hidden }
     }
 
-    private func run(_ item: RecordingAction) {
+    private func run(_ item: PlayerButton) {
         switch item {
-        case .skipBreak: model.skipBreak(); action = 0
+        case .skipBreak:
+            model.skipBreak()
+            settle() // the nearest button left on the bar, else back to the row
         case .playPause: model.togglePause()
         case .autoSkip: model.autoSkip.toggle()
         case .goLive:
             model.goLive()
-            action = 0
             chrome = .hidden
+        case .startOver, .tracks, .favourite, .record, .lastChannel, .syncMarker:
+            break // not a recording's
         }
     }
 
@@ -133,21 +154,21 @@ struct RecordingPlayerView: View {
         if chrome != .hidden, !model.paused, now.timeIntervalSince(lastInput) > limit { chrome = .hidden }
     }
 
-    private func icon(_ item: RecordingAction) -> String {
+    private func icon(_ item: PlayerButton) -> String {
         switch item {
-        case .skipBreak: return "forward.end.fill"
         case .playPause: return model.paused ? "play.fill" : "pause.fill"
-        case .autoSkip: return model.autoSkip ? "circle.inset.filled" : "circle"
+        case .autoSkip: return PlayerButtonText.autoSkipIcon(on: model.autoSkip)
         case .goLive: return RecordingGoLive.icon
+        default: return PlayerButtonText.icon(item)
         }
     }
 
-    private func label(_ item: RecordingAction) -> String {
+    private func label(_ item: PlayerButton) -> String {
         switch item {
-        case .skipBreak: return "Skip break"
         case .playPause: return model.paused ? "Play" : "Pause"
-        case .autoSkip: return model.autoSkip ? "Auto-skip breaks: On" : "Auto-skip breaks: Off"
+        case .autoSkip: return PlayerButtonText.autoSkip(on: model.autoSkip)
         case .goLive: return RecordingGoLive.label
+        default: return PlayerButtonText.label(item)
         }
     }
 
@@ -185,6 +206,16 @@ struct RecordingPlayerView: View {
         .accessibilityIdentifier("recording.goLiveUndo")
     }
 
+    /// #58: Skip break, then Go to live (red), at the bar's end.
+    private var barButtons: some View {
+        let shown = buttons
+        let at = cursor.settled(in: shown)
+        return ForEach(Array(shown.bar.enumerated()), id: \.element) { index, item in
+            PlayerBarPill(icon: icon(item), label: label(item), selected: at.line == .bar && at.index == index,
+                          destructive: item == .goLive)
+        }
+    }
+
     private func overlay(timeline: RecordingTimeline?) -> some View {
         let recording = model.recording
         return VStack(alignment: .leading, spacing: PigSpacing.m) {
@@ -202,14 +233,17 @@ struct RecordingPlayerView: View {
                 }
                 Spacer()
                 if chrome == .info {
-                    PlayerActionRow(items: actions.map { (icon($0), label($0)) }, selected: action,
-                                    destructive: actions.firstIndex(of: .goLive))
+                    let at = cursor.settled(in: buttons)
+                    PlayerActionRow(items: buttons.row.map { (icon($0), label($0)) }, selected: at.line == .row ? at.index : nil)
                 } else {
                     Image(systemName: seekForward ? "goforward.15" : "gobackward.15")
                         .font(.system(size: PigType.display, weight: .semibold))
                 }
             }
-            PlayerScrubTrack(fraction: timeline?.fraction ?? 0)
+            HStack(spacing: PigSpacing.m) {
+                PlayerScrubTrack(fraction: timeline?.fraction ?? 0)
+                if chrome == .info { barButtons }
+            }
             HStack {
                 Text(RecordingTimeline.clock(timeline?.elapsed ?? 0))
                 Spacer()

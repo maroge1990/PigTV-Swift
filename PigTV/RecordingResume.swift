@@ -121,19 +121,3 @@ nonisolated enum RecordingGoLive {
     /// "Back to 1:02:03".
     static func backLabel(_ undo: Undo) -> String { "Back to \(RecordingResume.clock(undo.position))" }
 }
-
-/// The recording player's actions on the Apple TV, in order (#335: Go to live always last, so the first focus, the
-/// first action, is never it). Pure (tests `RecordingGoLiveTests`).
-nonisolated enum RecordingActions {
-    enum Item: Equatable, Sendable { case skipBreak, playPause, autoSkip, goLive }
-
-    static func list(inBreak: Bool, hasBreaks: Bool, canGoLive: Bool) -> [Item] {
-        var items: [Item] = []
-        if inBreak { items.append(.skipBreak) }
-        items.append(.playPause)
-        // Only offered when the recording has detected breaks (no dead UI).
-        if hasBreaks { items.append(.autoSkip) }
-        if canGoLive { items.append(.goLive) }
-        return items
-    }
-}

@@ -37,7 +37,7 @@ final class BrandDepthUITests: XCTestCase {
             sleep(1)
             expect(surface, "info")
             shot(app, "live-info-\(mode)")
-            XCUIRemote.shared.press(.right)
+            // #58: the row is Pause, then Audio & subtitles.
             XCUIRemote.shared.press(.right)
             XCUIRemote.shared.press(.select)
             expect(surface, "tracks")

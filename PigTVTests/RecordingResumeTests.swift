@@ -136,19 +136,23 @@ final class RecordingResumeTests: XCTestCase {
         XCTAssertNotEqual(RecordingGoLive.icon, "forward.end.fill", "its own symbol, not Skip break's")
     }
 
-    /// The Apple TV's actions: Go to live always last, so the first action (where the row's focus starts) is never it.
-    func testGoToLiveIsAlwaysTheLastAction() {
+    /// #58 option B: Go to live sits at the progress bar's end, after Skip break, never in the row where the remote
+    /// starts (#335: the first selection is never it). The row is Pause, then Auto-skip breaks when breaks were found.
+    func testGoToLiveIsAtTheBarsEndNeverInTheRow() {
         for inBreak in [false, true] {
             for hasBreaks in [false, true] {
-                let list = RecordingActions.list(inBreak: inBreak, hasBreaks: hasBreaks, canGoLive: true)
-                XCTAssertEqual(list.last, .goLive)
-                XCTAssertEqual(list.filter { $0 == .goLive }.count, 1)
-                XCTAssertNotEqual(list.first, .goLive)
-                XCTAssertFalse(RecordingActions.list(inBreak: inBreak, hasBreaks: hasBreaks, canGoLive: false).contains(.goLive))
+                let buttons = PlayerButtons.recording(inBreak: inBreak, hasBreaks: hasBreaks, canGoLive: true)
+                XCTAssertEqual(buttons.bar.last, .goLive)
+                XCTAssertFalse(buttons.row.contains(.goLive))
+                XCTAssertEqual(buttons.row.first, .playPause)
+                XCTAssertFalse(PlayerButtons.recording(inBreak: inBreak, hasBreaks: hasBreaks, canGoLive: false).bar.contains(.goLive))
             }
         }
-        XCTAssertEqual(RecordingActions.list(inBreak: true, hasBreaks: true, canGoLive: true),
-                       [.skipBreak, .playPause, .autoSkip, .goLive])
-        XCTAssertEqual(RecordingActions.list(inBreak: false, hasBreaks: false, canGoLive: false), [.playPause])
+        let every = PlayerButtons.recording(inBreak: true, hasBreaks: true, canGoLive: true)
+        XCTAssertEqual(every.row, [.playPause, .autoSkip])
+        XCTAssertEqual(every.bar, [.skipBreak, .goLive])
+        let fewest = PlayerButtons.recording(inBreak: false, hasBreaks: false, canGoLive: false)
+        XCTAssertEqual(fewest.row, [.playPause])
+        XCTAssertEqual(fewest.bar, [])
     }
 }

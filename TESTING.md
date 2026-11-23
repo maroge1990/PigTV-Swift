@@ -55,7 +55,9 @@ simulator pass is not a device pass, and nothing becomes *Verified* until Mark r
 - Pure logic: `GuideGridMathTests`, `GuideModelTests` (indexed lookup, cursor paging; build 33: `extendGuideForward` merges a
   slice and advances `guideLoadedUntil`, ends cleanly when a slice is empty, a failed page is retried before it surfaces,
   `retryGuide` resumes paging rather than restarting, and a 1 000-channel timing check), `ChannelNumberTests`, `OnNowRowTests`,
-  `ObservationTests` (audit R05: a guide page changes nothing in the recordings/favourites stores and vice versa, a quiet refresh that finds nothing new changes nothing; counted by `Support/Invalidations.swift`, which sees an ObservableObject's publishes and an `@Observable` model's changes to what a view reads alike; it also appends a per-screen count to `/tmp/pigtv-observation.txt`), `StoreObservationTests` (#51: a view reading one store property is not re-evaluated by another), `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `PlayerTimeMathTests`,
+  `ObservationTests` (audit R05: a guide page changes nothing in the recordings/favourites stores and vice versa, a quiet refresh that finds nothing new changes nothing; counted by `Support/Invalidations.swift`, which sees an ObservableObject's publishes and an `@Observable` model's changes to what a view reads alike; it also appends a per-screen count to `/tmp/pigtv-observation.txt`), `StoreObservationTests` (#51: a view reading one store property is not re-evaluated by another), `DetailTextTests`, `PlayerSharedTests` (touch chrome timer, seek window), `PlayerButtonsTests` (#58 option B: which buttons each player
+  shows in its row and on its bar, the Apple TV remote's two lines (`PlayerCursor`), #308's Start over lookup, #369's equal-width
+  row with every name drawn), `PlayerTimeMathTests`,
   `DisplayModeTests`, `StreamInfoTests`, `SportTests.swift` (`SportRowsTests`: text, `playsChannelNow`, tolerant
   decoding; `SportModelTests`: the model against the fake server, `live`/`soon`; `SportsGameTests`: the game labels the front page draws), `TopShelfTests` and `TopShelfCardTests`
   (snapshot storage, App Group paths, the extension's entry point, card layout and file names, diagnostics).
@@ -112,6 +114,10 @@ To check a change against the cloud runner: build for testing, copy `Build/Produ
   `GuideHeadingTests` the grid's bands on the real controller, a guide without headings laid out exactly as before, a row
   turning into a heading without moving the screen, and the consumers that leave headings out. `GuideScreensUITests.
   testGuideWithHeadings` shoots the fixture (visual tier).
+- `PlayerButtonsUITests` (push tier, #58/#308, needs the review movie): on the live player the chrome opens on Pause, Down
+  reaches Go to live then Start over on the bar, Up returns, and Start over ends the live play (fixture
+  `PIGTV_UI_TEST_START_OVER=1`); on a recording still being made a break selects Skip break on the bar, Go to live follows it,
+  and Down from the bar hides.
 - `GuideFastScrollUITests` (build 46): on 300 channels, holding Down then Up leaves focus on a row on screen, not pulled
   back to the starting row (the fast swipe's landing scroll was clamped to a stale planned row).
 - `PageHeaderPlacementUITests` (build 46, tvOS and iOS): the header title has the same x, y and height on all four tabs.

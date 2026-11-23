@@ -406,9 +406,17 @@ struct TouchPlayerChrome: View {
             }
     }
 
+    /// #58 option B: Start over (#308, when a recording of the programme on now exists) at the bar's start, Go to live at
+    /// its end; the iPhone draws them as icons.
     @ViewBuilder
     private func scrubRow(now: Date, window: PlayerSeekWindow?, programme: GuideProgramme?, watching: Date) -> some View {
         HStack(spacing: PigSpacing.m) {
+            if let recording = browse.startOverRecording(channel: playback.channel, at: now) {
+                PlayerPillButton(title: PlayerButtonText.startOver, icon: PlayerButtonText.icon(.startOver), compactLabel: true) {
+                    touch(); app.startOver(playback, recording: recording)
+                }
+                .accessibilityIdentifier("player.startOver")
+            }
             if let window {
                 let fraction = dragFraction ?? window.fraction
                 let live = window.isLive(at: fraction)

@@ -532,6 +532,18 @@ final class AppModel: ChangeSuppressing {
         }
     }
 
+    /// #308: the live player's Start over: the play ends the normal way (as its own close), then `recording`, the one
+    /// being made of the programme on now, plays from its start in the recording player, as the Guide's Watch from start
+    /// does. The recording player is presented once the live player's cover has gone (`playOverCovers`).
+    func startOver(_ playing: PlaybackModel, recording: Recording) {
+        guard currentPlayback === playing, !sessionEnding else { return }
+        cancelHandoff()
+        Task { [weak self] in
+            await self?.endPlayback(playing)
+            self?.playOverCovers { $0.presenter.present(.recordingPlayer(recording)) }
+        }
+    }
+
     private func revealGame(_ id: String, in browse: BrowseModel) {
         guard self.browse === browse else { return } // signed out or switched meanwhile
         browse.sportFront.requestHero(id)
@@ -990,7 +1002,8 @@ final class AppModel: ChangeSuppressing {
     /// `sportFront` (#334): the server also has the Sport front page, so a play from Sport lists the live games.
     /// `measured` (D-67): every channel carries a measured quality (4K · 50, 1080 · 50, 720 · 25, SD · 25 in turn), the
     /// playing one 4K · 50.
-    func injectPlayerFixture(media: URL?, sportFront: Bool = false, measured: Bool = false) {
+    /// `lastChannel` false (#58, PIGTV_UI_TEST_NO_LAST): no last channel is remembered.
+    func injectPlayerFixture(media: URL?, sportFront: Bool = false, measured: Bool = false, lastChannel: Bool = true) {
         injectHomeFixture(sportFront: sportFront)
         guard let browse, browse.guide.count > 3 else { return }
         if media == nil, let address = try? ServerAddress(Self.unreachableFixtureServer) {
@@ -1009,7 +1022,7 @@ final class AppModel: ChangeSuppressing {
         }
         zapList = browse.guide.indices.map(fixture)
         let channel = fixture(2)
-        previousChannel = browse.asChannel(browse.guide[0])
+        previousChannel = lastChannel ? browse.asChannel(browse.guide[0]) : nil
         let model = PlaybackModel(channel: channel, client: client, programmes: browse.guide[2].programmes)
         model.fallbackChannel = { [weak self] side in self?.fallbackChannel(side) } // #348 (PIGTV_UI_TEST_FALLBACK)
         if let media { model.playFixtureMedia(media) }
