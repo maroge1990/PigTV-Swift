@@ -10,8 +10,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
     private(set) var programmes: [GuideProgramme]
     /// Codex review of 406: when this play last asked whether Start over applies (`refreshStartOverIfDue`).
     var startOverRefresh = StartOverRefresh()
-    /// The play's Start over refresh in flight (`refreshStartOverIfDue`); cancelled when the play stops.
-    var startOverRefreshTask: Task<Void, Never>?
     /// #348: the C-I event of the game this play came from (sent with the resolve as `eventId`); nil for any other play.
     var eventID: String?
     /// #348: the channel (and its guide) the server played instead (`fallback.to`); AppModel looks it up in the guide.
@@ -1180,7 +1178,6 @@ final class PlaybackModel: ObservableObject, Identifiable {
     }
 
     func stop() async -> String? {
-        startOverRefreshTask?.cancel() // Codex check of 409: nothing more is asked for this play
         if let stopTask { return await stopTask.value }
         ended = true
         stopping = true

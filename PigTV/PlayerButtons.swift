@@ -293,14 +293,10 @@ extension PlaybackModel {
         guard let browse, !browse.isFixture,
               let ask = startOverRefresh.due(now: now, programmeStart: programme(at: now)?.startTime, infoOpened: infoOpened,
                                              loadBegan: browse.recordingsLoadBegan) else { return nil }
-        // Codex check of 409: tied to this play; its stop (close, zap, hand-off) cancels it.
-        startOverRefreshTask?.cancel()
-        let task: Task<Void, Never>
         switch ask {
-        case .stale: task = Task { await browse.loadRecordingsIfStale(maxAge: StartOverRefresh.minimumGap, quietly: true) }
-        case .since(let boundary): task = Task { await browse.loadRecordings(beganSince: boundary) }
+        case .stale: return Task { await browse.loadRecordingsIfStale(maxAge: StartOverRefresh.minimumGap, quietly: true) }
+        // Codex check of 410: the ordinary shared load, or nothing yet (an older one in flight); no task of its own.
+        case .since(let boundary): return browse.loadRecordings(beganSince: boundary)
         }
-        startOverRefreshTask = task
-        return task
     }
 }

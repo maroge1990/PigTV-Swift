@@ -271,41 +271,49 @@ final class PlayerButtonsTests: XCTestCase {
                      "not again within the minute")
     }
 
-    /// Codex check of 409: a boundary refresh that waits out an older recordings load sends nothing after it if its
-    /// play was torn down (closed, zapped, handed off) or the session was retired meanwhile.
+    /// Codex check of 409 and 410: a boundary seen while an older recordings load is in flight starts nothing of its
+    /// own (no waiting task, no follow-up); if the play is then torn down or the session retired, while that load is in
+    /// flight or right after it finishes, no further GET reaches either endpoint. A retired session's shared load sends
+    /// no scheduled-list read either. An ordinary caller's load still completes.
     @MainActor
-    func testABoundaryRefreshWaitingOnAnOlderLoadSendsNothingAfterTeardownOrRetirement() async throws {
+    func testABoundaryDuringAnOlderLoadSendsNothingFurtherAfterTeardownOrRetirement() async throws {
         for retire in [false, true] {
-            let t0 = Date()
-            let ms = t0.timeIntervalSince1970 * 1000
-            let first = GuideProgramme(title: "News", description: nil, startTime: ms - 600_000, endTime: ms + 20_000)
-            let second = GuideProgramme(title: "Football", description: nil, startTime: ms + 20_000, endTime: ms + 3_600_000)
-            let row = GuideChannel(rawID: "s1", sourceId: 1, name: "Sport 1", logo: nil, category: nil, programmes: [first, second])
-            let server = try FakePigTVServer(routes: .init { request in
-                guard request.method == "GET" else { return nil }
-                if request.path.hasPrefix("/api/recordings/scheduled") { return .json("[]") }
-                if request.path == "/api/recordings" || request.path.hasPrefix("/api/recordings?") {
-                    var answer = LocalHTTPServer.Response.json("[]")
-                    answer.delay = 0.6
-                    return answer
-                }
-                return nil
-            })
-            defer { server.http.stop() }
-            let browse = BrowseModel(client: try server.client(), accountID: 1)
-            browse.guide = [row]
-            let playback = PlaybackModel(channel: browse.asChannel(row), client: try server.client(), programmes: row.programmes)
-            func reads() -> Int { server.http.requests(path: "/api/recordings", method: "GET").count }
-            _ = playback.refreshStartOverIfDue(browse: browse, at: t0, infoOpened: false) // notes the first programme
-            let older = Task { await browse.loadRecordings() } // an older load, slow to answer
-            try await Task.sleep(for: .milliseconds(100))
-            let ask = try XCTUnwrap(playback.refreshStartOverIfDue(browse: browse, at: t0.addingTimeInterval(61), infoOpened: false),
-                                    "the boundary asks, waiting on the older load")
-            if retire { browse.retirePrivateCaches() } else { _ = await playback.stop() }
-            await older.value
-            await ask.value
-            try await Task.sleep(for: .milliseconds(300))
-            XCTAssertEqual(reads(), 1, retire ? "nothing on a retired session's token" : "nothing for a play that has stopped")
+            for afterItFinishes in [false, true] {
+                let t0 = Date()
+                let ms = t0.timeIntervalSince1970 * 1000
+                let first = GuideProgramme(title: "News", description: nil, startTime: ms - 600_000, endTime: ms + 20_000)
+                let second = GuideProgramme(title: "Football", description: nil, startTime: ms + 20_000, endTime: ms + 3_600_000)
+                let row = GuideChannel(rawID: "s1", sourceId: 1, name: "Sport 1", logo: nil, category: nil, programmes: [first, second])
+                let server = try FakePigTVServer(routes: .init { request in
+                    guard request.method == "GET" else { return nil }
+                    if request.path.hasPrefix("/api/recordings/scheduled") { return .json("[]") }
+                    if request.path == "/api/recordings" || request.path.hasPrefix("/api/recordings?") {
+                        var answer = LocalHTTPServer.Response.json("[]")
+                        answer.delay = 0.6
+                        return answer
+                    }
+                    return nil
+                })
+                defer { server.http.stop() }
+                let browse = BrowseModel(client: try server.client(), accountID: 1)
+                browse.guide = [row]
+                let playback = PlaybackModel(channel: browse.asChannel(row), client: try server.client(), programmes: row.programmes)
+                func files() -> Int { server.http.requests(path: "/api/recordings", method: "GET").count }
+                func scheduled() -> Int { server.http.requests(path: "/api/recordings/scheduled", method: "GET").count }
+                let label = "\(retire ? "retired" : "torn down") \(afterItFinishes ? "after" : "during") the older load"
+                _ = playback.refreshStartOverIfDue(browse: browse, at: t0, infoOpened: false) // notes the first programme
+                let older = Task { await browse.loadRecordings() } // an ordinary caller's load, slow to answer
+                try await Task.sleep(for: .milliseconds(100))
+                XCTAssertNil(playback.refreshStartOverIfDue(browse: browse, at: t0.addingTimeInterval(61), infoOpened: false),
+                             "\(label): the boundary starts nothing while an older load is in flight")
+                func tearDown() async { if retire { browse.retirePrivateCaches() } else { _ = await playback.stop() } }
+                if afterItFinishes { await older.value; await tearDown() } else { await tearDown(); await older.value }
+                try await Task.sleep(for: .milliseconds(800))
+                XCTAssertEqual(files(), 1, "\(label): no further /recordings")
+                XCTAssertEqual(scheduled(), retire && !afterItFinishes ? 0 : 1,
+                               "\(label): no further scheduled list (none at all once retired mid-load)")
+                if !retire { XCTAssertNotNil(browse.recordingsPublishedAt, "\(label): the ordinary caller's load completed") }
+            }
         }
     }
 

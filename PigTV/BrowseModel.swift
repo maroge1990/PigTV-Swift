@@ -651,18 +651,16 @@ final class BrowseModel: ObservableObject {
     /// When the last recordings load began (in flight or done), nil before the first.
     var recordingsLoadBegan: Date? { lastLoads["recordings"] }
 
-    /// Codex sign-off of 408 (Start over's programme boundary): a recordings load that began at or after `date`: one in
-    /// flight or done that did is enough (joined), else one begins. Never the cache's age, which a load before `date`
-    /// (an in-player Record, say) could make look fresh.
-    /// Codex check of 409: after waiting out an older load, nothing more is sent if the asker was cancelled (its play
-    /// closed, zapped or handed off) or the session was retired meanwhile.
-    func loadRecordings(beganSince date: Date) async {
-        guard !isFixture, !isRetired else { return }
-        if let inFlight = recordingsInFlight, inFlight.began >= date { await inFlight.task.value; return }
-        if let began = lastLoads["recordings"], began >= date { return }
-        while let inFlight = recordingsInFlight, inFlight.began < date { await inFlight.task.value }
-        guard !Task.isCancelled, !isRetired else { return }
-        await beginRecordingsLoad(quietly: true).task.value
+    /// Codex sign-off of 408 (Start over's programme boundary): the shared recordings load for a boundary at `date`: one
+    /// in flight that began at or after it, else a new one when none is in flight and none began since. Never the
+    /// cache's age, which a load before `date` (an in-player Record, say) could make look fresh. Codex check of 410: it
+    /// never waits and never queues a follow-up: with an older load in flight it returns nil ("not yet") and the
+    /// player's own tick asks again later. Nil also when nothing is to do.
+    func loadRecordings(beganSince date: Date) -> Task<Void, Never>? {
+        guard !isFixture, !isRetired else { return nil }
+        if let inFlight = recordingsInFlight { return inFlight.began >= date ? inFlight.task : nil }
+        if let began = lastLoads["recordings"], began >= date { return nil }
+        return beginRecordingsLoad(quietly: true).task
     }
 
     /// After a write (a schedule made, changed or cancelled): a load whose reads began after `write`. A load in flight
@@ -695,6 +693,8 @@ final class BrowseModel: ObservableObject {
     /// `/recordings`: published, and timed, when its own answer arrives (#345, Codex sign-off), not after the scheduled
     /// list's. Its error when it failed (the whole load's), else nil.
     private func fetchRecordingFiles() async -> Error? {
+        // Codex check of 410: nothing on a retired session's token, whoever asked.
+        guard !isRetired else { return CancellationError() }
         do {
             let loaded: [Recording] = try await client.decodedOffMain("recordings")
             // Apple 125: nothing the server confirmed removed comes back from a list fetched before (or around) it.
@@ -714,6 +714,7 @@ final class BrowseModel: ObservableObject {
         defer { recordingsLoading = false; if !quietly { recordingsBusy = false } }
         do {
             if let failure = await files.value { throw failure }
+            guard !isRetired else { return } // Codex check of 410: the scheduled list neither, after a retirement
             let read = try await readSchedules()
             // A list asked for before one already published is older than it (Codex check of 320): not published, and
             // it settles nothing the newer one has not. Published here, where it is used (Codex sign-off of #347).
